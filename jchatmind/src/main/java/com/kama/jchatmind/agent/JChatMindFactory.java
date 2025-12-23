@@ -1,27 +1,30 @@
 package com.kama.jchatmind.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kama.jchatmind.agent.tools.Tool;
+import com.kama.jchatmind.config.ChatClientRegistry;
 import com.kama.jchatmind.converter.AgentConverter;
 import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.converter.KnowledgeBaseConverter;
 import com.kama.jchatmind.mapper.AgentMapper;
 import com.kama.jchatmind.mapper.KnowledgeBaseMapper;
 import com.kama.jchatmind.model.dto.AgentDTO;
+import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.model.dto.KnowledgeBaseDTO;
 import com.kama.jchatmind.model.entity.Agent;
 import com.kama.jchatmind.model.entity.KnowledgeBase;
 import com.kama.jchatmind.service.ChatMessageFacadeService;
 import com.kama.jchatmind.service.SseService;
 import com.kama.jchatmind.service.ToolFacadeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.deepseek.DeepSeekChatModel;
+import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.function.Function;
@@ -30,11 +33,9 @@ import java.util.stream.Collectors;
 @Component
 public class JChatMindFactory {
 
-    private final List<ChatModel> chatModels;
-    private final DeepSeekChatModel chatModel;
-    private final ChatClient deepSeekChatClient;
+    private static final Logger log = LoggerFactory.getLogger(JChatMindFactory.class);
+    private final ChatClientRegistry chatClientRegistry;
     private final SseService sseService;
-    private final ObjectMapper objectMapper;
     private final AgentMapper agentMapper;
     private final AgentConverter agentConverter;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
@@ -43,26 +44,24 @@ public class JChatMindFactory {
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ChatMessageConverter chatMessageConverter;
 
-    public JChatMindFactory(DeepSeekChatModel chatModel,
-                            ChatClient deepSeekChatClient,
-                            SseService sseService,
-                            ObjectMapper objectMapper,
-                            AgentMapper agentMapper,
-                            AgentConverter agentConverter,
-                            List<ChatModel> chatModels,
-                            KnowledgeBaseMapper knowledgeBaseMapper,
-                            KnowledgeBaseConverter knowledgeBaseConverter,
-                            ToolFacadeService toolFacadeService,
-                            ChatMessageFacadeService chatMessageFacadeService,
-                            ChatMessageConverter chatMessageConverter
+    // 运行时 Agent 配置
+    private AgentDTO agentConfig;
+
+    public JChatMindFactory(
+            ChatClientRegistry chatClientRegistry,
+            SseService sseService,
+            AgentMapper agentMapper,
+            AgentConverter agentConverter,
+            KnowledgeBaseMapper knowledgeBaseMapper,
+            KnowledgeBaseConverter knowledgeBaseConverter,
+            ToolFacadeService toolFacadeService,
+            ChatMessageFacadeService chatMessageFacadeService,
+            ChatMessageConverter chatMessageConverter
     ) {
-        this.chatModel = chatModel;
-        this.deepSeekChatClient = deepSeekChatClient;
+        this.chatClientRegistry = chatClientRegistry;
         this.sseService = sseService;
-        this.objectMapper = objectMapper;
         this.agentMapper = agentMapper;
         this.agentConverter = agentConverter;
-        this.chatModels = chatModels;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.knowledgeBaseConverter = knowledgeBaseConverter;
         this.toolFacadeService = toolFacadeService;
@@ -74,9 +73,52 @@ public class JChatMindFactory {
         return agentMapper.selectById(agentId);
     }
 
+    /**
+     * 将数据库中存储的记忆恢复成 List<Message> 结构
+     */
+    private List<Message> loadMemory(String chatSessionId) {
+        int messageLength = agentConfig.getChatOptions().getMessageLength();
+        List<ChatMessageDTO> chatMessages = chatMessageFacadeService.getChatMessagesBySessionIdRecently(chatSessionId, messageLength);
+        List<Message> memory = new ArrayList<>();
+        for (ChatMessageDTO chatMessageDTO : chatMessages) {
+            switch (chatMessageDTO.getRole()) {
+                case SYSTEM:
+                    if (!StringUtils.hasLength(chatMessageDTO.getContent())) continue;
+                    memory.add(0, new SystemMessage(chatMessageDTO.getContent()));
+                    break;
+                case USER:
+                    if (!StringUtils.hasLength(chatMessageDTO.getContent())) continue;
+                    memory.add(new UserMessage(chatMessageDTO.getContent()));
+                    break;
+                case ASSISTANT:
+                    memory.add(AssistantMessage.builder()
+                            .content(chatMessageDTO.getContent())
+                            .toolCalls(chatMessageDTO.getMetadata()
+                                    .getToolCalls())
+                            .build());
+                    break;
+                case TOOL:
+                    memory.add(ToolResponseMessage.builder()
+                            .responses(List.of(chatMessageDTO
+                                    .getMetadata()
+                                    .getToolResponse()))
+                            .build());
+                    break;
+                default:
+                    log.error("不支持的 Message 类型: {}, content = {}",
+                            chatMessageDTO.getRole().getRole(),
+                            chatMessageDTO.getContent()
+                    );
+                    throw new IllegalStateException("不支持的 Message 类型");
+            }
+        }
+        return memory;
+    }
+
     private AgentDTO toAgentConfig(Agent agent) {
         try {
-            return agentConverter.toDTO(agent);
+            agentConfig = agentConverter.toDTO(agent);
+            return agentConfig;
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("解析 Agent 配置失败", e);
         }
@@ -153,30 +195,39 @@ public class JChatMindFactory {
 
     private JChatMind buildAgentRuntime(
             Agent agent,
+            List<Message> memory,
             List<KnowledgeBaseDTO> knowledgeBases,
             List<ToolCallback> toolCallbacks,
             String chatSessionId
     ) {
+        ChatClient chatClient = chatClientRegistry.get(agent.getModel());
+        if (Objects.isNull(chatClient)) {
+            throw new IllegalStateException("未找到对应的 ChatClient: " + agent.getModel());
+        }
         return new JChatMind(
                 agent.getId(),
                 agent.getName(),
                 agent.getDescription(),
                 agent.getSystemPrompt(),
-                chatModel,
-                deepSeekChatClient,
+                chatClient,
+                agentConfig.getChatOptions().getMessageLength(),
+                memory,
                 toolCallbacks,
                 knowledgeBases,
                 chatSessionId,
                 sseService,
-                objectMapper,
                 chatMessageFacadeService,
                 chatMessageConverter
         );
     }
 
+    /**
+     * 创建一个 JChatMind 实例
+     */
     public JChatMind create(String agentId, String chatSessionId) {
         Agent agent = loadAgent(agentId);
         AgentDTO agentConfig = toAgentConfig(agent);
+        List<Message> memory = loadMemory(chatSessionId);
 
         // 解析 agent 的支持的知识库
         List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
@@ -187,6 +238,7 @@ public class JChatMindFactory {
 
         return buildAgentRuntime(
                 agent,
+                memory,
                 knowledgeBases,
                 toolCallbacks,
                 chatSessionId

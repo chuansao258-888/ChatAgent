@@ -6,15 +6,28 @@ spring:
     username: postgres
     password: 123456
     driver-class-name: org.postgresql.Driver
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: your-email
+    password: your-password # 邮箱授权码
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
   ai:
     deepseek:
-      api-key: REDACTED_API_KEY
+      api-key: your-api-key
       base-url: https://api.deepseek.com
       chat:
         options:
           model: deepseek-chat
     zhipuai:
-      api-key: a091aeb4a91a483c85446b86347d2110.B7SWaFS8fCmSsvDk
+      api-key: your-api-key
       base-url: https://open.bigmodel.cn/api/paas
       chat:
         options:
@@ -24,7 +37,6 @@ mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-handlers-package: com.kama.jchatmind.typehandler
 
-# 文档存储配置
 document:
   storage:
     base-path: ./data/documents

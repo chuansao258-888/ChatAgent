@@ -1,4 +1,4 @@
-import { get, post, patch, del } from "./http.ts";
+import { get, post, patch, del, BASE_URL } from "./http.ts";
 import type { ChatMessageVO, MessageType } from "../types";
 
 // 类型定义
@@ -329,7 +329,6 @@ export async function uploadDocument(
   formData.append("kbId", kbId);
   formData.append("file", file);
 
-  const BASE_URL = "http://localhost:8080/api";
   const response = await fetch(`${BASE_URL}/documents/upload`, {
     method: "POST",
     body: formData,

@@ -79,7 +79,7 @@
                updated_at
         FROM chat_message
         WHERE session_id = CAST(#{sessionId} AS uuid)
-        ORDER BY created_at DESC
+        ORDER BY created_at
         LIMIT #{limit}
     </select>
 

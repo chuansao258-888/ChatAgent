@@ -19,7 +19,7 @@ public interface ChatMessageMapper {
 
     List<ChatMessage> selectBySessionId(String sessionId);
 
-    List<ChatMessage> selectBySessionIdRecently(String session, int limit);
+    List<ChatMessage> selectBySessionIdRecently(String sessionId, int limit);
 
     int deleteById(String id);
 

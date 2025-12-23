@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Bubble } from "@ant-design/x";
 import XMarkdown from "@ant-design/x-markdown";
 import {
@@ -107,6 +107,80 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   agentStatusText = "",
   agentStatusType,
 }) => {
+  // 滚动容器引用
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // 是否允许自动滚动（用户是否接近底部）
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  // 容错阈值（像素）
+  const SCROLL_THRESHOLD = 20;
+  // 上一次消息数量，用于检测新消息
+  const prevMessagesLengthRef = useRef(messages.length);
+
+  // 检查是否接近底部
+  const checkIfNearBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return false;
+
+    const { scrollTop, clientHeight, scrollHeight } = container;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    return distanceFromBottom <= SCROLL_THRESHOLD;
+  }, []);
+
+  // 滚动到底部
+  const scrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // 使用 requestAnimationFrame 确保 DOM 更新完成后再滚动
+    requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+  }, []);
+
+  // 处理滚动事件，实时更新是否接近底部的状态
+  const handleScroll = useCallback(() => {
+    const nearBottom = checkIfNearBottom();
+    setIsNearBottom(nearBottom);
+  }, [checkIfNearBottom]);
+
+  // 监听滚动事件
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // 初始化时检查是否在底部（延迟执行以避免同步 setState）
+    const initTimer = setTimeout(() => {
+      setIsNearBottom(checkIfNearBottom());
+    }, 0);
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      clearTimeout(initTimer);
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [handleScroll, checkIfNearBottom]);
+
+  // 监听消息变化，决定是否自动滚动
+  useEffect(() => {
+    const hasNewMessage = messages.length > prevMessagesLengthRef.current;
+    prevMessagesLengthRef.current = messages.length;
+
+    // 如果有新消息且用户接近底部，则自动滚动
+    if (hasNewMessage && isNearBottom) {
+      scrollToBottom();
+    }
+  }, [messages, isNearBottom, scrollToBottom]);
+
+  // 当 displayAgentStatus 变化时，如果用户接近底部，也自动滚动
+  useEffect(() => {
+    if (displayAgentStatus && isNearBottom) {
+      scrollToBottom();
+    }
+  }, [displayAgentStatus, isNearBottom, scrollToBottom]);
+
   // 获取状态标签
   const getStatusLabel = () => {
     switch (agentStatusType) {
@@ -122,7 +196,10 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   };
 
   return (
-    <div>
+    <div 
+      ref={scrollContainerRef}
+      className="flex-1 px-16 pt-4 overflow-y-scroll"
+    >
       {messages.map((message) => {
         return (
           <div className="mb-4" key={message.id}>

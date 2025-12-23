@@ -9,5 +9,4 @@ class JchatmindApplicationTests {
     @Test
     void contextLoads() {
     }
-
 }

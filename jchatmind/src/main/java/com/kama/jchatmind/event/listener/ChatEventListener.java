@@ -19,6 +19,6 @@ public class ChatEventListener {
     public void handle(ChatEvent event) {
         // 创建一个 Agent 实例处理聊天事件
         JChatMind jChatMind = jChatMindFactory.create(event.getAgentId(), event.getSessionId());
-        jChatMind.run(event.getUserInput());
+        jChatMind.run();
     }
 }

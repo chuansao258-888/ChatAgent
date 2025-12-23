@@ -1,6 +1,5 @@
 package com.kama.jchatmind.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kama.jchatmind.converter.ChatMessageConverter;
 import com.kama.jchatmind.message.SseMessage;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
@@ -14,7 +13,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.*;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -23,6 +21,7 @@ import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,9 +42,6 @@ public class JChatMind {
     // 默认系统提示词
     private String systemPrompt;
 
-    // 模型
-    private ChatModel chatModel;
-
     // 交互实例
     private ChatClient chatClient;
 
@@ -55,17 +51,11 @@ public class JChatMind {
     // 可用的工具
     private List<ToolCallback> availableTools;
 
-    // 工具调用管理器
-    private ToolCallingManager toolCallingManager;
-
     // 可访问的知识库
     private List<KnowledgeBaseDTO> availableKbs;
 
-    // 当前步骤，用于实现 Agent Loop
-    private int currentStep = 0;
-
-    // 最大步骤
-    private int maxSteps;
+    // 工具调用管理器
+    private ToolCallingManager toolCallingManager;
 
     // 模型的聊天记录
     private ChatMemory chatMemory;
@@ -74,18 +64,15 @@ public class JChatMind {
     private String chatSessionId;
 
     // 最多循环次数
-    private final int MAX_STEPS = 20;
+    private static final Integer MAX_STEPS = 20;
 
-    // 最大聊天上下文长度
-    private final int MAX_MESSAGES = 20;
+    private static final Integer DEFAULT_MAX_MESSAGES = 20;
 
     // SpringAI 自带的 ChatOptions, 不是 AgentDTO.ChatOptions
     private ChatOptions chatOptions;
 
     // SSE 服务, 用于发送消息给前端
     private SseService sseService;
-
-    private ObjectMapper objectMapper;
 
     private ChatMessageConverter chatMessageConverter;
 
@@ -94,6 +81,7 @@ public class JChatMind {
     // 最后一次的 ChatResponse
     private ChatResponse lastChatResponse;
 
+    // AI 返回的，已经持久化，但是需要 sse 发给前端的消息
     private final List<ChatMessageDTO> pendingChatMessages = new ArrayList<>();
 
     public JChatMind() {
@@ -103,13 +91,13 @@ public class JChatMind {
                      String name,
                      String description,
                      String systemPrompt,
-                     ChatModel chatModel,
                      ChatClient chatClient,
+                     Integer maxMessages,
+                     List<Message> memory,
                      List<ToolCallback> availableTools,
                      List<KnowledgeBaseDTO> availableKbs,
                      String chatSessionId,
                      SseService sseService,
-                     ObjectMapper objectMapper,
                      ChatMessageFacadeService chatMessageFacadeService,
                      ChatMessageConverter chatMessageConverter
     ) {
@@ -118,7 +106,6 @@ public class JChatMind {
         this.description = description;
         this.systemPrompt = systemPrompt;
 
-        this.chatModel = chatModel;
         this.chatClient = chatClient;
 
         this.availableTools = availableTools;
@@ -127,17 +114,21 @@ public class JChatMind {
         this.chatSessionId = chatSessionId;
         this.sseService = sseService;
 
-        this.objectMapper = objectMapper;
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.chatMessageConverter = chatMessageConverter;
 
         this.agentState = AgentState.IDLE;
-        this.maxSteps = MAX_STEPS;
 
         // 保存聊天记录
         this.chatMemory = MessageWindowChatMemory.builder()
-                .maxMessages(MAX_MESSAGES)
+                .maxMessages(maxMessages == null ? DEFAULT_MAX_MESSAGES : maxMessages)
                 .build();
+        this.chatMemory.add(chatSessionId, memory);
+
+        // 添加系统提示
+        if (StringUtils.hasLength(systemPrompt)) {
+            this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
+        }
 
         // 关闭 SpringAI 自带的内部的工具调用自动执行功能
         this.chatOptions = DefaultToolCallingChatOptions.builder()
@@ -146,18 +137,12 @@ public class JChatMind {
 
         // 工具调用管理器
         this.toolCallingManager = ToolCallingManager.builder().build();
-
-        // 初始化系统提示
-        SystemMessage systemMessage = new SystemMessage(systemPrompt);
-        this.chatMemory.add(chatSessionId, systemMessage);
-
-        // 读取聊天历史
     }
 
     // 打印工具调用信息
     private void logToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
         if (toolCalls == null || toolCalls.isEmpty()) {
-            log.info("[ToolCalling] 无工具调用");
+            log.info("\n\n[ToolCalling] 无工具调用");
             return;
         }
         String logMessage = IntStream.range(0, toolCalls.size())
@@ -171,7 +156,7 @@ public class JChatMind {
                     );
                 })
                 .collect(Collectors.joining("\n\n"));
-        log.info("========== Tool Calling ==========\n{}\n=================================", logMessage);
+        log.info("\n\n========== Tool Calling ==========\n{}\n=================================\n", logMessage);
     }
 
     // 持久化 Message, 返回 chatMessageId
@@ -239,6 +224,7 @@ public class JChatMind {
                                 \s
                 【额外信息】
                 - 你目前拥有的知识库列表以及描述：%s
+                - 如果有缺失的上下文时，优先从知识库中进行搜索
                 """.formatted(this.availableKbs);
 
         // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
@@ -327,23 +313,19 @@ public class JChatMind {
     }
 
     // 运行
-    public void run(String userInput) {
-        Assert.notNull(userInput, "User input cannot be null");
-
+    public void run() {
         if (agentState != AgentState.IDLE) {
             throw new IllegalStateException("Agent is not idle");
         }
 
-        UserMessage userMessage = new UserMessage(userInput);
-        this.chatMemory.add(this.chatSessionId, userMessage);
-
         try {
-            for (int i = 0; i < maxSteps && agentState != AgentState.FINISHED; i++) {
-                currentStep = i + 1;
+            for (int i = 0; i < MAX_STEPS && agentState != AgentState.FINISHED; i++) {
+                // 当前步骤，用于实现 Agent Loop
+                int currentStep = i + 1;
                 step();
-                if (currentStep >= maxSteps) {
+                if (currentStep >= MAX_STEPS) {
                     agentState = AgentState.FINISHED;
-                    log.info("Agent finished running");
+                    log.warn("Max steps reached, stopping agent");
                 }
             }
             agentState = AgentState.FINISHED;
@@ -360,7 +342,6 @@ public class JChatMind {
                 "name = " + name + ",\n" +
                 "description = " + description + ",\n" +
                 "agentId = " + agentId + ",\n" +
-                "systemPrompt = " + systemPrompt + ",\n" +
-                "chatModel = " + chatModel + "}";
+                "systemPrompt = " + systemPrompt + "}";
     }
 }

@@ -50,16 +50,16 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
 
   // 表单数据
   const [formData, setFormData] = useState<CreateAgentRequest>({
-    name: "agent",
+    name: "智能体助手",
     description: "",
-    systemPrompt: "",
+    systemPrompt: "你是一个很有用的智能体助手",
     model: "deepseek-chat",
     allowedTools: [],
     allowedKbs: [],
     chatOptions: {
       temperature: 0.7,
       topP: 1.0,
-      messageLength: 10,
+      messageLength: 20,
     },
   });
 

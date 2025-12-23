@@ -1,7 +1,6 @@
 package com.kama.jchatmind.agent.tools;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,7 +11,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@Component
+//@Component 禁用文件系统相关工具
 @Slf4j
 public class FileSystemTools implements Tool {
 

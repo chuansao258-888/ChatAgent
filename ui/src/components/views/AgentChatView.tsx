@@ -179,14 +179,12 @@ const AgentChatView: React.FC = () => {
   // 如果有 chatSessionId，显示正常的聊天界面
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 px-16 pt-4 overflow-y-scroll">
-        <AgentChatHistory
-          messages={messages}
-          displayAgentStatus={displayAgentStatus}
-          agentStatusText={agentStatusText}
-          agentStatusType={agentStatusType}
-        />
-      </div>
+      <AgentChatHistory
+        messages={messages}
+        displayAgentStatus={displayAgentStatus}
+        agentStatusText={agentStatusText}
+        agentStatusType={agentStatusType}
+      />
       <div className="border-t border-gray-200 p-4 bg-white">
         <AgentChatInput onSend={handleSendMessage} />
       </div>
