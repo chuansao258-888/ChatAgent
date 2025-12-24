@@ -4,6 +4,9 @@ import com.kama.jchatmind.agent.tools.Tool;
 import com.kama.jchatmind.agent.tools.ToolType;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 @Component
 public class DateTool implements Tool {
     @Override
@@ -23,6 +26,6 @@ public class DateTool implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(name = "getDate", description = "获取当前的日期")
     public String getDate() {
-        return "2023-05-05";
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
     }
 }
