@@ -19,4 +19,6 @@ public class MultiChatClientConfig {
     public ChatClient zhiPuAiChatClient(ZhiPuAiChatModel zhiPuAiChatModel) {
         return ChatClient.create(zhiPuAiChatModel);
     }
+
+
 }

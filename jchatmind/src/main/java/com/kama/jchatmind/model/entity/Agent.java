@@ -34,6 +34,7 @@ public class Agent {
 
     private LocalDateTime updatedAt;
 
+
     @Override
     public boolean equals(Object that) {
         if (this == that) {

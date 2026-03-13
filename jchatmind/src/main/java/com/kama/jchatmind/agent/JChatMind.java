@@ -227,7 +227,7 @@ public class JChatMind {
                 - 如果有缺失的上下文时，优先从知识库中进行搜索
                 """.formatted(this.availableKbs);
 
-        // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
+        // 将 thinkPrompt 通过 .system(thinkPrompt) 的方式构造进入 chatClient 中
         // 既能让每次 messageList 的最后一条是 本条提示词，
         // 又能够避免将 thinkPrompt 加入到聊天记录中
         Prompt prompt = Prompt.builder()
