@@ -1,5 +1,12 @@
-import { useChatSessionsContext } from "../contexts/ChatSessionsContext.tsx";
+import { useContext } from "react";
+import { ChatSessionsContext } from "../contexts/chatSessionsContext.ts";
 
 export function useChatSessions() {
-  return useChatSessionsContext();
+  const context = useContext(ChatSessionsContext);
+  if (context === undefined) {
+    throw new Error(
+      "useChatSessions must be used within a ChatSessionsProvider",
+    );
+  }
+  return context;
 }

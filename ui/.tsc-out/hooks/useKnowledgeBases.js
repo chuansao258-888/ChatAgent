@@ -1,0 +1,33 @@
+import { useEffect, useState } from "react";
+import { createKnowledgeBase, getKnowledgeBases, } from "../api/api.ts";
+export function useKnowledgeBases() {
+    const [knowledgeBases, setKnowledgeBases] = useState([]);
+    useEffect(() => {
+        async function fetchData() {
+            const resp = await getKnowledgeBases();
+            // 将 KnowledgeBaseVO 转换为 KnowledgeBase 类型
+            const converted = resp.knowledgeBases.map((kb) => ({
+                knowledgeBaseId: kb.id,
+                name: kb.name,
+                description: kb.description || "",
+            }));
+            setKnowledgeBases(converted);
+        }
+        fetchData().then();
+    }, []);
+    async function createKnowledgeBaseHandle(request) {
+        await createKnowledgeBase(request);
+        const resp = await getKnowledgeBases();
+        // 将 KnowledgeBaseVO 转换为 KnowledgeBase 类型
+        const converted = resp.knowledgeBases.map((kb) => ({
+            knowledgeBaseId: kb.id,
+            name: kb.name,
+            description: kb.description || "",
+        }));
+        setKnowledgeBases(converted);
+    }
+    return {
+        knowledgeBases,
+        createKnowledgeBaseHandle,
+    };
+}

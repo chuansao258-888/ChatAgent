@@ -1,0 +1,157 @@
+package com.yulong.chatagent.agent;
+
+import com.yulong.chatagent.trace.TraceContext;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
+
+import java.util.List;
+
+@Slf4j
+public class ChatAgent {
+    private static final Integer MAX_STEPS = 20;
+    private static final Integer DEFAULT_MAX_MESSAGES = 20;
+
+    private String agentId;
+    private String name;
+    private String description;
+    private String systemPrompt;
+    private ChatClient chatClient;
+    private AgentState agentState;
+    private List<ToolCallback> availableTools;
+    private String knowledgeBaseSummary;
+    private ToolCallingManager toolCallingManager;
+    private ChatMemory chatMemory;
+    private String chatSessionId;
+    private ChatOptions chatOptions;
+    private AgentMessageBridge messageBridge;
+    private ChatResponse lastChatResponse;
+    private AgentThinkingEngine thinkingEngine;
+    private AgentToolExecutionEngine toolExecutionEngine;
+
+    public ChatAgent() {
+    }
+
+    public ChatAgent(String agentId,
+                     String name,
+                     String description,
+                     String systemPrompt,
+                     ChatClient chatClient,
+                     Integer maxMessages,
+                     List<Message> memory,
+                     List<ToolCallback> availableTools,
+                     String knowledgeBaseSummary,
+                     String chatSessionId,
+                     AgentMessageBridge messageBridge) {
+        this.agentId = agentId;
+        this.name = name;
+        this.description = description;
+        this.systemPrompt = systemPrompt;
+        this.chatClient = chatClient;
+        this.availableTools = availableTools == null ? List.of() : List.copyOf(availableTools);
+        this.knowledgeBaseSummary = StringUtils.hasText(knowledgeBaseSummary)
+                ? knowledgeBaseSummary
+                : "No knowledge bases available";
+        this.chatSessionId = chatSessionId;
+        this.messageBridge = messageBridge;
+        this.agentState = AgentState.IDLE;
+
+        this.chatMemory = MessageWindowChatMemory.builder()
+                .maxMessages(maxMessages == null ? DEFAULT_MAX_MESSAGES : maxMessages)
+                .build();
+        this.chatMemory.add(chatSessionId, memory == null ? List.of() : memory);
+
+        if (StringUtils.hasLength(systemPrompt)) {
+            this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
+        }
+
+        this.chatOptions = DefaultToolCallingChatOptions.builder()
+                .internalToolExecutionEnabled(false)
+                .build();
+        this.toolCallingManager = ToolCallingManager.builder().build();
+        this.thinkingEngine = new AgentThinkingEngine(
+                this.chatClient,
+                this.chatOptions,
+                this.availableTools,
+                this.knowledgeBaseSummary,
+                this.messageBridge
+        );
+        this.toolExecutionEngine = new AgentToolExecutionEngine(
+                this.toolCallingManager,
+                this.chatOptions,
+                this.messageBridge
+        );
+    }
+
+    private void step() {
+        this.lastChatResponse = this.thinkingEngine.think(this.chatMemory, this.chatSessionId);
+        Assert.notNull(this.lastChatResponse, "Last chat client response cannot be null");
+
+        if (!this.lastChatResponse.hasToolCalls()) {
+            agentState = AgentState.FINISHED;
+            return;
+        }
+
+        boolean terminated = this.toolExecutionEngine.execute(
+                this.chatMemory,
+                this.chatSessionId,
+                this.lastChatResponse
+        );
+        if (terminated) {
+            this.agentState = AgentState.FINISHED;
+            log.info("Task finished");
+        }
+    }
+
+    public void run() {
+        if (agentState != AgentState.IDLE) {
+            throw new IllegalStateException("Agent is not idle");
+        }
+
+        long startTime = System.nanoTime();
+        int executedSteps = 0;
+        log.info("Agent run started: traceId={}, agentId={}, sessionId={}",
+                TraceContext.getTraceId(), agentId, chatSessionId);
+
+        try {
+            for (int i = 0; i < MAX_STEPS && agentState != AgentState.FINISHED; i++) {
+                int currentStep = i + 1;
+                step();
+                executedSteps = currentStep;
+                if (currentStep >= MAX_STEPS) {
+                    agentState = AgentState.FINISHED;
+                    log.warn("Max steps reached, stopping agent");
+                }
+            }
+            agentState = AgentState.FINISHED;
+            long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+            log.info("Agent run finished: traceId={}, agentId={}, sessionId={}, steps={}, durationMs={}",
+                    TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs);
+        } catch (Exception e) {
+            agentState = AgentState.ERROR;
+            long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+            log.error("Error running agent: traceId={}, agentId={}, sessionId={}, steps={}, durationMs={}",
+                    TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs, e);
+            throw new RuntimeException("Error running agent", e);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "ChatAgent {" +
+                "name = " + name + ",\n" +
+                "description = " + description + ",\n" +
+                "agentId = " + agentId + ",\n" +
+                "systemPrompt = " + systemPrompt + "}";
+    }
+}

@@ -1,20 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   type ChatSessionVO,
   getChatSessions,
   deleteChatSession,
 } from "../api/api.ts";
-
-interface ChatSessionsContextType {
-  chatSessions: ChatSessionVO[];
-  loading: boolean;
-  refreshChatSessions: () => Promise<void>;
-  deleteChatSession: (chatSessionId: string) => Promise<void>;
-}
-
-const ChatSessionsContext = createContext<ChatSessionsContextType | undefined>(
-  undefined
-);
+import { ChatSessionsContext } from "./chatSessionsContext.ts";
 
 export function ChatSessionsProvider({ children }: { children: React.ReactNode }) {
   const [chatSessions, setChatSessions] = useState<ChatSessionVO[]>([]);
@@ -52,14 +42,3 @@ export function ChatSessionsProvider({ children }: { children: React.ReactNode }
     </ChatSessionsContext.Provider>
   );
 }
-
-export function useChatSessionsContext() {
-  const context = useContext(ChatSessionsContext);
-  if (context === undefined) {
-    throw new Error(
-      "useChatSessionsContext must be used within a ChatSessionsProvider"
-    );
-  }
-  return context;
-}
-

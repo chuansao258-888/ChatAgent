@@ -307,6 +307,25 @@ export interface GetDocumentsResponse {
 
 export interface CreateDocumentResponse {
   documentId: string;
+  taskId?: string;
+}
+
+export interface IngestionTaskVO {
+  id: string;
+  kbId: string;
+  documentId: string;
+  fileType: string;
+  status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+  chunkCount?: number;
+  errorMessage?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GetIngestionTasksResponse {
+  ingestionTasks: IngestionTaskVO[];
 }
 
 /**
@@ -344,6 +363,24 @@ export async function uploadDocument(
   }
 
   return apiResponse.data;
+}
+
+/**
+ * 根据知识库 ID 获取入库任务列表
+ */
+export async function getIngestionTasksByKbId(
+  kbId: string,
+): Promise<GetIngestionTasksResponse> {
+  return get<GetIngestionTasksResponse>(`/knowledge-bases/${kbId}/ingestion-tasks`);
+}
+
+/**
+ * 获取单个入库任务详情
+ */
+export async function getIngestionTaskById(
+  taskId: string,
+): Promise<IngestionTaskVO> {
+  return get<IngestionTaskVO>(`/ingestion-tasks/${taskId}`);
 }
 
 /**

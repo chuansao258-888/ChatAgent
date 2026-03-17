@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: chatagent
+  datasource:
+    url: ${CHATAGENT_DB_URL:jdbc:postgresql://localhost:5432/chatagent}
+    username: ${CHATAGENT_DB_USERNAME:app}
+    password: ${CHATAGENT_DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  mail:
+    host: ${CHATAGENT_MAIL_HOST:smtp.qq.com}
+    port: ${CHATAGENT_MAIL_PORT:587}
+    username: ${CHATAGENT_MAIL_USERNAME:}
+    password: ${CHATAGENT_MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: ${CHATAGENT_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${CHATAGENT_MAIL_STARTTLS_ENABLE:true}
+            required: ${CHATAGENT_MAIL_STARTTLS_REQUIRED:true}
+  ai:
+    deepseek:
+      api-key: ${CHATAGENT_DEEPSEEK_API_KEY:}
+      base-url: ${CHATAGENT_DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${CHATAGENT_DEEPSEEK_MODEL:deepseek-chat}
+    zhipuai:
+      api-key: ${CHATAGENT_ZHIPUAI_API_KEY:}
+      base-url: ${CHATAGENT_ZHIPUAI_BASE_URL:https://open.bigmodel.cn/api/paas}
+      chat:
+        options:
+          model: ${CHATAGENT_ZHIPUAI_MODEL:glm-4.6}
+
+mybatis:
+  type-aliases-package: com.yulong.chatagent.support.persistence.entity
+  mapper-locations: classpath:mapper/*.xml
+  type-handlers-package: com.yulong.chatagent.support.persistence.typehandler
+
+document:
+  storage:
+    base-path: ./data/documents
+
+rag:
+  embedding:
+    base-url: ${CHATAGENT_RAG_EMBEDDING_BASE_URL:http://localhost:11434}
+    model: ${CHATAGENT_RAG_EMBEDDING_MODEL:bge-m3}
+  retrieval:
+    top-k: ${CHATAGENT_RAG_TOP_K:3}
+
+chat:
+  routing:
+    default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:deepseek-chat}
