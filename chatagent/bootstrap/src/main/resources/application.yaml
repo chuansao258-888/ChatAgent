@@ -1,6 +1,13 @@
 spring:
   application:
     name: chatagent
+  data:
+    redis:
+      host: ${CHATAGENT_REDIS_HOST:localhost}
+      port: ${CHATAGENT_REDIS_PORT:6379}
+      password: ${CHATAGENT_REDIS_PASSWORD:}
+      database: ${CHATAGENT_REDIS_DATABASE:0}
+
   datasource:
     url: ${CHATAGENT_DB_URL:jdbc:postgresql://localhost:5432/chatagent}
     username: ${CHATAGENT_DB_USERNAME:app}
@@ -52,3 +59,10 @@ rag:
 chat:
   routing:
     default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:deepseek-chat}
+
+auth:
+  jwt:
+    issuer: ${CHATAGENT_JWT_ISSUER:chatagent}
+    secret: ${CHATAGENT_JWT_SECRET:change-this-to-a-long-random-secret-key-change-this}
+    access-ttl-minutes: ${CHATAGENT_JWT_ACCESS_TTL_MINUTES:30}
+    refresh-ttl-days: ${CHATAGENT_JWT_REFRESH_TTL_DAYS:7}

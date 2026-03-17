@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.UserMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.User">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="username" column="username" jdbcType="VARCHAR"/>
+        <result property="passwordHash" column="password_hash" jdbcType="VARCHAR"/>
+        <result property="role" column="role" jdbcType="VARCHAR"/>
+        <result property="avatar" column="avatar" jdbcType="VARCHAR"/>
+        <result property="deleted" column="deleted" jdbcType="BOOLEAN"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,username,password_hash,
+        role,avatar,deleted,
+        created_at,updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.User"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_user
+        (
+         username,
+         password_hash,
+         role,
+         avatar,
+         deleted,
+         created_at,
+         updated_at
+        )
+        VALUES (
+                #{username},
+                #{passwordHash},
+                #{role},
+                #{avatar},
+                #{deleted},
+                #{createdAt},
+                #{updatedAt}
+               )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+            id,
+            username,
+            password_hash,
+            role,
+            avatar,
+            deleted,
+            created_at,
+            updated_at
+        FROM t_user
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectByUsername" resultMap="BaseResultMap">
+        SELECT
+            id,
+            username,
+            password_hash,
+            role,
+            avatar,
+            deleted,
+            created_at,
+            updated_at
+        FROM t_user
+        WHERE username = #{username}
+          AND deleted = FALSE
+    </select>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.User">
+        UPDATE t_user
+        <set>
+            <if test="passwordHash != null">
+                password_hash = #{passwordHash},
+            </if>
+            <if test="role != null">
+                role = #{role},
+            </if>
+            <if test="avatar != null">
+                avatar = #{avatar},
+            </if>
+            <if test="deleted != null">
+                deleted = #{deleted},
+            </if>
+            updated_at = NOW()
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+</mapper>
