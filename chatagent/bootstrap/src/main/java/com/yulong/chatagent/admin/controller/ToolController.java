@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * REST controller for tool catalog lookup endpoints.
+ */
 @RestController
 @RequestMapping("/api")
 @AllArgsConstructor
@@ -17,6 +20,11 @@ public class ToolController {
 
     private final ToolFacadeService toolFacadeService;
 
+    /**
+     * Returns tools that users may optionally attach to an agent.
+     *
+     * @return optional tool list
+     */
     @GetMapping("/tools")
     public ApiResponse<List<Tool>> getOptionalTools() {
         return ApiResponse.success(toolFacadeService.getOptionalTools());

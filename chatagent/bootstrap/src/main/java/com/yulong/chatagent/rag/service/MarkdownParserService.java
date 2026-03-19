@@ -8,19 +8,20 @@ import java.io.InputStream;
 import java.util.List;
 
 /**
- * Markdown 解析服务接口
+ * Parses markdown files into titled sections that can later be chunked for retrieval.
  */
 public interface MarkdownParserService {
+
     /**
-     * 解析 Markdown 文件，提取标题和对应的内容
+     * Extracts logical sections from a markdown input stream.
      *
-     * @param inputStream Markdown 文件输入流
-     * @return 标题和内容的列表，每个元素包含标题和该标题下的内容
+     * @param inputStream markdown document stream
+     * @return ordered section list with titles and corresponding content
      */
     List<MarkdownSection> parseMarkdown(InputStream inputStream);
-    
+
     /**
-     * Markdown 章节数据类
+     * Simple value object representing one markdown heading and its content block.
      */
     @Data
     @AllArgsConstructor

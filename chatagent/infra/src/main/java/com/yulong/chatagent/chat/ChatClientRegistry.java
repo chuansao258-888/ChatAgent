@@ -7,6 +7,9 @@ import java.util.Set;
 import java.util.Map;
 
 @Component
+/**
+ * Registry of named {@link ChatClient} beans exposed by the infra module.
+ */
 public class ChatClientRegistry {
 
     private final Map<String, ChatClient> chatClients;
@@ -19,6 +22,13 @@ public class ChatClientRegistry {
         return chatClients.get(key);
     }
 
+    /**
+     * Returns a configured chat client or fails fast when the requested model
+     * is not available in the Spring context.
+     *
+     * @param key model/client name
+     * @return configured chat client
+     */
     public ChatClient getRequired(String key) {
         ChatClient chatClient = chatClients.get(key);
         if (chatClient == null) {

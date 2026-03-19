@@ -6,41 +6,45 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * 文档存储服务接口
+ * Stores and resolves uploaded source documents on the local file system.
+ * <p>
+ * Implementations are responsible for mapping logical document identifiers to
+ * a stable storage layout that later ingestion jobs can read from.
  */
 public interface DocumentStorageService {
+
     /**
-     * 保存上传的文件
+     * Saves an uploaded file under the storage layout used by the knowledge module.
      *
-     * @param kbId       知识库ID
-     * @param documentId 文档ID
-     * @param file       上传的文件
-     * @return 保存的文件路径
-     * @throws IOException 文件保存失败
+     * @param kbId knowledge base identifier
+     * @param documentId document identifier
+     * @param file uploaded file
+     * @return stored relative file path
+     * @throws IOException if the file cannot be written
      */
     String saveFile(String kbId, String documentId, MultipartFile file) throws IOException;
 
     /**
-     * 删除文件
+     * Deletes one stored file.
      *
-     * @param filePath 文件路径
-     * @throws IOException 文件删除失败
+     * @param filePath stored relative file path
+     * @throws IOException if deletion fails
      */
     void deleteFile(String filePath) throws IOException;
 
     /**
-     * 获取文件的完整路径
+     * Resolves a stored relative path to an absolute file-system path.
      *
-     * @param filePath 相对文件路径
-     * @return 完整文件路径
+     * @param filePath stored relative file path
+     * @return absolute file path
      */
     Path getFilePath(String filePath);
 
     /**
-     * 检查文件是否存在
+     * Checks whether a stored file currently exists.
      *
-     * @param filePath 文件路径
-     * @return 文件是否存在
+     * @param filePath stored relative file path
+     * @return {@code true} when the target file exists
      */
     boolean fileExists(String filePath);
 }

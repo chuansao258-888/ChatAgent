@@ -1,7 +1,7 @@
 package com.yulong.chatagent.support.persistence.adapter.admin;
 
 import com.yulong.chatagent.admin.port.AgentRepository;
-import com.yulong.chatagent.support.persistence.converter.AgentConverter;
+import com.yulong.chatagent.admin.converter.AgentConverter;
 import com.yulong.chatagent.support.persistence.entity.Agent;
 import com.yulong.chatagent.support.persistence.mapper.AgentMapper;
 import com.yulong.chatagent.support.dto.AgentDTO;
@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * MyBatis-backed implementation of the agent repository port.
+ */
 @Repository
 public class MyBatisAgentRepository implements AgentRepository {
 
@@ -52,6 +55,9 @@ public class MyBatisAgentRepository implements AgentRepository {
         return agentMapper.deleteById(id) > 0;
     }
 
+    /**
+     * Converts persistence entities to DTOs while preserving list ordering.
+     */
     private List<AgentDTO> toDTOList(List<Agent> entities) {
         List<AgentDTO> result = new ArrayList<>();
         for (Agent entity : entities) {
@@ -60,6 +66,9 @@ public class MyBatisAgentRepository implements AgentRepository {
         return result;
     }
 
+    /**
+     * Converts one persistence entity to a DTO and wraps serialization failures.
+     */
     private AgentDTO toDTO(Agent entity) {
         if (entity == null) {
             return null;
@@ -71,6 +80,9 @@ public class MyBatisAgentRepository implements AgentRepository {
         }
     }
 
+    /**
+     * Converts one DTO to a persistence entity and wraps serialization failures.
+     */
     private Agent toEntity(AgentDTO dto) {
         try {
             return agentConverter.toEntity(dto);

@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+/**
+ * Small sample tool used for local date testing.
+ */
 @Component
 public class DateTool implements Tool {
     @Override
@@ -16,7 +19,7 @@ public class DateTool implements Tool {
 
     @Override
     public String getDescription() {
-        return "获取当前的日期";
+        return "Return the current date.";
     }
 
     @Override
@@ -24,7 +27,7 @@ public class DateTool implements Tool {
         return ToolType.FIXED;
     }
 
-    @org.springframework.ai.tool.annotation.Tool(name = "getDate", description = "获取当前的日期")
+    @org.springframework.ai.tool.annotation.Tool(name = "getDate", description = "Return the current date.")
     public String getDate() {
         return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
     }

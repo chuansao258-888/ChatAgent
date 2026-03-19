@@ -1,26 +1,32 @@
 import { message } from "antd";
+import { AUTH_EXPIRED_EVENT } from "../auth/events.ts";
+import {
+  clearAccessToken,
+  getAccessToken,
+  setAccessToken,
+} from "../auth/token.ts";
 
-// API 响应类型定义，匹配后端 ApiResponse 结构
 export interface ApiResponse<T = unknown> {
   code: number;
   message: string;
   data: T;
 }
 
-// 请求配置选项
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | null | undefined>;
+  skipAuthRefresh?: boolean;
+  retry?: boolean;
+  silent?: boolean;
 }
 
-// API 基础路径（可以根据环境变量配置）
 export const BASE_URL = "http://localhost:8080/api";
 
-/**
- * 构建完整的 URL（包含查询参数）
- */
-function buildUrl(url: string, params?: Record<string, string | number | boolean | null | undefined>): string {
+function buildUrl(
+  url: string,
+  params?: Record<string, string | number | boolean | null | undefined>,
+): string {
   const fullUrl = `${BASE_URL}${url}`;
-  
+
   if (!params || Object.keys(params).length === 0) {
     return fullUrl;
   }
@@ -36,54 +42,115 @@ function buildUrl(url: string, params?: Record<string, string | number | boolean
   return queryString ? `${fullUrl}?${queryString}` : fullUrl;
 }
 
-/**
- * 处理响应
- */
-async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+async function handleResponse<T>(
+  response: Response,
+  silent = false,
+): Promise<ApiResponse<T>> {
   if (!response.ok) {
-    // HTTP 状态码错误
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
   const data: ApiResponse<T> = await response.json();
-
-  // 检查业务状态码
   if (data.code !== 200) {
-    message.error(data.message || "请求失败");
+    if (!silent) {
+      message.error(data.message || "请求失败");
+    }
     throw new Error(data.message || "请求失败");
   }
 
   return data;
 }
 
-/**
- * 封装的 fetch 请求函数
- */
+let refreshPromise: Promise<string | null> | null = null;
+
+function notifyAuthExpired() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const apiResponse = (await response.json()) as ApiResponse<{
+        accessToken: string;
+      }>;
+
+      if (apiResponse.code !== 200 || !apiResponse.data?.accessToken) {
+        throw new Error(apiResponse.message || "刷新登录态失败");
+      }
+
+      setAccessToken(apiResponse.data.accessToken);
+      return apiResponse.data.accessToken;
+    } catch {
+      clearAccessToken();
+      notifyAuthExpired();
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 async function request<T = unknown>(
   url: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
 ): Promise<T> {
-  const { params, headers, ...restOptions } = options;
-
-  // 构建完整 URL
+  const { params, headers, skipAuthRefresh, retry, silent, ...restOptions } =
+    options;
   const fullUrl = buildUrl(url, params);
 
-  // 设置默认请求头
-  const defaultHeaders: HeadersInit = {
-    "Content-Type": "application/json",
-    ...headers,
-  };
+  const defaultHeaders = new Headers(headers);
+  if (
+    !(restOptions.body instanceof FormData) &&
+    !defaultHeaders.has("Content-Type")
+  ) {
+    defaultHeaders.set("Content-Type", "application/json");
+  }
+
+  const accessToken = getAccessToken();
+  if (accessToken && !defaultHeaders.has("Authorization")) {
+    defaultHeaders.set("Authorization", `Bearer ${accessToken}`);
+  }
 
   try {
     const response = await fetch(fullUrl, {
       ...restOptions,
+      credentials: "include",
       headers: defaultHeaders,
     });
 
-    const apiResponse = await handleResponse<T>(response);
+    if (response.status === 401 && !skipAuthRefresh && !retry) {
+      const refreshedAccessToken = await refreshAccessToken();
+      if (refreshedAccessToken) {
+        return request<T>(url, {
+          ...options,
+          retry: true,
+        });
+      }
+    }
+
+    const apiResponse = await handleResponse<T>(response, silent);
     return apiResponse.data;
   } catch (error) {
-    // 统一错误处理
     if (error instanceof Error) {
       throw error;
     }
@@ -91,13 +158,27 @@ async function request<T = unknown>(
   }
 }
 
-/**
- * GET 请求
- */
+function toRequestBody(data: unknown): BodyInit | undefined {
+  if (data === undefined) {
+    return undefined;
+  }
+
+  if (
+    data instanceof FormData ||
+    data instanceof Blob ||
+    data instanceof URLSearchParams ||
+    typeof data === "string"
+  ) {
+    return data;
+  }
+
+  return JSON.stringify(data);
+}
+
 export function get<T = unknown>(
   url: string,
   params?: Record<string, string | number | boolean | null | undefined>,
-  options?: Omit<RequestOptions, "method" | "body" | "params">
+  options?: Omit<RequestOptions, "method" | "body" | "params">,
 ): Promise<T> {
   return request<T>(url, {
     ...options,
@@ -106,58 +187,46 @@ export function get<T = unknown>(
   });
 }
 
-/**
- * POST 请求
- */
 export function post<T = unknown>(
   url: string,
   data?: unknown,
-  options?: Omit<RequestOptions, "method" | "body">
+  options?: Omit<RequestOptions, "method" | "body">,
 ): Promise<T> {
   return request<T>(url, {
     ...options,
     method: "POST",
-    body: data ? JSON.stringify(data) : undefined,
+    body: toRequestBody(data),
   });
 }
 
-/**
- * PUT 请求
- */
 export function put<T = unknown>(
   url: string,
   data?: unknown,
-  options?: Omit<RequestOptions, "method" | "body">
+  options?: Omit<RequestOptions, "method" | "body">,
 ): Promise<T> {
   return request<T>(url, {
     ...options,
     method: "PUT",
-    body: data ? JSON.stringify(data) : undefined,
+    body: toRequestBody(data),
   });
 }
 
-/**
- * PATCH 请求
- */
 export function patch<T = unknown>(
   url: string,
   data?: unknown,
-  options?: Omit<RequestOptions, "method" | "body">
+  options?: Omit<RequestOptions, "method" | "body">,
 ): Promise<T> {
   return request<T>(url, {
     ...options,
     method: "PATCH",
-    body: data ? JSON.stringify(data) : undefined,
+    body: toRequestBody(data),
   });
 }
 
-/**
- * DELETE 请求
- */
 export function del<T = unknown>(
   url: string,
   params?: Record<string, string | number | boolean | null | undefined>,
-  options?: Omit<RequestOptions, "method" | "body" | "params">
+  options?: Omit<RequestOptions, "method" | "body" | "params">,
 ): Promise<T> {
   return request<T>(url, {
     ...options,
@@ -166,7 +235,6 @@ export function del<T = unknown>(
   });
 }
 
-// 导出默认对象，方便使用
 export default {
   get,
   post,

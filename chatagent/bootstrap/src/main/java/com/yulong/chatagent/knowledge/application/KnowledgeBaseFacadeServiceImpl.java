@@ -10,7 +10,7 @@ import com.yulong.chatagent.knowledge.model.request.UpdateKnowledgeBaseRequest;
 import com.yulong.chatagent.knowledge.model.response.CreateKnowledgeBaseResponse;
 import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
-import com.yulong.chatagent.support.persistence.converter.KnowledgeBaseConverter;
+import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +19,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Default implementation of knowledge-base management.
+ */
 @Service
 @AllArgsConstructor
 public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeService {
@@ -65,6 +68,8 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
         }
 
         List<DocumentDTO> documents = documentRepository.findByKnowledgeBaseId(knowledgeBaseId);
+        // Delegate document deletion so file storage, ingestion tasks, and chunks are
+        // removed consistently through the document service path.
         for (DocumentDTO document : documents) {
             documentFacadeService.deleteDocument(document.getId());
         }

@@ -8,6 +8,9 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+/**
+ * Default Spring Mail-based implementation of {@link EmailService}.
+ */
 @Slf4j
 @Service
 public class EmailServiceImpl implements EmailService {
@@ -25,20 +28,18 @@ public class EmailServiceImpl implements EmailService {
     @Async
     public void sendEmailAsync(String to, String subject, String content) {
         try {
-            // 创建邮件消息
+            // Build a plain-text mail message and hand it off to the configured mail sender.
             SimpleMailMessage message = new SimpleMailMessage();
             message.setTo(to);
             message.setSubject(subject);
             message.setText(content);
             message.setFrom(from);
 
-            // 发送邮件
             mailSender.send(message);
 
-            log.info("异步发送邮件成功，收件人: {}, 主题: {}", to, subject);
+            log.info("Asynchronous email sent: to={}, subject={}", to, subject);
         } catch (Exception e) {
-            log.error("异步发送邮件失败，收件人: {}, 主题: {}, 错误: {}", to, subject, e.getMessage(), e);
+            log.error("Asynchronous email failed: to={}, subject={}, error={}", to, subject, e.getMessage(), e);
         }
     }
 }
-

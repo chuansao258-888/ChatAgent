@@ -4,6 +4,9 @@ import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
 import org.springframework.stereotype.Component;
 
+/**
+ * Small sample tool used for local agent-tool testing.
+ */
 @Component
 public class CityTool implements Tool {
     @Override
@@ -13,7 +16,7 @@ public class CityTool implements Tool {
 
     @Override
     public String getDescription() {
-        return "获取当前的城市";
+        return "Return the current city.";
     }
 
     @Override
@@ -21,8 +24,8 @@ public class CityTool implements Tool {
         return ToolType.FIXED;
     }
 
-    @org.springframework.ai.tool.annotation.Tool(name = "getCity", description = "获取当前的城市")
+    @org.springframework.ai.tool.annotation.Tool(name = "getCity", description = "Return the current city.")
     public String getCity() {
-        return "深圳";
+        return "Shenzhen";
     }
 }

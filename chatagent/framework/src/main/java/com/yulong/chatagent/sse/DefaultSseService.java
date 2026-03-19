@@ -9,6 +9,9 @@ import java.util.concurrent.ConcurrentMap;
 
 @Service
 @Slf4j
+/**
+ * Default in-memory SSE implementation keyed by a logical stream ID.
+ */
 public class DefaultSseService implements SseService {
 
     private static final long SSE_TIMEOUT_MILLIS = 30 * 60 * 1000L;
@@ -19,6 +22,8 @@ public class DefaultSseService implements SseService {
     public SseEmitter connect(String streamKey) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
         SseEmitterSender sender = new SseEmitterSender(emitter);
+        // Replacing the existing sender for the same key lets reconnecting
+        // clients take over the stream cleanly.
         clients.put(streamKey, sender);
         sender.sendEvent("init", "connected");
 
@@ -46,6 +51,7 @@ public class DefaultSseService implements SseService {
         try {
             sender.sendEvent("message", message);
         } catch (Exception e) {
+            // Remove broken emitters immediately so later sends do not keep failing.
             clients.remove(streamKey, sender);
             log.warn("SSE connection lost: chatSessionId={}", streamKey, e);
         }

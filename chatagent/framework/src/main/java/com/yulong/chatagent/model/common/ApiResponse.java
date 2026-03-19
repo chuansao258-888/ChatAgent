@@ -6,6 +6,11 @@ import com.yulong.chatagent.trace.TraceContext;
 import lombok.Data;
 
 @Data
+/**
+ * Standard API envelope used by HTTP controllers across the application.
+ *
+ * @param <T> payload type carried by the response
+ */
 public class ApiResponse<T> {
 
     private int code;
@@ -20,6 +25,13 @@ public class ApiResponse<T> {
         this.traceId = traceId;
     }
 
+    /**
+     * Builds a success response with payload and the current trace ID.
+     *
+     * @param data response payload
+     * @param <T> payload type
+     * @return success response
+     */
     public static <T> ApiResponse<T> success(T data) {
         return new ApiResponse<>(
                 BaseErrorCode.SUCCESS.code(),
@@ -33,6 +45,14 @@ public class ApiResponse<T> {
         return success(null);
     }
 
+    /**
+     * Builds a success response with a custom message.
+     *
+     * @param data response payload
+     * @param message custom success message
+     * @param <T> payload type
+     * @return success response
+     */
     public static <T> ApiResponse<T> success(T data, String message) {
         return new ApiResponse<>(
                 BaseErrorCode.SUCCESS.code(),
@@ -46,6 +66,14 @@ public class ApiResponse<T> {
         return error(errorCode, errorCode.message());
     }
 
+    /**
+     * Builds an error response from a structured error code and message.
+     *
+     * @param errorCode application error code
+     * @param message response message
+     * @param <T> payload type
+     * @return error response
+     */
     public static <T> ApiResponse<T> error(IErrorCode errorCode, String message) {
         return new ApiResponse<>(
                 errorCode.code(),

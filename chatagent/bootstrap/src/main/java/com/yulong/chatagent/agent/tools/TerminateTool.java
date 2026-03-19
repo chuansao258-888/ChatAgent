@@ -2,6 +2,9 @@ package com.yulong.chatagent.agent.tools;
 
 import org.springframework.stereotype.Component;
 
+/**
+ * Fixed tool used to signal the agent loop that all work is complete.
+ */
 @Component
 public class TerminateTool implements Tool {
 
@@ -12,7 +15,7 @@ public class TerminateTool implements Tool {
 
     @Override
     public String getDescription() {
-        return "跳出 Agent Loop 的工具";
+        return "Terminate the agent loop once the task is complete.";
     }
 
     @Override
@@ -20,6 +23,10 @@ public class TerminateTool implements Tool {
         return ToolType.FIXED;
     }
 
-    @org.springframework.ai.tool.annotation.Tool(name = "terminate", description = "如果你觉得当前所有的任务已经执行完毕了，就执行这个工具调用")
-    public void terminate() {}
+    @org.springframework.ai.tool.annotation.Tool(
+            name = "terminate",
+            description = "Call this tool when the current task is complete and the agent should stop."
+    )
+    public void terminate() {
+    }
 }

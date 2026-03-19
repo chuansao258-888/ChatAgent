@@ -66,3 +66,7 @@ auth:
     secret: ${CHATAGENT_JWT_SECRET:change-this-to-a-long-random-secret-key-change-this}
     access-ttl-minutes: ${CHATAGENT_JWT_ACCESS_TTL_MINUTES:30}
     refresh-ttl-days: ${CHATAGENT_JWT_REFRESH_TTL_DAYS:7}
+
+logging:
+  level:
+    com.yulong.chatagent.user: INFO

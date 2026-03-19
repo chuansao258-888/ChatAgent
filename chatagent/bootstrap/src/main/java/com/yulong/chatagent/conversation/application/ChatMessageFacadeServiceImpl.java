@@ -9,7 +9,7 @@ import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.response.GetChatMessagesResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
-import com.yulong.chatagent.support.persistence.converter.ChatMessageConverter;
+import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import lombok.AllArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;

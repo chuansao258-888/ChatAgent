@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.yulong.chatagent.support.persistence.mapper.UserMapper">
+<mapper namespace="com.yulong.chatagent.user.infrastructure.persistence.mapper.UserMapper">
 
-    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.User">
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.user.infrastructure.persistence.entity.User">
         <id property="id" column="id" jdbcType="VARCHAR"/>
         <result property="username" column="username" jdbcType="VARCHAR"/>
         <result property="passwordHash" column="password_hash" jdbcType="VARCHAR"/>
@@ -21,26 +21,20 @@
         created_at,updated_at
     </sql>
 
-    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.User"
+    <insert id="insert" parameterType="com.yulong.chatagent.user.infrastructure.persistence.entity.User"
             keyColumn="id" keyProperty="id" useGeneratedKeys="true">
         INSERT INTO t_user
         (
          username,
          password_hash,
          role,
-         avatar,
-         deleted,
-         created_at,
-         updated_at
+         avatar
         )
         VALUES (
                 #{username},
                 #{passwordHash},
                 #{role},
-                #{avatar},
-                #{deleted},
-                #{createdAt},
-                #{updatedAt}
+                #{avatar}
                )
     </insert>
 
@@ -73,7 +67,7 @@
           AND deleted = FALSE
     </select>
 
-    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.User">
+    <update id="updateById" parameterType="com.yulong.chatagent.user.infrastructure.persistence.entity.User">
         UPDATE t_user
         <set>
             <if test="passwordHash != null">

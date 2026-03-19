@@ -8,7 +8,7 @@ import com.yulong.chatagent.admin.model.vo.AgentVO;
 import com.yulong.chatagent.admin.port.AgentRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.support.dto.AgentDTO;
-import com.yulong.chatagent.support.persistence.converter.AgentConverter;
+import com.yulong.chatagent.admin.converter.AgentConverter;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +16,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Default implementation of administrative agent configuration management.
+ */
 @Service
 @AllArgsConstructor
 public class AgentFacadeServiceImpl implements AgentFacadeService {

@@ -6,6 +6,9 @@ import com.yulong.chatagent.support.persistence.entity.ChunkBgeM3;
 import com.yulong.chatagent.support.persistence.mapper.ChunkBgeM3Mapper;
 import org.springframework.stereotype.Repository;
 
+/**
+ * MyBatis-backed implementation of chunk persistence.
+ */
 @Repository
 public class MyBatisDocumentChunkRepository implements DocumentChunkRepository {
 

@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/**
+ * Exposes server-sent event streams for chat-related realtime updates.
+ */
 @RestController
 @RequestMapping("/sse")
 @AllArgsConstructor
@@ -15,6 +18,12 @@ public class SseController {
 
     private final SseService sseService;
 
+    /**
+     * Opens an SSE connection scoped to one chat session.
+     *
+     * @param chatSessionId chat session identifier
+     * @return live emitter bound to the session
+     */
     @RequestMapping(value = "/connect/{chatSessionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter connect(@PathVariable String chatSessionId) {
         return sseService.connect(chatSessionId);

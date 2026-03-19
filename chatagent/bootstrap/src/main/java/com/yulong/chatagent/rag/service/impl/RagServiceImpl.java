@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * Default RAG service delegating embedding and retrieval to dedicated collaborators.
+ */
 @Service
 public class RagServiceImpl implements RagService {
 

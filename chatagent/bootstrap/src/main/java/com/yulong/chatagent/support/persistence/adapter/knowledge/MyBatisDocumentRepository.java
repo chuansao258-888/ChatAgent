@@ -1,7 +1,7 @@
 package com.yulong.chatagent.support.persistence.adapter.knowledge;
 
 import com.yulong.chatagent.knowledge.port.DocumentRepository;
-import com.yulong.chatagent.support.persistence.converter.DocumentConverter;
+import com.yulong.chatagent.knowledge.converter.DocumentConverter;
 import com.yulong.chatagent.support.persistence.entity.Document;
 import com.yulong.chatagent.support.persistence.mapper.DocumentMapper;
 import com.yulong.chatagent.support.dto.DocumentDTO;
@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * MyBatis-backed implementation of the document repository port.
+ */
 @Repository
 public class MyBatisDocumentRepository implements DocumentRepository {
 
@@ -57,6 +60,9 @@ public class MyBatisDocumentRepository implements DocumentRepository {
         return documentMapper.deleteById(id) > 0;
     }
 
+    /**
+     * Converts persistence entities to DTOs while preserving list ordering.
+     */
     private List<DocumentDTO> toDTOList(List<Document> entities) {
         List<DocumentDTO> result = new ArrayList<>();
         for (Document entity : entities) {
@@ -65,6 +71,9 @@ public class MyBatisDocumentRepository implements DocumentRepository {
         return result;
     }
 
+    /**
+     * Converts one persistence entity to a DTO and wraps serialization failures.
+     */
     private DocumentDTO toDTO(Document entity) {
         if (entity == null) {
             return null;
@@ -76,6 +85,9 @@ public class MyBatisDocumentRepository implements DocumentRepository {
         }
     }
 
+    /**
+     * Converts one DTO to a persistence entity and wraps serialization failures.
+     */
     private Document toEntity(DocumentDTO dto) {
         try {
             return documentConverter.toEntity(dto);

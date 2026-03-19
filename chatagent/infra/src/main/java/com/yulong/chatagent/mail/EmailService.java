@@ -1,15 +1,16 @@
 package com.yulong.chatagent.mail;
 
 /**
- * 邮件服务接口
+ * Sends transactional emails for the application.
  */
 public interface EmailService {
+
     /**
-     * 异步发送邮件
+     * Sends an email asynchronously.
      *
-     * @param to      收件人邮箱地址
-     * @param subject 邮件主题
-     * @param content 邮件内容
+     * @param to recipient email address
+     * @param subject email subject
+     * @param content email body
      */
     void sendEmailAsync(String to, String subject, String content);
 }

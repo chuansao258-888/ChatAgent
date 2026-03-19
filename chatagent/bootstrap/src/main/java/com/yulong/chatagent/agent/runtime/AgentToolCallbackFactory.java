@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Creates concrete tool callbacks allowed for one agent runtime.
+ */
 @Component
 public class AgentToolCallbackFactory {
 
@@ -24,6 +27,12 @@ public class AgentToolCallbackFactory {
         this.toolFacadeService = toolFacadeService;
     }
 
+    /**
+     * Builds runtime callbacks from fixed tools plus optionally enabled tools.
+     *
+     * @param agentConfig persisted agent configuration
+     * @return callback list for the current run
+     */
     public List<ToolCallback> create(AgentDTO agentConfig) {
         List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
         List<ToolCallback> callbacks = new ArrayList<>();
@@ -38,6 +47,12 @@ public class AgentToolCallbackFactory {
         return callbacks;
     }
 
+    /**
+     * Resolves the effective tool list allowed for the agent.
+     *
+     * @param agentConfig persisted agent configuration
+     * @return fixed tools plus configured optional tools
+     */
     private List<Tool> resolveRuntimeTools(AgentDTO agentConfig) {
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
 
@@ -59,6 +74,12 @@ public class AgentToolCallbackFactory {
         return runtimeTools;
     }
 
+    /**
+     * Unwraps proxied Spring beans so tool metadata is derived from the real target object.
+     *
+     * @param tool tool bean
+     * @return underlying tool target
+     */
     private Object resolveToolTarget(Tool tool) {
         Object target = AopProxyUtils.getSingletonTarget(tool);
         return target != null ? target : tool;

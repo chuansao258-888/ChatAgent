@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * REST controller for knowledge base CRUD endpoints.
+ */
 @RestController
 @RequestMapping("/api")
 @AllArgsConstructor
@@ -23,23 +26,47 @@ public class KnowledgeBaseController {
 
     private final KnowledgeBaseFacadeService knowledgeBaseFacadeService;
 
+    /**
+     * Lists all knowledge bases.
+     *
+     * @return knowledge base list response
+     */
     @GetMapping("/knowledge-bases")
     public ApiResponse<GetKnowledgeBasesResponse> getKnowledgeBases() {
         return ApiResponse.success(knowledgeBaseFacadeService.getKnowledgeBases());
     }
 
+    /**
+     * Creates a knowledge base.
+     *
+     * @param request create knowledge base request
+     * @return created knowledge base response
+     */
     @PostMapping("/knowledge-bases")
     public ApiResponse<CreateKnowledgeBaseResponse> createKnowledgeBase(
             @RequestBody CreateKnowledgeBaseRequest request) {
         return ApiResponse.success(knowledgeBaseFacadeService.createKnowledgeBase(request));
     }
 
+    /**
+     * Deletes a knowledge base.
+     *
+     * @param knowledgeBaseId knowledge base identifier
+     * @return empty success response
+     */
     @DeleteMapping("/knowledge-bases/{knowledgeBaseId}")
     public ApiResponse<Void> deleteKnowledgeBase(@PathVariable String knowledgeBaseId) {
         knowledgeBaseFacadeService.deleteKnowledgeBase(knowledgeBaseId);
         return ApiResponse.success();
     }
 
+    /**
+     * Updates knowledge base metadata.
+     *
+     * @param knowledgeBaseId knowledge base identifier
+     * @param request update request payload
+     * @return empty success response
+     */
     @PatchMapping("/knowledge-bases/{knowledgeBaseId}")
     public ApiResponse<Void> updateKnowledgeBase(@PathVariable String knowledgeBaseId,
                                                  @RequestBody UpdateKnowledgeBaseRequest request) {

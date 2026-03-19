@@ -11,11 +11,14 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-//@Component 禁用文件系统相关工具
+/**
+ * Optional tool offering guarded file-system access under the current workspace.
+ * <p>
+ * This tool is intentionally not registered as a Spring bean right now.
+ */
 @Slf4j
 public class FileSystemTools implements Tool {
 
-    // 允许访问的基础目录，防止路径遍历攻击
     private static final String BASE_DIRECTORY = System.getProperty("user.dir");
 
     @Override
@@ -25,7 +28,7 @@ public class FileSystemTools implements Tool {
 
     @Override
     public String getDescription() {
-        return "提供文件系统操作的工具，包括读取文件、写入文件、列出目录等功能";
+        return "Provide safe file-system operations such as reading, writing, listing, and deleting files.";
     }
 
     @Override
@@ -34,128 +37,112 @@ public class FileSystemTools implements Tool {
     }
 
     /**
-     * 读取文件内容
-     *
-     * @param filePath 文件路径（相对于工作目录）
-     * @return 文件内容
+     * Reads one file from the allowed workspace area.
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "readFile",
-            description = "读取指定文件的内容。参数：filePath - 文件路径（相对于工作目录）"
+            description = "Read the content of a file relative to the current workspace directory."
     )
     public String readFile(String filePath) {
         try {
             Path path = validateAndResolvePath(filePath);
 
             if (!Files.exists(path)) {
-                return "错误：文件不存在 - " + filePath;
+                return "Error: file does not exist - " + filePath;
             }
-
             if (!Files.isRegularFile(path)) {
-                return "错误：路径不是文件 - " + filePath;
+                return "Error: path is not a file - " + filePath;
             }
 
             String content = Files.readString(path);
-            log.info("成功读取文件: {}", filePath);
-            return "文件内容:\n" + content;
-
+            log.info("File read successfully: {}", filePath);
+            return "File content:\n" + content;
         } catch (SecurityException e) {
-            log.error("安全错误：{}", e.getMessage());
-            return "错误：访问被拒绝 - " + e.getMessage();
+            log.error("Security error: {}", e.getMessage());
+            return "Error: access denied - " + e.getMessage();
         } catch (IOException e) {
-            log.error("读取文件失败: {}", filePath, e);
-            return "错误：读取文件失败 - " + e.getMessage();
+            log.error("Failed to read file: {}", filePath, e);
+            return "Error: failed to read file - " + e.getMessage();
         } catch (Exception e) {
-            log.error("未知错误: {}", e.getMessage(), e);
-            return "错误：操作失败 - " + e.getMessage();
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return "Error: operation failed - " + e.getMessage();
         }
     }
 
     /**
-     * 写入文件内容
-     *
-     * @param filePath 文件路径（相对于工作目录）
-     * @param content  要写入的内容
-     * @return 操作结果
+     * Creates or replaces a file with the provided content.
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "writeFile",
-            description = "将内容写入指定文件。如果文件不存在则创建，如果文件存在则覆盖。参数：filePath - 文件路径（相对于工作目录），content - 要写入的内容"
+            description = "Write content to a file relative to the current workspace directory. Missing parent directories will be created."
     )
     public String writeFile(String filePath, String content) {
         try {
             Path path = validateAndResolvePath(filePath);
-
-            // 确保父目录存在
             Path parent = path.getParent();
             if (parent != null && !Files.exists(parent)) {
                 Files.createDirectories(parent);
-                log.info("创建目录: {}", parent);
+                log.info("Created directory: {}", parent);
             }
 
-            Files.writeString(path, content, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            log.info("成功写入文件: {}", filePath);
-            return "成功写入文件: " + filePath;
-
+            Files.writeString(
+                    path,
+                    content,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE
+            );
+            log.info("File written successfully: {}", filePath);
+            return "File written successfully: " + filePath;
         } catch (SecurityException e) {
-            log.error("安全错误：{}", e.getMessage());
-            return "错误：访问被拒绝 - " + e.getMessage();
+            log.error("Security error: {}", e.getMessage());
+            return "Error: access denied - " + e.getMessage();
         } catch (IOException e) {
-            log.error("写入文件失败: {}", filePath, e);
-            return "错误：写入文件失败 - " + e.getMessage();
+            log.error("Failed to write file: {}", filePath, e);
+            return "Error: failed to write file - " + e.getMessage();
         } catch (Exception e) {
-            log.error("未知错误: {}", e.getMessage(), e);
-            return "错误：操作失败 - " + e.getMessage();
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return "Error: operation failed - " + e.getMessage();
         }
     }
 
     /**
-     * 追加内容到文件
-     *
-     * @param filePath 文件路径（相对于工作目录）
-     * @param content  要追加的内容
-     * @return 操作结果
+     * Appends content to the target file, creating it when needed.
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "appendToFile",
-            description = "将内容追加到指定文件的末尾。如果文件不存在则创建。参数：filePath - 文件路径（相对于工作目录），content - 要追加的内容"
+            description = "Append content to a file relative to the current workspace directory. Missing parent directories will be created."
     )
     public String appendToFile(String filePath, String content) {
         try {
             Path path = validateAndResolvePath(filePath);
-
-            // 确保父目录存在
             Path parent = path.getParent();
             if (parent != null && !Files.exists(parent)) {
                 Files.createDirectories(parent);
-                log.info("创建目录: {}", parent);
+                log.info("Created directory: {}", parent);
             }
 
             Files.writeString(path, content, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            log.info("成功追加内容到文件: {}", filePath);
-            return "成功追加内容到文件: " + filePath;
-
+            log.info("Content appended successfully: {}", filePath);
+            return "Content appended successfully: " + filePath;
         } catch (SecurityException e) {
-            log.error("安全错误：{}", e.getMessage());
-            return "错误：访问被拒绝 - " + e.getMessage();
+            log.error("Security error: {}", e.getMessage());
+            return "Error: access denied - " + e.getMessage();
         } catch (IOException e) {
-            log.error("追加内容到文件失败: {}", filePath, e);
-            return "错误：追加内容失败 - " + e.getMessage();
+            log.error("Failed to append to file: {}", filePath, e);
+            return "Error: failed to append content - " + e.getMessage();
         } catch (Exception e) {
-            log.error("未知错误: {}", e.getMessage(), e);
-            return "错误：操作失败 - " + e.getMessage();
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return "Error: operation failed - " + e.getMessage();
         }
     }
 
     /**
-     * 列出目录中的文件和子目录
-     *
-     * @param directoryPath 目录路径（相对于工作目录），如果为空则列出当前目录
-     * @return 目录内容列表
+     * Lists files and subdirectories inside a directory.
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "listFiles",
-            description = "列出指定目录中的文件和子目录。参数：directoryPath - 目录路径（相对于工作目录），如果为空则列出当前目录"
+            description = "List files and subdirectories in a path relative to the current workspace directory. Empty input lists the workspace root."
     )
     public String listFiles(String directoryPath) {
         try {
@@ -167,108 +154,99 @@ public class FileSystemTools implements Tool {
             }
 
             if (!Files.exists(path)) {
-                return "错误：目录不存在 - " + directoryPath;
+                return "Error: directory does not exist - " + directoryPath;
             }
-
             if (!Files.isDirectory(path)) {
-                return "错误：路径不是目录 - " + directoryPath;
+                return "Error: path is not a directory - " + directoryPath;
             }
 
-            List<String> items = Files.list(path)
-                    .map(p -> {
-                        String name = p.getFileName().toString();
-                        if (Files.isDirectory(p)) {
-                            return "[DIR] " + name;
-                        } else {
+            List<String> items;
+            try (Stream<Path> paths = Files.list(path)) {
+                items = paths
+                        .map(p -> {
+                            String name = p.getFileName().toString();
+                            if (Files.isDirectory(p)) {
+                                return "[DIR] " + name;
+                            }
                             try {
                                 long size = Files.size(p);
                                 return "[FILE] " + name + " (" + formatFileSize(size) + ")";
                             } catch (IOException e) {
                                 return "[FILE] " + name;
                             }
-                        }
-                    })
-                    .sorted()
-                    .collect(Collectors.toList());
-
-            if (items.isEmpty()) {
-                return "目录为空: " + directoryPath;
+                        })
+                        .sorted()
+                        .collect(Collectors.toList());
             }
 
-            log.info("成功列出目录内容: {}", directoryPath);
-            return "目录内容 (" + directoryPath + "):\n" + String.join("\n", items);
+            if (items.isEmpty()) {
+                return "Directory is empty: " + directoryPath;
+            }
 
+            log.info("Directory listed successfully: {}", directoryPath);
+            return "Directory content (" + directoryPath + "):\n" + String.join("\n", items);
         } catch (SecurityException e) {
-            log.error("安全错误：{}", e.getMessage());
-            return "错误：访问被拒绝 - " + e.getMessage();
+            log.error("Security error: {}", e.getMessage());
+            return "Error: access denied - " + e.getMessage();
         } catch (IOException e) {
-            log.error("列出目录失败: {}", directoryPath, e);
-            return "错误：列出目录失败 - " + e.getMessage();
+            log.error("Failed to list directory: {}", directoryPath, e);
+            return "Error: failed to list directory - " + e.getMessage();
         } catch (Exception e) {
-            log.error("未知错误: {}", e.getMessage(), e);
-            return "错误：操作失败 - " + e.getMessage();
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return "Error: operation failed - " + e.getMessage();
         }
     }
 
     /**
-     * 删除文件或目录
-     *
-     * @param path 文件或目录路径（相对于工作目录）
-     * @return 操作结果
+     * Deletes a file or recursively deletes a directory under the workspace.
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "deleteFile",
-            description = "删除指定的文件或目录。参数：path - 文件或目录路径（相对于工作目录）"
+            description = "Delete a file or directory relative to the current workspace directory."
     )
     public String deleteFile(String path) {
         try {
             Path filePath = validateAndResolvePath(path);
 
             if (!Files.exists(filePath)) {
-                return "错误：文件或目录不存在 - " + path;
+                return "Error: file or directory does not exist - " + path;
             }
 
             if (Files.isDirectory(filePath)) {
-                // 递归删除目录
                 try (Stream<Path> paths = Files.walk(filePath)) {
-                    paths.sorted((a, b) -> b.compareTo(a)) // 先删除文件，再删除目录
-                            .forEach(p -> {
-                                try {
-                                    Files.delete(p);
-                                } catch (IOException e) {
-                                    log.warn("删除失败: {}", p, e);
-                                }
-                            });
+                    paths.sorted((a, b) -> b.compareTo(a)).forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            log.warn("Failed to delete path: {}", p, e);
+                        }
+                    });
                 }
-                log.info("成功删除目录: {}", path);
-                return "成功删除目录: " + path;
-            } else {
-                Files.delete(filePath);
-                log.info("成功删除文件: {}", path);
-                return "成功删除文件: " + path;
+                log.info("Directory deleted successfully: {}", path);
+                return "Directory deleted successfully: " + path;
             }
 
+            Files.delete(filePath);
+            log.info("File deleted successfully: {}", path);
+            return "File deleted successfully: " + path;
         } catch (SecurityException e) {
-            log.error("安全错误：{}", e.getMessage());
-            return "错误：访问被拒绝 - " + e.getMessage();
+            log.error("Security error: {}", e.getMessage());
+            return "Error: access denied - " + e.getMessage();
         } catch (IOException e) {
-            log.error("删除文件失败: {}", path, e);
-            return "错误：删除失败 - " + e.getMessage();
+            log.error("Failed to delete path: {}", path, e);
+            return "Error: failed to delete path - " + e.getMessage();
         } catch (Exception e) {
-            log.error("未知错误: {}", e.getMessage(), e);
-            return "错误：操作失败 - " + e.getMessage();
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return "Error: operation failed - " + e.getMessage();
         }
     }
 
     /**
-     * 创建目录
-     *
-     * @param directoryPath 目录路径（相对于工作目录）
-     * @return 操作结果
+     * Creates a directory and any missing parent directories.
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "createDirectory",
-            description = "创建指定目录，如果父目录不存在则一并创建。参数：directoryPath - 目录路径（相对于工作目录）"
+            description = "Create a directory relative to the current workspace directory. Missing parent directories will be created."
     )
     public String createDirectory(String directoryPath) {
         try {
@@ -276,56 +254,45 @@ public class FileSystemTools implements Tool {
 
             if (Files.exists(path)) {
                 if (Files.isDirectory(path)) {
-                    return "目录已存在: " + directoryPath;
-                } else {
-                    return "错误：路径已存在但不是目录 - " + directoryPath;
+                    return "Directory already exists: " + directoryPath;
                 }
+                return "Error: path already exists but is not a directory - " + directoryPath;
             }
 
             Files.createDirectories(path);
-            log.info("成功创建目录: {}", directoryPath);
-            return "成功创建目录: " + directoryPath;
-
+            log.info("Directory created successfully: {}", directoryPath);
+            return "Directory created successfully: " + directoryPath;
         } catch (SecurityException e) {
-            log.error("安全错误：{}", e.getMessage());
-            return "错误：访问被拒绝 - " + e.getMessage();
+            log.error("Security error: {}", e.getMessage());
+            return "Error: access denied - " + e.getMessage();
         } catch (IOException e) {
-            log.error("创建目录失败: {}", directoryPath, e);
-            return "错误：创建目录失败 - " + e.getMessage();
+            log.error("Failed to create directory: {}", directoryPath, e);
+            return "Error: failed to create directory - " + e.getMessage();
         } catch (Exception e) {
-            log.error("未知错误: {}", e.getMessage(), e);
-            return "错误：操作失败 - " + e.getMessage();
+            log.error("Unexpected error: {}", e.getMessage(), e);
+            return "Error: operation failed - " + e.getMessage();
         }
     }
 
     /**
-     * 验证路径并解析为绝对路径，防止路径遍历攻击
-     *
-     * @param filePath 文件路径
-     * @return 解析后的绝对路径
-     * @throws SecurityException 如果路径不安全
+     * Resolves a path and blocks directory traversal outside the workspace root.
      */
-    private Path validateAndResolvePath(String filePath) throws SecurityException {
+    private Path validateAndResolvePath(String filePath) {
         if (filePath == null || filePath.trim().isEmpty()) {
-            throw new IllegalArgumentException("文件路径不能为空");
+            throw new IllegalArgumentException("File path cannot be empty");
         }
 
         Path basePath = Paths.get(BASE_DIRECTORY).toAbsolutePath().normalize();
         Path resolvedPath = basePath.resolve(filePath).toAbsolutePath().normalize();
-
-        // 检查解析后的路径是否在基础目录内
         if (!resolvedPath.startsWith(basePath)) {
-            throw new SecurityException("路径遍历攻击被阻止: " + filePath);
+            throw new SecurityException("Directory traversal attempt blocked: " + filePath);
         }
 
         return resolvedPath;
     }
 
     /**
-     * 格式化文件大小
-     *
-     * @param size 文件大小（字节）
-     * @return 格式化后的文件大小字符串
+     * Formats byte counts into a readable file-size string.
      */
     private String formatFileSize(long size) {
         if (size < 1024) {

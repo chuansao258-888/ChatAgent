@@ -11,6 +11,12 @@ import java.util.concurrent.Executor;
 
 @Configuration
 @EnableAsync
+/**
+ * Configures asynchronous task execution for application events and background work.
+ *
+ * <p>The task decorator preserves the request trace ID so async log lines can
+ * still be correlated with the originating request.</p>
+ */
 public class AsyncConfig {
 
     @Bean
@@ -29,6 +35,7 @@ public class AsyncConfig {
         return runnable -> {
             String traceId = TraceContext.getTraceId();
             return () -> {
+                // Preserve any previous async trace state in case async work is nested.
                 String previousTraceId = TraceContext.getTraceId();
                 if (traceId != null) {
                     TraceContext.setTraceId(traceId);

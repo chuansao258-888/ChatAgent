@@ -10,7 +10,7 @@ import com.yulong.chatagent.knowledge.port.IngestionTaskRepository;
 import com.yulong.chatagent.rag.service.DocumentIngestionService;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.IngestionTaskDTO;
-import com.yulong.chatagent.support.persistence.converter.IngestionTaskConverter;
+import com.yulong.chatagent.knowledge.converter.IngestionTaskConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -21,6 +21,10 @@ import java.util.List;
 
 @Slf4j
 @Service
+/**
+ * Default ingestion-task coordinator responsible for persistence, async execution,
+ * and task-status SSE notifications.
+ */
 public class IngestionTaskServiceImpl implements IngestionTaskService {
     private final IngestionTaskRepository ingestionTaskRepository;
     private final DocumentIngestionService documentIngestionService;
@@ -56,6 +60,8 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
     @Async("taskExecutor")
     @Override
     public void runMarkdownTaskAsync(String taskId, String kbId, String documentId, String filePath) {
+        // Task state transitions are persisted so polling APIs and SSE consumers observe
+        // the same final status regardless of where the task result is consumed from.
         ingestionTaskRepository.markRunning(taskId, LocalDateTime.now());
         IngestionTaskEventVO event;
         try {

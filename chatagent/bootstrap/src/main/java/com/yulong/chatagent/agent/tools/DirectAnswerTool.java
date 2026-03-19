@@ -1,7 +1,10 @@
 package com.yulong.chatagent.agent.tools;
 
-// 注释 @Component 注解，暂不将 DirectAnswerTool 注册为 Spring Bean
-// @Component
+/**
+ * Marker tool used when the model can answer directly without further tool calls.
+ * <p>
+ * This tool is intentionally not registered as a Spring bean right now.
+ */
 public class DirectAnswerTool implements Tool {
 
     @Override
@@ -11,7 +14,7 @@ public class DirectAnswerTool implements Tool {
 
     @Override
     public String getDescription() {
-        return "当用户的请求不需要执行操作时调用此工具，用以直接返回自然语言回答。";
+        return "Use this tool when the user's request can be answered directly without any additional action.";
     }
 
     @Override
@@ -21,7 +24,8 @@ public class DirectAnswerTool implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "directAnswer",
-            description = "用于直接回答用户问题，适用于无需生成任务计划或调用其他工具的场景。"
+            description = "Use this tool when the model should respond directly to the user without calling any other tool."
     )
-    public void directAnswer() {}
+    public void directAnswer() {
+    }
 }

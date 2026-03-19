@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Default runtime-context loader that assembles all data needed to run an agent.
+ */
 @Component
 public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoader {
 
@@ -32,6 +35,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
 
     @Override
     public AgentRuntimeContext load(String agentId, String chatSessionId) {
+        // Runtime context is composed from persisted configuration, recent memory,
+        // knowledge-base visibility, and concrete callback instances for allowed tools.
         AgentDefinition definition = agentDefinitionLoader.load(agentId);
         AgentDTO agentConfig = definition.config();
         List<Message> memory = agentMemoryLoader.load(chatSessionId, agentConfig);

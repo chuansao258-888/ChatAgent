@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
+/**
+ * MyBatis-backed implementation of chunk similarity search.
+ */
 @Repository
 public class MyBatisKnowledgeChunkSearchRepository implements KnowledgeChunkSearchRepository {
 

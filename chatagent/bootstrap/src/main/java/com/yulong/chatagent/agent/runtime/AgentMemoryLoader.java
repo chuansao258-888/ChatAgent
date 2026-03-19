@@ -16,6 +16,9 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Restores Spring AI chat memory from persisted conversation messages.
+ */
 @Component
 public class AgentMemoryLoader {
 
@@ -27,6 +30,13 @@ public class AgentMemoryLoader {
         this.chatMessageFacadeService = chatMessageFacadeService;
     }
 
+    /**
+     * Loads recent chat history and converts it back into Spring AI message types.
+     *
+     * @param chatSessionId chat session identifier
+     * @param agentConfig persisted agent configuration
+     * @return reconstructed chat memory
+     */
     public List<Message> load(String chatSessionId, AgentDTO agentConfig) {
         int messageLength = agentConfig.getChatOptions().getMessageLength();
         List<ChatMessageDTO> chatMessages = chatMessageFacadeService

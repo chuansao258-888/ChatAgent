@@ -4,6 +4,9 @@ import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
 import org.springframework.stereotype.Component;
 
+/**
+ * Small sample weather tool used for local agent-tool testing.
+ */
 @Component
 public class WeatherTool implements Tool {
 
@@ -14,7 +17,7 @@ public class WeatherTool implements Tool {
 
     @Override
     public String getDescription() {
-        return "获取天气";
+        return "Return a mock weather report.";
     }
 
     @Override
@@ -22,9 +25,11 @@ public class WeatherTool implements Tool {
         return ToolType.FIXED;
     }
 
-    @org.springframework.ai.tool.annotation.Tool(name = "weather", description = "获取天气")
+    @org.springframework.ai.tool.annotation.Tool(
+            name = "weather",
+            description = "Return a mock weather report for the given city and date."
+    )
     public String getWeather(String city, String date) {
-        // 模拟模拟调用天气 API
-        return city + date + "的天气查询结果：晴转多云，温度 25°C，湿度 60%";
+        return city + " " + date + " weather result: sunny to partly cloudy, temperature 25C, humidity 60%.";
     }
 }

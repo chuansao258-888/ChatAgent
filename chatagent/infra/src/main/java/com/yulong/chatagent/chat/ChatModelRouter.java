@@ -9,6 +9,12 @@ import org.springframework.util.StringUtils;
 
 @Component
 @Slf4j
+/**
+ * Resolves which named {@link ChatClient} should serve a chat request.
+ *
+ * <p>When no model is requested explicitly, the router falls back to the
+ * configured default model.</p>
+ */
 public class ChatModelRouter {
 
     private final ChatClientRegistry chatClientRegistry;
@@ -27,6 +33,8 @@ public class ChatModelRouter {
             return chatClientRegistry.getRequired(defaultModel);
         }
 
+        // Validate the requested model before lookup so callers get a clearer
+        // error containing the list of supported models.
         if (!chatClientRegistry.supports(requestedModel)) {
             throw new IllegalStateException(
                     "Unsupported chat model: " + requestedModel + ", available: " + chatClientRegistry.availableModels()

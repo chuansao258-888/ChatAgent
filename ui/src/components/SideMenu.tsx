@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { RobotOutlined } from "@ant-design/icons";
-import { Tabs, type TabsProps } from "antd";
+import { LogoutOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
+import { Button, Tabs, Tooltip, Typography, type TabsProps } from "antd";
 import { useNavigate } from "react-router-dom";
 import AgentTabContent from "./tabs/AgentTabContent.tsx";
 import AddAgentModal from "./modals/AddAgentModal.tsx";
@@ -8,6 +8,7 @@ import ChatTabContent from "./tabs/ChatTabContent.tsx";
 import KnowledgeBaseTabContent from "./tabs/KnowledgeBaseTabContent.tsx";
 import AddKnowledgeBaseModal from "./modals/AddKnowledgeBaseModal.tsx";
 import { useAgents } from "../hooks/useAgents.ts";
+import { useAuth } from "../hooks/useAuth.ts";
 import { useKnowledgeBases } from "../hooks/useKnowledgeBases.ts";
 
 interface SideMenuProps {
@@ -16,6 +17,7 @@ interface SideMenuProps {
 
 const SideMenu: React.FC<SideMenuProps> = () => {
   const navigate = useNavigate();
+  const { currentUser, logout } = useAuth();
 
   const [isAddAgentModalOpen, setIsAddAgentModalOpen] = useState(false);
   const toggleAddAgentModal = () => {
@@ -106,6 +108,30 @@ const SideMenu: React.FC<SideMenuProps> = () => {
           items={items}
           // className="h-full flex flex-col [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
         />
+      </div>
+      <div className="mb-4 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">
+            <UserOutlined />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Typography.Text className="block truncate font-medium text-slate-900">
+              {currentUser?.username ?? "未登录用户"}
+            </Typography.Text>
+            <Typography.Text type="secondary" className="block truncate text-xs">
+              {currentUser?.role ?? "guest"}
+            </Typography.Text>
+          </div>
+          <Tooltip title="退出登录">
+            <Button
+              type="text"
+              icon={<LogoutOutlined />}
+              onClick={() => {
+                void logout();
+              }}
+            />
+          </Tooltip>
+        </div>
       </div>
       <AddAgentModal
         open={isAddAgentModalOpen}

@@ -7,25 +7,23 @@ import com.yulong.chatagent.rag.ingestion.MarkdownIngestionPipeline;
 import com.yulong.chatagent.rag.repository.DocumentChunkRepository;
 import com.yulong.chatagent.rag.service.DocumentIngestionService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-
-
 
 @Service
 @Slf4j
+/**
+ * Default service for converting stored markdown documents into persisted vector chunks.
+ */
 public class DocumentIngestionServiceImpl implements DocumentIngestionService {
 
     private final MarkdownIngestionPipeline markdownIngestionPipeline;
     private final DocumentChunkRepository documentChunkRepository;
-
 
     public DocumentIngestionServiceImpl(MarkdownIngestionPipeline markdownIngestionPipeline,
                                         DocumentChunkRepository documentChunkRepository) {
         this.markdownIngestionPipeline = markdownIngestionPipeline;
         this.documentChunkRepository = documentChunkRepository;
     }
-
 
     @Override
     public int ingestMarkdownDocument(String kbId, String documentId, String filePath) {
@@ -47,7 +45,6 @@ public class DocumentIngestionServiceImpl implements DocumentIngestionService {
             );
         }
     }
-
 
     @Override
     public void deleteDocumentChunks(String documentId) {

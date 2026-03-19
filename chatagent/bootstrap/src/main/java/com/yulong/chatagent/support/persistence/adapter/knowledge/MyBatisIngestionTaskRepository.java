@@ -3,13 +3,16 @@ package com.yulong.chatagent.support.persistence.adapter.knowledge;
 import com.yulong.chatagent.knowledge.port.IngestionTaskRepository;
 import com.yulong.chatagent.support.dto.IngestionTaskDTO;
 import com.yulong.chatagent.support.persistence.entity.IngestionTask;
-import com.yulong.chatagent.support.persistence.converter.IngestionTaskConverter;
+import com.yulong.chatagent.knowledge.converter.IngestionTaskConverter;
 import com.yulong.chatagent.support.persistence.mapper.IngestionTaskMapper;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * MyBatis-backed implementation of the ingestion task repository port.
+ */
 @Repository
 public class MyBatisIngestionTaskRepository implements IngestionTaskRepository {
     private final IngestionTaskMapper ingestionTaskMapper;

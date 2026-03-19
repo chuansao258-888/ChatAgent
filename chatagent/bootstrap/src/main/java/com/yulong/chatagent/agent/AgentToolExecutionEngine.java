@@ -14,6 +14,9 @@ import org.springframework.util.Assert;
 import java.util.stream.Collectors;
 
 @Slf4j
+/**
+ * Encapsulates the tool-execution phase of the agent loop.
+ */
 class AgentToolExecutionEngine {
 
     private final ToolCallingManager toolCallingManager;
@@ -28,6 +31,14 @@ class AgentToolExecutionEngine {
         this.messageBridge = messageBridge;
     }
 
+    /**
+     * Executes model-requested tool calls and appends tool responses back into memory.
+     *
+     * @param chatMemory chat memory store
+     * @param chatSessionId chat session identifier
+     * @param chatResponse last model response
+     * @return {@code true} when a terminate tool response signals that the run should stop
+     */
     boolean execute(ChatMemory chatMemory, String chatSessionId, ChatResponse chatResponse) {
         Assert.notNull(chatResponse, "Last chat client response cannot be null");
 

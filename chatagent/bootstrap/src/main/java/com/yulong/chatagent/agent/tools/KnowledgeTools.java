@@ -5,6 +5,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Fixed tool for knowledge-base similarity search.
+ */
 @Component
 public class KnowledgeTools implements Tool {
 
@@ -21,7 +24,7 @@ public class KnowledgeTools implements Tool {
 
     @Override
     public String getDescription() {
-        return "用于从知识库执行语义检索（RAG）。输入知识库 ID 和查询文本，返回与查询最相关的内容片段。";
+        return "Perform semantic retrieval against a knowledge base.";
     }
 
     @Override
@@ -31,10 +34,10 @@ public class KnowledgeTools implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "KnowledgeTool",
-            description = "从指定知识库中执行相似性检索（RAG）。参数为知识库 ID（kbsId）和查询文本（query），返回与查询最相关的知识片段。"
+            description = "Run similarity search against a knowledge base. Arguments: kbsId and query."
     )
     public String knowledgeQuery(String kbsId, String query) {
-        List<String> strings = ragService.similaritySearch(kbsId, query);
-        return String.join("\n", strings);
+        List<String> results = ragService.similaritySearch(kbsId, query);
+        return String.join("\n", results);
     }
 }

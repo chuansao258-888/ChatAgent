@@ -1,7 +1,7 @@
 package com.yulong.chatagent.support.persistence.adapter.conversation;
 
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
-import com.yulong.chatagent.support.persistence.converter.ChatMessageConverter;
+import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.support.persistence.entity.ChatMessage;
 import com.yulong.chatagent.support.persistence.mapper.ChatMessageMapper;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
@@ -10,6 +10,9 @@ import org.springframework.stereotype.Repository;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * MyBatis-backed implementation of the chat message repository port.
+ */
 @Repository
 public class MyBatisChatMessageRepository implements ChatMessageRepository {
 
@@ -57,6 +60,9 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
         return chatMessageMapper.deleteById(id) > 0;
     }
 
+    /**
+     * Converts persistence entities to DTOs while preserving list ordering.
+     */
     private List<ChatMessageDTO> toDTOList(List<ChatMessage> entities) {
         List<ChatMessageDTO> result = new ArrayList<>();
         for (ChatMessage entity : entities) {
@@ -65,6 +71,9 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
         return result;
     }
 
+    /**
+     * Converts one persistence entity to a DTO and wraps serialization failures.
+     */
     private ChatMessageDTO toDTO(ChatMessage entity) {
         if (entity == null) {
             return null;
@@ -76,6 +85,9 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
         }
     }
 
+    /**
+     * Converts one DTO to a persistence entity and wraps serialization failures.
+     */
     private ChatMessage toEntity(ChatMessageDTO dto) {
         try {
             return chatMessageConverter.toEntity(dto);

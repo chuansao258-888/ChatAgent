@@ -11,6 +11,9 @@ import java.util.List;
 
 @Component
 @Slf4j
+/**
+ * End-to-end markdown ingestion pipeline: read, section, chunk, then index.
+ */
 public class MarkdownIngestionPipeline {
 
     private final MarkdownSectionReader sectionReader;
@@ -25,6 +28,15 @@ public class MarkdownIngestionPipeline {
         this.chunkIndexer = chunkIndexer;
     }
 
+    /**
+     * Runs the full ingestion pipeline for one stored markdown document.
+     *
+     * @param kbId knowledge base identifier
+     * @param documentId document identifier
+     * @param filePath stored file path
+     * @return indexed chunk count
+     * @throws IOException if the source file cannot be read
+     */
     public int ingest(String kbId, String documentId, String filePath) throws IOException {
         long startTime = System.nanoTime();
         List<MarkdownParserService.MarkdownSection> sections = sectionReader.read(filePath);

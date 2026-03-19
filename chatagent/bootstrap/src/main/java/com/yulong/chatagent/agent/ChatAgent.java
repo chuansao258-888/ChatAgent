@@ -18,6 +18,12 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 
 @Slf4j
+/**
+ * Stateful runtime agent that alternates between LLM reasoning and tool execution.
+ * <p>
+ * One {@code ChatAgent} instance is created per chat run and owns the memory,
+ * tool callbacks, and execution loop for a single chat session.
+ */
 public class ChatAgent {
     private static final Integer MAX_STEPS = 20;
     private static final Integer DEFAULT_MAX_MESSAGES = 20;
@@ -93,6 +99,13 @@ public class ChatAgent {
         );
     }
 
+    /**
+     * Executes one agent loop iteration.
+     * <p>
+     * A step first asks the model to decide the next action. If no tool call is
+     * returned, the run is considered finished. Otherwise tool responses are
+     * executed, persisted, and fed back into memory for the next iteration.
+     */
     private void step() {
         this.lastChatResponse = this.thinkingEngine.think(this.chatMemory, this.chatSessionId);
         Assert.notNull(this.lastChatResponse, "Last chat client response cannot be null");
@@ -113,6 +126,9 @@ public class ChatAgent {
         }
     }
 
+    /**
+     * Runs the agent until it finishes, errors, or reaches the configured step cap.
+     */
     public void run() {
         if (agentState != AgentState.IDLE) {
             throw new IllegalStateException("Agent is not idle");

@@ -11,6 +11,9 @@ import java.util.List;
 
 @Component
 @Slf4j
+/**
+ * Performs vector-based similarity search over indexed knowledge chunks.
+ */
 public class KnowledgeChunkSimilaritySearcher {
 
     private final OllamaEmbeddingClient embeddingClient;
@@ -28,6 +31,13 @@ public class KnowledgeChunkSimilaritySearcher {
         this.topK = topK;
     }
 
+    /**
+     * Embeds the query text, formats it for pgvector, and retrieves the top matching chunks.
+     *
+     * @param kbId knowledge base identifier
+     * @param queryText source query text
+     * @return retrieved chunk contents
+     */
     public List<String> search(String kbId, String queryText) {
         long startTime = System.nanoTime();
         float[] embedding = embeddingClient.embed(queryText);

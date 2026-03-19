@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * REST controller for chat session management endpoints.
+ */
 @RestController
 @RequestMapping("/api")
 @AllArgsConstructor
@@ -24,32 +27,68 @@ public class ChatSessionController {
 
     private final ChatSessionFacadeService chatSessionFacadeService;
 
+    /**
+     * Returns all chat sessions.
+     *
+     * @return chat sessions response
+     */
     @GetMapping("/chat-sessions")
     public ApiResponse<GetChatSessionsResponse> getChatSessions() {
         return ApiResponse.success(chatSessionFacadeService.getChatSessions());
     }
 
+    /**
+     * Returns one chat session by identifier.
+     *
+     * @param chatSessionId chat session identifier
+     * @return chat session response
+     */
     @GetMapping("/chat-sessions/{chatSessionId}")
     public ApiResponse<GetChatSessionResponse> getChatSession(@PathVariable String chatSessionId) {
         return ApiResponse.success(chatSessionFacadeService.getChatSession(chatSessionId));
     }
 
+    /**
+     * Returns all chat sessions bound to one agent.
+     *
+     * @param agentId agent identifier
+     * @return chat sessions response
+     */
     @GetMapping("/chat-sessions/agent/{agentId}")
     public ApiResponse<GetChatSessionsResponse> getChatSessionsByAgentId(@PathVariable String agentId) {
         return ApiResponse.success(chatSessionFacadeService.getChatSessionsByAgentId(agentId));
     }
 
+    /**
+     * Creates a new chat session.
+     *
+     * @param request create session request
+     * @return created session response
+     */
     @PostMapping("/chat-sessions")
     public ApiResponse<CreateChatSessionResponse> createChatSession(@RequestBody CreateChatSessionRequest request) {
         return ApiResponse.success(chatSessionFacadeService.createChatSession(request));
     }
 
+    /**
+     * Deletes a chat session.
+     *
+     * @param chatSessionId chat session identifier
+     * @return empty success response
+     */
     @DeleteMapping("/chat-sessions/{chatSessionId}")
     public ApiResponse<Void> deleteChatSession(@PathVariable String chatSessionId) {
         chatSessionFacadeService.deleteChatSession(chatSessionId);
         return ApiResponse.success();
     }
 
+    /**
+     * Updates mutable metadata of a chat session.
+     *
+     * @param chatSessionId chat session identifier
+     * @param request update request payload
+     * @return empty success response
+     */
     @PatchMapping("/chat-sessions/{chatSessionId}")
     public ApiResponse<Void> updateChatSession(@PathVariable String chatSessionId,
                                                @RequestBody UpdateChatSessionRequest request) {

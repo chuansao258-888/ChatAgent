@@ -5,6 +5,19 @@ import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
 
+/**
+ * Immutable runtime payload required to instantiate a {@link ChatAgent}.
+ *
+ * @param agentId agent identifier
+ * @param name agent display name
+ * @param description agent description
+ * @param systemPrompt resolved system prompt
+ * @param model target model name
+ * @param maxMessages memory window size
+ * @param memory restored chat memory
+ * @param toolCallbacks runtime tool callbacks
+ * @param knowledgeBaseSummary summarized accessible knowledge bases
+ */
 public record AgentRuntimeContext(
         String agentId,
         String name,

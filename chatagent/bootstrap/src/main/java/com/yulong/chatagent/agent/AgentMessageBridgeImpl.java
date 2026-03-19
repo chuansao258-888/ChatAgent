@@ -6,12 +6,15 @@ import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import com.yulong.chatagent.sse.SseService;
-import com.yulong.chatagent.support.persistence.converter.ChatMessageConverter;
+import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.stereotype.Component;
 
+/**
+ * Default bridge that stores agent output as chat messages and forwards it over SSE.
+ */
 @Component
 public class AgentMessageBridgeImpl implements AgentMessageBridge {
 
@@ -29,6 +32,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
 
     @Override
     public void persistAndPublish(String chatSessionId, Message message) {
+        // Assistant output becomes one persisted assistant message.
         if (message instanceof AssistantMessage assistantMessage) {
             ChatMessageDTO chatMessageDTO = ChatMessageDTO.builder()
                     .role(ChatMessageDTO.RoleType.ASSISTANT)
@@ -42,6 +46,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             return;
         }
 
+        // Tool output becomes one persisted tool message per tool response.
         if (message instanceof ToolResponseMessage toolResponseMessage) {
             for (ToolResponseMessage.ToolResponse toolResponse : toolResponseMessage.getResponses()) {
                 ChatMessageDTO chatMessageDTO = ChatMessageDTO.builder()
@@ -60,6 +65,11 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         throw new IllegalArgumentException("Unsupported message type: " + message.getClass().getName());
     }
 
+    /**
+     * Persists a normalized chat message and publishes the resulting view model through SSE.
+     *
+     * @param chatMessageDTO normalized chat message DTO
+     */
     private void send(ChatMessageDTO chatMessageDTO) {
         CreateChatMessageResponse chatMessage = chatMessageFacadeService.createChatMessage(chatMessageDTO);
         chatMessageDTO.setId(chatMessage.getChatMessageId());

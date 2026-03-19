@@ -16,6 +16,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @Slf4j
+/**
+ * Encapsulates the model-thinking phase of the agent loop.
+ */
 class AgentThinkingEngine {
 
     private final ChatClient chatClient;
@@ -36,6 +39,13 @@ class AgentThinkingEngine {
         this.messageBridge = messageBridge;
     }
 
+    /**
+     * Invokes the chat model with current memory and available tool callbacks.
+     *
+     * @param chatMemory chat memory store
+     * @param chatSessionId chat session identifier
+     * @return raw model response for the current step
+     */
     ChatResponse think(ChatMemory chatMemory, String chatSessionId) {
         long startTime = System.nanoTime();
         String thinkPrompt = """
@@ -75,6 +85,11 @@ class AgentThinkingEngine {
         return chatResponse;
     }
 
+    /**
+     * Logs tool calls in a readable block so a full agent decision step can be inspected.
+     *
+     * @param toolCalls tool calls emitted by the model
+     */
     private void logToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             log.info("\n\n[ToolCalling] no tool calls");

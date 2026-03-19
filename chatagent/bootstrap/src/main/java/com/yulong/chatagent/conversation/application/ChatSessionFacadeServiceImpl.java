@@ -3,7 +3,7 @@ package com.yulong.chatagent.conversation.application;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
-import com.yulong.chatagent.support.persistence.converter.ChatSessionConverter;
+import com.yulong.chatagent.conversation.converter.ChatSessionConverter;
 import com.yulong.chatagent.conversation.model.request.CreateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatSessionResponse;

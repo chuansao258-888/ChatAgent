@@ -11,6 +11,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Builds a compact knowledge-base summary string that is injected into the agent prompt.
+ */
 @Component
 public class AgentKnowledgeBaseSummaryResolver {
 
@@ -20,6 +23,12 @@ public class AgentKnowledgeBaseSummaryResolver {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
     }
 
+    /**
+     * Produces a human-readable list of accessible knowledge bases for one agent.
+     *
+     * @param agentConfig persisted agent configuration
+     * @return prompt-friendly knowledge-base summary
+     */
     public String resolve(AgentDTO agentConfig) {
         List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
         if (knowledgeBases.isEmpty()) {
@@ -34,6 +43,12 @@ public class AgentKnowledgeBaseSummaryResolver {
                 .collect(Collectors.joining("; "));
     }
 
+    /**
+     * Resolves the knowledge bases explicitly allowed by the agent configuration.
+     *
+     * @param agentConfig persisted agent configuration
+     * @return runtime knowledge bases visible to the agent
+     */
     private List<KnowledgeBaseDTO> resolveRuntimeKnowledgeBases(AgentDTO agentConfig) {
         List<String> allowedKbIds = agentConfig.getAllowedKbs();
         if (allowedKbIds == null || allowedKbIds.isEmpty()) {

@@ -13,7 +13,7 @@ import com.yulong.chatagent.knowledge.model.vo.DocumentVO;
 import com.yulong.chatagent.rag.service.DocumentIngestionService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.support.dto.IngestionTaskDTO;
-import com.yulong.chatagent.support.persistence.converter.DocumentConverter;
+import com.yulong.chatagent.knowledge.converter.DocumentConverter;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +25,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Default implementation of document management and upload orchestration.
+ */
 @Service
 @AllArgsConstructor
 @Slf4j
@@ -118,6 +121,8 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
 
             log.info("Document uploaded: kbId={}, documentId={}, filename={}", kbId, documentId, originalFilename);
 
+            // Markdown files trigger asynchronous ingestion. Other file types are stored
+            // but currently not sent through a chunking/indexing pipeline.
             if ("md".equalsIgnoreCase(fileType) || "markdown".equalsIgnoreCase(fileType)) {
                 IngestionTaskDTO pendingTask = ingestionTaskService.createPendingTask(kbId, documentId, filePath, fileType);
                 taskId = pendingTask.getId();
@@ -188,4 +193,3 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
     }
 }
-
