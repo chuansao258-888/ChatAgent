@@ -17,7 +17,7 @@ public interface AgentMapper {
 
     Agent selectById(String id);
 
-    List<Agent> selectAll();
+    List<Agent> selectByUserId(String userId);
 
     int deleteById(String id);
 

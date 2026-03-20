@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 public class DocumentDTO {
     private String id;
 
+    private String userId;
+
     private String kbId;
 
     private String filename;

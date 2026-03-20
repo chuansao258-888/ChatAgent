@@ -26,8 +26,8 @@ public class MyBatisChatSessionRepository implements ChatSessionRepository {
     }
 
     @Override
-    public List<ChatSessionDTO> findAll() {
-        return toDTOList(chatSessionMapper.selectAll());
+    public List<ChatSessionDTO> findByUserId(String userId) {
+        return toDTOList(chatSessionMapper.selectByUserId(userId));
     }
 
     @Override
@@ -36,8 +36,8 @@ public class MyBatisChatSessionRepository implements ChatSessionRepository {
     }
 
     @Override
-    public List<ChatSessionDTO> findByAgentId(String agentId) {
-        return toDTOList(chatSessionMapper.selectByAgentId(agentId));
+    public List<ChatSessionDTO> findByAgentIdAndUserId(String agentId, String userId) {
+        return toDTOList(chatSessionMapper.selectByAgentIdAndUserId(agentId, userId));
     }
 
     @Override

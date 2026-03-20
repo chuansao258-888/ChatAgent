@@ -13,6 +13,8 @@ import lombok.Data;
 public class Agent {
     private String id;
 
+    private String userId;
+
     private String name;
 
     private String description;
@@ -48,6 +50,7 @@ public class Agent {
         }
         Agent other = (Agent) that;
         return (this.getId() == null ? other.getId() == null : this.getId().equals(other.getId()))
+                && (this.getUserId() == null ? other.getUserId() == null : this.getUserId().equals(other.getUserId()))
                 && (this.getName() == null ? other.getName() == null : this.getName().equals(other.getName()))
                 && (this.getDescription() == null ? other.getDescription() == null : this.getDescription().equals(other.getDescription()))
                 && (this.getSystemPrompt() == null ? other.getSystemPrompt() == null : this.getSystemPrompt().equals(other.getSystemPrompt()))
@@ -64,6 +67,7 @@ public class Agent {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((getId() == null) ? 0 : getId().hashCode());
+        result = prime * result + ((getUserId() == null) ? 0 : getUserId().hashCode());
         result = prime * result + ((getName() == null) ? 0 : getName().hashCode());
         result = prime * result + ((getDescription() == null) ? 0 : getDescription().hashCode());
         result = prime * result + ((getSystemPrompt() == null) ? 0 : getSystemPrompt().hashCode());
@@ -82,6 +86,7 @@ public class Agent {
                 " [" +
                 "Hash = " + hashCode() +
                 ", id=" + id +
+                ", userId=" + userId +
                 ", name=" + name +
                 ", description=" + description +
                 ", systemPrompt=" + systemPrompt +

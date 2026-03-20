@@ -1,5 +1,6 @@
 package com.yulong.chatagent.knowledge.application;
 
+import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.knowledge.port.DocumentRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
@@ -33,7 +34,8 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
 
     @Override
     public GetKnowledgeBasesResponse getKnowledgeBases() {
-        List<KnowledgeBaseDTO> knowledgeBases = knowledgeBaseRepository.findAll();
+        String userId = requireCurrentUserId();
+        List<KnowledgeBaseDTO> knowledgeBases = knowledgeBaseRepository.findByUserId(userId);
         List<KnowledgeBaseVO> result = new ArrayList<>();
         for (KnowledgeBaseDTO knowledgeBase : knowledgeBases) {
             result.add(knowledgeBaseConverter.toVO(knowledgeBase));
@@ -45,7 +47,9 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
 
     @Override
     public CreateKnowledgeBaseResponse createKnowledgeBase(CreateKnowledgeBaseRequest request) {
+        String userId = requireCurrentUserId();
         KnowledgeBaseDTO knowledgeBaseDTO = knowledgeBaseConverter.toDTO(request);
+        knowledgeBaseDTO.setUserId(userId);
         LocalDateTime now = LocalDateTime.now();
         knowledgeBaseDTO.setCreatedAt(now);
         knowledgeBaseDTO.setUpdatedAt(now);
@@ -62,12 +66,10 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteKnowledgeBase(String knowledgeBaseId) {
-        KnowledgeBaseDTO knowledgeBase = knowledgeBaseRepository.findById(knowledgeBaseId);
-        if (knowledgeBase == null) {
-            throw new BizException("Knowledge base not found: " + knowledgeBaseId);
-        }
+        String userId = requireCurrentUserId();
+        KnowledgeBaseDTO knowledgeBase = requireOwnedKnowledgeBase(knowledgeBaseId, userId);
 
-        List<DocumentDTO> documents = documentRepository.findByKnowledgeBaseId(knowledgeBaseId);
+        List<DocumentDTO> documents = documentRepository.findByKnowledgeBaseIdAndUserId(knowledgeBaseId, userId);
         // Delegate document deletion so file storage, ingestion tasks, and chunks are
         // removed consistently through the document service path.
         for (DocumentDTO document : documents) {
@@ -81,10 +83,7 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
 
     @Override
     public void updateKnowledgeBase(String knowledgeBaseId, UpdateKnowledgeBaseRequest request) {
-        KnowledgeBaseDTO existingKnowledgeBase = knowledgeBaseRepository.findById(knowledgeBaseId);
-        if (existingKnowledgeBase == null) {
-            throw new BizException("Knowledge base not found: " + knowledgeBaseId);
-        }
+        KnowledgeBaseDTO existingKnowledgeBase = requireOwnedKnowledgeBase(knowledgeBaseId, requireCurrentUserId());
 
         knowledgeBaseConverter.updateDTOFromRequest(existingKnowledgeBase, request);
         existingKnowledgeBase.setUpdatedAt(LocalDateTime.now());
@@ -92,6 +91,18 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
         if (!knowledgeBaseRepository.update(existingKnowledgeBase)) {
             throw new BizException("Failed to update knowledge base");
         }
+    }
+
+    private String requireCurrentUserId() {
+        return UserContext.requireUser().getUserId();
+    }
+
+    private KnowledgeBaseDTO requireOwnedKnowledgeBase(String knowledgeBaseId, String userId) {
+        KnowledgeBaseDTO knowledgeBase = knowledgeBaseRepository.findById(knowledgeBaseId);
+        if (knowledgeBase == null || !userId.equals(knowledgeBase.getUserId())) {
+            throw new BizException("Knowledge base not found: " + knowledgeBaseId);
+        }
+        return knowledgeBase;
     }
 }
 

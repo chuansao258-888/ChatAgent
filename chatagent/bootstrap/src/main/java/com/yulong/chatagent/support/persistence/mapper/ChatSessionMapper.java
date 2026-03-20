@@ -1,6 +1,7 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
 import com.yulong.chatagent.support.persistence.entity.ChatSession;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -17,9 +18,9 @@ public interface ChatSessionMapper {
 
     ChatSession selectById(String id);
 
-    List<ChatSession> selectAll();
+    List<ChatSession> selectByUserId(String userId);
 
-    List<ChatSession> selectByAgentId(String agentId);
+    List<ChatSession> selectByAgentIdAndUserId(@Param("agentId") String agentId, @Param("userId") String userId);
 
     int deleteById(String id);
 

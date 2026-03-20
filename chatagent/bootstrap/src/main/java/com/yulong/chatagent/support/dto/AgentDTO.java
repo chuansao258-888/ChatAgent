@@ -14,6 +14,8 @@ import java.util.List;
 public class AgentDTO {
     private String id;
 
+    private String userId;
+
     private String name;
 
     private String description;

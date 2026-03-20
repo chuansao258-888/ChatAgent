@@ -59,6 +59,9 @@ public class AgentKnowledgeBaseSummaryResolver {
         if (knowledgeBases.isEmpty()) {
             return Collections.emptyList();
         }
-        return new ArrayList<>(knowledgeBases);
+        String ownerId = agentConfig.getUserId();
+        return knowledgeBases.stream()
+                .filter(kb -> ownerId == null || ownerId.equals(kb.getUserId()))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 }

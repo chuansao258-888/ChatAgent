@@ -13,6 +13,8 @@ import lombok.Data;
 public class ChatSession {
     private String id;
 
+    private String userId;
+
     private String agentId;
 
     private String title;
@@ -37,6 +39,7 @@ public class ChatSession {
         }
         ChatSession other = (ChatSession) that;
         return (this.getId() == null ? other.getId() == null : this.getId().equals(other.getId()))
+            && (this.getUserId() == null ? other.getUserId() == null : this.getUserId().equals(other.getUserId()))
             && (this.getAgentId() == null ? other.getAgentId() == null : this.getAgentId().equals(other.getAgentId()))
             && (this.getTitle() == null ? other.getTitle() == null : this.getTitle().equals(other.getTitle()))
             && (this.getMetadata() == null ? other.getMetadata() == null : this.getMetadata().equals(other.getMetadata()))
@@ -49,6 +52,7 @@ public class ChatSession {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((getId() == null) ? 0 : getId().hashCode());
+        result = prime * result + ((getUserId() == null) ? 0 : getUserId().hashCode());
         result = prime * result + ((getAgentId() == null) ? 0 : getAgentId().hashCode());
         result = prime * result + ((getTitle() == null) ? 0 : getTitle().hashCode());
         result = prime * result + ((getMetadata() == null) ? 0 : getMetadata().hashCode());
@@ -63,6 +67,7 @@ public class ChatSession {
                 " [" +
                 "Hash = " + hashCode() +
                 ", id=" + id +
+                ", userId=" + userId +
                 ", agentId=" + agentId +
                 ", title=" + title +
                 ", metadata=" + metadata +

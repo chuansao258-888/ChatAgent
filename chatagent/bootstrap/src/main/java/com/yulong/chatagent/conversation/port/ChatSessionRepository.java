@@ -10,11 +10,12 @@ import java.util.List;
 public interface ChatSessionRepository {
 
     /**
-     * Lists all chat sessions.
+     * Lists chat sessions owned by one user.
      *
-     * @return all sessions
+     * @param userId owner identifier
+     * @return owned sessions
      */
-    List<ChatSessionDTO> findAll();
+    List<ChatSessionDTO> findByUserId(String userId);
 
     /**
      * Loads one chat session by identifier.
@@ -25,12 +26,13 @@ public interface ChatSessionRepository {
     ChatSessionDTO findById(String id);
 
     /**
-     * Lists sessions attached to one agent.
+     * Lists sessions attached to one agent and owned by one user.
      *
      * @param agentId agent identifier
-     * @return agent sessions
+     * @param userId owner identifier
+     * @return owned agent sessions
      */
-    List<ChatSessionDTO> findByAgentId(String agentId);
+    List<ChatSessionDTO> findByAgentIdAndUserId(String agentId, String userId);
 
     /**
      * Persists a new session.

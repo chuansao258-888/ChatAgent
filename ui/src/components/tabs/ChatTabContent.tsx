@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMatch, useNavigate } from "react-router-dom";
 import { Button, Divider, Popconfirm } from "antd";
 import {
   PlusOutlined,
@@ -11,6 +11,7 @@ import { useAgents } from "../../hooks/useAgents.ts";
 
 const ChatTabContent: React.FC = () => {
   const navigate = useNavigate();
+  const activeChatMatch = useMatch("/chat/:chatSessionId");
   const { chatSessions, loading, deleteChatSession } = useChatSessions();
   const { agents } = useAgents();
 
@@ -33,6 +34,9 @@ const ChatTabContent: React.FC = () => {
 
   const handleDeleteChatSession = async (chatSessionId: string) => {
     await deleteChatSession(chatSessionId);
+    if (activeChatMatch?.params.chatSessionId === chatSessionId) {
+      navigate("/chat", { replace: true });
+    }
   };
 
   // 格式化标题显示

@@ -17,7 +17,7 @@ public interface KnowledgeBaseMapper {
 
     KnowledgeBase selectById(String id);
 
-    List<KnowledgeBase> selectAll();
+    List<KnowledgeBase> selectByUserId(String userId);
 
     List<KnowledgeBase> selectByIdBatch(List<String> ids);
 

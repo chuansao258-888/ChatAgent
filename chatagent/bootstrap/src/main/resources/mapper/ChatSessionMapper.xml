@@ -6,6 +6,7 @@
 
     <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.ChatSession">
         <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
         <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
         <result property="title" column="title" jdbcType="VARCHAR"/>
         <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
@@ -14,7 +15,7 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,agent_id,title,
+        id,user_id,agent_id,title,
         metadata,created_at,updated_at
     </sql>
 
@@ -22,6 +23,7 @@
             keyColumn="id" keyProperty="id" useGeneratedKeys="true">
         INSERT INTO chat_session
         (
+            user_id,
             agent_id,
             title,
             metadata,
@@ -30,6 +32,7 @@
         )
         VALUES
             (
+                CAST(#{userId} AS uuid),
                 CAST(#{agentId} AS uuid),
                 #{title},
                 CAST(#{metadata} AS jsonb),
@@ -41,6 +44,7 @@
     <select id="selectById" resultMap="BaseResultMap">
         SELECT
             id,
+            user_id,
             agent_id,
             title,
             metadata::text AS metadata,
@@ -50,21 +54,24 @@
         WHERE id = CAST(#{id} AS uuid)
     </select>
 
-    <select id="selectAll" resultMap="BaseResultMap">
+    <select id="selectByUserId" resultMap="BaseResultMap">
         SELECT
             id,
+            user_id,
             agent_id,
             title,
             metadata::text AS metadata,
             created_at,
             updated_at
         FROM chat_session
+        WHERE user_id = CAST(#{userId} AS uuid)
         ORDER BY updated_at DESC
     </select>
 
-    <select id="selectByAgentId" resultMap="BaseResultMap">
+    <select id="selectByAgentIdAndUserId" resultMap="BaseResultMap">
         SELECT
             id,
+            user_id,
             agent_id,
             title,
             metadata::text AS metadata,
@@ -72,6 +79,7 @@
             updated_at
         FROM chat_session
         WHERE agent_id = CAST(#{agentId} AS uuid)
+          AND user_id = CAST(#{userId} AS uuid)
         ORDER BY updated_at DESC
     </select>
 
@@ -84,6 +92,9 @@
         <set>
             <if test="agentId != null">
                 agent_id = CAST(#{agentId} AS uuid),
+            </if>
+            <if test="userId != null">
+                user_id = CAST(#{userId} AS uuid),
             </if>
             <if test="title != null">
                 title = #{title},

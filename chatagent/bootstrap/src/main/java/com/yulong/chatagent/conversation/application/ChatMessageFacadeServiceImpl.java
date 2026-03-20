@@ -1,9 +1,12 @@
 package com.yulong.chatagent.conversation.application;
 
-import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
+import com.yulong.chatagent.context.LoginUser;
+import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
@@ -11,7 +14,6 @@ import com.yulong.chatagent.conversation.model.response.GetChatMessagesResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import lombok.AllArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,11 +25,12 @@ import java.util.List;
 public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
 
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageConverter chatMessageConverter;
-    private final ApplicationEventPublisher publisher;
 
     @Override
     public GetChatMessagesResponse getChatMessagesBySessionId(String sessionId) {
+        requireOwnedSessionIfAuthenticated(sessionId);
         List<ChatMessageDTO> chatMessages = chatMessageRepository.findBySessionId(sessionId);
         List<ChatMessageVO> result = new ArrayList<>();
         for (ChatMessageDTO chatMessage : chatMessages) {
@@ -41,17 +44,13 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
 
     @Override
     public List<ChatMessageDTO> getChatMessagesBySessionIdRecently(String sessionId, int limit) {
+        requireOwnedSessionIfAuthenticated(sessionId);
         return chatMessageRepository.findRecentBySessionId(sessionId, limit);
     }
 
     @Override
     public CreateChatMessageResponse createChatMessage(CreateChatMessageRequest request) {
         ChatMessageDTO chatMessage = doCreateChatMessage(request);
-        publisher.publishEvent(new ChatEvent(
-                request.getAgentId(),
-                chatMessage.getSessionId(),
-                chatMessage.getContent()
-        ));
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
                 .build();
@@ -79,6 +78,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         if (existingChatMessage == null) {
             throw new BizException("Chat message not found: " + chatMessageId);
         }
+        requireOwnedSessionIfAuthenticated(existingChatMessage.getSessionId());
 
         String currentContent = existingChatMessage.getContent() != null ? existingChatMessage.getContent() : "";
         ChatMessageDTO updatedChatMessage = ChatMessageDTO.builder()
@@ -106,6 +106,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         if (chatMessage == null) {
             throw new BizException("Chat message not found: " + chatMessageId);
         }
+        requireOwnedSessionIfAuthenticated(chatMessage.getSessionId());
 
         if (!chatMessageRepository.deleteById(chatMessageId)) {
             throw new BizException("Failed to delete chat message");
@@ -118,6 +119,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         if (existingChatMessage == null) {
             throw new BizException("Chat message not found: " + chatMessageId);
         }
+        requireOwnedSessionIfAuthenticated(existingChatMessage.getSessionId());
 
         chatMessageConverter.updateDTOFromRequest(existingChatMessage, request);
         existingChatMessage.setUpdatedAt(LocalDateTime.now());
@@ -132,6 +134,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
     }
 
     private ChatMessageDTO doCreateChatMessage(ChatMessageDTO chatMessageDTO) {
+        requireOwnedSessionIfAuthenticated(chatMessageDTO.getSessionId());
         LocalDateTime now = LocalDateTime.now();
         chatMessageDTO.setCreatedAt(now);
         chatMessageDTO.setUpdatedAt(now);
@@ -141,5 +144,16 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         }
         return chatMessageDTO;
     }
-}
 
+    private void requireOwnedSessionIfAuthenticated(String sessionId) {
+        LoginUser loginUser = UserContext.get();
+        if (loginUser == null) {
+            return;
+        }
+
+        ChatSessionDTO chatSession = chatSessionRepository.findById(sessionId);
+        if (chatSession == null || !loginUser.getUserId().equals(chatSession.getUserId())) {
+            throw new BizException("Chat session not found: " + sessionId);
+        }
+    }
+}

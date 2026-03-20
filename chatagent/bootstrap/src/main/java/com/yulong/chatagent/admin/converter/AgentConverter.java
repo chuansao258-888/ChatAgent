@@ -27,6 +27,7 @@ public class AgentConverter {
 
         return Agent.builder()
                 .id(agentDTO.getId())
+                .userId(agentDTO.getUserId())
                 .name(agentDTO.getName())
                 .description(agentDTO.getDescription())
                 .systemPrompt(agentDTO.getSystemPrompt())
@@ -48,6 +49,7 @@ public class AgentConverter {
 
         return AgentDTO.builder()
                 .id(agent.getId())
+                .userId(agent.getUserId())
                 .name(agent.getName())
                 .description(agent.getDescription())
                 .systemPrompt(agent.getSystemPrompt())

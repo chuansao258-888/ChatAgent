@@ -6,6 +6,7 @@
 
     <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.Agent">
         <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
         <result property="name" column="name" jdbcType="VARCHAR"/>
         <result property="description" column="description" jdbcType="VARCHAR"/>
         <result property="systemPrompt" column="system_prompt" jdbcType="VARCHAR"/>
@@ -18,7 +19,7 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,name,description,
+        id,user_id,name,description,
         system_prompt,model,allowed_tools,
         allowed_kbs,chat_options,created_at,
         updated_at
@@ -27,7 +28,8 @@
     <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.Agent"
             keyColumn="id" keyProperty="id" useGeneratedKeys="true">
         INSERT INTO agent
-        (name,
+        (user_id,
+         name,
          description,
          system_prompt,
          model,
@@ -36,7 +38,8 @@
          chat_options,
          created_at,
          updated_at)
-        VALUES (#{name},
+        VALUES (CAST(#{userId} AS uuid),
+                #{name},
                 #{description},
                 #{systemPrompt},
                 #{model},
@@ -49,6 +52,7 @@
 
     <select id="selectById" resultMap="BaseResultMap">
         SELECT id,
+               user_id,
                name,
                description,
                system_prompt,
@@ -62,8 +66,9 @@
         WHERE id = CAST(#{id} AS uuid)
     </select>
 
-    <select id="selectAll" resultMap="BaseResultMap">
+    <select id="selectByUserId" resultMap="BaseResultMap">
         SELECT id,
+               user_id,
                name,
                description,
                system_prompt,
@@ -74,6 +79,7 @@
                created_at,
                updated_at
         FROM agent
+        WHERE user_id = CAST(#{userId} AS uuid)
         ORDER BY created_at DESC
     </select>
 
@@ -88,6 +94,9 @@
         <set>
             <if test="name != null">
                 name = #{name},
+            </if>
+            <if test="userId != null">
+                user_id = CAST(#{userId} AS uuid),
             </if>
             <if test="description != null">
                 description = #{description},

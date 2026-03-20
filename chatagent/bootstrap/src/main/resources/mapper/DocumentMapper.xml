@@ -6,6 +6,7 @@
 
     <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.Document">
         <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
         <result property="kbId" column="kb_id" jdbcType="VARCHAR"/>
         <result property="filename" column="filename" jdbcType="VARCHAR"/>
         <result property="filetype" column="filetype" jdbcType="VARCHAR"/>
@@ -16,7 +17,7 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,kb_id,filename,
+        id,user_id,kb_id,filename,
         filetype,size,metadata,
         created_at,updated_at
     </sql>
@@ -25,6 +26,7 @@
             keyColumn="id" keyProperty="id" useGeneratedKeys="true">
         INSERT INTO document
         (
+            user_id,
             kb_id,
             filename,
             filetype,
@@ -35,6 +37,7 @@
         )
         VALUES
             (
+                CAST(#{userId} AS uuid),
                 CAST(#{kbId} AS uuid),
                 #{filename},
                 #{filetype},
@@ -48,6 +51,7 @@
     <select id="selectById" resultMap="BaseResultMap">
         SELECT
             id,
+            user_id,
             kb_id,
             filename,
             filetype,
@@ -59,9 +63,10 @@
         WHERE id = CAST(#{id} AS uuid)
     </select>
 
-    <select id="selectAll" resultMap="BaseResultMap">
+    <select id="selectByUserId" resultMap="BaseResultMap">
         SELECT
             id,
+            user_id,
             kb_id,
             filename,
             filetype,
@@ -70,12 +75,14 @@
             created_at,
             updated_at
         FROM document
+        WHERE user_id = CAST(#{userId} AS uuid)
         ORDER BY updated_at DESC
     </select>
 
     <select id="selectByKbId" resultMap="BaseResultMap">
         SELECT
             id,
+            user_id,
             kb_id,
             filename,
             filetype,
@@ -88,6 +95,23 @@
         ORDER BY updated_at DESC
     </select>
 
+    <select id="selectByKbIdAndUserId" resultMap="BaseResultMap">
+        SELECT
+            id,
+            user_id,
+            kb_id,
+            filename,
+            filetype,
+            size,
+            metadata::text AS metadata,
+            created_at,
+            updated_at
+        FROM document
+        WHERE kb_id = CAST(#{kbId} AS uuid)
+          AND user_id = CAST(#{userId} AS uuid)
+        ORDER BY updated_at DESC
+    </select>
+
     <delete id="deleteById">
         DELETE FROM document WHERE id = CAST(#{id} AS uuid)
     </delete>
@@ -97,6 +121,9 @@
         <set>
             <if test="kbId != null">
                 kb_id = CAST(#{kbId} AS uuid),
+            </if>
+            <if test="userId != null">
+                user_id = CAST(#{userId} AS uuid),
             </if>
             <if test="filename != null">
                 filename = #{filename},

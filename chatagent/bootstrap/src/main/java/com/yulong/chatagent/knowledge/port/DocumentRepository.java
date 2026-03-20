@@ -10,11 +10,12 @@ import java.util.List;
 public interface DocumentRepository {
 
     /**
-     * Lists all documents.
+     * Lists documents owned by one user.
      *
-     * @return all documents
+     * @param userId owner identifier
+     * @return owned documents
      */
-    List<DocumentDTO> findAll();
+    List<DocumentDTO> findByUserId(String userId);
 
     /**
      * Loads one document by identifier.
@@ -25,12 +26,13 @@ public interface DocumentRepository {
     DocumentDTO findById(String id);
 
     /**
-     * Lists documents under one knowledge base.
+     * Lists documents under one knowledge base and owned by one user.
      *
      * @param kbId knowledge base identifier
-     * @return matching documents
+     * @param userId owner identifier
+     * @return matching owned documents
      */
-    List<DocumentDTO> findByKnowledgeBaseId(String kbId);
+    List<DocumentDTO> findByKnowledgeBaseIdAndUserId(String kbId, String userId);
 
     /**
      * Persists a new document.

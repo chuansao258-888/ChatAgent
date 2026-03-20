@@ -22,6 +22,7 @@ public class DocumentConverter {
 
         return Document.builder()
                 .id(documentDTO.getId())
+                .userId(documentDTO.getUserId())
                 .kbId(documentDTO.getKbId())
                 .filename(documentDTO.getFilename())
                 .filetype(documentDTO.getFiletype())
@@ -39,6 +40,7 @@ public class DocumentConverter {
 
         return DocumentDTO.builder()
                 .id(document.getId())
+                .userId(document.getUserId())
                 .kbId(document.getKbId())
                 .filename(document.getFilename())
                 .filetype(document.getFiletype())

@@ -27,8 +27,8 @@ public class MyBatisKnowledgeBaseRepository implements KnowledgeBaseRepository {
     }
 
     @Override
-    public List<KnowledgeBaseDTO> findAll() {
-        return toDTOList(knowledgeBaseMapper.selectAll());
+    public List<KnowledgeBaseDTO> findByUserId(String userId) {
+        return toDTOList(knowledgeBaseMapper.selectByUserId(userId));
     }
 
     @Override

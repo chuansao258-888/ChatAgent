@@ -10,11 +10,12 @@ import java.util.List;
 public interface AgentRepository {
 
     /**
-     * Lists all agents.
+     * Lists agents owned by one user.
      *
-     * @return all agents
+     * @param userId owner identifier
+     * @return owned agents
      */
-    List<AgentDTO> findAll();
+    List<AgentDTO> findByUserId(String userId);
 
     /**
      * Loads one agent by identifier.

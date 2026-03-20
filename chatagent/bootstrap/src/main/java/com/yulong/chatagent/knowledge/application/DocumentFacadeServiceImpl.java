@@ -1,10 +1,13 @@
 package com.yulong.chatagent.knowledge.application;
 
+import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.exception.ServiceException;
 import com.yulong.chatagent.knowledge.port.DocumentRepository;
 import com.yulong.chatagent.knowledge.port.IngestionTaskRepository;
+import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.support.dto.DocumentDTO;
+import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.knowledge.model.request.CreateDocumentRequest;
 import com.yulong.chatagent.knowledge.model.request.UpdateDocumentRequest;
 import com.yulong.chatagent.knowledge.model.response.CreateDocumentResponse;
@@ -39,10 +42,12 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
     private final DocumentIngestionService documentIngestionService;
     private final IngestionTaskService ingestionTaskService;
     private final IngestionTaskRepository ingestionTaskRepository;
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
 
     @Override
     public GetDocumentsResponse getDocuments() {
-        List<DocumentDTO> documents = documentRepository.findAll();
+        String userId = requireCurrentUserId();
+        List<DocumentDTO> documents = documentRepository.findByUserId(userId);
         List<DocumentVO> result = new ArrayList<>();
         for (DocumentDTO document : documents) {
             result.add(documentConverter.toVO(document));
@@ -54,7 +59,9 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
 
     @Override
     public GetDocumentsResponse getDocumentsByKbId(String kbId) {
-        List<DocumentDTO> documents = documentRepository.findByKnowledgeBaseId(kbId);
+        String userId = requireCurrentUserId();
+        requireOwnedKnowledgeBase(kbId, userId);
+        List<DocumentDTO> documents = documentRepository.findByKnowledgeBaseIdAndUserId(kbId, userId);
         List<DocumentVO> result = new ArrayList<>();
         for (DocumentDTO document : documents) {
             result.add(documentConverter.toVO(document));
@@ -66,7 +73,10 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
 
     @Override
     public CreateDocumentResponse createDocument(CreateDocumentRequest request) {
+        String userId = requireCurrentUserId();
+        requireOwnedKnowledgeBase(request.getKbId(), userId);
         DocumentDTO documentDTO = documentConverter.toDTO(request);
+        documentDTO.setUserId(userId);
         LocalDateTime now = LocalDateTime.now();
         documentDTO.setCreatedAt(now);
         documentDTO.setUpdatedAt(now);
@@ -83,6 +93,8 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
     @Override
     public CreateDocumentResponse uploadDocument(String kbId, MultipartFile file) {
         try {
+            String userId = requireCurrentUserId();
+            requireOwnedKnowledgeBase(kbId, userId);
             if (file.isEmpty()) {
                 throw new BizException("Uploaded file is empty");
             }
@@ -93,6 +105,7 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
             String taskId;
 
             DocumentDTO documentDTO = DocumentDTO.builder()
+                    .userId(userId)
                     .kbId(kbId)
                     .filename(originalFilename)
                     .filetype(fileType)
@@ -146,10 +159,7 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteDocument(String documentId) {
-        DocumentDTO document = documentRepository.findById(documentId);
-        if (document == null) {
-            throw new BizException("Document not found: " + documentId);
-        }
+        DocumentDTO document = requireOwnedDocument(documentId, requireCurrentUserId());
         if(ingestionTaskRepository.existsActiveTaskByDocumentId(documentId)){
             throw new BizException("Document ingestion task is still running: " + documentId);
         }
@@ -173,10 +183,7 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
 
     @Override
     public void updateDocument(String documentId, UpdateDocumentRequest request) {
-        DocumentDTO existingDocument = documentRepository.findById(documentId);
-        if (existingDocument == null) {
-            throw new BizException("Document not found: " + documentId);
-        }
+        DocumentDTO existingDocument = requireOwnedDocument(documentId, requireCurrentUserId());
 
         documentConverter.updateDTOFromRequest(existingDocument, request);
         existingDocument.setUpdatedAt(LocalDateTime.now());
@@ -191,5 +198,25 @@ public class DocumentFacadeServiceImpl implements DocumentFacadeService {
             return "unknown";
         }
         return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+
+    private String requireCurrentUserId() {
+        return UserContext.requireUser().getUserId();
+    }
+
+    private KnowledgeBaseDTO requireOwnedKnowledgeBase(String kbId, String userId) {
+        KnowledgeBaseDTO knowledgeBase = knowledgeBaseRepository.findById(kbId);
+        if (knowledgeBase == null || !userId.equals(knowledgeBase.getUserId())) {
+            throw new BizException("Knowledge base not found: " + kbId);
+        }
+        return knowledgeBase;
+    }
+
+    private DocumentDTO requireOwnedDocument(String documentId, String userId) {
+        DocumentDTO document = documentRepository.findById(documentId);
+        if (document == null || !userId.equals(document.getUserId())) {
+            throw new BizException("Document not found: " + documentId);
+        }
+        return document;
     }
 }

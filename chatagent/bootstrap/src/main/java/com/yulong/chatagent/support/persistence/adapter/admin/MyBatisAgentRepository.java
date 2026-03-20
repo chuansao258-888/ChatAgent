@@ -26,8 +26,8 @@ public class MyBatisAgentRepository implements AgentRepository {
     }
 
     @Override
-    public List<AgentDTO> findAll() {
-        return toDTOList(agentMapper.selectAll());
+    public List<AgentDTO> findByUserId(String userId) {
+        return toDTOList(agentMapper.selectByUserId(userId));
     }
 
     @Override

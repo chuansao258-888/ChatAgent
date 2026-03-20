@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 public class ChatSessionDTO {
     private String id;
 
+    private String userId;
+
     private String agentId;
 
     private String title;

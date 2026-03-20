@@ -13,6 +13,8 @@ import lombok.Data;
 public class KnowledgeBase {
     private String id;
 
+    private String userId;
+
     private String name;
 
     private String description;
@@ -36,6 +38,7 @@ public class KnowledgeBase {
         }
         KnowledgeBase other = (KnowledgeBase) that;
         return (this.getId() == null ? other.getId() == null : this.getId().equals(other.getId()))
+            && (this.getUserId() == null ? other.getUserId() == null : this.getUserId().equals(other.getUserId()))
             && (this.getName() == null ? other.getName() == null : this.getName().equals(other.getName()))
             && (this.getDescription() == null ? other.getDescription() == null : this.getDescription().equals(other.getDescription()))
             && (this.getMetadata() == null ? other.getMetadata() == null : this.getMetadata().equals(other.getMetadata()))
@@ -48,6 +51,7 @@ public class KnowledgeBase {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((getId() == null) ? 0 : getId().hashCode());
+        result = prime * result + ((getUserId() == null) ? 0 : getUserId().hashCode());
         result = prime * result + ((getName() == null) ? 0 : getName().hashCode());
         result = prime * result + ((getDescription() == null) ? 0 : getDescription().hashCode());
         result = prime * result + ((getMetadata() == null) ? 0 : getMetadata().hashCode());
@@ -62,6 +66,7 @@ public class KnowledgeBase {
                 " [" +
                 "Hash = " + hashCode() +
                 ", id=" + id +
+                ", userId=" + userId +
                 ", name=" + name +
                 ", description=" + description +
                 ", metadata=" + metadata +

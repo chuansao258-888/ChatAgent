@@ -10,11 +10,12 @@ import java.util.List;
 public interface KnowledgeBaseRepository {
 
     /**
-     * Lists all knowledge bases.
+     * Lists knowledge bases owned by one user.
      *
-     * @return all knowledge bases
+     * @param userId owner identifier
+     * @return owned knowledge bases
      */
-    List<KnowledgeBaseDTO> findAll();
+    List<KnowledgeBaseDTO> findByUserId(String userId);
 
     /**
      * Loads one knowledge base by identifier.

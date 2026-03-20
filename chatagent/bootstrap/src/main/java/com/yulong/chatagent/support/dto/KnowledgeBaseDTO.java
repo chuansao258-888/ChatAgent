@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 public class KnowledgeBaseDTO {
     private String id;
 
+    private String userId;
+
     private String name;
 
     private String description;

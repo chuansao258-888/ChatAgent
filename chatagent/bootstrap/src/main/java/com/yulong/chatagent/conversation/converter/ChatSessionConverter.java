@@ -22,6 +22,7 @@ public class ChatSessionConverter {
 
         return ChatSession.builder()
                 .id(chatSessionDTO.getId())
+                .userId(chatSessionDTO.getUserId())
                 .agentId(chatSessionDTO.getAgentId())
                 .title(chatSessionDTO.getTitle())
                 .metadata(chatSessionDTO.getMetadata() != null 
@@ -37,6 +38,7 @@ public class ChatSessionConverter {
 
         return ChatSessionDTO.builder()
                 .id(chatSession.getId())
+                .userId(chatSession.getUserId())
                 .agentId(chatSession.getAgentId())
                 .title(chatSession.getTitle())
                 .metadata(chatSession.getMetadata() != null 

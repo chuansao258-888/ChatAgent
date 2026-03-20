@@ -13,6 +13,8 @@ import lombok.Data;
 public class Document {
     private String id;
 
+    private String userId;
+
     private String kbId;
 
     private String filename;
@@ -41,6 +43,7 @@ public class Document {
         }
         Document other = (Document) that;
         return (this.getId() == null ? other.getId() == null : this.getId().equals(other.getId()))
+            && (this.getUserId() == null ? other.getUserId() == null : this.getUserId().equals(other.getUserId()))
             && (this.getKbId() == null ? other.getKbId() == null : this.getKbId().equals(other.getKbId()))
             && (this.getFilename() == null ? other.getFilename() == null : this.getFilename().equals(other.getFilename()))
             && (this.getFiletype() == null ? other.getFiletype() == null : this.getFiletype().equals(other.getFiletype()))
@@ -55,6 +58,7 @@ public class Document {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((getId() == null) ? 0 : getId().hashCode());
+        result = prime * result + ((getUserId() == null) ? 0 : getUserId().hashCode());
         result = prime * result + ((getKbId() == null) ? 0 : getKbId().hashCode());
         result = prime * result + ((getFilename() == null) ? 0 : getFilename().hashCode());
         result = prime * result + ((getFiletype() == null) ? 0 : getFiletype().hashCode());
@@ -71,6 +75,7 @@ public class Document {
                 " [" +
                 "Hash = " + hashCode() +
                 ", id=" + id +
+                ", userId=" + userId +
                 ", kbId=" + kbId +
                 ", filename=" + filename +
                 ", filetype=" + filetype +

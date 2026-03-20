@@ -14,6 +14,14 @@ import { useChatSessions } from "../../hooks/useChatSessions.ts";
 import EmptyAgentChatView from "./agentChatView/EmptyAgentChatView.tsx";
 import type { ChatMessageVO, SseMessage, SseMessageType } from "../../types";
 
+function isMissingChatSessionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes("Chat session not found") ||
+      error.message.includes("HTTP error! status: 404"))
+  );
+}
+
 const AgentChatView: React.FC = () => {
   const { chatSessionId } = useParams<{ chatSessionId: string }>();
   const navigate = useNavigate();
@@ -32,24 +40,37 @@ const AgentChatView: React.FC = () => {
 
   const getChatMessages = useCallback(async () => {
     if (!chatSessionId) {
+      setMessages([]);
+      setAgentId("");
       return;
     }
-    const resp = await getChatMessagesBySessionId(chatSessionId);
-    setMessages(resp.chatMessages);
-
-    const fetchData = async () => {
-      const resp = await getChatSession(chatSessionId);
-      // setChatSession(resp.chatSession);
-      setAgentId(resp.chatSession.agentId);
-    };
-    fetchData().then();
-  }, [chatSessionId]);
+    try {
+      const [messagesResp, sessionResp] = await Promise.all([
+        getChatMessagesBySessionId(chatSessionId),
+        getChatSession(chatSessionId),
+      ]);
+      setMessages(messagesResp.chatMessages);
+      setAgentId(sessionResp.chatSession.agentId);
+    } catch (error) {
+      if (isMissingChatSessionError(error)) {
+        setMessages([]);
+        setAgentId("");
+        await refreshChatSessions();
+        navigate("/chat", { replace: true });
+        return;
+      }
+      throw error;
+    }
+  }, [chatSessionId, navigate, refreshChatSessions]);
 
   useEffect(() => {
     if (!chatSessionId) {
       return;
     }
-    getChatMessages().then();
+    getChatMessages().catch((error) => {
+      console.error("Failed to load chat session:", error);
+      antdMessage.error("Failed to load the conversation. Please try again.");
+    });
   }, [chatSessionId, getChatMessages]);
 
   const handleSendMessage = async (value: string | { text: string }) => {

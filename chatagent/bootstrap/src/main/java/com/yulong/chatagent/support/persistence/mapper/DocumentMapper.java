@@ -1,6 +1,7 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
 import com.yulong.chatagent.support.persistence.entity.Document;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -17,9 +18,11 @@ public interface DocumentMapper {
 
     Document selectById(String id);
 
-    List<Document> selectAll();
+    List<Document> selectByUserId(String userId);
 
     List<Document> selectByKbId(String kbId);
+
+    List<Document> selectByKbIdAndUserId(@Param("kbId") String kbId, @Param("userId") String userId);
 
     int deleteById(String id);
 

@@ -1,6 +1,7 @@
 package com.yulong.chatagent.conversation.controller;
 
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
+import com.yulong.chatagent.conversation.application.ConversationOrchestratorService;
 import com.yulong.chatagent.model.common.ApiResponse;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatMessageController {
 
     private final ChatMessageFacadeService chatMessageFacadeService;
+    private final ConversationOrchestratorService conversationOrchestratorService;
 
     /**
      * Returns all messages for the given session.
@@ -38,14 +40,18 @@ public class ChatMessageController {
     }
 
     /**
-     * Creates a new chat message.
+     * Creates a new user message and enters the turn orchestrator.
+     * <p>
+     * Unlike the other endpoints in this controller, this route is not treated
+     * as plain CRUD anymore. It is the conversation entrypoint that may trigger
+     * asynchronous agent work after the user message is accepted.
      *
      * @param request create message request
      * @return created message response
      */
     @PostMapping("/chat-messages")
     public ApiResponse<CreateChatMessageResponse> createChatMessage(@RequestBody CreateChatMessageRequest request) {
-        return ApiResponse.success(chatMessageFacadeService.createChatMessage(request));
+        return ApiResponse.success(conversationOrchestratorService.handleUserTurn(request));
     }
 
     /**
@@ -74,4 +80,3 @@ public class ChatMessageController {
         return ApiResponse.success();
     }
 }
-

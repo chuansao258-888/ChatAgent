@@ -22,6 +22,7 @@ public class KnowledgeBaseConverter {
 
         return KnowledgeBase.builder()
                 .id(knowledgeBaseDTO.getId())
+                .userId(knowledgeBaseDTO.getUserId())
                 .name(knowledgeBaseDTO.getName())
                 .description(knowledgeBaseDTO.getDescription())
                 .metadata(knowledgeBaseDTO.getMetadata() != null 
@@ -37,6 +38,7 @@ public class KnowledgeBaseConverter {
 
         return KnowledgeBaseDTO.builder()
                 .id(knowledgeBase.getId())
+                .userId(knowledgeBase.getUserId())
                 .name(knowledgeBase.getName())
                 .description(knowledgeBase.getDescription())
                 .metadata(knowledgeBase.getMetadata() != null 

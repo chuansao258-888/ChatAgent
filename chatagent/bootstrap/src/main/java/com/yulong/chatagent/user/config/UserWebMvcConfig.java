@@ -18,9 +18,10 @@ public class UserWebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Only endpoints under /api/user/** require the access-token interceptor
-        // at the moment. Auth endpoints manage refresh tokens separately.
+        // Protect every application API route except the auth endpoints that are
+        // responsible for issuing and rotating tokens.
         registry.addInterceptor(jwtAuthenticationInterceptor)
-                .addPathPatterns("/api/user/**");
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/auth/**");
     }
 }

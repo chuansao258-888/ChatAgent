@@ -26,8 +26,8 @@ public class MyBatisDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public List<DocumentDTO> findAll() {
-        return toDTOList(documentMapper.selectAll());
+    public List<DocumentDTO> findByUserId(String userId) {
+        return toDTOList(documentMapper.selectByUserId(userId));
     }
 
     @Override
@@ -36,8 +36,8 @@ public class MyBatisDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public List<DocumentDTO> findByKnowledgeBaseId(String kbId) {
-        return toDTOList(documentMapper.selectByKbId(kbId));
+    public List<DocumentDTO> findByKnowledgeBaseIdAndUserId(String kbId, String userId) {
+        return toDTOList(documentMapper.selectByKbIdAndUserId(kbId, userId));
     }
 
     @Override
