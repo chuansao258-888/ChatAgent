@@ -26,8 +26,6 @@ public class AgentDTO {
 
     private List<String> allowedTools;
 
-    private List<String> allowedKbs;
-
     private ChatOptions chatOptions;
 
     private LocalDateTime createdAt;

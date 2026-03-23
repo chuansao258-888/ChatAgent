@@ -11,7 +11,7 @@ import {
 } from "../api/auth.ts";
 import { AUTH_EXPIRED_EVENT } from "../auth/events.ts";
 import { clearAccessToken, setAccessToken } from "../auth/token.ts";
-import { AuthContext } from "./authContext.ts";
+import { AuthContext, type AuthMode } from "./authContext.ts";
 
 function toCurrentUser(authResponse: AuthResponse): CurrentUserVO {
   return {
@@ -25,6 +25,8 @@ function toCurrentUser(authResponse: AuthResponse): CurrentUserVO {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CurrentUserVO | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authDialogMode, setAuthDialogMode] = useState<AuthMode>("login");
 
   const applyAuthResponse = useCallback((authResponse: AuthResponse) => {
     setAccessToken(authResponse.accessToken);
@@ -40,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (request: LoginRequest) => {
       const authResponse = await loginApi(request);
       applyAuthResponse(authResponse);
+      setAuthDialogOpen(false);
     },
     [applyAuthResponse],
   );
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (request: RegisterRequest) => {
       const authResponse = await registerApi(request);
       applyAuthResponse(authResponse);
+      setAuthDialogOpen(false);
     },
     [applyAuthResponse],
   );
@@ -59,6 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthState();
     }
   }, [clearAuthState]);
+
+  const openAuthDialog = useCallback((mode: AuthMode = "login") => {
+    setAuthDialogMode(mode);
+    setAuthDialogOpen(true);
+  }, []);
+
+  const closeAuthDialog = useCallback(() => {
+    setAuthDialogOpen(false);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -102,11 +115,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       currentUser,
       initializing,
       isAuthenticated: currentUser !== null,
+      authDialogOpen,
+      authDialogMode,
       login,
       register,
       logout,
+      openAuthDialog,
+      closeAuthDialog,
     }),
-    [currentUser, initializing, login, register, logout],
+    [
+      authDialogMode,
+      authDialogOpen,
+      closeAuthDialog,
+      currentUser,
+      initializing,
+      login,
+      logout,
+      openAuthDialog,
+      register,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

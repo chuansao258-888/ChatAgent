@@ -27,9 +27,6 @@ public class Agent {
     private String allowedTools;
 
     // JSON String
-    private String allowedKbs;
-
-    // JSON String
     private String chatOptions;
 
     private LocalDateTime createdAt;
@@ -56,7 +53,6 @@ public class Agent {
                 && (this.getSystemPrompt() == null ? other.getSystemPrompt() == null : this.getSystemPrompt().equals(other.getSystemPrompt()))
                 && (this.getModel() == null ? other.getModel() == null : this.getModel().equals(other.getModel()))
                 && (this.getAllowedTools() == null ? other.getAllowedTools() == null : this.getAllowedTools().equals(other.getAllowedTools()))
-                && (this.getAllowedKbs() == null ? other.getAllowedKbs() == null : this.getAllowedKbs().equals(other.getAllowedKbs()))
                 && (this.getChatOptions() == null ? other.getChatOptions() == null : this.getChatOptions().equals(other.getChatOptions()))
                 && (this.getCreatedAt() == null ? other.getCreatedAt() == null : this.getCreatedAt().equals(other.getCreatedAt()))
                 && (this.getUpdatedAt() == null ? other.getUpdatedAt() == null : this.getUpdatedAt().equals(other.getUpdatedAt()));
@@ -73,7 +69,6 @@ public class Agent {
         result = prime * result + ((getSystemPrompt() == null) ? 0 : getSystemPrompt().hashCode());
         result = prime * result + ((getModel() == null) ? 0 : getModel().hashCode());
         result = prime * result + ((getAllowedTools() == null) ? 0 : getAllowedTools().hashCode());
-        result = prime * result + ((getAllowedKbs() == null) ? 0 : getAllowedKbs().hashCode());
         result = prime * result + ((getChatOptions() == null) ? 0 : getChatOptions().hashCode());
         result = prime * result + ((getCreatedAt() == null) ? 0 : getCreatedAt().hashCode());
         result = prime * result + ((getUpdatedAt() == null) ? 0 : getUpdatedAt().hashCode());
@@ -92,7 +87,6 @@ public class Agent {
                 ", systemPrompt=" + systemPrompt +
                 ", model=" + model +
                 ", allowedTools=" + allowedTools +
-                ", allowedKbs=" + allowedKbs +
                 ", chatOptions=" + chatOptions +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +

@@ -1,131 +1,158 @@
-import React, { useState } from "react";
-import { LogoutOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  EditOutlined,
+  LockOutlined,
+  LogoutOutlined,
+  MessageOutlined,
+  SearchOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 import { Button, Tabs, Tooltip, Typography, type TabsProps } from "antd";
-import { useNavigate } from "react-router-dom";
-import AgentTabContent from "./tabs/AgentTabContent.tsx";
-import AddAgentModal from "./modals/AddAgentModal.tsx";
-import ChatTabContent from "./tabs/ChatTabContent.tsx";
-import KnowledgeBaseTabContent from "./tabs/KnowledgeBaseTabContent.tsx";
-import AddKnowledgeBaseModal from "./modals/AddKnowledgeBaseModal.tsx";
-import { useAgents } from "../hooks/useAgents.ts";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.ts";
-import { useKnowledgeBases } from "../hooks/useKnowledgeBases.ts";
+import ChatTabContent from "./tabs/ChatTabContent.tsx";
 
-interface SideMenuProps {
-  children?: React.ReactNode;
+const CHAT_TAB_KEY = "chat";
+
+function SideMenuHeader() {
+  return (
+    <div className="flex items-center gap-3 px-1 pb-5 pt-1">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+        <MessageOutlined className="text-lg" />
+      </div>
+      <div>
+        <div className="select-none text-[1.15rem] font-semibold tracking-tight text-white">
+          ChatAgent
+        </div>
+        <div className="text-xs text-white/38">Chat-first workspace</div>
+      </div>
+    </div>
+  );
 }
 
-const SideMenu: React.FC<SideMenuProps> = () => {
+function GuestSideMenu() {
   const navigate = useNavigate();
-  const { currentUser, logout } = useAuth();
-
-  const [isAddAgentModalOpen, setIsAddAgentModalOpen] = useState(false);
-  const toggleAddAgentModal = () => {
-    setIsAddAgentModalOpen(!isAddAgentModalOpen);
-    setEditingAgent(null);
-  };
-
-  const [editingAgent, setEditingAgent] = useState<
-    import("../api/api.ts").AgentVO | null
-  >(null);
-
-  /**
-   * 添加知识库模态框状态
-   */
-  const [isAddKnowledgeBaseModalOpen, setIsAddKnowledgeBaseModalOpen] =
-    useState(false);
-  const toggleAddKnowledgeBaseModal = () => {
-    setIsAddKnowledgeBaseModalOpen(!isAddKnowledgeBaseModalOpen);
-  };
-  const { agents, createAgentHandle, deleteAgentHandle, updateAgentHandle } =
-    useAgents();
-
-  const [activeKey, setActiveKey] = useState(() => {
-    if (location.pathname.startsWith("/agent")) return "agent";
-    if (location.pathname.startsWith("/knowledge-base")) return "knowledgeBase";
-    if (location.pathname.startsWith("/chat")) return "chat";
-    return "agent";
-  });
-
-  const { knowledgeBases, createKnowledgeBaseHandle } = useKnowledgeBases();
-
-  // 处理标签页切换
-  const handleTabChange = (key: string) => {
-    setActiveKey(key);
-  };
-
-  const items: TabsProps["items"] = [
-    {
-      key: "agent",
-      label: <span className="select-none">智能体助手</span>,
-      children: (
-        <AgentTabContent
-          agents={agents}
-          onSelectAgent={() => {}}
-          onCreateAgentClick={toggleAddAgentModal}
-          onEditAgent={(agent) => {
-            setEditingAgent(agent);
-            setIsAddAgentModalOpen(true);
-          }}
-          onDeleteAgent={deleteAgentHandle}
-        />
-      ),
-    },
-    {
-      key: "chat",
-      label: <span className="select-none">聊天记录</span>,
-      children: <ChatTabContent />,
-    },
-    {
-      key: "knowledgeBase",
-      label: <span className="select-none">知识库</span>,
-      children: (
-        <KnowledgeBaseTabContent
-          knowledgeBases={knowledgeBases}
-          onCreateKnowledgeBaseClick={toggleAddKnowledgeBaseModal}
-          onSelectKnowledgeBase={(knowledgeBaseId) => {
-            navigate(`/knowledge-base/${knowledgeBaseId}`);
-          }}
-        />
-      ),
-    },
-  ];
+  const { openAuthDialog } = useAuth();
 
   return (
-    <div className="px-4 flex flex-col h-full">
-      <div className="h-14 w-full flex items-center border-b border-gray-200">
-        <div className="flex items-center gap-2.5 mx-4">
-          <RobotOutlined className="text-xl text-indigo-600" />
-          <div className="text-lg font-semibold select-none text-gray-900">
-            JChatMind
-          </div>
+    <div className="flex h-full flex-col bg-[#171717] px-5 pb-5 pt-5 text-white">
+      <SideMenuHeader />
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            navigate("/chat");
+          }}
+          className="flex w-full items-center gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left text-white transition hover:border-white/10 hover:bg-white/[0.06]"
+        >
+          <EditOutlined />
+          <span className="font-medium">New chat</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            openAuthDialog("login");
+          }}
+          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/72 transition hover:bg-white/[0.05] hover:text-white"
+        >
+          <SearchOutlined />
+          <span className="font-medium">Search chats</span>
+        </button>
+      </div>
+
+      <div className="mt-auto pb-1">
+        <div className="rounded-[28px] border border-white/8 bg-white/[0.035] p-5">
+          <Typography.Text className="block text-base font-semibold !text-white">
+            Save chats and unlock uploads
+          </Typography.Text>
+          <Typography.Text className="mt-2 block text-sm leading-6 !text-white/60">
+            Sign in when you want history and file-aware chats.
+          </Typography.Text>
+          <Button
+            block
+            size="large"
+            icon={<LockOutlined />}
+            className="!mt-5 !h-12 !rounded-full !border-0 !bg-white !text-[#171717] hover:!bg-white/95"
+            onClick={() => {
+              openAuthDialog("login");
+            }}
+          >
+            Log in
+          </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AuthenticatedSideMenu() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { currentUser, logout } = useAuth();
+
+  const [activeKey, setActiveKey] = useState<string>(CHAT_TAB_KEY);
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/chat")) {
+      setActiveKey(CHAT_TAB_KEY);
+    }
+  }, [location.pathname]);
+
+  const handleTabChange = (key: string) => {
+    setActiveKey(key);
+
+    if (key === CHAT_TAB_KEY && !location.pathname.startsWith("/chat")) {
+      navigate("/chat");
+    }
+  };
+
+  const items = useMemo<TabsProps["items"]>(() => {
+    return [
+      {
+        key: CHAT_TAB_KEY,
+        label: (
+          <span className="select-none inline-flex items-center gap-2">
+            <MessageOutlined />
+            Chats
+          </span>
+        ),
+        children: <ChatTabContent />,
+      },
+    ];
+  }, []);
+
+  return (
+    <div className="flex h-full flex-col bg-[#171717] px-5 pb-5 pt-5 text-white">
+      <SideMenuHeader />
+
       <div className="flex-1 min-h-0 flex flex-col">
         <Tabs
+          className="side-menu-tabs"
           activeKey={activeKey}
           onChange={handleTabChange}
           items={items}
-          // className="h-full flex flex-col [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
         />
       </div>
-      <div className="mb-4 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+
+      <div className="mt-4 rounded-[24px] border border-white/8 bg-white/[0.045] px-4 py-4 shadow-[0_14px_36px_rgba(0,0,0,0.18)]">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0f172a] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)]">
             <UserOutlined />
           </div>
           <div className="min-w-0 flex-1">
-            <Typography.Text className="block truncate font-medium text-slate-900">
-              {currentUser?.username ?? "未登录用户"}
+            <Typography.Text className="block truncate text-sm font-medium !text-white">
+              {currentUser?.username ?? "Guest"}
             </Typography.Text>
-            <Typography.Text type="secondary" className="block truncate text-xs">
-              {currentUser?.role ?? "guest"}
+            <Typography.Text className="block truncate text-xs !text-white/45">
+              Signed in as {currentUser?.role ?? "guest"}
             </Typography.Text>
           </div>
-          <Tooltip title="退出登录">
+          <Tooltip title="Logout">
             <Button
               type="text"
               icon={<LogoutOutlined />}
+              className="!flex !h-10 !w-10 !items-center !justify-center !rounded-full !text-white/70 hover:!bg-white/[0.06] hover:!text-white"
               onClick={() => {
                 void logout();
               }}
@@ -133,20 +160,18 @@ const SideMenu: React.FC<SideMenuProps> = () => {
           </Tooltip>
         </div>
       </div>
-      <AddAgentModal
-        open={isAddAgentModalOpen}
-        onClose={toggleAddAgentModal}
-        createAgentHandle={createAgentHandle}
-        updateAgentHandle={updateAgentHandle}
-        editingAgent={editingAgent}
-      />
-      <AddKnowledgeBaseModal
-        open={isAddKnowledgeBaseModalOpen}
-        onClose={toggleAddKnowledgeBaseModal}
-        createKnowledgeBaseHandle={createKnowledgeBaseHandle}
-      />
     </div>
   );
+}
+
+const SideMenu: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <GuestSideMenu />;
+  }
+
+  return <AuthenticatedSideMenu />;
 };
 
 export default SideMenu;

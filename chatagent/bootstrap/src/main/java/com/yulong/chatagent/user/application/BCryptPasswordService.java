@@ -4,12 +4,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
-/**
- * {@link PasswordService} implementation backed by BCrypt.
- *
- * <p>BCrypt is intentionally slow and salted, which makes brute-force attacks
- * substantially harder than plain hashing approaches.</p>
- */
 public class BCryptPasswordService implements PasswordService {
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();

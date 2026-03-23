@@ -15,11 +15,11 @@ public interface RagService {
     float[] embed(String text);
 
     /**
-     * Performs similarity search within one knowledge base.
+     * Performs similarity search within the files attached to one chat session.
      *
-     * @param kbId knowledge base identifier
-     * @param title search query or title text
+     * @param chatSessionId chat session identifier
+     * @param query search query text
      * @return retrieved context snippets
      */
-    List<String> similaritySearch(String kbId, String title);
+    List<String> similaritySearchBySession(String chatSessionId, String query);
 }

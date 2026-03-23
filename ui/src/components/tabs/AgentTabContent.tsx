@@ -1,12 +1,12 @@
 import React, { useMemo } from "react";
-import { Button, Divider, Dropdown, Modal } from "antd";
-import type { MenuProps } from "antd";
 import {
-  PlusOutlined,
-  EditOutlined,
   DeleteOutlined,
+  EditOutlined,
   MoreOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
+import { Button, Dropdown, Modal } from "antd";
+import type { MenuProps } from "antd";
 import type { AgentVO } from "../../api/api.ts";
 import { formatDateTime, getAgentEmoji } from "../../utils";
 
@@ -25,7 +25,6 @@ const AgentTabContent: React.FC<AgentTabContentProps> = ({
   onEditAgent,
   onDeleteAgent,
 }) => {
-  // 为每个 agent 生成 emoji
   const agentsWithEmoji = useMemo(() => {
     return agents.map((agent) => ({
       ...agent,
@@ -33,17 +32,16 @@ const AgentTabContent: React.FC<AgentTabContentProps> = ({
     }));
   }, [agents]);
 
-  // 创建右键菜单
   const getContextMenuItems = (agent: AgentVO): MenuProps["items"] => {
     const items: MenuProps["items"] = [];
 
     if (onEditAgent) {
       items.push({
         key: "edit",
-        label: "编辑",
+        label: "Edit",
         icon: <EditOutlined />,
-        onClick: (e) => {
-          e.domEvent.stopPropagation();
+        onClick: (event) => {
+          event.domEvent.stopPropagation();
           onEditAgent(agent);
         },
       });
@@ -52,16 +50,16 @@ const AgentTabContent: React.FC<AgentTabContentProps> = ({
     if (onDeleteAgent) {
       items.push({
         key: "delete",
-        label: "删除",
+        label: "Delete",
         icon: <DeleteOutlined />,
         danger: true,
-        onClick: (e) => {
-          e.domEvent.stopPropagation();
+        onClick: (event) => {
+          event.domEvent.stopPropagation();
           Modal.confirm({
-            title: "确定要删除这个智能体吗？",
-            content: "删除后将无法恢复",
-            okText: "确定",
-            cancelText: "取消",
+            title: "Delete this assistant?",
+            content: "This cannot be undone.",
+            okText: "Delete",
+            cancelText: "Cancel",
             okType: "danger",
             onOk: () => {
               onDeleteAgent(agent.id);
@@ -75,58 +73,65 @@ const AgentTabContent: React.FC<AgentTabContentProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       <Button
-        color="geekblue"
-        variant="filled"
         icon={<PlusOutlined />}
         onClick={onCreateAgentClick}
-        className="w-full"
+        className="!mb-4 !h-12 !w-full !rounded-2xl !border !border-white/6 !bg-white/[0.03] !text-white hover:!border-white/10 hover:!bg-white/[0.06]"
       >
-        智能体助手
+        New assistant
       </Button>
-      <Divider />
-      <div className="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-1.5">
+
+      <div className="scrollbar-hide flex-1 overflow-y-auto rounded-[28px] border border-white/6 bg-white/[0.025] p-3">
         {agents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <p className="text-sm">暂无智能体</p>
-            <p className="text-xs mt-1">点击上方按钮添加</p>
+          <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-[24px] border border-dashed border-white/8 bg-black/10 px-6 text-center text-white/40">
+            <p className="text-sm font-medium text-white/68">No assistants yet</p>
+            <p className="mt-2 text-xs leading-6 text-white/36">
+              Create an assistant when you want a custom configuration.
+            </p>
           </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {agentsWithEmoji.map((agent) => {
               const menuItems = getContextMenuItems(agent);
-              const hasMenu = menuItems && menuItems.length > 0;
+              const hasMenu = Boolean(menuItems && menuItems.length > 0);
+
               return (
                 <div
                   key={agent.id}
                   onClick={() => onSelectAgent(agent.id)}
-                  className="w-full px-3 py-3 rounded-lg bg-white cursor-pointer transition-all hover:bg-gray-100 hover:shadow-sm group relative"
+                  className="group relative w-full cursor-pointer rounded-2xl border border-transparent bg-white/[0.035] px-4 py-3 transition hover:border-white/8 hover:bg-white/[0.06]"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-200 to-orange-200 flex items-center justify-center shrink-0 text-lg mt-0.5">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-lg">
                       {agent.emoji}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 truncate">
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">
                         {agent.name}
                       </div>
-                      {agent.description && (
-                        <div className="text-xs text-gray-500 mt-1 line-clamp-1">
+                      {agent.description ? (
+                        <div className="mt-1 line-clamp-1 text-xs text-white/42">
                           {agent.description}
                         </div>
-                      )}
-                      {agent.updatedAt && (
-                        <div className="text-xs text-gray-400 mt-1">
+                      ) : null}
+                      {agent.updatedAt ? (
+                        <div className="mt-1 text-xs text-white/28">
                           {formatDateTime(agent.updatedAt)}
                         </div>
-                      )}
+                      ) : null}
                     </div>
-                    {hasMenu && (
+
+                    {hasMenu ? (
                       <div
-                        onClick={(e) => e.stopPropagation()}
-                        onContextMenu={(e) => e.stopPropagation()}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onContextMenu={(event) => {
+                          event.stopPropagation();
+                        }}
+                        className="opacity-0 transition-opacity group-hover:opacity-100"
                       >
                         <Dropdown
                           menu={{ items: menuItems }}
@@ -137,12 +142,14 @@ const AgentTabContent: React.FC<AgentTabContentProps> = ({
                             type="text"
                             size="small"
                             icon={<MoreOutlined />}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-gray-400 hover:text-gray-600"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                            }}
+                            className="!flex !h-8 !w-8 !items-center !justify-center !rounded-full !text-white/38 hover:!bg-white/[0.06] hover:!text-white"
                           />
                         </Dropdown>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );

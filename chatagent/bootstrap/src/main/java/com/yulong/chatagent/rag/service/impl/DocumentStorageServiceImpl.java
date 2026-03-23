@@ -24,15 +24,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     private String baseStoragePath;
 
     @Override
-    public String saveFile(String kbId, String documentId, MultipartFile file) throws IOException {
+    public String saveChatSessionFile(String sessionId, String sessionFileId, MultipartFile file) throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
         }
 
-        // Storage layout: basePath / kbId / documentId / generatedFilename
-        Path kbDir = Paths.get(baseStoragePath, kbId);
-        Path documentDir = kbDir.resolve(documentId);
-        Files.createDirectories(documentDir);
+        Path sessionDir = Paths.get(baseStoragePath, "sessions", sessionId);
+        Path fileDir = sessionDir.resolve(sessionFileId);
+        Files.createDirectories(fileDir);
 
         String originalFilename = file.getOriginalFilename();
         String extension = "";
@@ -41,12 +40,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         }
         String uniqueFilename = UUID.randomUUID() + extension;
 
-        Path targetPath = documentDir.resolve(uniqueFilename);
+        Path targetPath = fileDir.resolve(uniqueFilename);
         Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
-        String relativePath = Paths.get(kbId, documentId, uniqueFilename).toString().replace("\\", "/");
-        log.info("File stored successfully: kbId={}, documentId={}, filename={}, path={}",
-                kbId, documentId, originalFilename, relativePath);
+        String relativePath = Paths.get("sessions", sessionId, sessionFileId, uniqueFilename).toString().replace("\\", "/");
+        log.info("Chat-session file stored successfully: sessionId={}, sessionFileId={}, filename={}, path={}",
+                sessionId, sessionFileId, originalFilename, relativePath);
 
         return relativePath;
     }

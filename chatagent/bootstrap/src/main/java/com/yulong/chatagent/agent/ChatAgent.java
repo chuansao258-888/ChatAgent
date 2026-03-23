@@ -1,5 +1,6 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,6 +28,7 @@ import java.util.List;
 public class ChatAgent {
     private static final Integer MAX_STEPS = 20;
     private static final Integer DEFAULT_MAX_MESSAGES = 20;
+    private static final int RUNTIME_MEMORY_SLACK = 4;
 
     private String agentId;
     private String name;
@@ -35,7 +37,8 @@ public class ChatAgent {
     private ChatClient chatClient;
     private AgentState agentState;
     private List<ToolCallback> availableTools;
-    private String knowledgeBaseSummary;
+    private String sessionFileSummary;
+    private String userProfileSummary;
     private ToolCallingManager toolCallingManager;
     private ChatMemory chatMemory;
     private String chatSessionId;
@@ -56,7 +59,8 @@ public class ChatAgent {
                      Integer maxMessages,
                      List<Message> memory,
                      List<ToolCallback> availableTools,
-                     String knowledgeBaseSummary,
+                     String sessionFileSummary,
+                     String userProfileSummary,
                      String chatSessionId,
                      AgentMessageBridge messageBridge) {
         this.agentId = agentId;
@@ -65,17 +69,24 @@ public class ChatAgent {
         this.systemPrompt = systemPrompt;
         this.chatClient = chatClient;
         this.availableTools = availableTools == null ? List.of() : List.copyOf(availableTools);
-        this.knowledgeBaseSummary = StringUtils.hasText(knowledgeBaseSummary)
-                ? knowledgeBaseSummary
-                : "No knowledge bases available";
+        this.sessionFileSummary = StringUtils.hasText(sessionFileSummary)
+                ? sessionFileSummary
+                : "No attached session files available";
+        this.userProfileSummary = StringUtils.hasText(userProfileSummary)
+                ? userProfileSummary
+                : "No persistent user profile available";
         this.chatSessionId = chatSessionId;
         this.messageBridge = messageBridge;
         this.agentState = AgentState.IDLE;
 
+        List<Message> initialMemory = memory == null ? List.of() : memory;
+        int configuredMaxMessages = maxMessages == null ? DEFAULT_MAX_MESSAGES : maxMessages;
+        int requiredCapacity = initialMemory.size() + RUNTIME_MEMORY_SLACK + (StringUtils.hasLength(systemPrompt) ? 1 : 0);
+
         this.chatMemory = MessageWindowChatMemory.builder()
-                .maxMessages(maxMessages == null ? DEFAULT_MAX_MESSAGES : maxMessages)
+                .maxMessages(Math.max(configuredMaxMessages, requiredCapacity))
                 .build();
-        this.chatMemory.add(chatSessionId, memory == null ? List.of() : memory);
+        this.chatMemory.add(chatSessionId, initialMemory);
 
         if (StringUtils.hasLength(systemPrompt)) {
             this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
@@ -89,7 +100,8 @@ public class ChatAgent {
                 this.chatClient,
                 this.chatOptions,
                 this.availableTools,
-                this.knowledgeBaseSummary,
+                this.sessionFileSummary,
+                this.userProfileSummary,
                 this.messageBridge
         );
         this.toolExecutionEngine = new AgentToolExecutionEngine(
@@ -140,6 +152,7 @@ public class ChatAgent {
                 TraceContext.getTraceId(), agentId, chatSessionId);
 
         try {
+            CurrentChatSessionHolder.set(this.chatSessionId);
             for (int i = 0; i < MAX_STEPS && agentState != AgentState.FINISHED; i++) {
                 int currentStep = i + 1;
                 step();
@@ -159,6 +172,8 @@ public class ChatAgent {
             log.error("Error running agent: traceId={}, agentId={}, sessionId={}, steps={}, durationMs={}",
                     TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs, e);
             throw new RuntimeException("Error running agent", e);
+        } finally {
+            CurrentChatSessionHolder.clear();
         }
     }
 

@@ -2,9 +2,10 @@ package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.AgentDefinition;
 import com.yulong.chatagent.agent.runtime.AgentDefinitionLoader;
-import com.yulong.chatagent.agent.runtime.AgentKnowledgeBaseSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
+import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.agent.runtime.AgentUserProfileSummaryResolver;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
@@ -20,27 +21,31 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
 
     private final AgentDefinitionLoader agentDefinitionLoader;
     private final AgentMemoryLoader agentMemoryLoader;
-    private final AgentKnowledgeBaseSummaryResolver knowledgeBaseSummaryResolver;
+    private final AgentSessionFileSummaryResolver sessionFileSummaryResolver;
+    private final AgentUserProfileSummaryResolver userProfileSummaryResolver;
     private final AgentToolCallbackFactory agentToolCallbackFactory;
 
     public DefaultAgentRuntimeContextLoader(AgentDefinitionLoader agentDefinitionLoader,
                                             AgentMemoryLoader agentMemoryLoader,
-                                            AgentKnowledgeBaseSummaryResolver knowledgeBaseSummaryResolver,
+                                            AgentSessionFileSummaryResolver sessionFileSummaryResolver,
+                                            AgentUserProfileSummaryResolver userProfileSummaryResolver,
                                             AgentToolCallbackFactory agentToolCallbackFactory) {
         this.agentDefinitionLoader = agentDefinitionLoader;
         this.agentMemoryLoader = agentMemoryLoader;
-        this.knowledgeBaseSummaryResolver = knowledgeBaseSummaryResolver;
+        this.sessionFileSummaryResolver = sessionFileSummaryResolver;
+        this.userProfileSummaryResolver = userProfileSummaryResolver;
         this.agentToolCallbackFactory = agentToolCallbackFactory;
     }
 
     @Override
     public AgentRuntimeContext load(String agentId, String chatSessionId) {
         // Runtime context is composed from persisted configuration, recent memory,
-        // knowledge-base visibility, and concrete callback instances for allowed tools.
+        // attached session-file context, and concrete callback instances for allowed tools.
         AgentDefinition definition = agentDefinitionLoader.load(agentId);
         AgentDTO agentConfig = definition.config();
         List<Message> memory = agentMemoryLoader.load(chatSessionId, agentConfig);
-        String knowledgeBaseSummary = knowledgeBaseSummaryResolver.resolve(agentConfig);
+        String sessionFileSummary = sessionFileSummaryResolver.resolve(agentConfig, chatSessionId);
+        String userProfileSummary = userProfileSummaryResolver.resolve(chatSessionId);
         List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig);
 
         return new AgentRuntimeContext(
@@ -52,7 +57,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 agentConfig.getChatOptions().getMessageLength(),
                 memory,
                 toolCallbacks,
-                knowledgeBaseSummary
+                sessionFileSummary,
+                userProfileSummary
         );
     }
 }

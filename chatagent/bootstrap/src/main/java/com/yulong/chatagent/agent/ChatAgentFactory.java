@@ -42,7 +42,8 @@ public class ChatAgentFactory {
                 context.maxMessages(),
                 context.memory(),
                 context.toolCallbacks(),
-                context.knowledgeBaseSummary(),
+                context.sessionFileSummary(),
+                context.userProfileSummary(),
                 chatSessionId,
                 agentMessageBridge
         );

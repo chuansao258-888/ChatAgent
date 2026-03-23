@@ -12,7 +12,6 @@
         <result property="systemPrompt" column="system_prompt" jdbcType="VARCHAR"/>
         <result property="model" column="model" jdbcType="VARCHAR"/>
         <result property="allowedTools" column="allowed_tools" jdbcType="VARCHAR"/>
-        <result property="allowedKbs" column="allowed_kbs" jdbcType="VARCHAR"/>
         <result property="chatOptions" column="chat_options" jdbcType="VARCHAR"/>
         <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
         <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
@@ -21,7 +20,7 @@
     <sql id="Base_Column_List">
         id,user_id,name,description,
         system_prompt,model,allowed_tools,
-        allowed_kbs,chat_options,created_at,
+        chat_options,created_at,
         updated_at
     </sql>
 
@@ -34,7 +33,6 @@
          system_prompt,
          model,
          allowed_tools,
-         allowed_kbs,
          chat_options,
          created_at,
          updated_at)
@@ -44,7 +42,6 @@
                 #{systemPrompt},
                 #{model},
                 CAST(#{allowedTools} AS jsonb),
-                CAST(#{allowedKbs} AS jsonb),
                 CAST(#{chatOptions} AS jsonb),
                 #{createdAt},
                 #{updatedAt})
@@ -58,7 +55,6 @@
                system_prompt,
                model,
                allowed_tools::text AS allowed_tools,
-               allowed_kbs::text   AS allowed_kbs,
                chat_options::text  AS chat_options,
                created_at,
                updated_at
@@ -74,7 +70,6 @@
                system_prompt,
                model,
                allowed_tools::text AS allowed_tools,
-               allowed_kbs::text   AS allowed_kbs,
                chat_options::text  AS chat_options,
                created_at,
                updated_at
@@ -110,10 +105,6 @@
 
             <if test="allowedTools != null">
                 allowed_tools = CAST(#{allowedTools} AS jsonb),
-            </if>
-
-            <if test="allowedKbs != null">
-                allowed_kbs = CAST(#{allowedKbs} AS jsonb),
             </if>
 
             <if test="chatOptions != null">

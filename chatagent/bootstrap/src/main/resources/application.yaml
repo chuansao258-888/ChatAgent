@@ -55,10 +55,47 @@ rag:
     model: ${CHATAGENT_RAG_EMBEDDING_MODEL:bge-m3}
   retrieval:
     top-k: ${CHATAGENT_RAG_TOP_K:3}
+    candidate-k: ${CHATAGENT_RAG_CANDIDATE_K:12}
+    rrf-k: ${CHATAGENT_RAG_RRF_K:60}
+    reranker:
+      provider: ${CHATAGENT_RAG_RERANKER_PROVIDER:bge-http}
+      model-id: ${CHATAGENT_RAG_RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
+      max-candidates: ${CHATAGENT_RAG_RERANKER_MAX_CANDIDATES:8}
+      max-chunk-chars: ${CHATAGENT_RAG_RERANKER_MAX_CHUNK_CHARS:900}
+      base-url: ${CHATAGENT_RAG_RERANKER_BASE_URL:http://localhost:7997}
+      path: ${CHATAGENT_RAG_RERANKER_PATH:/rerank}
+      api-key: ${CHATAGENT_RAG_RERANKER_API_KEY:}
+  vector-store:
+    provider: ${CHATAGENT_RAG_VECTOR_STORE_PROVIDER:milvus}
+
+milvus:
+  enabled: ${CHATAGENT_MILVUS_ENABLED:false}
+  bm25-enabled: ${CHATAGENT_MILVUS_BM25_ENABLED:false}
+  host: ${CHATAGENT_MILVUS_HOST:localhost}
+  port: ${CHATAGENT_MILVUS_PORT:19530}
+  database: ${CHATAGENT_MILVUS_DATABASE:default}
+  collection: ${CHATAGENT_MILVUS_COLLECTION:chat_file_chunk}
+  username: ${CHATAGENT_MILVUS_USERNAME:}
+  password: ${CHATAGENT_MILVUS_PASSWORD:}
+  metric-type: ${CHATAGENT_MILVUS_METRIC_TYPE:COSINE}
+  index-type: ${CHATAGENT_MILVUS_INDEX_TYPE:AUTOINDEX}
+  consistency-level: ${CHATAGENT_MILVUS_CONSISTENCY_LEVEL:BOUNDED}
+  dimension: ${CHATAGENT_MILVUS_DIMENSION:1024}
 
 chat:
   routing:
     default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:deepseek-chat}
+
+chatagent:
+  rag:
+    ingestion:
+      contextual-enricher:
+        enabled: ${CHATAGENT_RAG_CONTEXTUAL_ENRICHER_ENABLED:true}
+        model-id: ${CHATAGENT_RAG_CONTEXTUAL_MODEL:}
+        max-document-chars: ${CHATAGENT_RAG_CONTEXTUAL_MAX_DOCUMENT_CHARS:12000}
+        max-chunks-per-file: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CHUNKS_PER_FILE:12}
+        min-chunk-chars: ${CHATAGENT_RAG_CONTEXTUAL_MIN_CHUNK_CHARS:160}
+        max-context-chars: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CONTEXT_CHARS:600}
 
 auth:
   jwt:

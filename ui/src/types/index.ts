@@ -1,11 +1,5 @@
 export type MessageType = "user" | "assistant" | "system" | "tool";
 
-export interface KnowledgeBase {
-  knowledgeBaseId: string;
-  name: string;
-  description: string;
-}
-
 export interface ToolCall {
   id: string;
   type: string;

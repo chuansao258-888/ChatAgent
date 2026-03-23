@@ -1,10 +1,15 @@
 package com.yulong.chatagent.conversation.application;
 
 import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.application.DefaultAgentProvisioningService;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.exception.BizException;
+import com.yulong.chatagent.file.port.ChatSessionFileRepository;
+import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.vector.milvus.SessionFileMilvusIndexer;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.support.dto.AgentDTO;
+import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import com.yulong.chatagent.conversation.converter.ChatSessionConverter;
 import com.yulong.chatagent.conversation.model.request.CreateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatSessionRequest;
@@ -14,6 +19,7 @@ import com.yulong.chatagent.conversation.model.response.GetChatSessionsResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
 import com.yulong.chatagent.context.UserContext;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -22,11 +28,16 @@ import java.util.List;
 
 @Service
 @AllArgsConstructor
+@Slf4j
 public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
 
     private final ChatSessionRepository chatSessionRepository;
     private final ChatSessionConverter chatSessionConverter;
     private final AgentRepository agentRepository;
+    private final DefaultAgentProvisioningService defaultAgentProvisioningService;
+    private final ChatSessionFileRepository chatSessionFileRepository;
+    private final DocumentStorageService documentStorageService;
+    private final SessionFileMilvusIndexer sessionFileMilvusIndexer;
 
     @Override
     public GetChatSessionsResponse getChatSessions() {
@@ -67,8 +78,9 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
     @Override
     public CreateChatSessionResponse createChatSession(CreateChatSessionRequest request) {
         String userId = requireCurrentUserId();
-        requireOwnedAgent(request.getAgentId(), userId);
+        String agentId = resolveAgentId(request.getAgentId(), userId);
         ChatSessionDTO chatSessionDTO = chatSessionConverter.toDTO(request);
+        chatSessionDTO.setAgentId(agentId);
         chatSessionDTO.setUserId(userId);
         LocalDateTime now = LocalDateTime.now();
         chatSessionDTO.setCreatedAt(now);
@@ -80,16 +92,20 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
 
         return CreateChatSessionResponse.builder()
                 .chatSessionId(chatSessionDTO.getId())
+                .agentId(agentId)
                 .build();
     }
 
     @Override
     public void deleteChatSession(String chatSessionId) {
         requireOwnedSession(chatSessionId, requireCurrentUserId());
+        List<ChatSessionFileDTO> sessionFiles = chatSessionFileRepository.findBySessionId(chatSessionId);
 
         if (!chatSessionRepository.deleteById(chatSessionId)) {
             throw new BizException("Failed to delete chat session");
         }
+
+        cleanupDetachedSessionFiles(chatSessionId, sessionFiles);
     }
 
     @Override
@@ -120,6 +136,30 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
         AgentDTO agent = agentRepository.findById(agentId);
         if (agent == null || !userId.equals(agent.getUserId())) {
             throw new BizException("Agent not found: " + agentId);
+        }
+    }
+
+    private String resolveAgentId(String requestedAgentId, String userId) {
+        if (requestedAgentId == null || requestedAgentId.isBlank()) {
+            return defaultAgentProvisioningService.ensureForUser(userId).getId();
+        }
+
+        String trimmedAgentId = requestedAgentId.trim();
+        requireOwnedAgent(trimmedAgentId, userId);
+        return trimmedAgentId;
+    }
+
+    private void cleanupDetachedSessionFiles(String chatSessionId, List<ChatSessionFileDTO> sessionFiles) {
+        sessionFileMilvusIndexer.deleteBySessionId(chatSessionId);
+        for (ChatSessionFileDTO sessionFile : sessionFiles) {
+            try {
+                if (sessionFile.getStoragePath() != null) {
+                    documentStorageService.deleteFile(sessionFile.getStoragePath());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to delete stored session file: chatSessionId={}, sessionFileId={}, error={}",
+                        chatSessionId, sessionFile.getId(), e.getMessage());
+            }
         }
     }
 }

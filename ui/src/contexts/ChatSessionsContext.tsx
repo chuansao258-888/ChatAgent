@@ -5,12 +5,20 @@ import {
   deleteChatSession,
 } from "../api/api.ts";
 import { ChatSessionsContext } from "./chatSessionsContext.ts";
+import { useAuth } from "../hooks/useAuth.ts";
 
 export function ChatSessionsProvider({ children }: { children: React.ReactNode }) {
   const [chatSessions, setChatSessions] = useState<ChatSessionVO[]>([]);
   const [loading, setLoading] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   const fetchChatSessions = useCallback(async () => {
+    if (!isAuthenticated) {
+      setChatSessions([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const resp = await getChatSessions();
@@ -18,10 +26,10 @@ export function ChatSessionsProvider({ children }: { children: React.ReactNode }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    fetchChatSessions();
+    void fetchChatSessions();
   }, [fetchChatSessions]);
 
   const deleteChatSessionHandle = useCallback(async (chatSessionId: string) => {

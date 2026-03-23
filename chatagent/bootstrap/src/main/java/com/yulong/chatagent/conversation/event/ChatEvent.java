@@ -9,5 +9,7 @@ public class ChatEvent {
 
     private String agentId;
     private String sessionId;
+    private String chatMessageId;
     private String userInput;
+    private int recentHistorySize;
 }

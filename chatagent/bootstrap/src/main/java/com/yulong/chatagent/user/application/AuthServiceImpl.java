@@ -1,5 +1,6 @@
 package com.yulong.chatagent.user.application;
 
+import com.yulong.chatagent.agent.application.DefaultAgentProvisioningService;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.exception.BizException;
@@ -37,18 +38,22 @@ public class AuthServiceImpl implements AuthService {
     private final SecureRandom secureRandom = new SecureRandom();
     private final long refreshTtlDays;
     private final UserConverter userConverter;
+    private final DefaultAgentProvisioningService defaultAgentProvisioningService;
 
     public AuthServiceImpl(UserRepository userRepository,
                            PasswordService passwordService,
                            JwtTokenService jwtTokenService,
                            RefreshTokenStore refreshTokenStore,
-                           @Value("${auth.jwt.refresh-ttl-days}") long refreshTtlDays, UserConverter userConverter) {
+                           @Value("${auth.jwt.refresh-ttl-days}") long refreshTtlDays,
+                           UserConverter userConverter,
+                           DefaultAgentProvisioningService defaultAgentProvisioningService) {
         this.userRepository = userRepository;
         this.passwordService = passwordService;
         this.jwtTokenService = jwtTokenService;
         this.refreshTokenStore = refreshTokenStore;
         this.refreshTtlDays = refreshTtlDays;
         this.userConverter = userConverter;
+        this.defaultAgentProvisioningService = defaultAgentProvisioningService;
     }
 
     @Override
@@ -84,6 +89,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         log.info("Register succeeded: userId={}, username={}", user.getId(), username);
+        defaultAgentProvisioningService.ensureForUser(user.getId());
         // Registration immediately creates a logged-in session for the new user.
         return issueLoginResponse(user);
     }
@@ -105,6 +111,7 @@ public class AuthServiceImpl implements AuthService {
             log.warn("Login failed: invalid credentials, username={}", username);
             throw new BizException("Invalid username or password");
         }
+        defaultAgentProvisioningService.ensureForUser(user.getId());
         refreshTokenStore.deleteByUserId(user.getId());
         log.info("Login succeeded: userId={}, username={}", user.getId(), username);
         return issueLoginResponse(user);

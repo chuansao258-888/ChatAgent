@@ -28,12 +28,14 @@ export interface CurrentUserVO {
 export async function login(request: LoginRequest): Promise<AuthResponse> {
   return post<AuthResponse>("/auth/login", request, {
     skipAuthRefresh: true,
+    silent: true,
   });
 }
 
 export async function register(request: RegisterRequest): Promise<AuthResponse> {
   return post<AuthResponse>("/auth/register", request, {
     skipAuthRefresh: true,
+    silent: true,
   });
 }
 

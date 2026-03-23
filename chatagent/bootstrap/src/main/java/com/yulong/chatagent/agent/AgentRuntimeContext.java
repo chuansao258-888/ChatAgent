@@ -16,7 +16,8 @@ import java.util.List;
  * @param maxMessages memory window size
  * @param memory restored chat memory
  * @param toolCallbacks runtime tool callbacks
- * @param knowledgeBaseSummary summarized accessible knowledge bases
+ * @param sessionFileSummary summarized attached session files
+ * @param userProfileSummary persistent user profile summary
  */
 public record AgentRuntimeContext(
         String agentId,
@@ -27,6 +28,7 @@ public record AgentRuntimeContext(
         Integer maxMessages,
         List<Message> memory,
         List<ToolCallback> toolCallbacks,
-        String knowledgeBaseSummary
+        String sessionFileSummary,
+        String userProfileSummary
 ) {
 }

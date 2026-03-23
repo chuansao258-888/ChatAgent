@@ -12,7 +12,6 @@ public class CreateAgentRequest {
     private String systemPrompt;
     private String model;
     private List<String> allowedTools;
-    private List<String> allowedKbs;
     private AgentDTO.ChatOptions chatOptions;
 }
 

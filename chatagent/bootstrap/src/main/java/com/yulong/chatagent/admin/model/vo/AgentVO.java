@@ -21,8 +21,6 @@ public class AgentVO {
 
     private List<String> allowedTools;
 
-    private List<String> allowedKbs;
-
     private AgentDTO.ChatOptions chatOptions;
 }
 

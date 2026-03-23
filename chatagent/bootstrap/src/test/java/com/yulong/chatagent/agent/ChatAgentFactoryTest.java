@@ -33,7 +33,8 @@ class ChatAgentFactoryTest {
                 12,
                 List.of(message),
                 List.of(toolCallback),
-                "kb summary"
+                "session file summary",
+                "user profile summary"
         );
 
         when(contextLoader.load("agent-1", "session-1")).thenReturn(context);
@@ -46,7 +47,8 @@ class ChatAgentFactoryTest {
         assertThat(ReflectionTestUtils.getField(chatAgent, "agentId")).isEqualTo("agent-1");
         assertThat(ReflectionTestUtils.getField(chatAgent, "name")).isEqualTo("Support");
         assertThat(ReflectionTestUtils.getField(chatAgent, "chatClient")).isSameAs(chatClient);
-        assertThat(ReflectionTestUtils.getField(chatAgent, "knowledgeBaseSummary")).isEqualTo("kb summary");
+        assertThat(ReflectionTestUtils.getField(chatAgent, "sessionFileSummary")).isEqualTo("session file summary");
+        assertThat(ReflectionTestUtils.getField(chatAgent, "userProfileSummary")).isEqualTo("user profile summary");
         assertThat(ReflectionTestUtils.getField(chatAgent, "messageBridge")).isSameAs(messageBridge);
     }
 }

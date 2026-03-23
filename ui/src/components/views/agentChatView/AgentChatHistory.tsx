@@ -1,14 +1,21 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Bubble } from "@ant-design/x";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import XMarkdown from "@ant-design/x-markdown";
+import Latex from "@ant-design/x-markdown/plugins/Latex";
+import HighlightCode from "@ant-design/x-markdown/plugins/HighlightCode";
+import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
-  ToolOutlined,
   CheckCircleOutlined,
-  RobotOutlined,
   DownOutlined,
   RightOutlined,
+  RobotOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
-import type { ChatMessageVO, SseMessageType, ToolCall, ToolResponse } from "../../../types";
+import type {
+  ChatMessageVO,
+  SseMessageType,
+  ToolCall,
+  ToolResponse,
+} from "../../../types";
 
 interface AgentChatHistoryProps {
   messages: ChatMessageVO[];
@@ -17,86 +24,175 @@ interface AgentChatHistoryProps {
   agentStatusType?: SseMessageType;
 }
 
-// 工具调用展示组件（简化版，用于 assistant 消息内）
+type MarkdownComponentProps = React.HTMLAttributes<HTMLElement> & {
+  children?: React.ReactNode;
+  className?: string;
+  block?: boolean;
+  streamStatus?: "loading" | "done";
+  domNode: unknown;
+};
+
+const markdownConfig = {
+  extensions: Latex(),
+};
+
+const flattenTextContent = (node: React.ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(flattenTextContent).join("");
+  }
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    return flattenTextContent(node.props.children);
+  }
+  return "";
+};
+
+const getCodeLanguage = (className?: string): string | undefined => {
+  const match = className?.match(/language-([A-Za-z0-9#+._-]+)/);
+  return match?.[1];
+};
+
+const tryFormatJsonCodeBlock = (content: string): string | null => {
+  const trimmed = content.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
+  } catch {
+    return null;
+  }
+};
+
+const toRenderableMarkdown = (content: string): string =>
+  tryFormatJsonCodeBlock(content) ?? content;
+
+const markdownComponents = {
+  pre: ({ children }: MarkdownComponentProps) => <>{children}</>,
+  code: ({ children, className, block }: MarkdownComponentProps) => {
+    const codeText = flattenTextContent(children).replace(/\n$/, "");
+    const language = getCodeLanguage(className);
+
+    if (block) {
+      if (language) {
+        return (
+          <HighlightCode
+            lang={language}
+            highlightProps={{ style: atomDark, wrapLongLines: false }}
+          >
+            {codeText}
+          </HighlightCode>
+        );
+      }
+
+      return (
+        <pre className="chat-markdown-code-block">
+          <code>{codeText}</code>
+        </pre>
+      );
+    }
+
+    return <code>{codeText}</code>;
+  },
+};
+
+const MarkdownContent: React.FC<{
+  content: string;
+  hasNextChunk?: boolean;
+}> = ({ content, hasNextChunk = false }) => (
+  <div className="chat-markdown">
+    <XMarkdown
+      components={markdownComponents}
+      config={markdownConfig}
+      openLinksInNewTab
+      streaming={{ enableAnimation: false, hasNextChunk }}
+    >
+      {toRenderableMarkdown(content)}
+    </XMarkdown>
+  </div>
+);
+
 const ToolCallDisplay: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
   let parsedArgs: Record<string, unknown> = {};
+
   try {
     parsedArgs = JSON.parse(toolCall.arguments) as Record<string, unknown>;
   } catch {
-    // 如果解析失败，使用原始字符串
+    parsedArgs = {};
   }
 
   const argCount = Object.keys(parsedArgs).length;
-  const argPreview = argCount > 0 
-    ? Object.keys(parsedArgs).slice(0, 2).join(", ") + (argCount > 2 ? "..." : "")
-    : toolCall.arguments.slice(0, 50) + (toolCall.arguments.length > 50 ? "..." : "");
+  const argPreview =
+    argCount > 0
+      ? `${Object.keys(parsedArgs).slice(0, 2).join(", ")}${argCount > 2 ? "..." : ""}`
+      : `${toolCall.arguments.slice(0, 50)}${toolCall.arguments.length > 50 ? "..." : ""}`;
 
   return (
-    <div className="text-xs text-gray-500 flex items-center gap-1.5">
-      <ToolOutlined className="text-blue-500" />
-      <span className="font-mono text-blue-600">{toolCall.name}</span>
-      {argPreview && (
+    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300">
+      <ToolOutlined className="text-sky-400" />
+      <span className="font-mono text-sky-300">{toolCall.name}</span>
+      {argPreview ? (
         <>
-          <span className="text-gray-400">·</span>
-          <span className="text-gray-500 truncate max-w-[200px]">{argPreview}</span>
+          <span className="text-slate-500">·</span>
+          <span className="max-w-[220px] truncate text-slate-400">
+            {argPreview}
+          </span>
         </>
-      )}
+      ) : null}
     </div>
   );
 };
 
-// 工具响应展示组件（可折叠）
 const ToolResponseDisplay: React.FC<{ toolResponse: ToolResponse }> = ({
   toolResponse,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  
+
   let parsedData: unknown = null;
   let isJson = false;
   let dataPreview = "";
-  
+  let renderContent = toolResponse.responseData;
+
   try {
     parsedData = JSON.parse(toolResponse.responseData);
     isJson = true;
     const jsonStr = JSON.stringify(parsedData);
-    dataPreview = jsonStr.length > 100 ? jsonStr.slice(0, 100) + "..." : jsonStr;
+    dataPreview = jsonStr.length > 100 ? `${jsonStr.slice(0, 100)}...` : jsonStr;
+    renderContent = `\`\`\`json\n${JSON.stringify(parsedData, null, 2)}\n\`\`\``;
   } catch {
-    dataPreview = toolResponse.responseData.length > 100 
-      ? toolResponse.responseData.slice(0, 100) + "..." 
-      : toolResponse.responseData;
+    dataPreview =
+      toolResponse.responseData.length > 100
+        ? `${toolResponse.responseData.slice(0, 100)}...`
+        : toolResponse.responseData;
   }
 
   return (
-    <div className="my-1.5 text-xs">
-      <div 
-        className="flex items-center gap-2 text-gray-500 cursor-pointer hover:text-gray-700 transition-colors"
-        onClick={() => setExpanded(!expanded)}
+    <div className="my-2 text-xs">
+      <div
+        className="flex cursor-pointer items-center gap-2 text-slate-400 transition-colors hover:text-slate-200"
+        onClick={() => setExpanded((value) => !value)}
       >
         {expanded ? (
-          <DownOutlined className="text-gray-400" />
+          <DownOutlined className="text-slate-500" />
         ) : (
-          <RightOutlined className="text-gray-400" />
+          <RightOutlined className="text-slate-500" />
         )}
-        <CheckCircleOutlined className="text-green-500" />
-        <span className="font-mono text-green-600">{toolResponse.name}</span>
-        <span className="text-gray-400">·</span>
-        <span className="text-gray-500 truncate flex-1">{dataPreview}</span>
+        <CheckCircleOutlined className="text-emerald-400" />
+        <span className="font-mono text-emerald-300">{toolResponse.name}</span>
+        <span className="text-slate-500">·</span>
+        <span className="truncate text-slate-400">{dataPreview}</span>
       </div>
-      {expanded && (
-        <div className="ml-5 mt-1.5 p-2 bg-gray-50 rounded border border-gray-200">
-          <div className="text-xs text-gray-600 font-mono">
-            {isJson ? (
-              <pre className="whitespace-pre-wrap break-words overflow-x-auto max-h-60 overflow-y-auto">
-                {JSON.stringify(parsedData, null, 2)}
-              </pre>
-            ) : (
-              <div className="whitespace-pre-wrap break-words">
-                {toolResponse.responseData}
-              </div>
-            )}
+      {expanded ? (
+        <div className="ml-5 mt-2 rounded-2xl border border-white/8 bg-[#262626] p-3">
+          <div className={`${isJson ? "" : "text-sm"} text-slate-200`}>
+            <MarkdownContent content={renderContent} />
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };
@@ -107,31 +203,27 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   agentStatusText = "",
   agentStatusType,
 }) => {
-  // 滚动容器引用
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // 是否允许自动滚动（用户是否接近底部）
   const [isNearBottom, setIsNearBottom] = useState(true);
-  // 容错阈值（像素）
-  const SCROLL_THRESHOLD = 20;
-  // 上一次消息数量，用于检测新消息
-  const prevMessagesLengthRef = useRef(messages.length);
+  const previousLengthRef = useRef(messages.length);
+  const scrollThreshold = 20;
 
-  // 检查是否接近底部
   const checkIfNearBottom = useCallback(() => {
     const container = scrollContainerRef.current;
-    if (!container) return false;
+    if (!container) {
+      return false;
+    }
 
     const { scrollTop, clientHeight, scrollHeight } = container;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    return distanceFromBottom <= SCROLL_THRESHOLD;
+    return scrollHeight - scrollTop - clientHeight <= scrollThreshold;
   }, []);
 
-  // 滚动到底部
   const scrollToBottom = useCallback(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
-    // 使用 requestAnimationFrame 确保 DOM 更新完成后再滚动
     requestAnimationFrame(() => {
       if (container) {
         container.scrollTop = container.scrollHeight;
@@ -139,159 +231,115 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
     });
   }, []);
 
-  // 处理滚动事件，实时更新是否接近底部的状态
-  const handleScroll = useCallback(() => {
-    const nearBottom = checkIfNearBottom();
-    setIsNearBottom(nearBottom);
-  }, [checkIfNearBottom]);
-
-  // 监听滚动事件
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
-    // 初始化时检查是否在底部（延迟执行以避免同步 setState）
-    const initTimer = setTimeout(() => {
+    const update = () => {
       setIsNearBottom(checkIfNearBottom());
-    }, 0);
+    };
 
-    container.addEventListener("scroll", handleScroll, { passive: true });
+    const timer = setTimeout(update, 0);
+    container.addEventListener("scroll", update, { passive: true });
 
     return () => {
-      clearTimeout(initTimer);
-      container.removeEventListener("scroll", handleScroll);
+      clearTimeout(timer);
+      container.removeEventListener("scroll", update);
     };
-  }, [handleScroll, checkIfNearBottom]);
+  }, [checkIfNearBottom]);
 
-  // 监听消息变化，决定是否自动滚动
   useEffect(() => {
-    const hasNewMessage = messages.length > prevMessagesLengthRef.current;
-    prevMessagesLengthRef.current = messages.length;
+    const hasNewMessage = messages.length > previousLengthRef.current;
+    previousLengthRef.current = messages.length;
 
-    // 如果有新消息且用户接近底部，则自动滚动
     if (hasNewMessage && isNearBottom) {
       scrollToBottom();
     }
-  }, [messages, isNearBottom, scrollToBottom]);
+  }, [isNearBottom, messages, scrollToBottom]);
 
-  // 当 displayAgentStatus 变化时，如果用户接近底部，也自动滚动
   useEffect(() => {
     if (displayAgentStatus && isNearBottom) {
       scrollToBottom();
     }
   }, [displayAgentStatus, isNearBottom, scrollToBottom]);
 
-  // 获取状态标签
   const getStatusLabel = () => {
     switch (agentStatusType) {
       case "AI_PLANNING":
-        return "规划中";
+        return "Planning";
       case "AI_THINKING":
-        return "思考中";
+        return "Thinking";
       case "AI_EXECUTING":
-        return "执行中";
+        return "Working";
       default:
-        return "处理中";
+        return "Processing";
     }
   };
 
   return (
-    <div 
-      ref={scrollContainerRef}
-      className="flex-1 px-16 pt-4 overflow-y-scroll"
-    >
-      {messages.map((message) => {
-        return (
-          <div className="mb-4" key={message.id}>
-            {/* Assistant 消息 */}
-            {message.role === "assistant" && (
-              <Bubble
-                content={
-                  <div className="w-full">
-                    {/* 工具调用展示 */}
-                    {message.metadata?.toolCalls &&
-                      message.metadata.toolCalls.length > 0 && (
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          {message.metadata.toolCalls.map((toolCall) => (
-                            <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-                          ))}
-                        </div>
-                      )}
-                    {/* 消息内容 */}
-                    {message.content && (
-                      <div>
-                        <XMarkdown
-                          streaming={{ enableAnimation: false, hasNextChunk: true }}
-                        >
-                          {message.content}
-                        </XMarkdown>
-                      </div>
-                    )}
-                  </div>
-                }
-                placement="start"
-              />
-            )}
-
-            {/* Tool 消息 - 简洁展示，不使用气泡 */}
-            {message.role === "tool" && message.metadata?.toolResponse && (
+    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8 md:px-10">
+        {messages.map((message) => (
+          <div key={message.id}>
+            {message.role === "assistant" ? (
               <div className="flex justify-start">
-                <div className="max-w-[85%]">
+                <div className="min-w-0 w-full max-w-3xl text-[15px] leading-7 text-[#ececec] md:text-base">
+                  {message.metadata?.toolCalls &&
+                  message.metadata.toolCalls.length > 0 ? (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {message.metadata.toolCalls.map((toolCall) => (
+                        <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {message.content ? (
+                    <MarkdownContent content={message.content} hasNextChunk />
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {message.role === "tool" && message.metadata?.toolResponse ? (
+              <div className="flex justify-start">
+                <div className="min-w-0 w-full max-w-3xl">
                   <ToolResponseDisplay toolResponse={message.metadata.toolResponse} />
                 </div>
               </div>
-            )}
+            ) : null}
 
-            {/* User 消息 */}
-            {message.role === "user" && (
-              <Bubble content={message.content} placement="end" />
-            )}
+            {message.role === "user" ? (
+              <div className="flex justify-end">
+                <div className="max-w-[min(80%,38rem)] whitespace-pre-wrap break-words rounded-[1.6rem] bg-[#2f2f2f] px-5 py-3 text-[15px] leading-7 text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] [overflow-wrap:anywhere]">
+                  {message.content}
+                </div>
+              </div>
+            ) : null}
 
-            {/* System 消息 */}
-            {message.role === "system" && (
+            {message.role === "system" ? (
               <div className="flex justify-center">
-                <div className="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-full flex items-center gap-1">
+                <div className="flex items-center gap-2 rounded-full border border-white/8 bg-white/[0.04] px-3 py-1.5 text-xs text-slate-300">
                   <RobotOutlined />
                   <span>{message.content}</span>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
-        );
-      })}
-      {displayAgentStatus && (
-        <div className="mb-3">
-          <div
-            className="animate-pulse"
-            style={{
-              animation: "pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-              filter: "brightness(1.15)",
-            }}
-          >
-            <Bubble
-              content={
-                <span className="flex items-center gap-2">
-                  <span
-                    className="font-semibold text-blue-600"
-                    style={{
-                      animation:
-                        "pulse 0.7s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-                      textShadow:
-                        "0 0 10px rgba(37, 99, 235, 1), 0 0 20px rgba(37, 99, 235, 0.8), 0 0 30px rgba(37, 99, 235, 0.5)",
-                      filter: "brightness(1.3)",
-                    }}
-                  >
-                    ✨ {getStatusLabel()}
-                  </span>
-                  <span className="text-gray-400">·</span>
-                  <span className="text-gray-600">{agentStatusText}</span>
-                </span>
-              }
-              placement="start"
-            />
+        ))}
+
+        {displayAgentStatus ? (
+          <div className="flex justify-start">
+            <div className="max-w-3xl rounded-[1.35rem] border border-sky-400/15 bg-sky-400/[0.04] px-4 py-3 text-sm text-slate-200 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+              <span className="mr-2 font-semibold text-sky-300">
+                {getStatusLabel()}
+              </span>
+              <span className="text-slate-500">·</span>
+              <span className="ml-2 text-slate-300">{agentStatusText}</span>
+            </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 };

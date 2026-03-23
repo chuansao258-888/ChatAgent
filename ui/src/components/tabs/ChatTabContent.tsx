@@ -1,28 +1,19 @@
-import React, { useMemo } from "react";
-import { useMatch, useNavigate } from "react-router-dom";
-import { Button, Divider, Popconfirm } from "antd";
+import React from "react";
 import {
-  PlusOutlined,
-  MessageOutlined,
   DeleteOutlined,
+  MessageOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
+import { Button, Popconfirm, Typography } from "antd";
+import { useMatch, useNavigate } from "react-router-dom";
 import { useChatSessions } from "../../hooks/useChatSessions.ts";
-import { useAgents } from "../../hooks/useAgents.ts";
+
+const { Text } = Typography;
 
 const ChatTabContent: React.FC = () => {
   const navigate = useNavigate();
   const activeChatMatch = useMatch("/chat/:chatSessionId");
   const { chatSessions, loading, deleteChatSession } = useChatSessions();
-  const { agents } = useAgents();
-
-  // 创建 agentId 到 agent 的映射
-  const agentMap = useMemo(() => {
-    const map = new Map<string, string>();
-    agents.forEach((agent) => {
-      map.set(agent.id, agent.name);
-    });
-    return map;
-  }, [agents]);
 
   const handleCreateNewChat = () => {
     navigate("/chat");
@@ -39,76 +30,94 @@ const ChatTabContent: React.FC = () => {
     }
   };
 
-  // 格式化标题显示
   const getDisplayTitle = (session: { title?: string; agentId: string }) => {
     if (session.title) {
       return session.title;
     }
-    const agentName = agentMap.get(session.agentId);
-    return agentName ? `与 ${agentName} 的对话` : "新对话";
+    return "New chat";
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <Button
-        color="geekblue"
-        variant="filled"
-        icon={<PlusOutlined />}
+    <div className="flex h-full flex-col">
+      <button
+        type="button"
         onClick={handleCreateNewChat}
-        className="w-full"
+        className="mb-4 flex items-center gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left text-white transition hover:border-white/10 hover:bg-white/[0.06]"
       >
-        新聊天
-      </Button>
-      <Divider />
-      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50 rounded-lg">
+        <PlusOutlined />
+        <span className="font-medium">New chat</span>
+      </button>
+
+      <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto rounded-[28px] border border-white/6 bg-white/[0.025] p-3">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <p className="text-sm">加载中...</p>
+          <div className="flex h-full min-h-[280px] flex-col items-center justify-center text-white/42">
+            <p className="text-sm">Loading chats...</p>
           </div>
         ) : chatSessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <MessageOutlined className="text-4xl mb-2" />
-            <p className="text-sm">暂无聊天记录</p>
-            <p className="text-xs mt-1">点击上方按钮创建新聊天</p>
+          <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-[24px] border border-dashed border-white/8 bg-black/10 px-6 text-center text-white/40">
+            <MessageOutlined className="mb-4 text-4xl" />
+            <p className="text-sm font-medium text-white/68">No chats yet</p>
+            <p className="mt-2 text-xs leading-6 text-white/36">
+              Start a new conversation to see it here.
+            </p>
           </div>
         ) : (
-          <div className="space-y-1.5 p-1.5">
-            {chatSessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => handleSelectChatSession(session.id)}
-                className="w-full px-3 py-2.5 rounded-lg bg-white cursor-pointer transition-all hover:bg-gray-100 hover:shadow-sm group relative"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-200 to-purple-200 flex items-center justify-center shrink-0 text-lg mt-0.5">
-                    <MessageOutlined />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 truncate">
-                      {getDisplayTitle(session)}
+          <div className="space-y-2">
+            {chatSessions.map((session) => {
+              const isActive = activeChatMatch?.params.chatSessionId === session.id;
+
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => handleSelectChatSession(session.id)}
+                  className={`group relative w-full cursor-pointer rounded-2xl border px-4 py-3 transition ${
+                    isActive
+                      ? "border-white/14 bg-white/[0.085]"
+                      : "border-transparent bg-white/[0.035] hover:border-white/8 hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-base text-white/76">
+                      <MessageOutlined />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">
+                        {getDisplayTitle(session)}
+                      </div>
+                      <Text className="!mt-1 !block !text-xs !text-white/36">
+                        Open chat
+                      </Text>
+                    </div>
+
+                    <div
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                    >
+                      <Popconfirm
+                        title="Delete this chat?"
+                        description="This cannot be undone."
+                        onConfirm={() => handleDeleteChatSession(session.id)}
+                        okText="Delete"
+                        cancelText="Cancel"
+                      >
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          className="!flex !h-8 !w-8 !items-center !justify-center !rounded-full !text-white/38 opacity-0 transition-opacity hover:!bg-white/[0.06] hover:!text-white group-hover:opacity-100"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                          danger
+                        />
+                      </Popconfirm>
                     </div>
                   </div>
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <Popconfirm
-                      title="确定要删除这条聊天记录吗？"
-                      description="删除后将无法恢复"
-                      onConfirm={() => handleDeleteChatSession(session.id)}
-                      okText="确定"
-                      cancelText="取消"
-                    >
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                        danger
-                      />
-                    </Popconfirm>
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

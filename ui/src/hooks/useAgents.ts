@@ -8,20 +8,30 @@ import {
   updateAgent,
   type UpdateAgentRequest,
 } from "../api/api.ts";
+import { useAuth } from "./useAuth.ts";
 
 export function useAgents() {
   const [agents, setAgents] = useState<AgentVO[]>([]);
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     async function fetchData() {
+      if (!isAuthenticated) {
+        setAgents([]);
+        return;
+      }
       const resp = await getAgents();
       setAgents(resp.agents);
     }
 
-    fetchData().then();
-  }, []);
+    void fetchData();
+  }, [isAuthenticated]);
 
   async function refreshAgents() {
+    if (!isAuthenticated) {
+      setAgents([]);
+      return;
+    }
     const resp = await getAgents();
     setAgents(resp.agents);
   }

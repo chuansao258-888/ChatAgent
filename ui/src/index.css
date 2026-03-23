@@ -22,6 +22,60 @@
   overflow: hidden;
 }
 
+.side-menu-tabs .ant-tabs-nav {
+  margin: 0 0 16px 0 !important;
+}
+
+.side-menu-tabs .ant-tabs-nav::before,
+.side-menu-tabs .ant-tabs-ink-bar {
+  display: none !important;
+}
+
+.side-menu-tabs .ant-tabs-nav-list {
+  width: 100%;
+  gap: 4px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 4px;
+}
+
+.side-menu-tabs .ant-tabs-tab {
+  flex: 1 1 0;
+  justify-content: center;
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.56);
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.side-menu-tabs .ant-tabs-tab:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.side-menu-tabs .ant-tabs-tab.ant-tabs-tab-active {
+  background: rgba(255, 255, 255, 0.065);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.side-menu-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #ffffff;
+}
+
+.side-menu-tabs .ant-tabs-tab-btn {
+  width: 100%;
+  text-align: center;
+  color: inherit;
+}
+
+.side-menu-tabs .ant-tabs-content-holder {
+  min-height: 0;
+}
+
 /* 隐藏滚动条但保持滚动功能 */
 .scrollbar-hide {
   -ms-overflow-style: none; /* IE and Edge */
@@ -30,4 +84,354 @@
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none; /* Chrome, Safari and Opera */
+}
+
+.auth-dialog .ant-modal-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+.auth-dialog .ant-modal {
+  padding-bottom: 0;
+}
+
+.auth-dialog .ant-modal-body {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.auth-input.ant-input,
+.auth-input.ant-input-affix-wrapper {
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: #2a2a2a !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.auth-input.ant-input:hover,
+.auth-input.ant-input:focus,
+.auth-input.ant-input-affix-wrapper:hover,
+.auth-input.ant-input-affix-wrapper-focused {
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  background: #303030 !important;
+}
+
+.auth-input .ant-input,
+.auth-input input.ant-input {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.auth-input .ant-input::placeholder,
+.auth-input input.ant-input::placeholder,
+.auth-input.ant-input::placeholder {
+  color: rgba(255, 255, 255, 0.34) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.34) !important;
+  opacity: 1 !important;
+}
+
+.auth-input .ant-input-password-icon {
+  color: rgba(255, 255, 255, 0.44) !important;
+}
+
+.auth-input.ant-input:-webkit-autofill,
+.auth-input.ant-input:-webkit-autofill:hover,
+.auth-input.ant-input:-webkit-autofill:focus,
+.auth-input input.ant-input:-webkit-autofill,
+.auth-input input.ant-input:-webkit-autofill:hover,
+.auth-input input.ant-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 0 0 1000px #2a2a2a inset !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.chat-empty-sender textarea::placeholder {
+  color: rgba(255, 255, 255, 0.38) !important;
+}
+
+.chat-empty-sender textarea,
+.chat-empty-sender .ant-sender-input {
+  color: rgba(255, 255, 255, 0.94) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+.chat-empty-sender .ant-sender-actions-btn {
+  width: 40px;
+  height: 40px;
+  border: 0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  color: #111827 !important;
+}
+
+.chat-empty-sender .ant-sender-actions-btn:hover,
+.chat-empty-sender .ant-sender-actions-btn:focus {
+  background: #f8fafc !important;
+  color: #111827 !important;
+}
+
+.chat-empty-sender .ant-sender-actions-btn .anticon {
+  color: #111827 !important;
+}
+
+.chat-empty-sender .ant-sender-actions-btn.ant-btn-primary[disabled],
+.chat-empty-sender .ant-sender-actions-btn-disabled {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+.chat-empty-sender .ant-sender-actions-btn.ant-btn-primary[disabled] .anticon,
+.chat-empty-sender .ant-sender-actions-btn-disabled .anticon {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+.chat-active-sender textarea,
+.chat-active-sender .ant-sender-input {
+  color: rgba(255, 255, 255, 0.94) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+.chat-active-sender textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.chat-active-sender .ant-sender-actions-btn {
+  width: 40px;
+  height: 40px;
+  border: 0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  color: #111827 !important;
+}
+
+.chat-active-sender .ant-sender-actions-btn:hover,
+.chat-active-sender .ant-sender-actions-btn:focus {
+  background: #f8fafc !important;
+  color: #111827 !important;
+}
+
+.chat-active-sender .ant-sender-actions-btn .anticon {
+  color: #111827 !important;
+}
+
+.chat-active-sender .ant-sender-actions-btn.ant-btn-primary[disabled],
+.chat-active-sender .ant-sender-actions-btn-disabled {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+.chat-active-sender .ant-sender-actions-btn.ant-btn-primary[disabled] .anticon,
+.chat-active-sender .ant-sender-actions-btn-disabled .anticon {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+.chat-markdown {
+  color: inherit !important;
+}
+
+.chat-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol,
+.chat-markdown pre,
+.chat-markdown table,
+.chat-markdown hr,
+.chat-markdown img,
+.chat-markdown blockquote,
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  margin: 0 0 0.9rem 0 !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown p:last-child,
+.chat-markdown ul:last-child,
+.chat-markdown ol:last-child,
+.chat-markdown pre:last-child,
+.chat-markdown blockquote:last-child {
+  margin-bottom: 0 !important;
+}
+
+.chat-markdown strong {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.chat-markdown a {
+  color: #8ec5ff !important;
+  text-decoration: underline !important;
+}
+
+.chat-markdown img {
+  display: block;
+  max-width: min(100%, 44rem);
+  height: auto;
+  border-radius: 1rem;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.4rem !important;
+}
+
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-markdown th {
+  color: #ffffff !important;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-markdown hr {
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chat-markdown li::marker {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.chat-markdown code {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.12rem 0.4rem;
+  border-radius: 0.5rem;
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown pre {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #171717 !important;
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.chat-markdown pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.chat-markdown [class*="highlightCode"] {
+  overflow: hidden;
+  border-radius: 1rem;
+}
+
+.chat-markdown [class*="highlightCode-header"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 0;
+  background: linear-gradient(180deg, #262626 0%, #212121 100%) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  padding: 0.72rem 0.95rem !important;
+}
+
+.chat-markdown [class*="highlightCode-header-title"] {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9cc8ff !important;
+}
+
+.chat-markdown [class*="highlightCode-code"] {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-top: 0 !important;
+  background: #171717 !important;
+}
+
+.chat-markdown [class*="highlightCode-code"] pre {
+  background: #171717 !important;
+}
+
+.chat-markdown [class*="actions-copy"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.18rem 0.6rem;
+  color: rgba(255, 255, 255, 0.78) !important;
+  font-size: 0.75rem;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.chat-markdown [class*="actions-copy"]:hover {
+  background: rgba(255, 255, 255, 0.11);
+  color: #ffffff !important;
+}
+
+.chat-markdown [class*="actions-copy"] .ant-typography-copy,
+.chat-markdown [class*="actions-copy"] .anticon,
+.chat-markdown [class*="actions-copy"] svg {
+  color: inherit !important;
+}
+
+.chat-markdown-code-block {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #171717 !important;
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.chat-markdown-code-block code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
+  padding-left: 1rem;
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.chat-markdown .katex {
+  color: inherit !important;
+  font-size: 1.04em;
+}
+
+.chat-markdown .katex-display {
+  margin: 1rem 0 !important;
 }

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.ChatSessionFileMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.ChatSessionFile">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="filename" column="filename" jdbcType="VARCHAR"/>
+        <result property="originalFilename" column="original_filename" jdbcType="VARCHAR"/>
+        <result property="mimeType" column="mime_type" jdbcType="VARCHAR"/>
+        <result property="sizeBytes" column="size_bytes" jdbcType="BIGINT"/>
+        <result property="storagePath" column="storage_path" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="parseStatus" column="parse_status" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSessionFile">
+        INSERT INTO chat_session_file (
+            id,
+            session_id,
+            filename,
+            original_filename,
+            mime_type,
+            size_bytes,
+            storage_path,
+            status,
+            parse_status,
+            metadata,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            CAST(#{id} AS uuid),
+            CAST(#{sessionId} AS uuid),
+            #{filename},
+            #{originalFilename},
+            #{mimeType},
+            #{sizeBytes},
+            #{storagePath},
+            #{status},
+            #{parseStatus},
+            COALESCE(CAST(#{metadata} AS jsonb), '{}'::jsonb),
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <select id="selectBySessionId" resultMap="BaseResultMap">
+        SELECT
+            id,
+            session_id,
+            filename,
+            original_filename,
+            mime_type,
+            size_bytes,
+            storage_path,
+            status,
+            parse_status,
+            metadata::text AS metadata,
+            created_at,
+            updated_at
+        FROM chat_session_file
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+            id,
+            session_id,
+            filename,
+            original_filename,
+            mime_type,
+            size_bytes,
+            storage_path,
+            status,
+            parse_status,
+            metadata::text AS metadata,
+            created_at,
+            updated_at
+        FROM chat_session_file
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSessionFile">
+        UPDATE chat_session_file
+        <set>
+            <if test="sessionId != null">
+                session_id = CAST(#{sessionId} AS uuid),
+            </if>
+            <if test="filename != null">
+                filename = #{filename},
+            </if>
+            <if test="originalFilename != null">
+                original_filename = #{originalFilename},
+            </if>
+            <if test="mimeType != null">
+                mime_type = #{mimeType},
+            </if>
+            <if test="sizeBytes != null">
+                size_bytes = #{sizeBytes},
+            </if>
+            <if test="storagePath != null">
+                storage_path = #{storagePath},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+            <if test="parseStatus != null">
+                parse_status = #{parseStatus},
+            </if>
+            <if test="metadata != null">
+                metadata = CAST(#{metadata} AS jsonb),
+            </if>
+            updated_at = NOW()
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM chat_session_file
+        WHERE id = CAST(#{id} AS uuid)
+    </delete>
+
+</mapper>

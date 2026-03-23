@@ -49,10 +49,6 @@ public class MarkdownParserServiceImpl implements MarkdownParserService {
         }
     }
 
-    /**
-     * Extracts title-content pairs by scanning top-level nodes.
-     * The content of a heading stops before the next heading, regardless of level.
-     */
     private void extractSections(Document document, List<MarkdownSection> sections) {
         List<Node> topLevelNodes = new ArrayList<>();
         Node child = document.getFirstChild();
@@ -92,9 +88,6 @@ public class MarkdownParserServiceImpl implements MarkdownParserService {
         }
     }
 
-    /**
-     * Extracts plain title text from a heading node.
-     */
     private String extractHeadingText(Heading heading) {
         StringBuilder text = new StringBuilder();
         Node child = heading.getFirstChild();
@@ -111,9 +104,6 @@ public class MarkdownParserServiceImpl implements MarkdownParserService {
         return text.toString().trim();
     }
 
-    /**
-     * Extracts node content while preserving markdown tables where possible.
-     */
     private String extractNodeContent(Node node) {
         if (node == null) {
             return null;
@@ -126,9 +116,6 @@ public class MarkdownParserServiceImpl implements MarkdownParserService {
         return extractPlainText(node);
     }
 
-    /**
-     * Reuses original markdown slices for tables so formatting is not flattened to plain text.
-     */
     private String extractTableMarkdown(Node tableNode) {
         if (originalMarkdownContent == null) {
             return extractPlainText(tableNode);
@@ -150,9 +137,6 @@ public class MarkdownParserServiceImpl implements MarkdownParserService {
         }
     }
 
-    /**
-     * Extracts plain text recursively from any node.
-     */
     private String extractPlainText(Node node) {
         if (node == null) {
             return null;
@@ -163,9 +147,6 @@ public class MarkdownParserServiceImpl implements MarkdownParserService {
         return text.length() > 0 ? text.toString().trim() : null;
     }
 
-    /**
-     * Recursively walks the Flexmark tree and appends readable text output.
-     */
     private void extractTextRecursive(Node node, StringBuilder text) {
         if (node == null) {
             return;

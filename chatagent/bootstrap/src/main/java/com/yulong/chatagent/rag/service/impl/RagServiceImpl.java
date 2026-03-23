@@ -1,10 +1,13 @@
 package com.yulong.chatagent.rag.service.impl;
 
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
-import com.yulong.chatagent.rag.retrieve.KnowledgeChunkSimilaritySearcher;
+import com.yulong.chatagent.rag.retrieve.SessionFileSimilaritySearcher;
 import com.yulong.chatagent.rag.service.RagService;
+import com.yulong.chatagent.file.port.ChatSessionFileRepository;
+import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -14,12 +17,15 @@ import java.util.List;
 public class RagServiceImpl implements RagService {
 
     private final OllamaEmbeddingClient embeddingClient;
-    private final KnowledgeChunkSimilaritySearcher similaritySearcher;
+    private final SessionFileSimilaritySearcher similaritySearcher;
+    private final ChatSessionFileRepository chatSessionFileRepository;
 
     public RagServiceImpl(OllamaEmbeddingClient embeddingClient,
-                          KnowledgeChunkSimilaritySearcher similaritySearcher) {
+                          SessionFileSimilaritySearcher similaritySearcher,
+                          ChatSessionFileRepository chatSessionFileRepository) {
         this.embeddingClient = embeddingClient;
         this.similaritySearcher = similaritySearcher;
+        this.chatSessionFileRepository = chatSessionFileRepository;
     }
 
     @Override
@@ -28,7 +34,13 @@ public class RagServiceImpl implements RagService {
     }
 
     @Override
-    public List<String> similaritySearch(String kbId, String title) {
-        return similaritySearcher.search(kbId, title);
+    public List<String> similaritySearchBySession(String chatSessionId, String query) {
+        List<String> sessionFileIds = new ArrayList<>();
+        for (ChatSessionFileDTO relation : chatSessionFileRepository.findBySessionId(chatSessionId)) {
+            if (relation.getId() != null && !relation.getId().isBlank()) {
+                sessionFileIds.add(relation.getId());
+            }
+        }
+        return similaritySearcher.searchBySessionFileIds(sessionFileIds, query);
     }
 }

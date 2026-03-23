@@ -1,7 +1,6 @@
-import { get, post, patch, del } from "./http.ts";
+import { del, get, patch, post } from "./http.ts";
 import type { ChatMessageVO, MessageType } from "../types";
 
-// 类型定义
 export interface ChatOptions {
   temperature?: number;
   topP?: number;
@@ -16,7 +15,6 @@ export interface CreateAgentRequest {
   systemPrompt?: string;
   model: ModelType;
   allowedTools?: string[];
-  allowedKbs?: string[];
   chatOptions?: ChatOptions;
 }
 
@@ -26,7 +24,6 @@ export interface UpdateAgentRequest {
   systemPrompt?: string;
   model?: ModelType;
   allowedTools?: string[];
-  allowedKbs?: string[];
   chatOptions?: ChatOptions;
 }
 
@@ -41,7 +38,6 @@ export interface AgentVO {
   systemPrompt?: string;
   model: ModelType;
   allowedTools?: string[];
-  allowedKbs?: string[];
   chatOptions?: ChatOptions;
   createdAt?: string;
   updatedAt?: string;
@@ -51,32 +47,20 @@ export interface GetAgentsResponse {
   agents: AgentVO[];
 }
 
-/**
- * 获取所有 agents
- */
 export async function getAgents(): Promise<GetAgentsResponse> {
   return get<GetAgentsResponse>("/agents");
 }
 
-/**
- * 创建 agent
- */
 export async function createAgent(
   request: CreateAgentRequest,
 ): Promise<CreateAgentResponse> {
   return post<CreateAgentResponse>("/agents", request);
 }
 
-/**
- * 删除 agent
- */
 export async function deleteAgent(agentId: string): Promise<void> {
   return del<void>(`/agents/${agentId}`);
 }
 
-/**
- * 更新 agent
- */
 export async function updateAgent(
   agentId: string,
   request: UpdateAgentRequest,
@@ -84,16 +68,14 @@ export async function updateAgent(
   return patch<void>(`/agents/${agentId}`, request);
 }
 
-/**
- * 创建聊天会话
- */
 export interface CreateChatSessionRequest {
-  agentId: string;
+  agentId?: string;
   title?: string;
 }
 
 export interface CreateChatSessionResponse {
   chatSessionId: string;
+  agentId: string;
 }
 
 export async function createChatSession(
@@ -102,9 +84,6 @@ export async function createChatSession(
   return post<CreateChatSessionResponse>("/chat-sessions", request);
 }
 
-/**
- * 聊天会话相关类型和接口
- */
 export interface ChatSessionVO {
   id: string;
   agentId: string;
@@ -123,34 +102,22 @@ export interface UpdateChatSessionRequest {
   title?: string;
 }
 
-/**
- * 获取所有聊天会话
- */
 export async function getChatSessions(): Promise<GetChatSessionsResponse> {
   return get<GetChatSessionsResponse>("/chat-sessions");
 }
 
-/**
- * 获取单个聊天会话
- */
 export async function getChatSession(
   chatSessionId: string,
 ): Promise<GetChatSessionResponse> {
   return get<GetChatSessionResponse>(`/chat-sessions/${chatSessionId}`);
 }
 
-/**
- * 根据 agentId 获取聊天会话
- */
 export async function getChatSessionsByAgentId(
   agentId: string,
 ): Promise<GetChatSessionsResponse> {
   return get<GetChatSessionsResponse>(`/chat-sessions/agent/${agentId}`);
 }
 
-/**
- * 更新聊天会话
- */
 export async function updateChatSession(
   chatSessionId: string,
   request: UpdateChatSessionRequest,
@@ -158,16 +125,10 @@ export async function updateChatSession(
   return patch<void>(`/chat-sessions/${chatSessionId}`, request);
 }
 
-/**
- * 删除聊天会话
- */
 export async function deleteChatSession(chatSessionId: string): Promise<void> {
   return del<void>(`/chat-sessions/${chatSessionId}`);
 }
 
-/**
- * 聊天消息相关类型和接口
- */
 export interface MetaData {
   [key: string]: unknown;
 }
@@ -193,27 +154,18 @@ export interface UpdateChatMessageRequest {
   metadata?: MetaData;
 }
 
-/**
- * 根据 sessionId 获取聊天消息
- */
 export async function getChatMessagesBySessionId(
   sessionId: string,
 ): Promise<GetChatMessagesResponse> {
   return get<GetChatMessagesResponse>(`/chat-messages/session/${sessionId}`);
 }
 
-/**
- * 创建聊天消息
- */
 export async function createChatMessage(
   request: CreateChatMessageRequest,
 ): Promise<CreateChatMessageResponse> {
   return post<CreateChatMessageResponse>("/chat-messages", request);
 }
 
-/**
- * 更新聊天消息
- */
 export async function updateChatMessage(
   chatMessageId: string,
   request: UpdateChatMessageRequest,
@@ -221,171 +173,56 @@ export async function updateChatMessage(
   return patch<void>(`/chat-messages/${chatMessageId}`, request);
 }
 
-/**
- * 删除聊天消息
- */
 export async function deleteChatMessage(chatMessageId: string): Promise<void> {
   return del<void>(`/chat-messages/${chatMessageId}`);
 }
 
-/**
- * 知识库相关类型和接口
- */
-export interface KnowledgeBaseVO {
+export interface ChatSessionFileVO {
   id: string;
-  name: string;
-  description?: string;
-}
-
-export interface CreateKnowledgeBaseRequest {
-  name: string;
-  description?: string;
-}
-
-export interface UpdateKnowledgeBaseRequest {
-  name?: string;
-  description?: string;
-}
-
-export interface GetKnowledgeBasesResponse {
-  knowledgeBases: KnowledgeBaseVO[];
-}
-
-export interface CreateKnowledgeBaseResponse {
-  knowledgeBaseId: string;
-}
-
-/**
- * 获取所有知识库
- */
-export async function getKnowledgeBases(): Promise<GetKnowledgeBasesResponse> {
-  return get<GetKnowledgeBasesResponse>("/knowledge-bases");
-}
-
-/**
- * 创建知识库
- */
-export async function createKnowledgeBase(
-  request: CreateKnowledgeBaseRequest,
-): Promise<CreateKnowledgeBaseResponse> {
-  return post<CreateKnowledgeBaseResponse>("/knowledge-bases", request);
-}
-
-/**
- * 删除知识库
- */
-export async function deleteKnowledgeBase(
-  knowledgeBaseId: string,
-): Promise<void> {
-  return del<void>(`/knowledge-bases/${knowledgeBaseId}`);
-}
-
-/**
- * 更新知识库
- */
-export async function updateKnowledgeBase(
-  knowledgeBaseId: string,
-  request: UpdateKnowledgeBaseRequest,
-): Promise<void> {
-  return patch<void>(`/knowledge-bases/${knowledgeBaseId}`, request);
-}
-
-/**
- * 文档相关类型和接口
- */
-export interface DocumentVO {
-  id: string;
-  kbId: string;
   filename: string;
-  filetype: string;
-  size: number;
-}
-
-export interface GetDocumentsResponse {
-  documents: DocumentVO[];
-}
-
-export interface CreateDocumentResponse {
-  documentId: string;
-  taskId?: string;
-}
-
-export interface IngestionTaskVO {
-  id: string;
-  kbId: string;
-  documentId: string;
-  fileType: string;
-  status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
-  chunkCount?: number;
-  errorMessage?: string;
-  startedAt?: string;
-  finishedAt?: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: string;
+  parseStatus: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface GetIngestionTasksResponse {
-  ingestionTasks: IngestionTaskVO[];
+export interface GetChatSessionFilesResponse {
+  files: ChatSessionFileVO[];
 }
 
-/**
- * 根据知识库 ID 获取文档列表
- */
-export async function getDocumentsByKbId(
-  kbId: string,
-): Promise<GetDocumentsResponse> {
-  return get<GetDocumentsResponse>(`/documents/kb/${kbId}`);
+export interface UploadChatSessionFileResponse {
+  sessionFileId: string;
+  sessionId: string;
 }
 
-/**
- * 上传文档
- */
-export async function uploadDocument(
-  kbId: string,
+export async function getChatSessionFiles(
+  sessionId: string,
+): Promise<GetChatSessionFilesResponse> {
+  return get<GetChatSessionFilesResponse>(`/chat-sessions/${sessionId}/files`);
+}
+
+export async function uploadChatSessionFile(
+  sessionId: string,
   file: File,
-): Promise<CreateDocumentResponse> {
+): Promise<UploadChatSessionFileResponse> {
   const formData = new FormData();
-  formData.append("kbId", kbId);
   formData.append("file", file);
-
-  return post<CreateDocumentResponse>("/documents/upload", formData);
-  /*
-
-
-    throw new Error(apiResponse.message || "上传失败");
-  }
-
-  */
+  return post<UploadChatSessionFileResponse>(
+    `/chat-sessions/${sessionId}/files/upload`,
+    formData,
+  );
 }
 
-/**
- * 根据知识库 ID 获取入库任务列表
- */
-export async function getIngestionTasksByKbId(
-  kbId: string,
-): Promise<GetIngestionTasksResponse> {
-  return get<GetIngestionTasksResponse>(`/knowledge-bases/${kbId}/ingestion-tasks`);
+export async function detachChatSessionFile(
+  sessionId: string,
+  sessionFileId: string,
+): Promise<void> {
+  return del<void>(`/chat-sessions/${sessionId}/files/${sessionFileId}`);
 }
 
-/**
- * 获取单个入库任务详情
- */
-export async function getIngestionTaskById(
-  taskId: string,
-): Promise<IngestionTaskVO> {
-  return get<IngestionTaskVO>(`/ingestion-tasks/${taskId}`);
-}
-
-/**
- * 删除文档
- */
-export async function deleteDocument(documentId: string): Promise<void> {
-  return del<void>(`/documents/${documentId}`);
-}
-
-/**
- * 工具相关类型和接口
- */
 export type ToolType = "FIXED" | "OPTIONAL";
 
 export interface ToolVO {
@@ -398,9 +235,6 @@ export interface GetOptionalToolsResponse {
   tools: ToolVO[];
 }
 
-/**
- * 获取可选工具列表
- */
 export async function getOptionalTools(): Promise<GetOptionalToolsResponse> {
   const tools = await get<ToolVO[]>("/tools");
   return { tools };

@@ -1,185 +1,210 @@
-import React, { useState, useMemo } from "react";
-import { Card, Space, Typography, Select } from "antd";
-import {
-  BulbOutlined,
-  MessageOutlined,
-  RobotOutlined,
-  DownOutlined,
-} from "@ant-design/icons";
+import React, { useRef, useState } from "react";
+import { PlusOutlined } from "@ant-design/icons";
+import { Button, Typography, message as antdMessage } from "antd";
 import { Sender } from "@ant-design/x";
 import { useNavigate } from "react-router-dom";
 import {
-  type AgentVO,
   createChatMessage,
   createChatSession,
+  uploadChatSessionFile,
 } from "../../../api/api.ts";
-import { getAgentEmoji } from "../../../utils";
+import { useAuth } from "../../../hooks/useAuth.ts";
 import { useChatSessions } from "../../../hooks/useChatSessions.ts";
 
 const { Title, Text } = Typography;
 
 interface DefaultAgentChatViewProps {
-  handleSendMessage: (message: string) => void;
   loading: boolean;
-  agents: AgentVO[];
 }
 
 const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
   loading,
-  agents,
 }) => {
-  const [message, setMessage] = useState("");
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const navigate = useNavigate();
   const { refreshChatSessions } = useChatSessions();
+  const { isAuthenticated, openAuthDialog } = useAuth();
 
-  // 为每个 agent 生成 emoji
-  const agentsWithEmoji = useMemo(() => {
-    return agents.map((agent) => ({
-      ...agent,
-      emoji: getAgentEmoji(agent.id),
-    }));
-  }, [agents]);
-
-  // 计算实际选中的 agent ID（如果用户没有选择，则使用默认的第一个）
-  const effectiveAgentId = useMemo(() => {
-    if (selectedAgentId) {
-      return selectedAgentId;
+  const ensureSessionForNewChat = async (titleSeed: string) => {
+    if (!isAuthenticated) {
+      openAuthDialog("login");
+      return null;
     }
-    return agents.length > 0 ? agents[0].id : null;
-  }, [selectedAgentId, agents]);
+    const response = await createChatSession({
+      title: titleSeed.slice(0, 20),
+    });
+
+    await refreshChatSessions();
+    return {
+      chatSessionId: response.chatSessionId,
+      agentId: response.agentId,
+    };
+  };
+
+  const handleCreateConversation = async () => {
+    const trimmedMessage = inputValue.trim();
+    if (!trimmedMessage) {
+      return;
+    }
+
+    const createdSession = await ensureSessionForNewChat(trimmedMessage);
+    if (!createdSession) {
+      return;
+    }
+
+    await createChatMessage({
+      sessionId: createdSession.chatSessionId,
+      content: trimmedMessage,
+      role: "user",
+      agentId: createdSession.agentId,
+    });
+
+    setInputValue("");
+    navigate(`/chat/${createdSession.chatSessionId}`);
+  };
+
+  const handleUploadFile = async (file: File) => {
+    const createdSession = await ensureSessionForNewChat(file.name);
+    if (!createdSession) {
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      await uploadChatSessionFile(createdSession.chatSessionId, file);
+      antdMessage.success(`${file.name} attached to the new chat.`);
+      navigate(`/chat/${createdSession.chatSessionId}`);
+    } catch (error) {
+      console.error("Failed to upload file to the new chat:", error);
+      antdMessage.error("Failed to upload file. Please try again.");
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Agent 选择器 - 顶部 */}
-      {agents.length > 0 && (
-        <div className="border-b border-gray-200 bg-white px-4 py-3">
-          <div className="flex items-center justify-start">
-            <Select
-              value={effectiveAgentId}
-              onChange={(value) => setSelectedAgentId(value)}
-              style={{ width: 200 }}
-              className="agent-selector"
-              suffixIcon={<DownOutlined className="text-gray-400" />}
-              placeholder="选择智能体助手"
-              optionRender={(option) => (
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">
-                    {agentsWithEmoji.find((a) => a.id === option.value)?.emoji}
-                  </span>
-                  <span className="text-sm">{option.label}</span>
-                </div>
-              )}
-              options={agentsWithEmoji.map((agent) => ({
-                value: agent.id,
-                label: agent.name,
-              }))}
-            />
+      <div className="flex h-full flex-col bg-[#212121] text-white">
+      <div className="flex items-center justify-between px-5 py-3">
+        <div className="flex items-center gap-3">
+          <div className="text-[1.75rem] font-semibold tracking-tight text-white">
+            ChatAgent
           </div>
         </div>
-      )}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full space-y-6">
-          <div className="text-center mb-8">
-            <Title level={2} className="mb-2">
-              开始新的对话
-            </Title>
-            <Text type="secondary" className="text-base">
-              选择一个智能体助手开始聊天，或直接发送消息创建新会话
-            </Text>
+        {isAuthenticated ? null : (
+          <div className="flex items-center gap-3">
+            <Button
+              size="large"
+              className="!rounded-full !border-white/12 !bg-white !px-5 !text-slate-950 hover:!border-white hover:!bg-white"
+              onClick={() => {
+                openAuthDialog("login");
+              }}
+            >
+              Log in
+            </Button>
+            <Button
+              size="large"
+              className="!rounded-full !border-white/12 !bg-white/4 !px-5 !text-white hover:!border-white/20 hover:!bg-white/8"
+              onClick={() => {
+                openAuthDialog("register");
+              }}
+            >
+              Sign up
+            </Button>
           </div>
-          <Space orientation="vertical" size="large" className="w-full">
-            <Card
-              hoverable
-              className="cursor-pointer transition-all hover:shadow-lg"
-            >
-              <Space size="middle">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center">
-                  <RobotOutlined className="text-white text-xl" />
-                </div>
-                <div>
-                  <Title level={5} className="mb-1">
-                    智能对话
-                  </Title>
-                  <Text type="secondary">
-                    与 AI 助手进行智能对话，获取帮助和建议
-                  </Text>
-                </div>
-              </Space>
-            </Card>
-
-            <Card
-              hoverable
-              className="cursor-pointer transition-all hover:shadow-lg"
-            >
-              <Space size="middle">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-teal-400 flex items-center justify-center">
-                  <BulbOutlined className="text-white text-xl" />
-                </div>
-                <div>
-                  <Title level={5} className="mb-1">
-                    知识问答
-                  </Title>
-                  <Text type="secondary">
-                    基于知识库进行问答，获取准确的信息
-                  </Text>
-                </div>
-              </Space>
-            </Card>
-
-            <Card
-              hoverable
-              className="cursor-pointer transition-all hover:shadow-lg"
-            >
-              <Space size="middle">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-400 flex items-center justify-center">
-                  <MessageOutlined className="text-white text-xl" />
-                </div>
-                <div>
-                  <Title level={5} className="mb-1">
-                    快速开始
-                  </Title>
-                  <Text type="secondary">
-                    在下方输入框输入消息，立即开始对话
-                  </Text>
-                </div>
-              </Space>
-            </Card>
-          </Space>
-        </div>
+        )}
       </div>
-      <div className="border-t border-gray-200 bg-white">
-        {/* 输入框 */}
-        <div className="px-4 pb-4 pt-4">
-          <Sender
-            onSubmit={async () => {
-              if (!effectiveAgentId) return;
-              console.log("发送消息", message);
-              const response = await createChatSession({
-                agentId: effectiveAgentId,
-                title: message.slice(0, 20),
-              });
-              await createChatMessage({
-                sessionId: response.chatSessionId ?? "",
-                content: message,
-                role: "user",
-                agentId: effectiveAgentId,
-              });
-              // 刷新聊天会话列表
-              await refreshChatSessions();
-              setMessage("");
-              navigate(
-                `/chat/${response.chatSessionId}`,
-              );
-            }}
-            value={message}
-            loading={loading}
-            placeholder="输入消息开始对话..."
-            onChange={(value) => {
-              setMessage(value);
-            }}
-          />
+
+      <div className="flex flex-1 items-center justify-center px-6">
+        <div className="w-full max-w-4xl -translate-y-10 md:-translate-y-14">
+          <div className="mb-10 text-center">
+            <Title
+              level={1}
+              className="!mb-0 !text-[3rem] !font-medium !tracking-tight !text-white"
+            >
+              {isAuthenticated ? "Get step-by-step help" : "Start with a question"}
+            </Title>
+          </div>
+
+          <div className="mx-auto w-full max-w-3xl">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                  return;
+                }
+                void handleUploadFile(file);
+              }}
+            />
+
+            <Sender
+              onSubmit={() => {
+                void handleCreateConversation();
+              }}
+              value={inputValue}
+              loading={loading || uploadingFile}
+              placeholder="Ask anything"
+              classNames={{
+                root: "chat-empty-sender",
+                input: "chat-empty-sender-input",
+                suffix: "chat-empty-sender-suffix",
+              }}
+              styles={{
+                root: {
+                  background: "#2f2f2f",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: 28,
+                  boxShadow: "0 18px 48px rgba(0,0,0,0.14)",
+                },
+                content: {
+                  padding: "12px 14px",
+                  gap: 12,
+                  alignItems: "center",
+                },
+                input: {
+                  color: "#ffffff",
+                  fontSize: 18,
+                  lineHeight: 1.45,
+                },
+                prefix: {
+                  alignSelf: "center",
+                },
+                suffix: {
+                  alignSelf: "center",
+                },
+              }}
+              prefix={
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-slate-300 transition hover:bg-white/8"
+                  aria-label="Add attachment"
+                  onClick={() => {
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  <PlusOutlined />
+                </button>
+              }
+              onChange={(value) => {
+                setInputValue(value);
+              }}
+            />
+            <div className="mt-6 text-center text-sm text-slate-400">
+              <Text className="!text-slate-400">
+                {isAuthenticated
+                  ? "Your first message or file will create a new chat."
+                  : "You can browse first and log in when you send or upload."}
+              </Text>
+            </div>
+          </div>
         </div>
       </div>
     </div>

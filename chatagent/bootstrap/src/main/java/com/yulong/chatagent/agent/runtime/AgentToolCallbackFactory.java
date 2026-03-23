@@ -3,13 +3,18 @@ package com.yulong.chatagent.agent.runtime;
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.admin.application.ToolFacadeService;
 import com.yulong.chatagent.support.dto.AgentDTO;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -35,16 +40,18 @@ public class AgentToolCallbackFactory {
      */
     public List<ToolCallback> create(AgentDTO agentConfig) {
         List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
-        List<ToolCallback> callbacks = new ArrayList<>();
+        Map<String, ToolCallback> callbacksByName = new LinkedHashMap<>();
         for (Tool tool : runtimeTools) {
             Object target = resolveToolTarget(tool);
             ToolCallback[] toolCallbacks = MethodToolCallbackProvider.builder()
                     .toolObjects(target)
                     .build()
                     .getToolCallbacks();
-            callbacks.addAll(Arrays.asList(toolCallbacks));
+            for (ToolCallback toolCallback : toolCallbacks) {
+                registerCallback(callbacksByName, toolCallback);
+            }
         }
-        return callbacks;
+        return new ArrayList<>(callbacksByName.values());
     }
 
     /**
@@ -83,5 +90,54 @@ public class AgentToolCallbackFactory {
     private Object resolveToolTarget(Tool tool) {
         Object target = AopProxyUtils.getSingletonTarget(tool);
         return target != null ? target : tool;
+    }
+
+    private void registerCallback(Map<String, ToolCallback> callbacksByName, ToolCallback callback) {
+        String name = callback.getToolDefinition().name();
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+
+        callbacksByName.putIfAbsent(name, callback);
+        if (name.endsWith("Tool")) {
+            String alias = name + "Tool";
+            callbacksByName.putIfAbsent(alias, new AliasToolCallback(callback, alias));
+        }
+    }
+
+    private static final class AliasToolCallback implements ToolCallback {
+
+        private final ToolCallback delegate;
+        private final ToolDefinition aliasDefinition;
+
+        private AliasToolCallback(ToolCallback delegate, String aliasName) {
+            this.delegate = delegate;
+            ToolDefinition definition = delegate.getToolDefinition();
+            this.aliasDefinition = ToolDefinition.builder()
+                    .name(aliasName)
+                    .description(definition.description())
+                    .inputSchema(definition.inputSchema())
+                    .build();
+        }
+
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return aliasDefinition;
+        }
+
+        @Override
+        public ToolMetadata getToolMetadata() {
+            return delegate.getToolMetadata();
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return delegate.call(toolInput);
+        }
+
+        @Override
+        public String call(String toolInput, ToolContext toolContext) {
+            return delegate.call(toolInput, toolContext);
+        }
     }
 }

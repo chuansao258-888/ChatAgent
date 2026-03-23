@@ -14,15 +14,15 @@ import java.nio.file.Path;
 public interface DocumentStorageService {
 
     /**
-     * Saves an uploaded file under the storage layout used by the knowledge module.
+     * Saves an uploaded file under the storage layout used by chat-session file attachments.
      *
-     * @param kbId knowledge base identifier
-     * @param documentId document identifier
+     * @param sessionId current chat session identifier
+     * @param sessionFileId logical session-file identifier
      * @param file uploaded file
      * @return stored relative file path
      * @throws IOException if the file cannot be written
      */
-    String saveFile(String kbId, String documentId, MultipartFile file) throws IOException;
+    String saveChatSessionFile(String sessionId, String sessionFileId, MultipartFile file) throws IOException;
 
     /**
      * Deletes one stored file.

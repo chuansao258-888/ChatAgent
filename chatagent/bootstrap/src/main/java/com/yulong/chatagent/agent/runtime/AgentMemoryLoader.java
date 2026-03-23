@@ -14,7 +14,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Restores Spring AI chat memory from persisted conversation messages.
@@ -39,35 +42,33 @@ public class AgentMemoryLoader {
      */
     public List<Message> load(String chatSessionId, AgentDTO agentConfig) {
         int messageLength = agentConfig.getChatOptions().getMessageLength();
+        int fetchLimit = Math.max(messageLength * 3, messageLength + 10);
         List<ChatMessageDTO> chatMessages = chatMessageFacadeService
-                .getChatMessagesBySessionIdRecently(chatSessionId, messageLength);
+                .getChatMessagesBySessionIdRecently(chatSessionId, fetchLimit);
 
-        List<Message> memory = new ArrayList<>();
-        for (ChatMessageDTO chatMessageDTO : chatMessages) {
-            ChatMessageDTO.MetaData metadata = chatMessageDTO.getMetadata();
+        List<List<Message>> groupedMemory = new ArrayList<>();
+        for (int i = 0; i < chatMessages.size(); i++) {
+            ChatMessageDTO chatMessageDTO = chatMessages.get(i);
             switch (chatMessageDTO.getRole()) {
                 case SYSTEM -> {
                     if (StringUtils.hasLength(chatMessageDTO.getContent())) {
-                        memory.add(0, new SystemMessage(chatMessageDTO.getContent()));
+                        groupedMemory.add(List.of(new SystemMessage(chatMessageDTO.getContent())));
                     }
                 }
                 case USER -> {
                     if (StringUtils.hasLength(chatMessageDTO.getContent())) {
-                        memory.add(new UserMessage(chatMessageDTO.getContent()));
+                        groupedMemory.add(List.of(new UserMessage(chatMessageDTO.getContent())));
                     }
                 }
-                case ASSISTANT -> memory.add(AssistantMessage.builder()
-                        .content(chatMessageDTO.getContent())
-                        .toolCalls(metadata != null ? metadata.getToolCalls() : null)
-                        .build());
-                case TOOL -> {
-                    if (metadata == null || metadata.getToolResponse() == null) {
-                        log.warn("Skip tool message without tool response metadata: {}", chatMessageDTO.getId());
-                        continue;
+                case ASSISTANT -> {
+                    ToolCallSequenceResult toolCallSequenceResult = collectAssistantSequence(chatMessages, i);
+                    if (toolCallSequenceResult != null) {
+                        groupedMemory.add(toolCallSequenceResult.messages());
+                        i = toolCallSequenceResult.lastConsumedIndex();
                     }
-                    memory.add(ToolResponseMessage.builder()
-                            .responses(List.of(metadata.getToolResponse()))
-                            .build());
+                }
+                case TOOL -> {
+                    log.warn("Skip orphan tool message while rebuilding memory: {}", chatMessageDTO.getId());
                 }
                 default -> {
                     log.error("Unsupported message role: {}, content={}",
@@ -77,6 +78,103 @@ public class AgentMemoryLoader {
                 }
             }
         }
-        return memory;
+
+        return trimToRecentGroups(groupedMemory, messageLength);
+    }
+
+    private ToolCallSequenceResult collectAssistantSequence(List<ChatMessageDTO> chatMessages, int assistantIndex) {
+        ChatMessageDTO assistantDto = chatMessages.get(assistantIndex);
+        List<AssistantMessage.ToolCall> toolCalls = getToolCalls(assistantDto);
+        AssistantMessage assistantMessage = AssistantMessage.builder()
+                .content(assistantDto.getContent())
+                .toolCalls(toolCalls)
+                .build();
+
+        if (toolCalls.isEmpty()) {
+            return new ToolCallSequenceResult(List.of(assistantMessage), assistantIndex);
+        }
+
+        List<Message> sequence = new ArrayList<>();
+        sequence.add(assistantMessage);
+
+        Set<String> requiredToolCallIds = toolCalls.stream()
+                .map(AssistantMessage.ToolCall::id)
+                .filter(StringUtils::hasLength)
+                .collect(Collectors.toCollection(HashSet::new));
+        Set<String> resolvedToolCallIds = new HashSet<>();
+
+        int lastConsumedIndex = assistantIndex;
+        for (int i = assistantIndex + 1; i < chatMessages.size(); i++) {
+            ChatMessageDTO nextMessage = chatMessages.get(i);
+            if (nextMessage.getRole() != ChatMessageDTO.RoleType.TOOL) {
+                break;
+            }
+
+            ChatMessageDTO.MetaData metadata = nextMessage.getMetadata();
+            if (metadata == null || metadata.getToolResponse() == null) {
+                log.warn("Skip tool message without tool response metadata: {}", nextMessage.getId());
+                lastConsumedIndex = i;
+                continue;
+            }
+
+            ToolResponseMessage.ToolResponse toolResponse = metadata.getToolResponse();
+            if (!requiredToolCallIds.isEmpty()
+                    && StringUtils.hasLength(toolResponse.id())
+                    && !requiredToolCallIds.contains(toolResponse.id())) {
+                log.warn("Skip mismatched tool response while rebuilding memory: messageId={}, toolCallId={}",
+                        nextMessage.getId(), toolResponse.id());
+                lastConsumedIndex = i;
+                continue;
+            }
+
+            sequence.add(ToolResponseMessage.builder()
+                    .responses(List.of(toolResponse))
+                    .build());
+            if (StringUtils.hasLength(toolResponse.id())) {
+                resolvedToolCallIds.add(toolResponse.id());
+            }
+            lastConsumedIndex = i;
+        }
+
+        boolean hasAnyToolResponse = sequence.size() > 1;
+        boolean allToolCallsResolved = requiredToolCallIds.isEmpty() || resolvedToolCallIds.containsAll(requiredToolCallIds);
+        if (!hasAnyToolResponse || !allToolCallsResolved) {
+            log.warn("Skip incomplete assistant tool-call sequence while rebuilding memory: assistantMessageId={}, required={}, resolved={}",
+                    assistantDto.getId(), requiredToolCallIds.size(), resolvedToolCallIds.size());
+            return new ToolCallSequenceResult(List.of(), lastConsumedIndex);
+        }
+
+        return new ToolCallSequenceResult(sequence, lastConsumedIndex);
+    }
+
+    private List<AssistantMessage.ToolCall> getToolCalls(ChatMessageDTO chatMessageDTO) {
+        ChatMessageDTO.MetaData metadata = chatMessageDTO.getMetadata();
+        return metadata == null || metadata.getToolCalls() == null
+                ? List.of()
+                : metadata.getToolCalls();
+    }
+
+    private List<Message> trimToRecentGroups(List<List<Message>> groupedMemory, int maxMessages) {
+        if (groupedMemory.isEmpty()) {
+            return List.of();
+        }
+
+        List<Message> trimmed = new ArrayList<>();
+        int currentSize = 0;
+        for (int i = groupedMemory.size() - 1; i >= 0; i--) {
+            List<Message> group = groupedMemory.get(i);
+            if (group.isEmpty()) {
+                continue;
+            }
+            if (!trimmed.isEmpty() && currentSize + group.size() > maxMessages) {
+                break;
+            }
+            trimmed.addAll(0, group);
+            currentSize += group.size();
+        }
+        return trimmed;
+    }
+
+    private record ToolCallSequenceResult(List<Message> messages, int lastConsumedIndex) {
     }
 }
