@@ -318,7 +318,7 @@ public class IntentRouter {
         return value
                 .trim()
                 .toLowerCase(Locale.ROOT)
-                .replaceAll("[\\p{Punct}锛屻€傦紒锛燂紱锛氥€佲€溾€濃€樷€欙紙锛?)\\[\\]{}]+", " ")
+                .replaceAll("[\\p{Punct}，。！？；：、“”‘’（）()\\[\\]{}]+", " ")
                 .replaceAll("\\s+", " ");
     }
 
