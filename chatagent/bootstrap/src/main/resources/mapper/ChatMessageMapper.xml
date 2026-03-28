@@ -7,16 +7,18 @@
     <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.ChatMessage">
         <id property="id" column="id" jdbcType="VARCHAR"/>
         <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="turnId" column="turn_id" jdbcType="VARCHAR"/>
         <result property="role" column="role" jdbcType="VARCHAR"/>
         <result property="content" column="content" jdbcType="VARCHAR"/>
         <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="seqNo" column="seq_no" jdbcType="BIGINT"/>
         <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
         <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,session_id,role,
-        content,metadata,created_at,
+        id,session_id,turn_id,role,
+        content,metadata,seq_no,created_at,
         updated_at
     </sql>
 
@@ -25,6 +27,7 @@
         INSERT INTO chat_message
         (
             session_id,
+            turn_id,
             role,
             content,
             metadata,
@@ -34,6 +37,7 @@
         VALUES
             (
                 CAST(#{sessionId} AS uuid),
+                #{turnId},
                 #{role},
                 #{content},
                 CAST(#{metadata} AS jsonb),
@@ -46,9 +50,11 @@
         SELECT
             id,
             session_id,
+            turn_id,
             role,
             content,
             metadata::text AS metadata,
+            seq_no,
             created_at,
             updated_at
         FROM chat_message
@@ -59,38 +65,75 @@
         SELECT
             id,
             session_id,
+            turn_id,
             role,
             content,
             metadata::text AS metadata,
+            seq_no,
             created_at,
             updated_at
         FROM chat_message
         WHERE session_id = CAST(#{sessionId} AS uuid)
-        ORDER BY created_at ASC
+        ORDER BY seq_no ASC
     </select>
 
     <select id="selectBySessionIdRecently" resultMap="BaseResultMap">
         SELECT id,
                session_id,
+               turn_id,
                role,
                content,
                metadata::text AS metadata,
+               seq_no,
                created_at,
                updated_at
         FROM (
             SELECT id,
                    session_id,
+                   turn_id,
                    role,
                    content,
                    metadata,
+                   seq_no,
                    created_at,
                    updated_at
             FROM chat_message
             WHERE session_id = CAST(#{sessionId} AS uuid)
-            ORDER BY created_at DESC, id DESC
+            ORDER BY seq_no DESC
             LIMIT #{limit}
         ) recent
-        ORDER BY created_at ASC, id ASC
+        ORDER BY seq_no ASC
+    </select>
+
+    <select id="selectBySessionIdAndSeqRange" resultMap="BaseResultMap">
+        SELECT
+            id,
+            session_id,
+            turn_id,
+            role,
+            content,
+            metadata::text AS metadata,
+            seq_no,
+            created_at,
+            updated_at
+        FROM chat_message
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+          AND seq_no &gt; #{startExclusiveSeqNo}
+          AND seq_no &lt;= #{endInclusiveSeqNo}
+        ORDER BY seq_no ASC
+    </select>
+
+    <select id="selectMaxSeqNoBySessionId" resultType="java.lang.Long">
+        SELECT MAX(seq_no)
+        FROM chat_message
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+    </select>
+
+    <select id="selectTurnCountBySessionId" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT turn_id)
+        FROM chat_message
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+          AND role = 'USER'
     </select>
 
     <delete id="deleteById">
@@ -102,6 +145,9 @@
         <set>
             <if test="sessionId != null">
                 session_id = CAST(#{sessionId} AS uuid),
+            </if>
+            <if test="turnId != null">
+                turn_id = #{turnId},
             </if>
             <if test="role != null">
                 role = #{role},

@@ -1,12 +1,11 @@
 package com.yulong.chatagent.conversation.application;
 
+import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
-import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
-import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
@@ -25,8 +24,8 @@ import java.util.List;
 public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
 
     private final ChatMessageRepository chatMessageRepository;
-    private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageConverter chatMessageConverter;
+    private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
     public GetChatMessagesResponse getChatMessagesBySessionId(String sessionId) {
@@ -84,9 +83,11 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         ChatMessageDTO updatedChatMessage = ChatMessageDTO.builder()
                 .id(existingChatMessage.getId())
                 .sessionId(existingChatMessage.getSessionId())
+                .turnId(existingChatMessage.getTurnId())
                 .role(existingChatMessage.getRole())
                 .content(currentContent + appendContent)
                 .metadata(existingChatMessage.getMetadata())
+                .seqNo(existingChatMessage.getSeqNo())
                 .createdAt(existingChatMessage.getCreatedAt())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -150,10 +151,6 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         if (loginUser == null) {
             return;
         }
-
-        ChatSessionDTO chatSession = chatSessionRepository.findById(sessionId);
-        if (chatSession == null || !loginUser.getUserId().equals(chatSession.getUserId())) {
-            throw new BizException("Chat session not found: " + sessionId);
-        }
+        resourceAccessGuard.assertCanReadSession(loginUser, sessionId);
     }
 }

@@ -3,6 +3,25 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      borderRadius: {
+        'card': 'var(--radius-4xl)',
+        'panel': 'var(--radius-3xl)',
+        'section': 'var(--radius-2xl)',
+        'inset': 'var(--radius-xl)',
+        'input': 'var(--radius-lg)',
+        'tab': 'var(--radius-md)',
+        'tag': 'var(--radius-sm)',
+      },
+      boxShadow: {
+        'chat-bubble': 'var(--shadow-chat-bubble)',
+        'chat-panel': 'var(--shadow-chat-panel)',
+        'chat-sender': 'var(--shadow-chat-sender)',
+        'chat-overlay': 'var(--shadow-chat-overlay)',
+        'admin-card': 'var(--shadow-admin-card)',
+        'admin-card-dark': 'var(--shadow-admin-card-dark)',
+        'admin-hero': 'var(--shadow-admin-hero)',
+        'admin-nav': 'var(--shadow-admin-nav)',
+      },
       keyframes: {
         'fade-in': {
           '0%': { opacity: '0', transform: 'translateY(10px)' },

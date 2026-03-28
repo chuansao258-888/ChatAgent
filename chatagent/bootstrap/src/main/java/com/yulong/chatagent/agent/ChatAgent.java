@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -38,7 +39,9 @@ public class ChatAgent {
     private AgentState agentState;
     private List<ToolCallback> availableTools;
     private String sessionFileSummary;
+    private String sessionSummary;
     private String userProfileSummary;
+    private String turnId;
     private ToolCallingManager toolCallingManager;
     private ChatMemory chatMemory;
     private String chatSessionId;
@@ -60,7 +63,9 @@ public class ChatAgent {
                      List<Message> memory,
                      List<ToolCallback> availableTools,
                      String sessionFileSummary,
+                     String sessionSummary,
                      String userProfileSummary,
+                     String turnId,
                      String chatSessionId,
                      AgentMessageBridge messageBridge) {
         this.agentId = agentId;
@@ -72,9 +77,13 @@ public class ChatAgent {
         this.sessionFileSummary = StringUtils.hasText(sessionFileSummary)
                 ? sessionFileSummary
                 : "No attached session files available";
+        this.sessionSummary = StringUtils.hasText(sessionSummary)
+                ? sessionSummary
+                : "No historical context summary available";
         this.userProfileSummary = StringUtils.hasText(userProfileSummary)
                 ? userProfileSummary
                 : "No persistent user profile available";
+        this.turnId = turnId;
         this.chatSessionId = chatSessionId;
         this.messageBridge = messageBridge;
         this.agentState = AgentState.IDLE;
@@ -102,11 +111,13 @@ public class ChatAgent {
                 this.availableTools,
                 this.sessionFileSummary,
                 this.userProfileSummary,
+                this.turnId,
                 this.messageBridge
         );
         this.toolExecutionEngine = new AgentToolExecutionEngine(
                 this.toolCallingManager,
                 this.chatOptions,
+                this.turnId,
                 this.messageBridge
         );
     }
@@ -153,6 +164,7 @@ public class ChatAgent {
 
         try {
             CurrentChatSessionHolder.set(this.chatSessionId);
+            CurrentTurnHolder.set(this.turnId);
             for (int i = 0; i < MAX_STEPS && agentState != AgentState.FINISHED; i++) {
                 int currentStep = i + 1;
                 step();
@@ -173,6 +185,7 @@ public class ChatAgent {
                     TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs, e);
             throw new RuntimeException("Error running agent", e);
         } finally {
+            CurrentTurnHolder.clear();
             CurrentChatSessionHolder.clear();
         }
     }

@@ -7,5 +7,4 @@ import lombok.Data;
 @Builder
 public class CreateChatSessionResponse {
     private String chatSessionId;
-    private String agentId;
 }

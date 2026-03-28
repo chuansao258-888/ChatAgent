@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { message as antdMessage } from "antd";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { getAccessToken } from "../../auth/token.ts";
+import { BASE_URL } from "../../api/http.ts";
 import {
   createChatMessage,
   createChatSession,
@@ -37,7 +39,6 @@ const AgentChatView: React.FC = () => {
 
   const [messages, setMessages] = useState<ChatMessageVO[]>([]);
   const [sessionFiles, setSessionFiles] = useState<ChatSessionFileVO[]>([]);
-  const [agentId, setAgentId] = useState<string>("");
   const [displayAgentStatus, setDisplayAgentStatus] = useState(false);
   const [agentStatusText, setAgentStatusText] = useState("");
   const [agentStatusType, setAgentStatusType] = useState<
@@ -45,14 +46,18 @@ const AgentChatView: React.FC = () => {
   >(undefined);
 
   const addMessage = (message: ChatMessageVO) => {
-    setMessages((prevMessages) => [...prevMessages, message]);
+    setMessages((prevMessages) => {
+      if (prevMessages.some((m) => m.id === message.id)) {
+        return prevMessages;
+      }
+      return [...prevMessages, message];
+    });
   };
 
   const getChatData = useCallback(async () => {
     if (!chatSessionId) {
       setMessages([]);
       setSessionFiles([]);
-      setAgentId("");
       return;
     }
     if (initializing) {
@@ -61,24 +66,21 @@ const AgentChatView: React.FC = () => {
     if (!isAuthenticated) {
       setMessages([]);
       setSessionFiles([]);
-      setAgentId("");
       navigate("/chat", { replace: true });
       return;
     }
     try {
-      const [messagesResp, sessionResp, filesResp] = await Promise.all([
+      const [messagesResp, , filesResp] = await Promise.all([
         getChatMessagesBySessionId(chatSessionId),
         getChatSession(chatSessionId),
         getChatSessionFiles(chatSessionId),
       ]);
       setMessages(messagesResp.chatMessages);
-      setAgentId(sessionResp.chatSession.agentId);
       setSessionFiles(filesResp.files);
     } catch (error) {
       if (isMissingChatSessionError(error)) {
         setMessages([]);
         setSessionFiles([]);
-        setAgentId("");
         await refreshChatSessions();
         navigate("/chat", { replace: true });
         return;
@@ -136,14 +138,12 @@ const AgentChatView: React.FC = () => {
 
     if (state?.init) {
       await createChatMessage({
-        agentId: agentId ?? "",
         sessionId: activeChatSessionId,
         role: "user",
         content: state.initMessage ?? "",
       });
     } else {
       await createChatMessage({
-        agentId: agentId ?? "",
         sessionId: activeChatSessionId,
         role: "user",
         content: message,
@@ -201,8 +201,12 @@ const AgentChatView: React.FC = () => {
     if (!chatSessionId || initializing || !isAuthenticated) {
       return;
     }
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+      return;
+    }
     const es = new EventSource(
-      `http://localhost:8080/sse/connect/${chatSessionId}`,
+      `${BASE_URL}/sse/connect/${chatSessionId}?access_token=${encodeURIComponent(accessToken)}`,
     );
 
     es.onmessage = (event) => {

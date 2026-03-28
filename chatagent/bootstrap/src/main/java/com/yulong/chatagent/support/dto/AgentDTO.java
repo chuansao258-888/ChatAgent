@@ -28,6 +28,8 @@ public class AgentDTO {
 
     private ChatOptions chatOptions;
 
+    private Integer activeIntentVersion;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -58,16 +60,19 @@ public class AgentDTO {
         private Double temperature;
         private Double topP;
         private Integer messageLength; // 聊天消息窗口长度
+        private Integer tokenBudget; // L1 窗口 Token 预算
 
         private static final Double DEFAULT_TEMPERATURE = 0.7;
         private static final Double DEFAULT_TOP_P = 1.0;
         private static final Integer DEFAULT_MESSAGE_LENGTH = 10;
+        private static final Integer DEFAULT_TOKEN_BUDGET = 4000;
 
         public static ChatOptions defaultOptions() {
             return ChatOptions.builder()
                     .temperature(DEFAULT_TEMPERATURE)
                     .topP(DEFAULT_TOP_P)
                     .messageLength(DEFAULT_MESSAGE_LENGTH)
+                    .tokenBudget(DEFAULT_TOKEN_BUDGET)
                     .build();
         }
     }

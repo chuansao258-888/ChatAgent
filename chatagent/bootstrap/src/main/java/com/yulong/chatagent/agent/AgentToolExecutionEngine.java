@@ -21,13 +21,16 @@ class AgentToolExecutionEngine {
 
     private final ToolCallingManager toolCallingManager;
     private final ChatOptions chatOptions;
+    private final String turnId;
     private final AgentMessageBridge messageBridge;
 
     AgentToolExecutionEngine(ToolCallingManager toolCallingManager,
                              ChatOptions chatOptions,
+                             String turnId,
                              AgentMessageBridge messageBridge) {
         this.toolCallingManager = toolCallingManager;
         this.chatOptions = chatOptions;
+        this.turnId = turnId;
         this.messageBridge = messageBridge;
     }
 
@@ -73,7 +76,7 @@ class AgentToolExecutionEngine {
                 toolResponseMessage.getResponses().size(),
                 durationMs,
                 collect);
-        this.messageBridge.persistAndPublish(chatSessionId, toolResponseMessage);
+        this.messageBridge.persistAndPublish(chatSessionId, turnId, toolResponseMessage);
 
         return toolResponseMessage.getResponses()
                 .stream()

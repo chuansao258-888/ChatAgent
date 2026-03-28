@@ -32,6 +32,7 @@ class AgentThinkingEngine {
     private final List<ToolCallback> availableTools;
     private final String sessionFileSummary;
     private final String userProfileSummary;
+    private final String turnId;
     private final AgentMessageBridge messageBridge;
 
     AgentThinkingEngine(ChatClient chatClient,
@@ -39,12 +40,14 @@ class AgentThinkingEngine {
                         List<ToolCallback> availableTools,
                         String sessionFileSummary,
                         String userProfileSummary,
+                        String turnId,
                         AgentMessageBridge messageBridge) {
         this.chatClient = chatClient;
         this.chatOptions = chatOptions;
         this.availableTools = availableTools;
         this.sessionFileSummary = sessionFileSummary;
         this.userProfileSummary = userProfileSummary;
+        this.turnId = turnId;
         this.messageBridge = messageBridge;
     }
 
@@ -86,7 +89,7 @@ class AgentThinkingEngine {
 
         AssistantMessage output = chatResponse.getResult().getOutput();
         List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
-        this.messageBridge.persistAndPublish(chatSessionId, output);
+        this.messageBridge.persistAndPublish(chatSessionId, turnId, output);
         logToolCalls(toolCalls);
         long durationMs = (System.nanoTime() - startTime) / 1_000_000;
         log.info("Agent think completed: traceId={}, sessionId={}, toolCalls={}, durationMs={}",

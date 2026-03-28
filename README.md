@@ -1,42 +1,59 @@
 # ChatAgent
 
-ChatAgent is a Spring Boot based AI agent project with tool calling, chat memory, SSE streaming, and knowledge-base retrieval.
+企业内部 AI 工作台：普通用户通过 `/chat` 单入口与系统内部助手对话，管理员在 `/admin/*` 下管理知识库、意图树和助手配置。
 
 ## Structure
 
-- `chatagent/`: backend service
-- `ui/`: frontend application
-- `examples/`: supporting examples and assets
+- `chatagent/` — 后端服务（Java 17 + Spring Boot 3.5 + MyBatis）
+- `ui/` — 前端应用（React 18 + Vite + TypeScript）
+- `examples/` — 辅助示例和资源
 
-## Backend
+## Tech Stack
 
-Key capabilities in the backend:
-
-- Agent runtime built on Spring AI
-- Tool calling with manual execution control
-- SSE message push for chat progress
-- PostgreSQL + pgvector based retrieval
-- Document and knowledge-base management
+| 层面 | 技术 |
+|------|------|
+| 后端框架 | Java 17 + Spring Boot 3.5 + MyBatis |
+| 关系数据库 | PostgreSQL |
+| 向量数据库 | Milvus 2.6（混合检索） |
+| Embedding | Ollama + bge-m3 (1024维) |
+| Reranker | bge-reranker-v2-m3 |
+| 缓存 | Redis |
+| 认证 | JWT (jjwt) |
+| 数据库迁移 | Flyway |
+| LLM | DeepSeek / GLM-4 / Ollama (qwen2.5) |
+| 前端 | React 18 + Vite + TypeScript + Ant Design |
 
 ## Local Run
 
 Backend prerequisites:
 
-- Java 17
-- Maven
-- PostgreSQL with pgvector
+- Java 17 + Maven
+- PostgreSQL（Flyway 会自动执行 `chatagent/bootstrap/src/main/resources/db/migration/` 下的迁移脚本）
+- Redis
+- Milvus 2.6
+- Ollama（bge-m3 + bge-reranker-v2-m3）
 
-Update the datasource in:
+环境变量配置参考 `chatagent/bootstrap/src/main/resources/application.yaml`。
 
-- `chatagent/src/main/resources/application.yaml`
-
-Then start the backend from `chatagent/`:
+启动后端：
 
 ```bash
+cd chatagent
 mvn spring-boot:run
+```
+
+启动前端：
+
+```bash
+cd ui
+npm install
+npm run dev
 ```
 
 ## Notes
 
-- The project package name is `com.yulong.chatagent`
-- The main application class is `ChatAgentApplication`
+- Package: `com.yulong.chatagent`
+- Main class: `ChatAgentApplication`
+- Agent 为后台内部运行配置，不作为普通用户产品概念暴露
+- 用户侧接口：`/api/chat-sessions`、`/api/chat-messages`
+- 管理侧接口：`/api/admin/*`

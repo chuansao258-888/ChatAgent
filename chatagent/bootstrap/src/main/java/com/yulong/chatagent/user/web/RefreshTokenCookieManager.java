@@ -44,9 +44,7 @@ public class RefreshTokenCookieManager {
                 .maxAge(Duration.ofDays(refreshTtlDays))
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-        log.info("Refresh token cookie written: path=/api/auth, secure={}, refreshToken={}",
-                request.isSecure(),
-                refreshToken);
+        log.info("Refresh token cookie written: path=/api/auth, secure={}", request.isSecure());
     }
 
     public void clearRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response) {

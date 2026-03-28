@@ -25,6 +25,17 @@ public interface DocumentStorageService {
     String saveChatSessionFile(String sessionId, String sessionFileId, MultipartFile file) throws IOException;
 
     /**
+     * Saves an uploaded file under the storage layout used by knowledge-base documents.
+     *
+     * @param knowledgeBaseId knowledge-base identifier
+     * @param documentId logical document identifier
+     * @param file uploaded file
+     * @return stored relative file path
+     * @throws IOException if the file cannot be written
+     */
+    String saveKnowledgeDocument(String knowledgeBaseId, String documentId, MultipartFile file) throws IOException;
+
+    /**
      * Deletes one stored file.
      *
      * @param filePath stored relative file path

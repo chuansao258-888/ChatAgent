@@ -21,6 +21,12 @@ public interface ChatMessageMapper {
 
     List<ChatMessage> selectBySessionIdRecently(String sessionId, int limit);
 
+    List<ChatMessage> selectBySessionIdAndSeqRange(String sessionId, long startExclusiveSeqNo, long endInclusiveSeqNo);
+
+    Long selectMaxSeqNoBySessionId(String sessionId);
+
+    Long selectTurnCountBySessionId(String sessionId);
+
     int deleteById(String id);
 
     int updateById(ChatMessage chatMessage);

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ControlOutlined,
   EditOutlined,
   LockOutlined,
   LogoutOutlined,
@@ -9,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { Button, Tabs, Tooltip, Typography, type TabsProps } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
+import { isAdminRole } from "../auth/roles.ts";
 import { useAuth } from "../hooks/useAuth.ts";
 import ChatTabContent from "./tabs/ChatTabContent.tsx";
 
@@ -17,7 +19,7 @@ const CHAT_TAB_KEY = "chat";
 function SideMenuHeader() {
   return (
     <div className="flex items-center gap-3 px-1 pb-5 pt-1">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white shadow-chat-panel">
         <MessageOutlined className="text-lg" />
       </div>
       <div>
@@ -62,7 +64,7 @@ function GuestSideMenu() {
       </div>
 
       <div className="mt-auto pb-1">
-        <div className="rounded-[28px] border border-white/8 bg-white/[0.035] p-5">
+        <div className="rounded-panel border border-white/8 bg-white/[0.035] p-5">
           <Typography.Text className="block text-base font-semibold !text-white">
             Save chats and unlock uploads
           </Typography.Text>
@@ -135,9 +137,22 @@ function AuthenticatedSideMenu() {
         />
       </div>
 
-      <div className="mt-4 rounded-[24px] border border-white/8 bg-white/[0.045] px-4 py-4 shadow-[0_14px_36px_rgba(0,0,0,0.18)]">
+      {isAdminRole(currentUser?.role) ? (
+        <button
+          type="button"
+          onClick={() => {
+            navigate("/admin");
+          }}
+          className="mt-3 flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-left text-white/60 transition hover:border-white/12 hover:bg-white/[0.07] hover:text-white"
+        >
+          <ControlOutlined />
+          <span className="font-medium">Admin console</span>
+        </button>
+      ) : null}
+
+      <div className="mt-4 rounded-section border border-white/8 bg-white/[0.045] px-4 py-4 shadow-chat-panel">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0f172a] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0f172a] text-white shadow-chat-bubble">
             <UserOutlined />
           </div>
           <div className="min-w-0 flex-1">

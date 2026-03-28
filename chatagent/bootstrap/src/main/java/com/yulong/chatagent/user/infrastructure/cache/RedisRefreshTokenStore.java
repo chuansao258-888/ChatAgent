@@ -74,9 +74,8 @@ public class RedisRefreshTokenStore implements RefreshTokenStore {
         // for one user without scanning Redis.
         String userTokenSetKey = userTokensKey(userId);
         stringRedisTemplate.opsForSet().add(userTokenSetKey, tokenHash);
-        log.info("Refresh token saved in Redis: userId={}, refreshToken={}, ttlSeconds={}",
+        log.info("Refresh token saved in Redis: userId={}, ttlSeconds={}",
                 userId,
-                refreshToken,
                 ttl.getSeconds());
 
     }
@@ -90,9 +89,7 @@ public class RedisRefreshTokenStore implements RefreshTokenStore {
         String tokenHash = hashToken(refreshToken);
         String tokenKey = refreshTokenKey(tokenHash);
         String userId = stringRedisTemplate.opsForValue().get(tokenKey);
-        log.info("Refresh token lookup: refreshToken={}, foundUserId={}",
-                refreshToken,
-                userId);
+        log.info("Refresh token lookup completed: found={}", userId != null && !userId.isBlank());
         return userId;
     }
 
@@ -115,9 +112,7 @@ public class RedisRefreshTokenStore implements RefreshTokenStore {
             String userTokenSetKey = userTokensKey(userId);
             stringRedisTemplate.opsForSet().remove(userTokenSetKey, tokenHash);
         }
-        log.info("Refresh token deleted: refreshToken={}, userId={}",
-                refreshToken,
-                userId);
+        log.info("Refresh token deleted: userId={}", userId);
     }
 
 

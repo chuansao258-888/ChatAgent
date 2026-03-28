@@ -27,14 +27,6 @@ public interface ChatSessionFacadeService {
     GetChatSessionResponse getChatSession(String chatSessionId);
 
     /**
-     * Lists chat sessions associated with a specific agent.
-     *
-     * @param agentId agent identifier
-     * @return chat sessions for the agent
-     */
-    GetChatSessionsResponse getChatSessionsByAgentId(String agentId);
-
-    /**
      * Creates a new chat session.
      *
      * @param request create session request
@@ -57,4 +49,3 @@ public interface ChatSessionFacadeService {
      */
     void updateChatSession(String chatSessionId, UpdateChatSessionRequest request);
 }
-

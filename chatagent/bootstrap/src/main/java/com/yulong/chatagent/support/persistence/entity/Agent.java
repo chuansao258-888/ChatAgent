@@ -29,6 +29,8 @@ public class Agent {
     // JSON String
     private String chatOptions;
 
+    private Integer activeIntentVersion;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -54,6 +56,7 @@ public class Agent {
                 && (this.getModel() == null ? other.getModel() == null : this.getModel().equals(other.getModel()))
                 && (this.getAllowedTools() == null ? other.getAllowedTools() == null : this.getAllowedTools().equals(other.getAllowedTools()))
                 && (this.getChatOptions() == null ? other.getChatOptions() == null : this.getChatOptions().equals(other.getChatOptions()))
+                && (this.getActiveIntentVersion() == null ? other.getActiveIntentVersion() == null : this.getActiveIntentVersion().equals(other.getActiveIntentVersion()))
                 && (this.getCreatedAt() == null ? other.getCreatedAt() == null : this.getCreatedAt().equals(other.getCreatedAt()))
                 && (this.getUpdatedAt() == null ? other.getUpdatedAt() == null : this.getUpdatedAt().equals(other.getUpdatedAt()));
     }
@@ -70,6 +73,7 @@ public class Agent {
         result = prime * result + ((getModel() == null) ? 0 : getModel().hashCode());
         result = prime * result + ((getAllowedTools() == null) ? 0 : getAllowedTools().hashCode());
         result = prime * result + ((getChatOptions() == null) ? 0 : getChatOptions().hashCode());
+        result = prime * result + ((getActiveIntentVersion() == null) ? 0 : getActiveIntentVersion().hashCode());
         result = prime * result + ((getCreatedAt() == null) ? 0 : getCreatedAt().hashCode());
         result = prime * result + ((getUpdatedAt() == null) ? 0 : getUpdatedAt().hashCode());
         return result;
@@ -88,6 +92,7 @@ public class Agent {
                 ", model=" + model +
                 ", allowedTools=" + allowedTools +
                 ", chatOptions=" + chatOptions +
+                ", activeIntentVersion=" + activeIntentVersion +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 "]";

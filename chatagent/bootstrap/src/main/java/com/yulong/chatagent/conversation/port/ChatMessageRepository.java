@@ -26,6 +26,12 @@ public interface ChatMessageRepository {
      */
     List<ChatMessageDTO> findRecentBySessionId(String sessionId, int limit);
 
+    List<ChatMessageDTO> findBySessionIdAndSeqRange(String sessionId, long startExclusiveSeqNo, long endInclusiveSeqNo);
+
+    Long findMaxSeqNoBySessionId(String sessionId);
+
+    long countTurnsBySessionId(String sessionId);
+
     /**
      * Loads one message by identifier.
      *

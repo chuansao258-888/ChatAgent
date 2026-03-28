@@ -34,10 +34,11 @@ class ChatAgentFactoryTest {
                 List.of(message),
                 List.of(toolCallback),
                 "session file summary",
+                "session summary",
                 "user profile summary"
         );
 
-        when(contextLoader.load("agent-1", "session-1")).thenReturn(context);
+        when(contextLoader.load("agent-1", "session-1", null, null)).thenReturn(context);
         when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
 
         ChatAgentFactory factory = new ChatAgentFactory(chatModelRouter, contextLoader, messageBridge);

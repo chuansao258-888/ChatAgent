@@ -2,23 +2,21 @@
 
 This project can call a local HTTP reranker from:
 
-- [BgeHttpRetrievalReranker](/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/BgeHttpRetrievalReranker.java)
+- [BgeHttpRetrievalReranker](C:/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/BgeHttpRetrievalReranker.java)
 
-The server script is:
+The server lives here:
 
-- [rerank_server.py](/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/tools/bge-reranker-server/rerank_server.py)
+- [rerank_server.py](C:/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/tools/bge-reranker-server/rerank_server.py)
+- [start-reranker.ps1](C:/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/tools/bge-reranker-server/start-reranker.ps1)
 
 ## 1. Create a Python environment
 
 Recommended Python version:
 
-- `3.11` or `3.12`
+- `3.11`
+- `3.12`
 
-Do not use `3.14` for this setup unless you are prepared to compile native dependencies locally.
-Some transitive packages in the `FlagEmbedding` dependency chain do not yet provide stable prebuilt wheels for Python 3.14 on Windows.
-
-Also pin `transformers` to `<5`.
-`FlagEmbedding 1.3.5` declares `transformers>=4.44.2` but does not set an upper bound, and newer `5.x` releases can break runtime imports.
+Avoid `3.14` for now. `FlagEmbedding` and its native dependency chain are still much less predictable there on Windows.
 
 ```powershell
 cd "C:\Users\guany\OneDrive - Nanyang Technological University\桌面\ChatAgent\tools\bge-reranker-server"
@@ -29,28 +27,83 @@ pip install -r requirements.txt
 
 ## 2. Start the server
 
+Recommended Stage 2 startup:
+
 ```powershell
-$env:BGE_RERANKER_MODEL="BAAI/bge-reranker-v2-m3"
-$env:BGE_RERANKER_PORT="7997"
-python .\rerank_server.py
+cd "C:\Users\guany\OneDrive - Nanyang Technological University\桌面\ChatAgent\tools\bge-reranker-server"
+.\start-reranker.ps1
 ```
 
-Optional environment variables:
+Example with explicit options:
 
+```powershell
+.\start-reranker.ps1 -Model "BAAI/bge-reranker-v2-m3" -Port 7997 -Offline
+```
+
+The startup script defaults to:
+
+- preload enabled
+- warmup enabled
+- offline disabled
+
+## 3. Stage 2 environment variables
+
+Core variables:
+
+- `BGE_RERANKER_MODEL`
+- `BGE_RERANKER_HOST`
+- `BGE_RERANKER_PORT`
 - `BGE_RERANKER_DEVICE`
 - `BGE_RERANKER_USE_FP16`
 - `BGE_RERANKER_QUERY_MAX_LENGTH`
 - `BGE_RERANKER_PASSAGE_MAX_LENGTH`
 
-## 3. Verify the server
+Stage 2 lifecycle variables:
+
+- `BGE_RERANKER_PRELOAD_ON_START=true|false`
+- `BGE_RERANKER_PRELOAD_MODELS=BAAI/bge-reranker-v2-m3`
+- `BGE_RERANKER_WARMUP_ENABLED=true|false`
+- `BGE_RERANKER_WARMUP_QUERY=warmup`
+- `BGE_RERANKER_WARMUP_DOCS=<json array or doc1||doc2>`
+- `BGE_RERANKER_OFFLINE=true|false`
+- `BGE_RERANKER_MAX_CONCURRENT_REQUESTS=2`
+- `BGE_RERANKER_CPU_THREADS=<n>`
+- `BGE_RERANKER_DEADLINE_HEADER=X-Reranker-Deadline-Epoch-Ms`
+
+When `BGE_RERANKER_OFFLINE=true`, the server also sets:
+
+- `TRANSFORMERS_OFFLINE=1`
+- `HF_HUB_OFFLINE=1`
+
+## 4. Verify health and readiness
+
+Health should always reflect process liveness:
 
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:7997/health"
 ```
 
-## 4. Configure ChatAgent
+Readiness should return `200` only after preload and warmup have completed:
 
-In [application.yaml](/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/chatagent/bootstrap/src/main/resources/application.yaml), make sure:
+```powershell
+Invoke-RestMethod -Uri "http://localhost:7997/ready"
+```
+
+Useful fields in the response:
+
+- `state`
+- `status`
+- `loaded_models`
+- `startup_duration_ms`
+- `preload_duration_ms`
+- `warmup_duration_ms`
+- `last_warmup_at`
+- `last_error`
+- `memory`
+
+## 5. Configure ChatAgent
+
+In [application.yaml](C:/Users/guany/OneDrive%20-%20Nanyang%20Technological%20University/%E6%A1%8C%E9%9D%A2/ChatAgent/chatagent/bootstrap/src/main/resources/application.yaml), make sure:
 
 ```yaml
 rag:
@@ -62,12 +115,12 @@ rag:
       path: /rerank
 ```
 
-## 5. Request format
+## 6. Request format
 
 ```json
 {
   "model": "BAAI/bge-reranker-v2-m3",
-  "query": "技术栈有哪些",
+  "query": "What is the leave carry-over rule?",
   "documents": [
     "doc 1",
     "doc 2"
@@ -77,7 +130,7 @@ rag:
 }
 ```
 
-## 6. Response format
+## 7. Response format
 
 ```json
 {

@@ -361,12 +361,14 @@ public class DefaultMilvusIndexService implements MilvusIndexService {
             hits.add(new MilvusSearchHit(
                     stringifyField(entity, MilvusCollectionFields.CHUNK_ID),
                     stringifyField(entity, MilvusCollectionFields.SESSION_FILE_ID),
+                    stringifyField(entity, MilvusCollectionFields.SESSION_FILE_ID),
                     intField(entity, MilvusCollectionFields.CHUNK_INDEX),
                     stringifyField(entity, MilvusCollectionFields.FILE_NAME),
+                    null,
                     stringifyField(entity, MilvusCollectionFields.CONTENT),
                     stringifyField(entity, MilvusCollectionFields.CONTEXT_TEXT),
                     stringifyField(entity, MilvusCollectionFields.RETRIEVAL_TEXT),
-                    result.getScore()
+                    (double) result.getScore()
             ));
         }
         return hits;

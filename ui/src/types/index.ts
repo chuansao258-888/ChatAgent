@@ -13,17 +13,33 @@ export interface ToolResponse {
   responseData: string;
 }
 
+export interface CitationMetadata {
+  sourceType: "SESSION_FILE" | "KNOWLEDGE_BASE";
+  sourceId?: string;
+  documentId?: string;
+  documentName?: string;
+  sectionPath?: string;
+  chunkIndex?: number;
+  snippet?: string;
+  score?: number;
+  scoreType?: "reranker" | "fallback" | "retrieval" | "filtered";
+  isFallback?: boolean;
+}
+
 export interface ChatMessageVOMetadata {
   toolCalls?: ToolCall[];
   toolResponse?: ToolResponse;
+  citations?: CitationMetadata[];
 }
 
 export interface ChatMessageVO {
   id: string;
   sessionId: string;
+  turnId?: string;
   role: MessageType;
   content: string;
   metadata?: ChatMessageVOMetadata;
+  seqNo?: number;
 }
 
 export type SseMessageType =

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.ChatSessionSummaryMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.ChatSessionSummary">
+        <id property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="lastSeqNo" column="last_seq_no" jdbcType="BIGINT"/>
+        <result property="summary" column="summary" jdbcType="VARCHAR"/>
+        <result property="anchoredEntities" column="anchored_entities" jdbcType="VARCHAR"/>
+        <result property="version" column="version" jdbcType="INTEGER"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <select id="selectBySessionId" resultMap="BaseResultMap">
+        SELECT
+            session_id,
+            last_seq_no,
+            summary,
+            anchored_entities::text AS anchored_entities,
+            version,
+            created_at,
+            updated_at
+        FROM chat_session_summary
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+    </select>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSessionSummary">
+        INSERT INTO chat_session_summary (
+            session_id,
+            last_seq_no,
+            summary,
+            anchored_entities,
+            version,
+            created_at,
+            updated_at
+        ) VALUES (
+            CAST(#{sessionId} AS uuid),
+            #{lastSeqNo},
+            #{summary},
+            CAST(#{anchoredEntities} AS jsonb),
+            #{version},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateBySessionIdAndVersion" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSessionSummary">
+        UPDATE chat_session_summary
+        SET last_seq_no = #{lastSeqNo},
+            summary = #{summary},
+            anchored_entities = CAST(#{anchoredEntities} AS jsonb),
+            version = version + 1,
+            updated_at = NOW()
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+          AND version = #{version}
+    </update>
+
+    <delete id="deleteBySessionId">
+        DELETE FROM chat_session_summary
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+    </delete>
+</mapper>

@@ -2,12 +2,15 @@ package com.yulong.chatagent.conversation.event;
 
 import com.yulong.chatagent.agent.ChatAgent;
 import com.yulong.chatagent.agent.ChatAgentFactory;
+import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
+import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.chat.ChatModelAvailability;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
+import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPublisher;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.AllArgsConstructor;
@@ -28,7 +31,9 @@ public class ChatEventListener {
     private final ChatModelAvailability chatModelAvailability;
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ChatMessageConverter chatMessageConverter;
+    private final ConversationTurnCompletionPublisher conversationTurnCompletionPublisher;
     private final SseService sseService;
+    private final CurrentTurnCitationHolder currentTurnCitationHolder;
 
     /**
      * Creates and runs the target chat agent when a chat event is published.
@@ -39,8 +44,9 @@ public class ChatEventListener {
     @EventListener
     public void handle(ChatEvent event) {
         try {
-            log.info("Dispatching chat event: agentId={}, sessionId={}, userMessageId={}, recentHistorySize={}",
-                    event.getAgentId(), event.getSessionId(), event.getChatMessageId(), event.getRecentHistorySize());
+            log.info("Dispatching chat event: agentId={}, sessionId={}, userMessageId={}, recentHistorySize={}, intentKind={}",
+                    event.getAgentId(), event.getSessionId(), event.getChatMessageId(), event.getRecentHistorySize(),
+                    event.getIntentResolution() == null ? "DEFAULT" : event.getIntentResolution().kind());
 
             if (!chatModelAvailability.hasConfiguredProvider()) {
                 log.warn("No chat model provider configured: sessionId={}, userMessageId={}",
@@ -54,15 +60,27 @@ public class ChatEventListener {
                                 To enable real AI responses, set either CHATAGENT_DEEPSEEK_API_KEY or CHATAGENT_ZHIPUAI_API_KEY and restart the backend.
                                 """.formatted(event.getUserInput())
                 );
+                conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
                 return;
             }
 
-            ChatAgent chatAgent = chatAgentFactory.create(event.getAgentId(), event.getSessionId());
+            CurrentIntentResolutionHolder.set(event.getIntentResolution());
+            ChatAgent chatAgent = chatAgentFactory.create(
+                    event.getAgentId(),
+                    event.getSessionId(),
+                    event.getTurnId(),
+                    event.getIntentResolution(),
+                    event.getRewrittenInput()
+            );
             chatAgent.run();
+            conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
         } catch (Exception ex) {
             log.error("Failed to process chat event: agentId={}, sessionId={}, userMessageId={}",
                     event.getAgentId(), event.getSessionId(), event.getChatMessageId(), ex);
             handleFailure(event, ex);
+        } finally {
+            currentTurnCitationHolder.clear(event.getSessionId(), event.getTurnId());
+            CurrentIntentResolutionHolder.clear();
         }
     }
 
@@ -76,6 +94,7 @@ public class ChatEventListener {
     private void handleFailure(ChatEvent event, Exception ex) {
         try {
             publishAssistantMessage(event, "Sorry, the agent failed to process this request. Please try again.");
+            conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
         } catch (Exception failureHandlingException) {
             log.error("Failed to publish fallback error message: agentId={}, sessionId={}, userMessageId={}",
                     event.getAgentId(), event.getSessionId(), event.getChatMessageId(), failureHandlingException);
@@ -86,6 +105,7 @@ public class ChatEventListener {
         ChatMessageDTO chatMessageDTO = ChatMessageDTO.builder()
                 .role(ChatMessageDTO.RoleType.ASSISTANT)
                 .sessionId(event.getSessionId())
+                .turnId(event.getTurnId())
                 .content(content)
                 .build();
         CreateChatMessageResponse chatMessage = chatMessageFacadeService.createChatMessage(chatMessageDTO);

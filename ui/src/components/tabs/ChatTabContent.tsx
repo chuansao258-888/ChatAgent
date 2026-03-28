@@ -30,7 +30,7 @@ const ChatTabContent: React.FC = () => {
     }
   };
 
-  const getDisplayTitle = (session: { title?: string; agentId: string }) => {
+  const getDisplayTitle = (session: { title?: string }) => {
     if (session.title) {
       return session.title;
     }
@@ -48,7 +48,7 @@ const ChatTabContent: React.FC = () => {
         <span className="font-medium">New chat</span>
       </button>
 
-      <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto rounded-[28px] border border-white/6 bg-white/[0.025] p-3">
+      <div className="scrollbar-hide flex-1 min-h-0 overflow-y-auto rounded-panel border border-white/6 bg-white/[0.025] p-3">
         {loading ? (
           <div className="flex h-full min-h-[280px] flex-col items-center justify-center text-white/42">
             <p className="text-sm">Loading chats...</p>

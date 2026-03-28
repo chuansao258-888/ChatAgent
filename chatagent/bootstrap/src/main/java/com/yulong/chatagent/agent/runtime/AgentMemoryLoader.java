@@ -1,6 +1,6 @@
 package com.yulong.chatagent.agent.runtime;
 
-import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
+import com.yulong.chatagent.conversation.port.ChatMessageRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import org.slf4j.Logger;
@@ -15,71 +15,105 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Restores Spring AI chat memory from persisted conversation messages.
+ * Uses a token-budget-based sliding window for L1 memory.
  */
 @Component
 public class AgentMemoryLoader {
 
     private static final Logger log = LoggerFactory.getLogger(AgentMemoryLoader.class);
+    private static final double TOKEN_SAFETY_MARGIN = 0.8;
 
-    private final ChatMessageFacadeService chatMessageFacadeService;
+    private final ChatMessageRepository chatMessageRepository;
 
-    public AgentMemoryLoader(ChatMessageFacadeService chatMessageFacadeService) {
-        this.chatMessageFacadeService = chatMessageFacadeService;
+    public AgentMemoryLoader(ChatMessageRepository chatMessageRepository) {
+        this.chatMessageRepository = chatMessageRepository;
     }
 
     /**
-     * Loads recent chat history and converts it back into Spring AI message types.
+     * Loads recent chat history and converts it back into Spring AI message types,
+     * respecting the token budget for L1 memory.
      *
      * @param chatSessionId chat session identifier
      * @param agentConfig persisted agent configuration
      * @return reconstructed chat memory
      */
     public List<Message> load(String chatSessionId, AgentDTO agentConfig) {
-        int messageLength = agentConfig.getChatOptions().getMessageLength();
-        int fetchLimit = Math.max(messageLength * 3, messageLength + 10);
-        List<ChatMessageDTO> chatMessages = chatMessageFacadeService
-                .getChatMessagesBySessionIdRecently(chatSessionId, fetchLimit);
+        int tokenBudget = agentConfig.getChatOptions().getTokenBudget() != null 
+                ? agentConfig.getChatOptions().getTokenBudget() 
+                : 4000;
+        int effectiveBudget = (int) (tokenBudget * TOKEN_SAFETY_MARGIN);
 
-        List<List<Message>> groupedMemory = new ArrayList<>();
-        for (int i = 0; i < chatMessages.size(); i++) {
-            ChatMessageDTO chatMessageDTO = chatMessages.get(i);
-            switch (chatMessageDTO.getRole()) {
-                case SYSTEM -> {
-                    if (StringUtils.hasLength(chatMessageDTO.getContent())) {
-                        groupedMemory.add(List.of(new SystemMessage(chatMessageDTO.getContent())));
-                    }
-                }
-                case USER -> {
-                    if (StringUtils.hasLength(chatMessageDTO.getContent())) {
-                        groupedMemory.add(List.of(new UserMessage(chatMessageDTO.getContent())));
-                    }
-                }
-                case ASSISTANT -> {
-                    ToolCallSequenceResult toolCallSequenceResult = collectAssistantSequence(chatMessages, i);
-                    if (toolCallSequenceResult != null) {
-                        groupedMemory.add(toolCallSequenceResult.messages());
-                        i = toolCallSequenceResult.lastConsumedIndex();
-                    }
-                }
-                case TOOL -> {
-                    log.warn("Skip orphan tool message while rebuilding memory: {}", chatMessageDTO.getId());
-                }
-                default -> {
-                    log.error("Unsupported message role: {}, content={}",
-                            chatMessageDTO.getRole().getRole(),
-                            chatMessageDTO.getContent());
-                    throw new IllegalStateException("Unsupported message role");
-                }
+        // Fetch a generous amount of recent messages to find enough full turns
+        List<ChatMessageDTO> chatMessages = chatMessageRepository.findRecentBySessionId(chatSessionId, 100);
+        if (chatMessages.isEmpty()) {
+            return List.of();
+        }
+
+        // Group by turn_id to maintain atomic turns
+        Map<String, List<ChatMessageDTO>> groupedTurns = new LinkedHashMap<>();
+        for (ChatMessageDTO msg : chatMessages) {
+            if (StringUtils.hasText(msg.getTurnId())) {
+                groupedTurns.computeIfAbsent(msg.getTurnId(), k -> new ArrayList<>()).add(msg);
             }
         }
 
-        return trimToRecentGroups(groupedMemory, messageLength);
+        List<String> turnIds = new ArrayList<>(groupedTurns.keySet());
+        List<List<Message>> selectedTurnMessages = new ArrayList<>();
+        int currentTokenCount = 0;
+
+        // Iterate backwards from most recent turns
+        for (int i = turnIds.size() - 1; i >= 0; i--) {
+            String turnId = turnIds.get(i);
+            List<ChatMessageDTO> turnMessages = groupedTurns.get(turnId);
+            List<Message> springAiMessages = convertToSpringAiMessages(turnMessages);
+            
+            int turnTokens = estimateTokens(springAiMessages);
+            if (!selectedTurnMessages.isEmpty() && currentTokenCount + turnTokens > effectiveBudget) {
+                break;
+            }
+            
+            selectedTurnMessages.add(0, springAiMessages);
+            currentTokenCount += turnTokens;
+        }
+
+        if (selectedTurnMessages.size() == 1 && currentTokenCount > effectiveBudget) {
+            log.warn("Single turn exceeds L1 token budget: sessionId={}, turnTokens={}, budget={}",
+                    chatSessionId,
+                    currentTokenCount,
+                    effectiveBudget);
+        }
+
+        return selectedTurnMessages.stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+    }
+
+    private List<Message> convertToSpringAiMessages(List<ChatMessageDTO> chatMessages) {
+        List<Message> result = new ArrayList<>();
+        for (int i = 0; i < chatMessages.size(); i++) {
+            ChatMessageDTO dto = chatMessages.get(i);
+            switch (dto.getRole()) {
+                case SYSTEM -> result.add(new SystemMessage(dto.getContent()));
+                case USER -> result.add(new UserMessage(dto.getContent()));
+                case ASSISTANT -> {
+                    ToolCallSequenceResult sequence = collectAssistantSequence(chatMessages, i);
+                    if (sequence != null) {
+                        result.addAll(sequence.messages());
+                        i = sequence.lastConsumedIndex();
+                    }
+                }
+                case TOOL -> log.warn("Skip orphan tool message: {}", dto.getId());
+            }
+        }
+        return result;
     }
 
     private ToolCallSequenceResult collectAssistantSequence(List<ChatMessageDTO> chatMessages, int assistantIndex) {
@@ -154,25 +188,36 @@ public class AgentMemoryLoader {
                 : metadata.getToolCalls();
     }
 
-    private List<Message> trimToRecentGroups(List<List<Message>> groupedMemory, int maxMessages) {
-        if (groupedMemory.isEmpty()) {
-            return List.of();
-        }
-
-        List<Message> trimmed = new ArrayList<>();
-        int currentSize = 0;
-        for (int i = groupedMemory.size() - 1; i >= 0; i--) {
-            List<Message> group = groupedMemory.get(i);
-            if (group.isEmpty()) {
+    /**
+     * Estimates token count for a list of messages.
+     * Rule: 1 Chinese character ≈ 2 tokens, 1 other character ≈ 1 token.
+     */
+    private int estimateTokens(List<Message> messages) {
+        int total = 0;
+        for (Message message : messages) {
+            String content = message.getText();
+            if (!StringUtils.hasText(content)) {
                 continue;
             }
-            if (!trimmed.isEmpty() && currentSize + group.size() > maxMessages) {
-                break;
+            for (char c : content.toCharArray()) {
+                if (isChinese(c)) {
+                    total += 2;
+                } else {
+                    total += 1; // Simplified: 1 char ≈ 1 token for non-Chinese
+                }
             }
-            trimmed.addAll(0, group);
-            currentSize += group.size();
         }
-        return trimmed;
+        return total;
+    }
+
+    private boolean isChinese(char c) {
+        Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+        return ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || ub == Character.UnicodeBlock.GENERAL_PUNCTUATION
+                || ub == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
+                || ub == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS;
     }
 
     private record ToolCallSequenceResult(List<Message> messages, int lastConsumedIndex) {

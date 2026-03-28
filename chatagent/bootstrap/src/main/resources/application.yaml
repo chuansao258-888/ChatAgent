@@ -13,6 +13,10 @@ spring:
     username: ${CHATAGENT_DB_USERNAME:app}
     password: ${CHATAGENT_DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
   mail:
     host: ${CHATAGENT_MAIL_HOST:smtp.qq.com}
     port: ${CHATAGENT_MAIL_PORT:587}
@@ -62,9 +66,25 @@ rag:
       model-id: ${CHATAGENT_RAG_RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
       max-candidates: ${CHATAGENT_RAG_RERANKER_MAX_CANDIDATES:8}
       max-chunk-chars: ${CHATAGENT_RAG_RERANKER_MAX_CHUNK_CHARS:900}
+      max-connections: ${CHATAGENT_RAG_RERANKER_MAX_CONNECTIONS:10}
       base-url: ${CHATAGENT_RAG_RERANKER_BASE_URL:http://localhost:7997}
       path: ${CHATAGENT_RAG_RERANKER_PATH:/rerank}
+      ready-path: ${CHATAGENT_RAG_RERANKER_READY_PATH:/ready}
       api-key: ${CHATAGENT_RAG_RERANKER_API_KEY:}
+      connect-timeout-ms: ${CHATAGENT_RAG_RERANKER_CONNECT_TIMEOUT_MS:300}
+      response-timeout-ms: ${CHATAGENT_RAG_RERANKER_RESPONSE_TIMEOUT_MS:1800}
+      read-timeout-ms: ${CHATAGENT_RAG_RERANKER_READ_TIMEOUT_MS:1800}
+      write-timeout-ms: ${CHATAGENT_RAG_RERANKER_WRITE_TIMEOUT_MS:1000}
+      pending-acquire-timeout-ms: ${CHATAGENT_RAG_RERANKER_PENDING_ACQUIRE_TIMEOUT_MS:200}
+      ready-probe-timeout-ms: ${CHATAGENT_RAG_RERANKER_READY_PROBE_TIMEOUT_MS:200}
+      retry-connect-errors: ${CHATAGENT_RAG_RERANKER_RETRY_CONNECT_ERRORS:1}
+      enable-confidence-filter: ${CHATAGENT_RAG_RERANKER_FILTER_ENABLED:true}
+      score-threshold: ${CHATAGENT_RAG_RERANKER_SCORE_THRESHOLD:0.15}
+      failure-threshold: ${CHATAGENT_RAG_RERANKER_FAILURE_THRESHOLD:5}
+      failure-rate-threshold-percent: ${CHATAGENT_RAG_RERANKER_FAILURE_RATE_THRESHOLD_PERCENT:50}
+      minimum-request-volume: ${CHATAGENT_RAG_RERANKER_MIN_REQUEST_VOLUME:10}
+      open-state-ms: ${CHATAGENT_RAG_RERANKER_OPEN_STATE_MS:30000}
+      half-open-probe-count: ${CHATAGENT_RAG_RERANKER_HALF_OPEN_PROBE_COUNT:1}
   vector-store:
     provider: ${CHATAGENT_RAG_VECTOR_STORE_PROVIDER:milvus}
 
@@ -81,12 +101,25 @@ milvus:
   index-type: ${CHATAGENT_MILVUS_INDEX_TYPE:AUTOINDEX}
   consistency-level: ${CHATAGENT_MILVUS_CONSISTENCY_LEVEL:BOUNDED}
   dimension: ${CHATAGENT_MILVUS_DIMENSION:1024}
+  knowledge-base:
+    collection: ${CHATAGENT_MILVUS_KNOWLEDGE_BASE_COLLECTION:chat_knowledge_chunk}
 
 chat:
   routing:
     default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:deepseek-chat}
 
 chatagent:
+  intent:
+    minimum-score: 0.45
+    ambiguity-gap: 0.2
+    clarification-candidates: 2
+    classifier-model: ${CHATAGENT_INTENT_CLASSIFIER_MODEL:deepseek-chat}
+    rewrite-model: ${CHATAGENT_INTENT_REWRITE_MODEL:deepseek-chat}
+  memory:
+    l1-window-turns: ${CHATAGENT_MEMORY_L1_WINDOW_TURNS:8}
+    l1-token-budget: ${CHATAGENT_MEMORY_L1_TOKEN_BUDGET:4000}
+    summary-model: ${CHATAGENT_MEMORY_SUMMARY_MODEL:deepseek-chat}
+    summary-max-chars: ${CHATAGENT_MEMORY_SUMMARY_MAX_CHARS:500}
   rag:
     ingestion:
       contextual-enricher:

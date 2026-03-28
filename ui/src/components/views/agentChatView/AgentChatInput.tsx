@@ -92,8 +92,8 @@ const AgentChatInput: React.FC<AgentChatInputProps> = ({
           root: {
             background: "#2f2f2f",
             border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 28,
-            boxShadow: "0 18px 48px rgba(0,0,0,0.14)",
+            borderRadius: "var(--radius-3xl)",
+            boxShadow: "var(--shadow-chat-sender)",
           },
           content: {
             padding: "12px 14px",

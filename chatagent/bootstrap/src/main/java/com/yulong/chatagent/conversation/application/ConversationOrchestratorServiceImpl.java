@@ -1,11 +1,18 @@
 package com.yulong.chatagent.conversation.application;
 
 import com.yulong.chatagent.conversation.application.model.ConversationTurnContext;
+import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.event.ChatEvent;
+import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.response.GetChatSessionResponse;
+import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
+import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPublisher;
 import com.yulong.chatagent.exception.BizException;
+import com.yulong.chatagent.intent.application.ConversationTurnPreparationService;
+import com.yulong.chatagent.intent.application.TurnPreparationResult;
+import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -13,13 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Default turn orchestrator for the current conversation workflow.
- * <p>
- * The first version keeps the orchestration intentionally small: validate the
- * request, ensure the target session exists, persist the user message through
- * the message facade, and trigger asynchronous downstream processing.
  */
 @Service
 @Slf4j
@@ -28,12 +32,23 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
 
     private final ChatSessionFacadeService chatSessionFacadeService;
     private final ChatMessageFacadeService chatMessageFacadeService;
+    private final ConversationTurnPreparationService conversationTurnPreparationService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final ConversationTurnCompletionPublisher conversationTurnCompletionPublisher;
+    private final SseService sseService;
 
-    public ConversationOrchestratorServiceImpl(ChatSessionFacadeService chatSessionFacadeService, ChatMessageFacadeService chatMessageFacadeService, ApplicationEventPublisher applicationEventPublisher) {
+    public ConversationOrchestratorServiceImpl(ChatSessionFacadeService chatSessionFacadeService,
+                                               ChatMessageFacadeService chatMessageFacadeService,
+                                               ConversationTurnPreparationService conversationTurnPreparationService,
+                                               ApplicationEventPublisher applicationEventPublisher,
+                                               ConversationTurnCompletionPublisher conversationTurnCompletionPublisher,
+                                               SseService sseService) {
         this.chatSessionFacadeService = chatSessionFacadeService;
         this.chatMessageFacadeService = chatMessageFacadeService;
+        this.conversationTurnPreparationService = conversationTurnPreparationService;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.conversationTurnCompletionPublisher = conversationTurnCompletionPublisher;
+        this.sseService = sseService;
     }
 
 
@@ -42,13 +57,12 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
         validateRequest(request);
         ConversationTurnContext turnContext = buildTurnContext(request);
         verifyTurnContext(turnContext);
-        dispatchTurn(turnContext);
+        prepareAndDispatchTurn(turnContext);
         return turnContext.createdUserMessage();
     }
 
     private void validateRequest(CreateChatMessageRequest request) {
         Assert.notNull(request, "CreateChatMessageRequest must not be null");
-        Assert.hasText(request.getAgentId(), "AgentId must not be empty");
         Assert.hasText(request.getSessionId(), "SessionId must not be empty");
         Assert.hasText(request.getContent(), "Content must not be empty");
         Assert.notNull(request.getRole(), "Role must not be null");
@@ -61,16 +75,14 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
         CreateChatMessageRequest normalizedRequest = normalizeRequest(request);
 
         GetChatSessionResponse chatSession = chatSessionFacadeService.getChatSession(normalizedRequest.getSessionId());
-        if (!normalizedRequest.getAgentId().equals(chatSession.getChatSession().getAgentId())) {
-            throw new BizException("Chat session does not belong to the requested agent");
-        }
+        String resolvedAgentId = requireAgentId(chatSession, normalizedRequest.getSessionId());
 
         CreateChatMessageResponse createdMessage = chatMessageFacadeService.createChatMessage(normalizedRequest);
         List<ChatMessageDTO> recentHistory = loadRecentHistory(normalizedRequest.getSessionId());
 
         log.info("Conversation turn context built: sessionId={}, agentId={}, userMessageId={}, recentHistorySize={}",
                 normalizedRequest.getSessionId(),
-                normalizedRequest.getAgentId(),
+                resolvedAgentId,
                 createdMessage.getChatMessageId(),
                 recentHistory.size());
 
@@ -90,16 +102,73 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
         }
     }
 
-    private void dispatchTurn(ConversationTurnContext turnContext) {
+    private void prepareAndDispatchTurn(ConversationTurnContext turnContext) {
+        String resolvedAgentId = requireAgentId(turnContext.session(), turnContext.request().getSessionId());
+        TurnPreparationResult preparationResult = conversationTurnPreparationService.prepare(
+                resolvedAgentId,
+                turnContext.request().getSessionId(),
+                turnContext.request().getContent()
+        );
+        if (preparationResult.isDirectReply()) {
+            persistAndPushDirectReply(
+                    turnContext.request().getSessionId(),
+                    turnContext.request().getTurnId(),
+                    preparationResult.directReply()
+            );
+            conversationTurnCompletionPublisher.publishCompletedTurn(
+                    turnContext.request().getSessionId(),
+                    turnContext.request().getTurnId()
+            );
+            return;
+        }
+
         applicationEventPublisher.publishEvent(
                 new ChatEvent(
-                        turnContext.request().getAgentId(),
+                        resolvedAgentId,
                         turnContext.request().getSessionId(),
+                        turnContext.request().getTurnId(),
                         turnContext.createdUserMessage().getChatMessageId(),
                         turnContext.request().getContent(),
-                        turnContext.historySize()
+                        turnContext.historySize(),
+                        preparationResult.intentResolution(),
+                        preparationResult.rewrittenInput()
                 )
         );
+    }
+
+    private void persistAndPushDirectReply(String sessionId, String turnId, String content) {
+        CreateChatMessageResponse savedMessage = chatMessageFacadeService.createChatMessage(
+                CreateChatMessageRequest.builder()
+                        .sessionId(sessionId)
+                        .turnId(turnId)
+                        .role(ChatMessageDTO.RoleType.ASSISTANT)
+                        .content(content)
+                        .build()
+        );
+
+        ChatMessageVO messageVo = ChatMessageVO.builder()
+                .id(savedMessage.getChatMessageId())
+                .sessionId(sessionId)
+                .turnId(turnId)
+                .role(ChatMessageDTO.RoleType.ASSISTANT)
+                .content(content)
+                .build();
+
+        // Push AI_GENERATED_CONTENT event
+        sseService.send(sessionId, SseMessage.builder()
+                .type(SseMessage.Type.AI_GENERATED_CONTENT)
+                .payload(SseMessage.Payload.builder()
+                        .message(messageVo)
+                        .build())
+                .build());
+        
+        // Push AI_DONE event
+        sseService.send(sessionId, SseMessage.builder()
+                .type(SseMessage.Type.AI_DONE)
+                .payload(SseMessage.Payload.builder()
+                        .done(true)
+                        .build())
+                .build());
     }
 
     private List<ChatMessageDTO> loadRecentHistory(String sessionId) {
@@ -107,12 +176,29 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
     }
 
     private CreateChatMessageRequest normalizeRequest(CreateChatMessageRequest request) {
+        String turnId = request.getTurnId();
+        if (turnId == null || turnId.isBlank()) {
+            turnId = UUID.randomUUID().toString();
+        } else {
+            turnId = turnId.trim();
+        }
         return CreateChatMessageRequest.builder()
-                .agentId(request.getAgentId().trim())
                 .sessionId(request.getSessionId().trim())
+                .turnId(turnId)
                 .role(request.getRole())
                 .content(request.getContent().trim())
                 .metadata(request.getMetadata())
                 .build();
+    }
+
+    private String requireAgentId(GetChatSessionResponse chatSession, String sessionId) {
+        if (chatSession == null || chatSession.getChatSession() == null) {
+            throw new BizException("Chat session not found: " + sessionId);
+        }
+        String agentId = chatSession.getChatSession().getAgentId();
+        if (agentId == null || agentId.isBlank()) {
+            throw new BizException("Chat session is missing its internal assistant binding: " + sessionId);
+        }
+        return agentId;
     }
 }

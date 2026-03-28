@@ -49,17 +49,6 @@ public class ChatSessionController {
     }
 
     /**
-     * Returns all chat sessions bound to one agent.
-     *
-     * @param agentId agent identifier
-     * @return chat sessions response
-     */
-    @GetMapping("/chat-sessions/agent/{agentId}")
-    public ApiResponse<GetChatSessionsResponse> getChatSessionsByAgentId(@PathVariable String agentId) {
-        return ApiResponse.success(chatSessionFacadeService.getChatSessionsByAgentId(agentId));
-    }
-
-    /**
      * Creates a new chat session.
      *
      * @param request create session request
@@ -96,4 +85,3 @@ public class ChatSessionController {
         return ApiResponse.success();
     }
 }
-

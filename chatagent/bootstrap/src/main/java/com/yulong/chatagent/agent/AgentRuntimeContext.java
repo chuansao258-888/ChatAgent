@@ -17,7 +17,8 @@ import java.util.List;
  * @param memory restored chat memory
  * @param toolCallbacks runtime tool callbacks
  * @param sessionFileSummary summarized attached session files
- * @param userProfileSummary persistent user profile summary
+ * @param sessionSummary historical context summary (L2 memory)
+ * @param userProfileSummary persistent user profile summary (L3 memory)
  */
 public record AgentRuntimeContext(
         String agentId,
@@ -29,6 +30,7 @@ public record AgentRuntimeContext(
         List<Message> memory,
         List<ToolCallback> toolCallbacks,
         String sessionFileSummary,
+        String sessionSummary,
         String userProfileSummary
 ) {
 }

@@ -33,6 +33,7 @@ public class AgentConverter {
                 .model(agentDTO.getModel().getModelName())
                 .allowedTools(objectMapper.writeValueAsString(agentDTO.getAllowedTools()))
                 .chatOptions(objectMapper.writeValueAsString(agentDTO.getChatOptions()))
+                .activeIntentVersion(agentDTO.getActiveIntentVersion())
                 .createdAt(agentDTO.getCreatedAt())
                 .updatedAt(agentDTO.getUpdatedAt())
                 .build();
@@ -53,6 +54,7 @@ public class AgentConverter {
                 .model(AgentDTO.ModelType.fromModelName(agent.getModel()))
                 .allowedTools(objectMapper.readValue(agent.getAllowedTools(), new TypeReference<>(){}))
                 .chatOptions(objectMapper.readValue(agent.getChatOptions(), AgentDTO.ChatOptions.class))
+                .activeIntentVersion(agent.getActiveIntentVersion())
                 .createdAt(agent.getCreatedAt())
                 .updatedAt(agent.getUpdatedAt())
                 .build();
@@ -114,4 +116,3 @@ public class AgentConverter {
         }
     }
 }
-

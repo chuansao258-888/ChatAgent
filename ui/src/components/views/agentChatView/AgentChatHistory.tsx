@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import XMarkdown from "@ant-design/x-markdown";
 import Latex from "@ant-design/x-markdown/plugins/Latex";
-import HighlightCode from "@ant-design/x-markdown/plugins/HighlightCode";
-import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   CheckCircleOutlined,
   DownOutlined,
@@ -11,11 +9,14 @@ import {
   ToolOutlined,
 } from "@ant-design/icons";
 import type {
+  CitationMetadata,
   ChatMessageVO,
   SseMessageType,
   ToolCall,
   ToolResponse,
 } from "../../../types";
+import CitationInlineTag from "./CitationInlineTag.tsx";
+import CitationSourcePanel from "./CitationSourcePanel.tsx";
 
 interface AgentChatHistoryProps {
   messages: ChatMessageVO[];
@@ -71,47 +72,105 @@ const tryFormatJsonCodeBlock = (content: string): string | null => {
 const toRenderableMarkdown = (content: string): string =>
   tryFormatJsonCodeBlock(content) ?? content;
 
-const markdownComponents = {
+const injectCitationLinks = (
+  content: string,
+  citations: CitationMetadata[],
+): string => {
+  if (!citations.length) {
+    return toRenderableMarkdown(content);
+  }
+
+  const fencedBlockPattern = /(```[\s\S]*?```)/g;
+  return toRenderableMarkdown(content)
+    .split(fencedBlockPattern)
+    .map((segment) => {
+      if (segment.startsWith("```")) {
+        return segment;
+      }
+      return segment.replace(/\[(\d+)\]/g, (match, rawNumber: string) => {
+        const index = Number(rawNumber);
+        if (!Number.isInteger(index) || index < 1 || index > citations.length) {
+          return match;
+        }
+        return `[\\[${index}\\]](citation://${index})`;
+      });
+    })
+    .join("");
+};
+
+const createMarkdownComponents = (
+  citations: CitationMetadata[],
+  onNavigateCitation?: (index: number) => void,
+) => ({
   pre: ({ children }: MarkdownComponentProps) => <>{children}</>,
   code: ({ children, className, block }: MarkdownComponentProps) => {
     const codeText = flattenTextContent(children).replace(/\n$/, "");
     const language = getCodeLanguage(className);
 
     if (block) {
-      if (language) {
-        return (
-          <HighlightCode
-            lang={language}
-            highlightProps={{ style: atomDark, wrapLongLines: false }}
-          >
-            {codeText}
-          </HighlightCode>
-        );
-      }
-
       return (
         <pre className="chat-markdown-code-block">
-          <code>{codeText}</code>
+          <code className={language ? `language-${language}` : undefined}>
+            {codeText}
+          </code>
         </pre>
       );
     }
 
     return <code>{codeText}</code>;
   },
-};
+  a: ({
+    href,
+    children,
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    children?: React.ReactNode;
+  }) => {
+    if (href?.startsWith("citation://")) {
+      const citationIndex = Number(href.replace("citation://", ""));
+      const citation = citations[citationIndex - 1];
+      if (!citation) {
+        return <>{children}</>;
+      }
+      return (
+        <CitationInlineTag
+          citation={citation}
+          index={citationIndex}
+          onNavigate={
+            onNavigateCitation
+              ? () => onNavigateCitation(citationIndex)
+              : undefined
+          }
+        />
+      );
+    }
+
+    return (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    );
+  },
+});
 
 const MarkdownContent: React.FC<{
   content: string;
   hasNextChunk?: boolean;
-}> = ({ content, hasNextChunk = false }) => (
+  citations?: CitationMetadata[];
+  onNavigateCitation?: (index: number) => void;
+}> = ({
+  content,
+  hasNextChunk = false,
+  citations = [],
+  onNavigateCitation,
+}) => (
   <div className="chat-markdown">
     <XMarkdown
-      components={markdownComponents}
+      components={createMarkdownComponents(citations, onNavigateCitation)}
       config={markdownConfig}
       openLinksInNewTab
       streaming={{ enableAnimation: false, hasNextChunk }}
     >
-      {toRenderableMarkdown(content)}
+      {injectCitationLinks(content, citations)}
     </XMarkdown>
   </div>
 );
@@ -278,6 +337,19 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
     }
   };
 
+  const navigateToCitation = useCallback(
+    (messageId: string, index: number) => {
+      const element = document.getElementById(
+        `citation-source-${messageId}-${index}`,
+      );
+      if (!element) {
+        return;
+      }
+      element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    },
+    [],
+  );
+
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8 md:px-10">
@@ -295,7 +367,21 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
                     </div>
                   ) : null}
                   {message.content ? (
-                    <MarkdownContent content={message.content} hasNextChunk />
+                    <MarkdownContent
+                      content={message.content}
+                      hasNextChunk
+                      citations={message.metadata?.citations ?? []}
+                      onNavigateCitation={(index) =>
+                        navigateToCitation(message.id, index)
+                      }
+                    />
+                  ) : null}
+                  {message.metadata?.citations &&
+                  message.metadata.citations.length > 0 ? (
+                    <CitationSourcePanel
+                      messageId={message.id}
+                      citations={message.metadata.citations}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -311,7 +397,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
 
             {message.role === "user" ? (
               <div className="flex justify-end">
-                <div className="max-w-[min(80%,38rem)] whitespace-pre-wrap break-words rounded-[1.6rem] bg-[#2f2f2f] px-5 py-3 text-[15px] leading-7 text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] [overflow-wrap:anywhere]">
+                <div className="max-w-[min(80%,38rem)] whitespace-pre-wrap break-words rounded-section bg-[#2f2f2f] px-5 py-3 text-[15px] leading-7 text-white shadow-chat-bubble [overflow-wrap:anywhere]">
                   {message.content}
                 </div>
               </div>
@@ -330,7 +416,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
 
         {displayAgentStatus ? (
           <div className="flex justify-start">
-            <div className="max-w-3xl rounded-[1.35rem] border border-sky-400/15 bg-sky-400/[0.04] px-4 py-3 text-sm text-slate-200 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+            <div className="max-w-3xl rounded-inset border border-sky-400/15 bg-sky-400/[0.04] px-4 py-3 text-sm text-slate-200 shadow-chat-bubble">
               <span className="mr-2 font-semibold text-sky-300">
                 {getStatusLabel()}
               </span>

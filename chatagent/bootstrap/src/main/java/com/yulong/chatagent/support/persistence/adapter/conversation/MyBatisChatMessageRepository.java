@@ -36,6 +36,22 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
     }
 
     @Override
+    public List<ChatMessageDTO> findBySessionIdAndSeqRange(String sessionId, long startExclusiveSeqNo, long endInclusiveSeqNo) {
+        return toDTOList(chatMessageMapper.selectBySessionIdAndSeqRange(sessionId, startExclusiveSeqNo, endInclusiveSeqNo));
+    }
+
+    @Override
+    public Long findMaxSeqNoBySessionId(String sessionId) {
+        return chatMessageMapper.selectMaxSeqNoBySessionId(sessionId);
+    }
+
+    @Override
+    public long countTurnsBySessionId(String sessionId) {
+        Long count = chatMessageMapper.selectTurnCountBySessionId(sessionId);
+        return count == null ? 0L : count;
+    }
+
+    @Override
     public ChatMessageDTO findById(String id) {
         return toDTO(chatMessageMapper.selectById(id));
     }
@@ -46,6 +62,11 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
         boolean saved = chatMessageMapper.insert(entity) > 0;
         if (saved) {
             chatMessage.setId(entity.getId());
+            ChatMessage persisted = chatMessageMapper.selectById(entity.getId());
+            if (persisted != null) {
+                chatMessage.setSeqNo(persisted.getSeqNo());
+                chatMessage.setTurnId(persisted.getTurnId());
+            }
         }
         return saved;
     }

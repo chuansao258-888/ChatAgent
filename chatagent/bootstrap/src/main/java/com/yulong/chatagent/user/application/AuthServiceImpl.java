@@ -1,6 +1,6 @@
 package com.yulong.chatagent.user.application;
 
-import com.yulong.chatagent.agent.application.DefaultAgentProvisioningService;
+import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.exception.BizException;
@@ -38,22 +38,19 @@ public class AuthServiceImpl implements AuthService {
     private final SecureRandom secureRandom = new SecureRandom();
     private final long refreshTtlDays;
     private final UserConverter userConverter;
-    private final DefaultAgentProvisioningService defaultAgentProvisioningService;
 
     public AuthServiceImpl(UserRepository userRepository,
                            PasswordService passwordService,
                            JwtTokenService jwtTokenService,
                            RefreshTokenStore refreshTokenStore,
                            @Value("${auth.jwt.refresh-ttl-days}") long refreshTtlDays,
-                           UserConverter userConverter,
-                           DefaultAgentProvisioningService defaultAgentProvisioningService) {
+                           UserConverter userConverter) {
         this.userRepository = userRepository;
         this.passwordService = passwordService;
         this.jwtTokenService = jwtTokenService;
         this.refreshTokenStore = refreshTokenStore;
         this.refreshTtlDays = refreshTtlDays;
         this.userConverter = userConverter;
-        this.defaultAgentProvisioningService = defaultAgentProvisioningService;
     }
 
     @Override
@@ -64,10 +61,7 @@ public class AuthServiceImpl implements AuthService {
         Assert.hasText(request.getUsername(), "RegisterRequest.username must not be blank");
         Assert.hasText(request.getPassword(), "RegisterRequest.password must not be blank");
         String username = request.getUsername().trim();
-        log.info("Register requested: username={}, password={}, passwordLength={}",
-                username,
-                request.getPassword(),
-                request.getPassword().length());
+        log.info("Register requested: username={}", username);
 
         UserDTO existingUser = userRepository.findByUsername(username);
         if (existingUser != null) {
@@ -79,7 +73,7 @@ public class AuthServiceImpl implements AuthService {
         UserDTO user = UserDTO.builder()
                 .username(username)
                 .passwordHash(passwordService.hash(request.getPassword()))
-                .role("user")
+                .role(UserRole.USER.persistedValue())
                 .build();
 
         boolean saved = userRepository.save(user);
@@ -89,7 +83,6 @@ public class AuthServiceImpl implements AuthService {
         }
 
         log.info("Register succeeded: userId={}, username={}", user.getId(), username);
-        defaultAgentProvisioningService.ensureForUser(user.getId());
         // Registration immediately creates a logged-in session for the new user.
         return issueLoginResponse(user);
     }
@@ -102,16 +95,12 @@ public class AuthServiceImpl implements AuthService {
         Assert.hasText(request.getUsername(), "LoginRequest.username must not be blank");
         Assert.hasText(request.getPassword(), "LoginRequest.password must not be blank");
         String username = request.getUsername().trim();
-        log.info("Login requested: username={}, password={}, passwordLength={}",
-                username,
-                request.getPassword(),
-                request.getPassword().length());
+        log.info("Login requested: username={}", username);
         UserDTO user = userRepository.findByUsername(username);
         if (user == null || !passwordService.matches(request.getPassword(), user.getPasswordHash())) {
             log.warn("Login failed: invalid credentials, username={}", username);
             throw new BizException("Invalid username or password");
         }
-        defaultAgentProvisioningService.ensureForUser(user.getId());
         refreshTokenStore.deleteByUserId(user.getId());
         log.info("Login succeeded: userId={}, username={}", user.getId(), username);
         return issueLoginResponse(user);
@@ -125,18 +114,15 @@ public class AuthServiceImpl implements AuthService {
             log.info("Refresh rejected: missing refresh token");
             throw new BizException("Invalid refresh token");
         }
-        log.info("Refresh requested: refreshToken={}", refreshToken);
+        log.info("Refresh requested");
         String userId = refreshTokenStore.getUserId(refreshToken);
         if(userId == null) {
-            log.warn("Refresh failed: token not found, refreshToken={}",
-                    refreshToken);
+            log.warn("Refresh failed: token not found");
             throw new BizException("Invalid refresh token");
         }
         UserDTO user = userRepository.findById(userId);
         if (user == null) {
-            log.warn("Refresh failed: user not found, userId={}, refreshToken={}",
-                    userId,
-                    refreshToken);
+            log.warn("Refresh failed: user not found, userId={}", userId);
             throw new BizException("Cannot find user with id " + userId);
         }
         String newAccessToken = jwtTokenService.generateAccessToken(userConverter.toJwtClaims(user));
@@ -144,11 +130,9 @@ public class AuthServiceImpl implements AuthService {
         // Rotate the refresh token on every successful refresh to reduce replay risk.
         refreshTokenStore.save(newRefreshToken, userId, Duration.ofDays(refreshTtlDays));
         refreshTokenStore.delete(refreshToken);
-        log.info("Refresh succeeded: userId={}, username={}, oldRefreshToken={}, newRefreshToken={}",
+        log.info("Refresh succeeded: userId={}, username={}",
                 userId,
-                user.getUsername(),
-                refreshToken,
-                newRefreshToken);
+                user.getUsername());
         return userConverter.toLoginResponse(user, newAccessToken, newRefreshToken);
     }
 
@@ -160,9 +144,9 @@ public class AuthServiceImpl implements AuthService {
             log.debug("Logout skipped: missing refresh token");
             return;
         }
-        log.info("Logout requested: refreshToken={}", refreshToken);
+        log.info("Logout requested");
         refreshTokenStore.delete(refreshToken);
-        log.info("Logout completed: refreshToken={}", refreshToken);
+        log.info("Logout completed");
     }
 
     @Override
@@ -183,11 +167,9 @@ public class AuthServiceImpl implements AuthService {
         // The access token is stateless; the refresh token is the server-side
         // handle that lets the session be renewed or revoked later.
         refreshTokenStore.save(refreshToken, user.getId(), Duration.ofDays(refreshTtlDays));
-        log.info("Issued login response: userId={}, username={}, accessToken={}, refreshToken={}",
+        log.info("Issued login response: userId={}, username={}",
                 user.getId(),
-                user.getUsername(),
-                accessToken,
-                refreshToken);
+                user.getUsername());
         return userConverter.toLoginResponse(user, accessToken, refreshToken);
     }
 

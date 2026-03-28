@@ -94,7 +94,7 @@ public class LlmRetrievalReranker implements RetrievalReranker {
         builder.append("Query:\n").append(queryText).append("\n\nCandidates:\n");
         for (MilvusSearchHit candidate : candidates) {
             builder.append("- chunkId: ").append(candidate.chunkId()).append("\n");
-            builder.append("  fileName: ").append(nullToEmpty(candidate.fileName())).append("\n");
+            builder.append("  documentName: ").append(nullToEmpty(candidate.documentName())).append("\n");
             builder.append("  chunkIndex: ").append(candidate.chunkIndex()).append("\n");
             if (StringUtils.hasText(candidate.contextText())) {
                 builder.append("  context: ").append(toSingleLine(truncate(candidate.contextText()))).append("\n");
@@ -165,12 +165,12 @@ public class LlmRetrievalReranker implements RetrievalReranker {
         for (String chunkId : orderedIds) {
             MilvusSearchHit hit = byId.get(chunkId);
             if (hit != null) {
-                reranked.add(hit);
+                reranked.add(hit.withScoreType("retrieval"));
             }
         }
         for (MilvusSearchHit hit : original) {
             if (StringUtils.hasText(hit.chunkId()) && !orderedIds.contains(hit.chunkId())) {
-                reranked.add(hit);
+                reranked.add(hit.withScoreType("retrieval"));
             }
         }
         return reranked;

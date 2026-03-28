@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.AgentTemplateMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.AgentTemplate">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="code" column="code" jdbcType="VARCHAR"/>
+        <result property="name" column="name" jdbcType="VARCHAR"/>
+        <result property="description" column="description" jdbcType="VARCHAR"/>
+        <result property="systemPrompt" column="system_prompt" jdbcType="VARCHAR"/>
+        <result property="model" column="model" jdbcType="VARCHAR"/>
+        <result property="allowedTools" column="allowed_tools" jdbcType="VARCHAR"/>
+        <result property="chatOptions" column="chat_options" jdbcType="VARCHAR"/>
+        <result property="intentTree" column="intent_tree" jdbcType="VARCHAR"/>
+        <result property="builtIn" column="built_in" jdbcType="BOOLEAN"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="BaseSelectColumns">
+        id,
+        code,
+        name,
+        description,
+        system_prompt,
+        model,
+        allowed_tools::text AS allowed_tools,
+        chat_options::text AS chat_options,
+        intent_tree::text AS intent_tree,
+        built_in,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.AgentTemplate">
+        INSERT INTO agent_template (
+            id,
+            code,
+            name,
+            description,
+            system_prompt,
+            model,
+            allowed_tools,
+            chat_options,
+            intent_tree,
+            built_in,
+            created_at,
+            updated_at
+        ) VALUES (
+            CAST(#{id} AS uuid),
+            #{code},
+            #{name},
+            #{description},
+            #{systemPrompt},
+            #{model},
+            CAST(#{allowedTools} AS jsonb),
+            CAST(#{chatOptions} AS jsonb),
+            CAST(#{intentTree} AS jsonb),
+            #{builtIn},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT
+        <include refid="BaseSelectColumns"/>
+        FROM agent_template
+        ORDER BY built_in DESC, name ASC, created_at ASC
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="BaseSelectColumns"/>
+        FROM agent_template
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT
+        <include refid="BaseSelectColumns"/>
+        FROM agent_template
+        WHERE code = #{code}
+    </select>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.AgentTemplate">
+        UPDATE agent_template
+        SET code = #{code},
+            name = #{name},
+            description = #{description},
+            system_prompt = #{systemPrompt},
+            model = #{model},
+            allowed_tools = CAST(#{allowedTools} AS jsonb),
+            chat_options = CAST(#{chatOptions} AS jsonb),
+            intent_tree = CAST(#{intentTree} AS jsonb),
+            built_in = #{builtIn},
+            updated_at = NOW()
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM agent_template
+        WHERE id = CAST(#{id} AS uuid)
+    </delete>
+</mapper>
+

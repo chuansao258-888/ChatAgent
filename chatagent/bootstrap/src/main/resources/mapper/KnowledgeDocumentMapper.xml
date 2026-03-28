@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.KnowledgeDocumentMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.KnowledgeDocument">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id" jdbcType="VARCHAR"/>
+        <result property="filename" column="filename" jdbcType="VARCHAR"/>
+        <result property="originalFilename" column="original_filename" jdbcType="VARCHAR"/>
+        <result property="mimeType" column="mime_type" jdbcType="VARCHAR"/>
+        <result property="sizeBytes" column="size_bytes" jdbcType="BIGINT"/>
+        <result property="storagePath" column="storage_path" jdbcType="VARCHAR"/>
+        <result property="parseStatus" column="parse_status" jdbcType="VARCHAR"/>
+        <result property="contentHash" column="content_hash" jdbcType="VARCHAR"/>
+        <result property="failedReason" column="failed_reason" jdbcType="VARCHAR"/>
+        <result property="indexedAt" column="indexed_at" jdbcType="TIMESTAMP"/>
+        <result property="retryCount" column="retry_count" jdbcType="INTEGER"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="deleted" column="deleted" jdbcType="BOOLEAN"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeDocument">
+        INSERT INTO knowledge_document
+        (id,
+         knowledge_base_id,
+         filename,
+         original_filename,
+         mime_type,
+         size_bytes,
+         storage_path,
+         parse_status,
+         content_hash,
+         failed_reason,
+         indexed_at,
+         retry_count,
+         metadata,
+         deleted,
+         created_at,
+         updated_at)
+        VALUES (CAST(#{id} AS uuid),
+                CAST(#{knowledgeBaseId} AS uuid),
+                #{filename},
+                #{originalFilename},
+                #{mimeType},
+                #{sizeBytes},
+                #{storagePath},
+                #{parseStatus},
+                #{contentHash},
+                #{failedReason},
+                #{indexedAt},
+                #{retryCount},
+                CAST(#{metadata} AS jsonb),
+                #{deleted},
+                #{createdAt},
+                #{updatedAt})
+    </insert>
+
+    <select id="selectByKnowledgeBaseId" resultMap="BaseResultMap">
+        SELECT id,
+               knowledge_base_id,
+               filename,
+               original_filename,
+               mime_type,
+               size_bytes,
+               storage_path,
+               parse_status,
+               content_hash,
+               failed_reason,
+               indexed_at,
+               retry_count,
+               metadata::text AS metadata,
+               deleted,
+               created_at,
+               updated_at
+        FROM knowledge_document
+        WHERE knowledge_base_id = CAST(#{knowledgeBaseId} AS uuid)
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT id,
+               knowledge_base_id,
+               filename,
+               original_filename,
+               mime_type,
+               size_bytes,
+               storage_path,
+               parse_status,
+               content_hash,
+               failed_reason,
+               indexed_at,
+               retry_count,
+               metadata::text AS metadata,
+               deleted,
+               created_at,
+               updated_at
+        FROM knowledge_document
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeDocument">
+        UPDATE knowledge_document
+        <set>
+            <if test="knowledgeBaseId != null">
+                knowledge_base_id = CAST(#{knowledgeBaseId} AS uuid),
+            </if>
+            <if test="filename != null">
+                filename = #{filename},
+            </if>
+            <if test="originalFilename != null">
+                original_filename = #{originalFilename},
+            </if>
+            <if test="mimeType != null">
+                mime_type = #{mimeType},
+            </if>
+            <if test="sizeBytes != null">
+                size_bytes = #{sizeBytes},
+            </if>
+            <if test="storagePath != null">
+                storage_path = #{storagePath},
+            </if>
+            <if test="parseStatus != null">
+                parse_status = #{parseStatus},
+            </if>
+            <if test="contentHash != null">
+                content_hash = #{contentHash},
+            </if>
+            failed_reason = #{failedReason},
+            indexed_at = #{indexedAt},
+            retry_count = #{retryCount},
+            <if test="metadata != null">
+                metadata = CAST(#{metadata} AS jsonb),
+            </if>
+            <if test="deleted != null">
+                deleted = #{deleted},
+            </if>
+            updated_at = #{updatedAt}
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+</mapper>

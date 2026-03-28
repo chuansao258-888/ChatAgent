@@ -1,6 +1,8 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.agent.tools.Tool;
+import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.admin.application.ToolFacadeService;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import org.springframework.ai.chat.model.ToolContext;
@@ -39,7 +41,11 @@ public class AgentToolCallbackFactory {
      * @return callback list for the current run
      */
     public List<ToolCallback> create(AgentDTO agentConfig) {
-        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig);
+        return create(agentConfig, null);
+    }
+
+    public List<ToolCallback> create(AgentDTO agentConfig, IntentResolution intentResolution) {
+        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, intentResolution);
         Map<String, ToolCallback> callbacksByName = new LinkedHashMap<>();
         for (Tool tool : runtimeTools) {
             Object target = resolveToolTarget(tool);
@@ -61,9 +67,23 @@ public class AgentToolCallbackFactory {
      * @return fixed tools plus configured optional tools
      */
     private List<Tool> resolveRuntimeTools(AgentDTO agentConfig) {
+        return resolveRuntimeTools(agentConfig, null);
+    }
+
+    private List<Tool> resolveRuntimeTools(AgentDTO agentConfig, IntentResolution intentResolution) {
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
+        runtimeTools.removeIf(tool -> intentResolution != null
+                && intentResolution.kind() != IntentKind.KB
+                && "SessionFileSearchTool".equals(tool.getName()));
 
         List<String> allowedToolNames = agentConfig.getAllowedTools();
+        if (intentResolution != null) {
+            if (intentResolution.kind() != IntentKind.TOOL) {
+                return runtimeTools;
+            }
+            allowedToolNames = intersectAllowedTools(agentConfig.getAllowedTools(), intentResolution.allowedTools());
+        }
+
         if (allowedToolNames == null || allowedToolNames.isEmpty()) {
             return runtimeTools;
         }
@@ -79,6 +99,18 @@ public class AgentToolCallbackFactory {
             }
         }
         return runtimeTools;
+    }
+
+    private List<String> intersectAllowedTools(List<String> agentAllowedTools, List<String> intentAllowedTools) {
+        if (intentAllowedTools == null || intentAllowedTools.isEmpty()) {
+            return List.of();
+        }
+        if (agentAllowedTools == null || agentAllowedTools.isEmpty()) {
+            return List.copyOf(intentAllowedTools);
+        }
+        return agentAllowedTools.stream()
+                .filter(intentAllowedTools::contains)
+                .toList();
     }
 
     /**

@@ -9,8 +9,9 @@ import lombok.Data;
 public class ChatMessageVO {
     private String id;
     private String sessionId;
+    private String turnId;
     private ChatMessageDTO.RoleType role;
     private String content;
     private ChatMessageDTO.MetaData metadata;
+    private Long seqNo;
 }
-

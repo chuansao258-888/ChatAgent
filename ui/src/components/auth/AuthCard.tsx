@@ -120,7 +120,7 @@ export default function AuthCard({
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-[32px] border border-white/8 bg-[#202020] text-white shadow-[0_28px_90px_rgba(0,0,0,0.42)] ${
+      className={`relative w-full overflow-hidden rounded-[32px] border border-white/8 bg-[#202020] text-white shadow-chat-overlay ${
         compact ? "p-8" : "p-10"
       }`}
     >

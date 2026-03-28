@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.KnowledgeBaseMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.KnowledgeBase">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="createdBy" column="created_by" jdbcType="VARCHAR"/>
+        <result property="name" column="name" jdbcType="VARCHAR"/>
+        <result property="description" column="description" jdbcType="VARCHAR"/>
+        <result property="visibility" column="visibility" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeBase">
+        INSERT INTO knowledge_base
+        (id,
+         created_by,
+         name,
+         description,
+         visibility,
+         status,
+         metadata,
+         created_at,
+         updated_at)
+        VALUES (CAST(#{id} AS uuid),
+                CAST(#{createdBy} AS uuid),
+                #{name},
+                #{description},
+                #{visibility},
+                #{status},
+                CAST(#{metadata} AS jsonb),
+                #{createdAt},
+                #{updatedAt})
+    </insert>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT id,
+               created_by,
+               name,
+               description,
+               visibility,
+               status,
+               metadata::text AS metadata,
+               created_at,
+               updated_at
+        FROM knowledge_base
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByIds" resultMap="BaseResultMap">
+        SELECT id,
+               created_by,
+               name,
+               description,
+               visibility,
+               status,
+               metadata::text AS metadata,
+               created_at,
+               updated_at
+        FROM knowledge_base
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            CAST(#{id} AS uuid)
+        </foreach>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectActiveIds" resultType="java.lang.String">
+        SELECT id
+        FROM knowledge_base
+        WHERE status = 'ACTIVE'
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              CAST(#{id} AS uuid)
+          </foreach>
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT id,
+               created_by,
+               name,
+               description,
+               visibility,
+               status,
+               metadata::text AS metadata,
+               created_at,
+               updated_at
+        FROM knowledge_base
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeBase">
+        UPDATE knowledge_base
+        <set>
+            <if test="name != null">
+                name = #{name},
+            </if>
+            <if test="description != null">
+                description = #{description},
+            </if>
+            <if test="visibility != null">
+                visibility = #{visibility},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+            <if test="metadata != null">
+                metadata = CAST(#{metadata} AS jsonb),
+            </if>
+            updated_at = #{updatedAt}
+        </set>
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+</mapper>

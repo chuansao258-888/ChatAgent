@@ -1,5 +1,8 @@
 package com.yulong.chatagent.rag.service;
 
+import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.rag.model.RetrievalHit;
+
 import java.util.List;
 
 /**
@@ -19,7 +22,18 @@ public interface RagService {
      *
      * @param chatSessionId chat session identifier
      * @param query search query text
-     * @return retrieved context snippets
+     * @return structured retrieval hits
      */
-    List<String> similaritySearchBySession(String chatSessionId, String query);
+    List<RetrievalHit> similaritySearchBySession(String chatSessionId, String query);
+
+    List<RetrievalHit> similaritySearchBySession(String chatSessionId, String query, IntentResolution intentResolution);
+
+    /**
+     * Performs similarity search across one or more knowledge bases.
+     *
+     * @param knowledgeBaseIds knowledge-base identifiers
+     * @param query search query text
+     * @return structured retrieval hits
+     */
+    List<RetrievalHit> similaritySearchByKnowledgeBaseIds(List<String> knowledgeBaseIds, String query);
 }

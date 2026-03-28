@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.chat.ChatModelRouter;
+import com.yulong.chatagent.intent.application.IntentResolution;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +31,15 @@ public class ChatAgentFactory {
      * @return ready-to-run chat agent
      */
     public ChatAgent create(String agentId, String chatSessionId) {
-        AgentRuntimeContext context = agentRuntimeContextLoader.load(agentId, chatSessionId);
+        return create(agentId, chatSessionId, null, null, null);
+    }
+
+    public ChatAgent create(String agentId,
+                            String chatSessionId,
+                            String turnId,
+                            IntentResolution intentResolution,
+                            String rewrittenInput) {
+        AgentRuntimeContext context = agentRuntimeContextLoader.load(agentId, chatSessionId, intentResolution, rewrittenInput);
         ChatClient chatClient = chatModelRouter.route(context.model());
 
         return new ChatAgent(
@@ -43,7 +52,9 @@ public class ChatAgentFactory {
                 context.memory(),
                 context.toolCallbacks(),
                 context.sessionFileSummary(),
+                context.sessionSummary(),
                 context.userProfileSummary(),
+                turnId,
                 chatSessionId,
                 agentMessageBridge
         );

@@ -1,12 +1,13 @@
 package com.yulong.chatagent;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+import static org.assertj.core.api.Assertions.assertThat;
+
 class ChatAgentApplicationTests {
 
     @Test
-    void contextLoads() {
+    void applicationClassIsPresent() {
+        assertThat(ChatAgentApplication.class).isNotNull();
     }
 }

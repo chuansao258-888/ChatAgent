@@ -1,6 +1,7 @@
 package com.yulong.chatagent.support.dto;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.yulong.chatagent.rag.model.CitationMetadata;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,11 +19,15 @@ public class ChatMessageDTO {
 
     private String sessionId;
 
+    private String turnId;
+
     private RoleType role;
 
     private String content;
 
     private MetaData metadata;
+
+    private Long seqNo;
 
     private LocalDateTime createdAt;
 
@@ -33,6 +38,7 @@ public class ChatMessageDTO {
     public static class MetaData {
         private ToolResponseMessage.ToolResponse toolResponse;
         private List<AssistantMessage.ToolCall> toolCalls;
+        private List<CitationMetadata> citations;
     }
 
     @Getter

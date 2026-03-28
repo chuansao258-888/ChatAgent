@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.IntentNodeMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.IntentNode">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
+        <result property="parentId" column="parent_id" jdbcType="VARCHAR"/>
+        <result property="version" column="version" jdbcType="INTEGER"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="nodeLevel" column="node_level" jdbcType="VARCHAR"/>
+        <result property="name" column="name" jdbcType="VARCHAR"/>
+        <result property="description" column="description" jdbcType="VARCHAR"/>
+        <result property="examples" column="examples" jdbcType="VARCHAR"/>
+        <result property="intentKind" column="intent_kind" jdbcType="VARCHAR"/>
+        <result property="scopePolicy" column="scope_policy" jdbcType="VARCHAR"/>
+        <result property="allowedTools" column="allowed_tools" jdbcType="VARCHAR"/>
+        <result property="systemPromptOverride" column="system_prompt_override" jdbcType="VARCHAR"/>
+        <result property="enabled" column="enabled" jdbcType="BOOLEAN"/>
+        <result property="sortOrder" column="sort_order" jdbcType="INTEGER"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="BaseSelectColumns">
+        id,
+        agent_id,
+        parent_id,
+        version,
+        status,
+        node_level,
+        name,
+        description,
+        examples::text AS examples,
+        intent_kind,
+        scope_policy,
+        allowed_tools::text AS allowed_tools,
+        system_prompt_override,
+        enabled,
+        sort_order,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.IntentNode">
+        INSERT INTO intent_node (
+            id,
+            agent_id,
+            parent_id,
+            version,
+            status,
+            node_level,
+            name,
+            description,
+            examples,
+            intent_kind,
+            scope_policy,
+            allowed_tools,
+            system_prompt_override,
+            enabled,
+            sort_order,
+            created_at,
+            updated_at
+        ) VALUES (
+            CAST(#{id} AS uuid),
+            CAST(#{agentId} AS uuid),
+            CASE WHEN #{parentId} IS NULL OR #{parentId} = '' THEN NULL ELSE CAST(#{parentId} AS uuid) END,
+            #{version},
+            #{status},
+            #{nodeLevel},
+            #{name},
+            #{description},
+            CAST(#{examples} AS jsonb),
+            #{intentKind},
+            #{scopePolicy},
+            CAST(#{allowedTools} AS jsonb),
+            #{systemPromptOverride},
+            #{enabled},
+            #{sortOrder},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO intent_node (
+            id,
+            agent_id,
+            parent_id,
+            version,
+            status,
+            node_level,
+            name,
+            description,
+            examples,
+            intent_kind,
+            scope_policy,
+            allowed_tools,
+            system_prompt_override,
+            enabled,
+            sort_order,
+            created_at,
+            updated_at
+        ) VALUES
+        <foreach collection="intentNodes" item="item" separator=",">
+            (
+                CAST(#{item.id} AS uuid),
+                CAST(#{item.agentId} AS uuid),
+                CASE WHEN #{item.parentId} IS NULL OR #{item.parentId} = '' THEN NULL ELSE CAST(#{item.parentId} AS uuid) END,
+                #{item.version},
+                #{item.status},
+                #{item.nodeLevel},
+                #{item.name},
+                #{item.description},
+                CAST(#{item.examples} AS jsonb),
+                #{item.intentKind},
+                #{item.scopePolicy},
+                CAST(#{item.allowedTools} AS jsonb),
+                #{item.systemPromptOverride},
+                #{item.enabled},
+                #{item.sortOrder},
+                #{item.createdAt},
+                #{item.updatedAt}
+            )
+        </foreach>
+    </insert>
+
+    <select id="selectByAgentIdAndVersion" resultMap="BaseResultMap">
+        SELECT
+        <include refid="BaseSelectColumns"/>
+        FROM intent_node
+        WHERE agent_id = CAST(#{agentId} AS uuid)
+          AND version = #{version}
+        ORDER BY sort_order ASC, created_at ASC
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="BaseSelectColumns"/>
+        FROM intent_node
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.IntentNode">
+        UPDATE intent_node
+        SET parent_id = CASE WHEN #{parentId} IS NULL OR #{parentId} = '' THEN NULL ELSE CAST(#{parentId} AS uuid) END,
+            version = #{version},
+            status = #{status},
+            node_level = #{nodeLevel},
+            name = #{name},
+            description = #{description},
+            examples = CAST(#{examples} AS jsonb),
+            intent_kind = #{intentKind},
+            scope_policy = #{scopePolicy},
+            allowed_tools = CAST(#{allowedTools} AS jsonb),
+            system_prompt_override = #{systemPromptOverride},
+            enabled = #{enabled},
+            sort_order = #{sortOrder},
+            updated_at = NOW()
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <delete id="deleteByIds">
+        DELETE FROM intent_node
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            CAST(#{id} AS uuid)
+        </foreach>
+    </delete>
+
+    <select id="selectPublishedVersionsByAgentId" resultType="java.lang.Integer">
+        SELECT DISTINCT version
+        FROM intent_node
+        WHERE agent_id = CAST(#{agentId} AS uuid)
+          AND status = 'PUBLISHED'
+          AND version &gt; 0
+        ORDER BY version DESC
+    </select>
+
+    <select id="selectMaxVersionByAgentId" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(version), 0)
+        FROM intent_node
+        WHERE agent_id = CAST(#{agentId} AS uuid)
+    </select>
+</mapper>

@@ -8,6 +8,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 @EnableAsync
@@ -21,14 +23,12 @@ public class AsyncConfig {
 
     @Bean
     public Executor taskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("async-event-");
-        executor.setTaskDecorator(traceTaskDecorator());
-        executor.initialize();
-        return executor;
+        return buildExecutor(4, 10, 100, "async-event-", null);
+    }
+
+    @Bean("summaryExecutor")
+    public Executor summaryExecutor() {
+        return buildExecutor(1, 2, 8, "summary-task-", new ThreadPoolExecutor.DiscardOldestPolicy());
     }
 
     private TaskDecorator traceTaskDecorator() {
@@ -53,5 +53,23 @@ public class AsyncConfig {
                 }
             };
         };
+    }
+
+    private Executor buildExecutor(int corePoolSize,
+                                   int maxPoolSize,
+                                   int queueCapacity,
+                                   String threadNamePrefix,
+                                   RejectedExecutionHandler rejectedExecutionHandler) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(corePoolSize);
+        executor.setMaxPoolSize(maxPoolSize);
+        executor.setQueueCapacity(queueCapacity);
+        executor.setThreadNamePrefix(threadNamePrefix);
+        executor.setTaskDecorator(traceTaskDecorator());
+        if (rejectedExecutionHandler != null) {
+            executor.setRejectedExecutionHandler(rejectedExecutionHandler);
+        }
+        executor.initialize();
+        return executor;
     }
 }

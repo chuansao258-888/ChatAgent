@@ -1,7 +1,6 @@
 package com.yulong.chatagent.file.application;
 
-import com.yulong.chatagent.context.UserContext;
-import com.yulong.chatagent.conversation.port.ChatSessionRepository;
+import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.exception.ServiceException;
 import com.yulong.chatagent.file.converter.ChatSessionFileConverter;
@@ -13,7 +12,7 @@ import com.yulong.chatagent.file.port.FileChunkRepository;
 import com.yulong.chatagent.rag.ingestion.FileIngestionService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.SessionFileMilvusIndexer;
-import com.yulong.chatagent.support.dto.ChatSessionDTO;
+import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,18 +36,18 @@ import java.util.UUID;
 @Slf4j
 public class ChatSessionFileFacadeServiceImpl implements ChatSessionFileFacadeService {
 
-    private final ChatSessionRepository chatSessionRepository;
     private final ChatSessionFileRepository chatSessionFileRepository;
     private final FileChunkRepository fileChunkRepository;
     private final ChatSessionFileConverter chatSessionFileConverter;
     private final DocumentStorageService documentStorageService;
     private final SessionFileMilvusIndexer sessionFileMilvusIndexer;
     private final FileIngestionService fileIngestionService;
+    private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
     public GetChatSessionFilesResponse getChatSessionFiles(String sessionId) {
-        String userId = requireCurrentUserId();
-        requireOwnedSession(sessionId, userId);
+        requireCurrentUserId();
+        resourceAccessGuard.assertCanReadSession(UserContext.requireUser(), sessionId);
 
         List<ChatSessionFileVO> result = new ArrayList<>();
         for (ChatSessionFileDTO sessionFile : chatSessionFileRepository.findBySessionId(sessionId)) {
@@ -63,8 +62,8 @@ public class ChatSessionFileFacadeServiceImpl implements ChatSessionFileFacadeSe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public UploadChatSessionFileResponse uploadFile(String sessionId, MultipartFile file) {
-        String userId = requireCurrentUserId();
-        requireOwnedSession(sessionId, userId);
+        requireCurrentUserId();
+        resourceAccessGuard.assertCanReadSession(UserContext.requireUser(), sessionId);
         if (file == null || file.isEmpty()) {
             throw new BizException("Uploaded file is empty");
         }
@@ -128,8 +127,8 @@ public class ChatSessionFileFacadeServiceImpl implements ChatSessionFileFacadeSe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void detachFile(String sessionId, String sessionFileId) {
-        String userId = requireCurrentUserId();
-        requireOwnedSession(sessionId, userId);
+        requireCurrentUserId();
+        resourceAccessGuard.assertCanReadSession(UserContext.requireUser(), sessionId);
         ChatSessionFileDTO sessionFile = requireOwnedSessionFile(sessionId, sessionFileId);
 
         fileChunkRepository.deleteBySessionFileId(sessionFileId);
@@ -171,14 +170,6 @@ public class ChatSessionFileFacadeServiceImpl implements ChatSessionFileFacadeSe
 
     private String requireCurrentUserId() {
         return UserContext.requireUser().getUserId();
-    }
-
-    private ChatSessionDTO requireOwnedSession(String sessionId, String userId) {
-        ChatSessionDTO session = chatSessionRepository.findById(sessionId);
-        if (session == null || !userId.equals(session.getUserId())) {
-            throw new BizException("Chat session not found: " + sessionId);
-        }
-        return session;
     }
 
     private ChatSessionFileDTO requireOwnedSessionFile(String sessionId, String sessionFileId) {

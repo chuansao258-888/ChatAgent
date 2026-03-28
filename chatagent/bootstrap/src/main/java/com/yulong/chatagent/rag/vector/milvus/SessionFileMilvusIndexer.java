@@ -1,20 +1,17 @@
 package com.yulong.chatagent.rag.vector.milvus;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
+import com.yulong.chatagent.rag.ingestion.SessionFileIndexedChunkAssembler;
+import com.yulong.chatagent.rag.model.IndexedChunkDocument;
 import com.yulong.chatagent.rag.vector.milvus.model.MilvusChunkDocument;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import com.yulong.chatagent.support.dto.FileChunkDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Converts persisted session-file chunks into Milvus rows and upserts them when Milvus is enabled.
@@ -25,16 +22,17 @@ public class SessionFileMilvusIndexer {
 
     private final OllamaEmbeddingClient embeddingClient;
     private final ObjectProvider<MilvusIndexService> milvusIndexServiceProvider;
-    private final ObjectMapper objectMapper;
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-    };
+    private final SessionFileIndexedChunkAssembler indexedChunkAssembler;
+    private final SessionScopedMilvusChunkMapper milvusChunkMapper;
 
     public SessionFileMilvusIndexer(OllamaEmbeddingClient embeddingClient,
                                     ObjectProvider<MilvusIndexService> milvusIndexServiceProvider,
-                                    ObjectMapper objectMapper) {
+                                    SessionFileIndexedChunkAssembler indexedChunkAssembler,
+                                    SessionScopedMilvusChunkMapper milvusChunkMapper) {
         this.embeddingClient = embeddingClient;
         this.milvusIndexServiceProvider = milvusIndexServiceProvider;
-        this.objectMapper = objectMapper;
+        this.indexedChunkAssembler = indexedChunkAssembler;
+        this.milvusChunkMapper = milvusChunkMapper;
     }
 
     /**
@@ -58,30 +56,12 @@ public class SessionFileMilvusIndexer {
                 sessionFile.getId(),
                 chunks.size(),
                 sessionFile.getOriginalFilename());
-        List<MilvusChunkDocument> documents = new ArrayList<>(chunks.size());
-        for (FileChunkDTO chunk : chunks) {
-            String content = chunk.getContent() == null ? "" : chunk.getContent();
-            Map<String, Object> metadata = parseMetadata(chunk.getMetadata());
-            String contextText = metadataString(metadata, "contextText");
-            String retrievalText = metadataString(metadata, "retrievalText");
-            if (!StringUtils.hasText(retrievalText)) {
-                // Legacy chunks may only store the raw content. In that case the chunk content is
-                // still a valid retrieval source for both dense and sparse search.
-                retrievalText = content;
-            }
-            documents.add(new MilvusChunkDocument(
-                    chunk.getId(),
-                    sessionId,
-                    sessionFile.getId(),
-                    chunk.getChunkIndex() == null ? 0 : chunk.getChunkIndex(),
-                    sessionFile.getOriginalFilename(),
-                    content,
-                    contextText,
-                    retrievalText,
-                    retrievalText,
-                    chunk.getEnabled() == null || chunk.getEnabled(),
-                    chunk.getCreatedAt() == null ? System.currentTimeMillis() : chunk.getCreatedAt().toInstant(ZoneOffset.UTC).toEpochMilli(),
-                    embeddingClient.embed(retrievalText)
+        List<IndexedChunkDocument> indexedChunks = indexedChunkAssembler.assemble(sessionId, sessionFile, chunks);
+        List<MilvusChunkDocument> documents = new ArrayList<>(indexedChunks.size());
+        for (IndexedChunkDocument indexedChunk : indexedChunks) {
+            documents.add(milvusChunkMapper.toMilvusDocument(
+                    indexedChunk,
+                    embeddingClient.embed(indexedChunk.resolvedRetrievalText())
             ));
         }
 
@@ -105,22 +85,5 @@ public class SessionFileMilvusIndexer {
         if (milvusIndexService != null) {
             milvusIndexService.deleteBySessionId(sessionId);
         }
-    }
-
-    private Map<String, Object> parseMetadata(String metadataJson) {
-        if (!StringUtils.hasText(metadataJson)) {
-            return Map.of();
-        }
-        try {
-            return objectMapper.readValue(metadataJson, MAP_TYPE);
-        } catch (Exception e) {
-            log.warn("Failed to parse chunk metadata before Milvus indexing: error={}", e.getMessage());
-            return Map.of();
-        }
-    }
-
-    private String metadataString(Map<String, Object> metadata, String key) {
-        Object value = metadata.get(key);
-        return value == null ? null : String.valueOf(value);
     }
 }

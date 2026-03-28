@@ -11,9 +11,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class UserWebMvcConfig implements WebMvcConfigurer {
 
     private final JwtAuthenticationInterceptor jwtAuthenticationInterceptor;
+    private final com.yulong.chatagent.access.RequireRoleInterceptor requireRoleInterceptor;
 
-    public UserWebMvcConfig(JwtAuthenticationInterceptor jwtAuthenticationInterceptor) {
+    public UserWebMvcConfig(JwtAuthenticationInterceptor jwtAuthenticationInterceptor,
+                            com.yulong.chatagent.access.RequireRoleInterceptor requireRoleInterceptor) {
         this.jwtAuthenticationInterceptor = jwtAuthenticationInterceptor;
+        this.requireRoleInterceptor = requireRoleInterceptor;
     }
 
     @Override
@@ -21,6 +24,9 @@ public class UserWebMvcConfig implements WebMvcConfigurer {
         // Protect every application API route except the auth endpoints that are
         // responsible for issuing and rotating tokens.
         registry.addInterceptor(jwtAuthenticationInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/auth/**");
+        registry.addInterceptor(requireRoleInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns("/api/auth/**");
     }

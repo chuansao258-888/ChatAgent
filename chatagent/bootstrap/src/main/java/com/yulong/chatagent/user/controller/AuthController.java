@@ -72,9 +72,7 @@ public class AuthController {
             String refreshToken,
             HttpServletRequest request,
             HttpServletResponse response) {
-        log.debug("HTTP refresh received: uri={}, refreshToken={}",
-                request.getRequestURI(),
-                refreshToken);
+        log.debug("HTTP refresh received: uri={}", request.getRequestURI());
         LoginResponse loginResponse = authService.refresh(refreshToken);
         // Refresh rotates the refresh token as well, so the new value must
         // replace the old cookie in the same response.
@@ -88,9 +86,7 @@ public class AuthController {
             String refreshToken,
             HttpServletRequest request,
             HttpServletResponse response) {
-        log.debug("HTTP logout received: uri={}, refreshToken={}",
-                request.getRequestURI(),
-                refreshToken);
+        log.debug("HTTP logout received: uri={}", request.getRequestURI());
         authService.logout(refreshToken);
         // Always clear the browser cookie, even if the incoming refresh token
         // is already missing or invalid, so logout stays idempotent.

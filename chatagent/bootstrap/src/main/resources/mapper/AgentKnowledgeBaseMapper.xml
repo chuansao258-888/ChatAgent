@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.AgentKnowledgeBaseMapper">
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.AgentKnowledgeBase">
+        INSERT INTO agent_knowledge_base
+        (agent_id,
+         knowledge_base_id,
+         created_at)
+        VALUES (CAST(#{agentId} AS uuid),
+                CAST(#{knowledgeBaseId} AS uuid),
+                #{createdAt})
+    </insert>
+
+    <delete id="deleteByAgentId">
+        DELETE
+        FROM agent_knowledge_base
+        WHERE agent_id = CAST(#{agentId} AS uuid)
+    </delete>
+
+    <delete id="deleteByKnowledgeBaseId">
+        DELETE
+        FROM agent_knowledge_base
+        WHERE knowledge_base_id = CAST(#{knowledgeBaseId} AS uuid)
+    </delete>
+
+    <select id="selectKnowledgeBaseIdsByAgentId" resultType="java.lang.String">
+        SELECT knowledge_base_id
+        FROM agent_knowledge_base
+        WHERE agent_id = CAST(#{agentId} AS uuid)
+        ORDER BY created_at ASC
+    </select>
+</mapper>

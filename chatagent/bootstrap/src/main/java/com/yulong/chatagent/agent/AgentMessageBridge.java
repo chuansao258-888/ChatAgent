@@ -10,7 +10,8 @@ public interface AgentMessageBridge {
      * Persists one runtime message and publishes it to interested clients.
      *
      * @param chatSessionId chat session identifier
+     * @param turnId current conversation turn identifier
      * @param message runtime message to handle
      */
-    void persistAndPublish(String chatSessionId, Message message);
+    void persistAndPublish(String chatSessionId, String turnId, Message message);
 }

@@ -25,12 +25,24 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
 
     @Override
     public String saveChatSessionFile(String sessionId, String sessionFileId, MultipartFile file) throws IOException {
+        return saveUploadedFile(Paths.get("sessions", sessionId, sessionFileId), file, sessionId, sessionFileId, "Chat-session");
+    }
+
+    @Override
+    public String saveKnowledgeDocument(String knowledgeBaseId, String documentId, MultipartFile file) throws IOException {
+        return saveUploadedFile(Paths.get("knowledge-bases", knowledgeBaseId, documentId), file, knowledgeBaseId, documentId, "Knowledge-base");
+    }
+
+    private String saveUploadedFile(Path relativeDirectory,
+                                    MultipartFile file,
+                                    String ownerId,
+                                    String documentId,
+                                    String logLabel) throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
         }
 
-        Path sessionDir = Paths.get(baseStoragePath, "sessions", sessionId);
-        Path fileDir = sessionDir.resolve(sessionFileId);
+        Path fileDir = Paths.get(baseStoragePath).resolve(relativeDirectory);
         Files.createDirectories(fileDir);
 
         String originalFilename = file.getOriginalFilename();
@@ -43,9 +55,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         Path targetPath = fileDir.resolve(uniqueFilename);
         Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
-        String relativePath = Paths.get("sessions", sessionId, sessionFileId, uniqueFilename).toString().replace("\\", "/");
-        log.info("Chat-session file stored successfully: sessionId={}, sessionFileId={}, filename={}, path={}",
-                sessionId, sessionFileId, originalFilename, relativePath);
+        String relativePath = relativeDirectory.resolve(uniqueFilename).toString().replace("\\", "/");
+        log.info("{} document stored successfully: ownerId={}, documentId={}, filename={}, path={}",
+                logLabel, ownerId, documentId, originalFilename, relativePath);
 
         return relativePath;
     }

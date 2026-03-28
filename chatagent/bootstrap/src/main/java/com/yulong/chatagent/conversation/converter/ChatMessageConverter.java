@@ -24,11 +24,13 @@ public class ChatMessageConverter {
         return ChatMessage.builder()
                 .id(chatMessageDTO.getId())
                 .sessionId(chatMessageDTO.getSessionId())
+                .turnId(chatMessageDTO.getTurnId())
                 .role(chatMessageDTO.getRole().getRole())
                 .content(chatMessageDTO.getContent())
                 .metadata(chatMessageDTO.getMetadata() != null
                         ? objectMapper.writeValueAsString(chatMessageDTO.getMetadata())
                         : null)
+                .seqNo(chatMessageDTO.getSeqNo())
                 .createdAt(chatMessageDTO.getCreatedAt())
                 .updatedAt(chatMessageDTO.getUpdatedAt())
                 .build();
@@ -41,11 +43,13 @@ public class ChatMessageConverter {
         return ChatMessageDTO.builder()
                 .id(chatMessage.getId())
                 .sessionId(chatMessage.getSessionId())
+                .turnId(chatMessage.getTurnId())
                 .role(ChatMessageDTO.RoleType.fromRole(chatMessage.getRole()))
                 .content(chatMessage.getContent())
                 .metadata(chatMessage.getMetadata() != null
                         ? objectMapper.readValue(chatMessage.getMetadata(), ChatMessageDTO.MetaData.class)
                         : null)
+                .seqNo(chatMessage.getSeqNo())
                 .createdAt(chatMessage.getCreatedAt())
                 .updatedAt(chatMessage.getUpdatedAt())
                 .build();
@@ -55,9 +59,11 @@ public class ChatMessageConverter {
         return ChatMessageVO.builder()
                 .id(dto.getId())
                 .sessionId(dto.getSessionId())
+                .turnId(dto.getTurnId())
                 .role(dto.getRole())
                 .content(dto.getContent())
                 .metadata(dto.getMetadata())
+                .seqNo(dto.getSeqNo())
                 .build();
     }
 
@@ -72,6 +78,7 @@ public class ChatMessageConverter {
 
         return ChatMessageDTO.builder()
                 .sessionId(request.getSessionId())
+                .turnId(request.getTurnId())
                 .role(request.getRole())
                 .content(request.getContent())
                 .metadata(request.getMetadata())
@@ -90,4 +97,3 @@ public class ChatMessageConverter {
         }
     }
 }
-

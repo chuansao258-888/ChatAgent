@@ -1,0 +1,144 @@
+package com.yulong.chatagent.knowledge.application;
+
+import com.yulong.chatagent.access.ResourceAccessGuard;
+import com.yulong.chatagent.admin.application.AdminAccessService;
+import com.yulong.chatagent.context.LoginUser;
+import com.yulong.chatagent.context.UserContext;
+import com.yulong.chatagent.admin.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.exception.BizException;
+import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
+import com.yulong.chatagent.knowledge.model.request.CreateKnowledgeBaseRequest;
+import com.yulong.chatagent.knowledge.model.request.UpdateKnowledgeBaseRequest;
+import com.yulong.chatagent.knowledge.model.response.CreateKnowledgeBaseResponse;
+import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBaseResponse;
+import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
+import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
+import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Administrator-facing knowledge-base management flows.
+ */
+@Service
+@RequiredArgsConstructor
+public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeService {
+
+    private final AdminAccessService adminAccessService;
+    private final AgentKnowledgeBaseRepository agentKnowledgeBaseRepository;
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final KnowledgeBaseConverter knowledgeBaseConverter;
+    private final ResourceAccessGuard resourceAccessGuard;
+
+    @Override
+    public GetKnowledgeBasesResponse getKnowledgeBases() {
+        adminAccessService.requireAdmin();
+        List<KnowledgeBaseVO> result = new ArrayList<>();
+        for (KnowledgeBaseDTO knowledgeBase : knowledgeBaseRepository.findAll()) {
+            result.add(knowledgeBaseConverter.toVO(knowledgeBase));
+        }
+        return GetKnowledgeBasesResponse.builder()
+                .knowledgeBases(result.toArray(new KnowledgeBaseVO[0]))
+                .build();
+    }
+
+    @Override
+    public GetKnowledgeBaseResponse getKnowledgeBase(String knowledgeBaseId) {
+        LoginUser adminUser = adminAccessService.requireAdmin();
+        return GetKnowledgeBaseResponse.builder()
+                .knowledgeBase(knowledgeBaseConverter.toVO(
+                        resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, knowledgeBaseId)
+                ))
+                .build();
+    }
+
+    @Override
+    public CreateKnowledgeBaseResponse createKnowledgeBase(CreateKnowledgeBaseRequest request) {
+        String adminUserId = adminAccessService.requireAdminUserId();
+        if (request == null || !StringUtils.hasText(request.getName())) {
+            throw new BizException("Knowledge base name is required");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        KnowledgeBaseDTO knowledgeBase = KnowledgeBaseDTO.builder()
+                .id(UUID.randomUUID().toString())
+                .createdBy(adminUserId)
+                .name(request.getName().trim())
+                .description(trimToNull(request.getDescription()))
+                .visibility("SHARED")
+                .status("ACTIVE")
+                .metadata("{}")
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        if (!knowledgeBaseRepository.save(knowledgeBase)) {
+            throw new BizException("Failed to create knowledge base");
+        }
+        return CreateKnowledgeBaseResponse.builder()
+                .knowledgeBaseId(knowledgeBase.getId())
+                .build();
+    }
+
+    @Override
+    public void updateKnowledgeBase(String knowledgeBaseId, UpdateKnowledgeBaseRequest request) {
+        KnowledgeBaseDTO knowledgeBase = resourceAccessGuard.assertCanManageKnowledgeBase(
+                UserContext.requireUser(),
+                knowledgeBaseId
+        );
+        if (request == null) {
+            throw new BizException("Update payload is required");
+        }
+        if (StringUtils.hasText(request.getName())) {
+            knowledgeBase.setName(request.getName().trim());
+        }
+        if (request.getDescription() != null) {
+            knowledgeBase.setDescription(trimToNull(request.getDescription()));
+        }
+        knowledgeBase.setUpdatedAt(LocalDateTime.now());
+        if (!knowledgeBaseRepository.update(knowledgeBase)) {
+            throw new BizException("Failed to update knowledge base");
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void archiveKnowledgeBase(String knowledgeBaseId) {
+        KnowledgeBaseDTO knowledgeBase = resourceAccessGuard.assertCanManageKnowledgeBase(
+                UserContext.requireUser(),
+                knowledgeBaseId
+        );
+        updateKnowledgeBaseStatus(knowledgeBase, "ARCHIVED");
+        agentKnowledgeBaseRepository.deleteByKnowledgeBaseId(knowledgeBase.getId());
+    }
+
+    @Override
+    public void restoreKnowledgeBase(String knowledgeBaseId) {
+        updateKnowledgeBaseStatus(
+                resourceAccessGuard.assertCanManageKnowledgeBase(UserContext.requireUser(), knowledgeBaseId),
+                "ACTIVE"
+        );
+    }
+
+    private void updateKnowledgeBaseStatus(KnowledgeBaseDTO knowledgeBase, String status) {
+        knowledgeBase.setStatus(status);
+        knowledgeBase.setUpdatedAt(LocalDateTime.now());
+        if (!knowledgeBaseRepository.update(knowledgeBase)) {
+            throw new BizException("Failed to update knowledge base status");
+        }
+    }
+
+    private String trimToNull(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
+    }
+}

@@ -9,28 +9,6 @@ export interface ChatOptions {
 
 export type ModelType = "deepseek-chat" | "glm-4.6";
 
-export interface CreateAgentRequest {
-  name: string;
-  description?: string;
-  systemPrompt?: string;
-  model: ModelType;
-  allowedTools?: string[];
-  chatOptions?: ChatOptions;
-}
-
-export interface UpdateAgentRequest {
-  name?: string;
-  description?: string;
-  systemPrompt?: string;
-  model?: ModelType;
-  allowedTools?: string[];
-  chatOptions?: ChatOptions;
-}
-
-export interface CreateAgentResponse {
-  agentId: string;
-}
-
 export interface AgentVO {
   id: string;
   name: string;
@@ -43,39 +21,12 @@ export interface AgentVO {
   updatedAt?: string;
 }
 
-export interface GetAgentsResponse {
-  agents: AgentVO[];
-}
-
-export async function getAgents(): Promise<GetAgentsResponse> {
-  return get<GetAgentsResponse>("/agents");
-}
-
-export async function createAgent(
-  request: CreateAgentRequest,
-): Promise<CreateAgentResponse> {
-  return post<CreateAgentResponse>("/agents", request);
-}
-
-export async function deleteAgent(agentId: string): Promise<void> {
-  return del<void>(`/agents/${agentId}`);
-}
-
-export async function updateAgent(
-  agentId: string,
-  request: UpdateAgentRequest,
-): Promise<void> {
-  return patch<void>(`/agents/${agentId}`, request);
-}
-
 export interface CreateChatSessionRequest {
-  agentId?: string;
   title?: string;
 }
 
 export interface CreateChatSessionResponse {
   chatSessionId: string;
-  agentId: string;
 }
 
 export async function createChatSession(
@@ -112,12 +63,6 @@ export async function getChatSession(
   return get<GetChatSessionResponse>(`/chat-sessions/${chatSessionId}`);
 }
 
-export async function getChatSessionsByAgentId(
-  agentId: string,
-): Promise<GetChatSessionsResponse> {
-  return get<GetChatSessionsResponse>(`/chat-sessions/agent/${agentId}`);
-}
-
 export async function updateChatSession(
   chatSessionId: string,
   request: UpdateChatSessionRequest,
@@ -138,7 +83,6 @@ export interface GetChatMessagesResponse {
 }
 
 export interface CreateChatMessageRequest {
-  agentId: string;
   sessionId: string;
   role: MessageType;
   content: string;
@@ -221,21 +165,4 @@ export async function detachChatSessionFile(
   sessionFileId: string,
 ): Promise<void> {
   return del<void>(`/chat-sessions/${sessionId}/files/${sessionFileId}`);
-}
-
-export type ToolType = "FIXED" | "OPTIONAL";
-
-export interface ToolVO {
-  name: string;
-  description: string;
-  type: ToolType;
-}
-
-export interface GetOptionalToolsResponse {
-  tools: ToolVO[];
-}
-
-export async function getOptionalTools(): Promise<GetOptionalToolsResponse> {
-  const tools = await get<ToolVO[]>("/tools");
-  return { tools };
 }

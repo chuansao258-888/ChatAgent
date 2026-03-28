@@ -21,6 +21,7 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final String SSE_TOKEN_PARAMETER = "access_token";
 
     private final JwtTokenService jwtTokenService;
     private final UserConverter userConverter;
@@ -48,10 +49,9 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
         }
 
         if (!jwtTokenService.isAccessTokenValid(accessToken)) {
-            log.warn("JWT auth rejected: invalid access token, method={}, uri={}, accessToken={}",
+            log.warn("JWT auth rejected: invalid access token, method={}, uri={}",
                     request.getMethod(),
-                    request.getRequestURI(),
-                    accessToken);
+                    request.getRequestURI());
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid access token");
             return false;
         }
@@ -60,12 +60,11 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
         // Store only the minimal authenticated user snapshot needed during the
         // lifetime of this request.
         UserContext.set(userConverter.toLoginUser(claims));
-        log.info("JWT auth accepted: method={}, uri={}, userId={}, username={}, accessToken={}",
+        log.info("JWT auth accepted: method={}, uri={}, userId={}, username={}",
                 request.getMethod(),
                 request.getRequestURI(),
                 claims.getUserId(),
-                claims.getUsername(),
-                accessToken);
+                claims.getUsername());
         return true;
     }
 
@@ -81,10 +80,23 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
     private String resolveAccessToken(HttpServletRequest request) {
         String authorization = request.getHeader(AUTHORIZATION_HEADER);
         if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
-            return null;
+            return resolveSseAccessToken(request);
         }
         // Keep header parsing in one place so the token service only handles
         // raw JWT strings and stays independent from HTTP formatting details.
         return authorization.substring(BEARER_PREFIX.length()).trim();
+    }
+
+    private String resolveSseAccessToken(HttpServletRequest request) {
+        if (!request.getRequestURI().startsWith("/api/sse/")) {
+            return null;
+        }
+        // Native EventSource cannot set Authorization headers, so SSE falls
+        // back to an explicit access-token query parameter.
+        String accessToken = request.getParameter(SSE_TOKEN_PARAMETER);
+        if (!StringUtils.hasText(accessToken)) {
+            return null;
+        }
+        return accessToken.trim();
     }
 }

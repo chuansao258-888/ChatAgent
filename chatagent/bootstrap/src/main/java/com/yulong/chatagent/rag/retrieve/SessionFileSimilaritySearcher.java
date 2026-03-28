@@ -1,5 +1,7 @@
 package com.yulong.chatagent.rag.retrieve;
 
+import com.yulong.chatagent.rag.model.RetrievalHit;
+import com.yulong.chatagent.rag.model.RagSourceType;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
 import com.yulong.chatagent.rag.vector.milvus.MilvusIndexService;
 import com.yulong.chatagent.rag.vector.milvus.model.MilvusSearchHit;
@@ -47,7 +49,20 @@ public class SessionFileSimilaritySearcher {
     /**
      * Executes the full retrieval stack inside the current session-file scope.
      */
-    public List<String> searchBySessionFileIds(List<String> sessionFileIds, String queryText) {
+    public List<RetrievalHit> searchBySessionFileIds(List<String> sessionFileIds, String queryText) {
+        List<MilvusSearchHit> candidates = searchCandidateHitsBySessionFileIds(sessionFileIds, queryText);
+        List<MilvusSearchHit> rerankedHits = retrievalReranker.rerank(queryText, candidates);
+        return rerankedHits.stream()
+                .limit(topK)
+                .map(this::toRetrievalHit)
+                .toList();
+    }
+
+    /**
+     * Returns fused dense + sparse candidates before reranking so the caller can combine them with
+     * other retrieval scopes.
+     */
+    public List<MilvusSearchHit> searchCandidateHitsBySessionFileIds(List<String> sessionFileIds, String queryText) {
         if (sessionFileIds == null || sessionFileIds.isEmpty()) {
             return List.of();
         }
@@ -60,12 +75,10 @@ public class SessionFileSimilaritySearcher {
             List<MilvusSearchHit> denseHits = milvusIndexService.searchBySessionFileIds(sessionFileIds, embedding, effectiveCandidateK);
             List<MilvusSearchHit> bm25Hits = milvusIndexService.searchBySessionFileIdsBm25(sessionFileIds, queryText, effectiveCandidateK);
             List<MilvusSearchHit> fusedHits = fuseHits(denseHits, bm25Hits, effectiveCandidateK);
-            List<MilvusSearchHit> rerankedHits = retrievalReranker.rerank(queryText, fusedHits);
-            List<MilvusSearchHit> hits = rerankedHits.stream().limit(topK).toList();
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
-            log.info("Hybrid similarity search by session files completed: traceId={}, fileCount={}, topK={}, candidateK={}, denseHits={}, bm25Hits={}, fusedHits={}, rerankedHits={}, durationMs={}",
-                    TraceContext.getTraceId(), sessionFileIds.size(), topK, effectiveCandidateK, denseHits.size(), bm25Hits.size(), fusedHits.size(), hits.size(), durationMs);
-            return hits.stream().map(this::renderHitContent).toList();
+            log.info("Hybrid similarity candidates by session files prepared: traceId={}, fileCount={}, topK={}, candidateK={}, denseHits={}, bm25Hits={}, fusedHits={}, durationMs={}",
+                    TraceContext.getTraceId(), sessionFileIds.size(), topK, effectiveCandidateK, denseHits.size(), bm25Hits.size(), fusedHits.size(), durationMs);
+            return fusedHits;
         }
 
         long durationMs = (System.nanoTime() - startTime) / 1_000_000;
@@ -108,18 +121,25 @@ public class SessionFileSimilaritySearcher {
         }
     }
 
-    /**
-     * Normalizes retrieval hits into a stable prompt shape for the agent/runtime layer.
-     */
-    private String renderHitContent(MilvusSearchHit hit) {
-        if (StringUtils.hasText(hit.contextText())) {
-            return "Chunk Context:\n" + hit.contextText() + "\n\nChunk Content:\n" + hit.content();
-        }
+    private RetrievalHit toRetrievalHit(MilvusSearchHit hit) {
         String content = StringUtils.hasText(hit.content()) ? hit.content() : hit.retrievalText();
-        if (!StringUtils.hasText(content)) {
-            return "";
-        }
-        return "Chunk Content:\n" + content;
+        Integer chunkIndex = hit.chunkIndex() >= 0 ? hit.chunkIndex() : null;
+        String scoreType = StringUtils.hasText(hit.scoreType())
+                ? hit.scoreType()
+                : (hit.score() == null ? "fallback" : "retrieval");
+        return new RetrievalHit(
+                RagSourceType.SESSION_FILE,
+                hit.sourceId(),
+                hit.documentId(),
+                hit.documentName(),
+                chunkIndex,
+                StringUtils.hasText(hit.sectionPath()) ? hit.sectionPath() : (chunkIndex == null ? null : "chunk[" + chunkIndex + "]"),
+                content,
+                hit.contextText(),
+                hit.score(),
+                scoreType,
+                "fallback".equals(scoreType)
+        );
     }
 
     private record RankedHit(MilvusSearchHit hit, double score) {
