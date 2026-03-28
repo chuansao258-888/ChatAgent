@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Heuristic hierarchical router for the active intent tree snapshot, 
+ * Heuristic hierarchical router for the active intent tree snapshot,
  * with LLM fallback for deep semantic classification.
  */
 @Component
@@ -82,7 +82,7 @@ public class IntentRouter {
             }
 
             RankedSelection selection = select(query, candidates, buildPathLabel(path));
-            
+
             if (selection.noneMatched()) {
                 if (current != null && current.getIntentKind() != null) {
                     return IntentRoutingResult.resolved(buildResolution(snapshot, path));
@@ -138,14 +138,14 @@ public class IntentRouter {
                         .comparingDouble(ScoredNode::score).reversed()
                         .thenComparing(scored -> scored.node().getSortOrder() == null ? 0 : scored.node().getSortOrder()))
                 .toList();
-        
+
         if (scoredNodes.isEmpty()) {
             return new RankedSelection(null, false, false, List.of());
         }
 
         ScoredNode best = scoredNodes.get(0);
         ScoredNode second = scoredNodes.size() > 1 ? scoredNodes.get(1) : null;
-        
+
         // Use heuristic shortcut ONLY if score is very high AND definitively better than the second best.
         if (best.score() >= 1.2d && (second == null || (best.score() - second.score()) > 0.5d)) {
             return new RankedSelection(best, false, false, List.of());
@@ -160,7 +160,7 @@ public class IntentRouter {
             if ("AMBIGUOUS".equals(llmResult)) {
                 return new RankedSelection(null, true, false, topCandidates(candidates));
             }
-            
+
             for (ScoredNode scored : scoredNodes) {
                 if (scored.node().getId().equals(llmResult)) {
                     return new RankedSelection(scored, false, false, List.of());
@@ -197,29 +197,32 @@ public class IntentRouter {
         return !snapshot.childrenOf(candidate.getId()).isEmpty();
     }
 
+    /**
+     * Uses the classifier model only after heuristic scoring has narrowed the candidate list.
+     */
     private String callLlmClassifier(List<IntentNodeDTO> candidates, String query, String pathLabel) {
         String candidatesText = candidates.stream()
-                .map(n -> "- ID: " + n.getId() + ", 名称: " + n.getName() + ", 描述: " + (n.getDescription() == null ? "无" : n.getDescription()))
+                .map(n -> "- ID: " + n.getId() + ", Name: " + n.getName() + ", Description: " + (n.getDescription() == null ? "None" : n.getDescription()))
                 .collect(Collectors.joining("\n"));
 
         String prompt = """
                 # Role
-                你是企业 AI 助手意图分类专家。请根据用户输入，在给定的候选列表中选择最匹配的意图。
-                
+                You are an enterprise AI assistant intent-classification expert. Choose the best matching intent from the provided candidate list based on the user's input.
+
                 # Context
-                当前所在层级: %s
-                用户输入: %s
-                
+                Current path level: %s
+                User input: %s
+
                 # Candidates
                 %s
-                
+
                 # Rules
-                1. 必须从中选出一个最匹配的 ID。
-                2. 如果没有任何项匹配，请返回 "NONE"。
-                3. 如果用户输入含糊，无法在两个相似项中抉择，请返回 "AMBIGUOUS"。
-                4. 只输出匹配的 ID 或上述关键词，不要任何解释。
-                
-                结果:
+                1. You must choose the single best-matching ID from the list.
+                2. If none of the candidates match, return "NONE".
+                3. If the user input is ambiguous and you cannot choose between similar candidates, return "AMBIGUOUS".
+                4. Output only the matching ID or the keywords above. Do not add any explanation.
+
+                Result:
                 """.formatted(pathLabel == null || pathLabel.isBlank() ? "ROOT" : pathLabel, query, candidatesText);
 
         ChatClient chatClient = chatModelRouter.route(classifierModel);
@@ -315,7 +318,7 @@ public class IntentRouter {
         return value
                 .trim()
                 .toLowerCase(Locale.ROOT)
-                .replaceAll("[\\p{Punct}，。！？；：、“”‘’（）()\\[\\]{}]+", " ")
+                .replaceAll("[\\p{Punct}锛屻€傦紒锛燂紱锛氥€佲€溾€濃€樷€欙紙锛?)\\[\\]{}]+", " ")
                 .replaceAll("\\s+", " ");
     }
 

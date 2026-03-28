@@ -59,8 +59,8 @@ public class AgentDTO {
     public static class ChatOptions {
         private Double temperature;
         private Double topP;
-        private Integer messageLength; // 聊天消息窗口长度
-        private Integer tokenBudget; // L1 窗口 Token 预算
+        private Integer messageLength; // Chat message window length
+        private Integer tokenBudget; // L1 window token budget
 
         private static final Double DEFAULT_TEMPERATURE = 0.7;
         private static final Double DEFAULT_TOP_P = 1.0;

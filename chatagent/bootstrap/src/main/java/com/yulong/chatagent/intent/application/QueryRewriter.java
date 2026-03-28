@@ -32,26 +32,26 @@ public class QueryRewriter {
             return originalQuery.trim();
         }
 
-        // Only KB intents need sophisticated rewriting for better retrieval
+        // Only KB intents need sophisticated rewriting for better retrieval.
         if (intentResolution.kind() != IntentKind.KB) {
             return originalQuery.trim();
         }
 
         String prompt = """
-                你是搜索查询优化专家。请根据当前命中的意图路径，将用户的原始输入重写为一个更适合在知识库中进行语义检索的完整查询。
-                
-                # 规则
-                1. 补全代词（如“它”、“这个”、“流程”等）为具体的业务对象。
-                2. 保留所有专业术语。
-                3. 如果原始输入已经很完整，则保持原样。
-                4. 结合意图路径提供的上下文进行补全。
-                5. 只返回重写后的文本，不要有任何解释。
-                
-                # 上下文
-                命中意图路径: %s
-                原始输入: %s
-                
-                重写后的查询:
+                You are a search-query optimization expert. Rewrite the user's original input into a complete query that is better suited for semantic retrieval in the knowledge base, using the matched intent path as context.
+
+                # Rules
+                1. Expand pronouns such as "it", "this", or "the process" into the concrete business object when the intent path makes it clear.
+                2. Preserve all domain-specific terminology.
+                3. If the original input is already complete, keep it unchanged.
+                4. Use the context from the intent path to fill in omitted details.
+                5. Return only the rewritten query text with no explanation.
+
+                # Context
+                Matched intent path: %s
+                Original input: %s
+
+                Rewritten query:
                 """.formatted(intentResolution.pathLabel(), originalQuery);
 
         try {

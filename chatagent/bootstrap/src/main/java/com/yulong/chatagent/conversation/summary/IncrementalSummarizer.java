@@ -21,6 +21,7 @@ import java.util.regex.Pattern;
 /**
  * Builds and persists a rolling summary for the portion of the chat history
  * that has moved outside the L1 runtime window.
+ * Uses the previous L2 summary plus newly stable turns to refresh session memory incrementally.
  */
 @Component
 @Slf4j
@@ -52,6 +53,13 @@ public class IncrementalSummarizer {
         this.summaryMaxChars = Math.max(summaryMaxChars, 120);
     }
 
+    /**
+     * Summarizes the newly stable portion of a session and advances the summary watermark.
+     *
+     * @param sessionId chat session identifier
+     * @param anchorSeqNo latest persisted message sequence that is safe to summarize
+     * @return true when the summary record was updated
+     */
     public boolean summarize(String sessionId, long anchorSeqNo) {
         SummaryWatermarkRange range = summaryWatermarkService.resolvePendingRange(sessionId, anchorSeqNo);
         if (!range.hasPendingMessages()) {

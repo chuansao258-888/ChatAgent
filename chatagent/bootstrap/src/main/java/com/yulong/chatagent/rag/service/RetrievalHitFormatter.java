@@ -10,6 +10,7 @@ import java.util.List;
 
 /**
  * Renders structured retrieval hits into a stable prompt-friendly text block.
+ * Keeps citation numbering aligned with the metadata returned alongside the prompt.
  */
 @Component
 public class RetrievalHitFormatter {
@@ -18,6 +19,12 @@ public class RetrievalHitFormatter {
         return formatWithCitations(hits).promptText();
     }
 
+    /**
+     * Formats retrieval hits for the model prompt and preserves citation metadata for downstream rendering.
+     *
+     * @param hits retrieval results ordered by relevance
+     * @return prompt text plus the matching citation metadata list
+     */
     public FormattedRetrievalPrompt formatWithCitations(List<RetrievalHit> hits) {
         if (hits == null || hits.isEmpty()) {
             return new FormattedRetrievalPrompt(
@@ -55,6 +62,9 @@ public class RetrievalHitFormatter {
         return hit != null && !"filtered".equals(hit.scoreType());
     }
 
+    /**
+     * Renders a single retrieval chunk into the numbered block consumed by the answer prompt.
+     */
     private String formatSingleHit(RetrievalHit hit, int citationNumber) {
         List<String> lines = new ArrayList<>();
         lines.add("[" + citationNumber + "] Source: " + buildSourceLabel(hit));

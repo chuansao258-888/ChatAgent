@@ -106,6 +106,9 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
         }
     }
 
+    /**
+     * Applies a template to the internal assistant and recreates the draft intent tree in one transaction.
+     */
     @Override
     @Transactional
     public InitializeAssistantFromTemplateResponse initializeAssistantFromTemplate(String templateId,

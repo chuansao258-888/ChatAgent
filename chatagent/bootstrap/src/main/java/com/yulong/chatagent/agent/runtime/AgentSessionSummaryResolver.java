@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Resolves the中期增量摘要 (L2 summary) for the current chat session.
+ * Resolves the incremental L2 summary for the current chat session.
  */
 @Component
 public class AgentSessionSummaryResolver {

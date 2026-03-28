@@ -29,6 +29,10 @@ import java.util.stream.Collectors;
 public class AgentMemoryLoader {
 
     private static final Logger log = LoggerFactory.getLogger(AgentMemoryLoader.class);
+
+    /**
+     * Leaves headroom for tokenizer differences between persistence-time estimates and runtime models.
+     */
     private static final double TOKEN_SAFETY_MARGIN = 0.8;
 
     private final ChatMessageRepository chatMessageRepository;
@@ -190,7 +194,7 @@ public class AgentMemoryLoader {
 
     /**
      * Estimates token count for a list of messages.
-     * Rule: 1 Chinese character ≈ 2 tokens, 1 other character ≈ 1 token.
+     * Rule of thumb: 1 Chinese character is treated as 2 tokens and 1 other character as 1 token.
      */
     private int estimateTokens(List<Message> messages) {
         int total = 0;
@@ -220,6 +224,9 @@ public class AgentMemoryLoader {
                 || ub == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS;
     }
 
+    /**
+     * Holds a fully rebuilt assistant turn and the last source index consumed while scanning tool responses.
+     */
     private record ToolCallSequenceResult(List<Message> messages, int lastConsumedIndex) {
     }
 }

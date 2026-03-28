@@ -86,6 +86,9 @@ public class BgeHttpRetrievalReranker implements RetrievalReranker {
                 .register(meterRegistry);
     }
 
+    /**
+     * Builds an isolated WebClient and connection pool so reranker traffic does not interfere with other outbound calls.
+     */
     private static ClientResources buildDedicatedClientResources(WebClient.Builder builder, RerankerProperties props) {
         ConnectionProvider provider = ConnectionProvider.builder("reranker-pool")
                 .maxConnections(props.getMaxConnections())
