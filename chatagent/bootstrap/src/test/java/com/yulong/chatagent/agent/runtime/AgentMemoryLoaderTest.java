@@ -6,9 +6,9 @@ import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.ai.chat.messages.AssistantMessage;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 
@@ -71,9 +71,13 @@ class AgentMemoryLoaderTest {
         AgentDTO agent = agentWithBudget(100);
         when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
                 message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "Need status update"),
-                assistantWithToolCalls("m2", "turn-1", "Checking now",
+                assistantWithToolCalls(
+                        "m2",
+                        "turn-1",
+                        "Checking now",
                         new AssistantMessage.ToolCall("call-1", "function", "lookup", "{}"),
-                        new AssistantMessage.ToolCall("call-2", "function", "notify", "{}")),
+                        new AssistantMessage.ToolCall("call-2", "function", "notify", "{}")
+                ),
                 toolMessage("m3", "turn-1", new ToolResponseMessage.ToolResponse("call-1", "lookup", "{\"ok\":true}"))
         ));
 

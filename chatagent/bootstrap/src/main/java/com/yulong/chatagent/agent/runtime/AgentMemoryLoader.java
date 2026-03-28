@@ -46,22 +46,22 @@ public class AgentMemoryLoader {
      * @return reconstructed chat memory
      */
     public List<Message> load(String chatSessionId, AgentDTO agentConfig) {
-        int tokenBudget = agentConfig.getChatOptions().getTokenBudget() != null 
-                ? agentConfig.getChatOptions().getTokenBudget() 
+        int tokenBudget = agentConfig.getChatOptions().getTokenBudget() != null
+                ? agentConfig.getChatOptions().getTokenBudget()
                 : 4000;
         int effectiveBudget = (int) (tokenBudget * TOKEN_SAFETY_MARGIN);
 
-        // Fetch a generous amount of recent messages to find enough full turns
+        // Fetch a generous amount of recent messages to find enough full turns.
         List<ChatMessageDTO> chatMessages = chatMessageRepository.findRecentBySessionId(chatSessionId, 100);
         if (chatMessages.isEmpty()) {
             return List.of();
         }
 
-        // Group by turn_id to maintain atomic turns
+        // Group by turn_id to maintain atomic turns.
         Map<String, List<ChatMessageDTO>> groupedTurns = new LinkedHashMap<>();
         for (ChatMessageDTO msg : chatMessages) {
             if (StringUtils.hasText(msg.getTurnId())) {
-                groupedTurns.computeIfAbsent(msg.getTurnId(), k -> new ArrayList<>()).add(msg);
+                groupedTurns.computeIfAbsent(msg.getTurnId(), ignored -> new ArrayList<>()).add(msg);
             }
         }
 
@@ -69,17 +69,17 @@ public class AgentMemoryLoader {
         List<List<Message>> selectedTurnMessages = new ArrayList<>();
         int currentTokenCount = 0;
 
-        // Iterate backwards from most recent turns
+        // Iterate backwards from the most recent turns.
         for (int i = turnIds.size() - 1; i >= 0; i--) {
             String turnId = turnIds.get(i);
             List<ChatMessageDTO> turnMessages = groupedTurns.get(turnId);
             List<Message> springAiMessages = convertToSpringAiMessages(turnMessages);
-            
+
             int turnTokens = estimateTokens(springAiMessages);
             if (!selectedTurnMessages.isEmpty() && currentTokenCount + turnTokens > effectiveBudget) {
                 break;
             }
-            
+
             selectedTurnMessages.add(0, springAiMessages);
             currentTokenCount += turnTokens;
         }
@@ -203,7 +203,7 @@ public class AgentMemoryLoader {
                 if (isChinese(c)) {
                     total += 2;
                 } else {
-                    total += 1; // Simplified: 1 char ≈ 1 token for non-Chinese
+                    total += 1;
                 }
             }
         }
