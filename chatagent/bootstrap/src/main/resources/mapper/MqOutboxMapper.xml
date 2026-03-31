@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.MqOutboxMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.MqOutbox">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="eventType" column="event_type" jdbcType="VARCHAR"/>
+        <result property="exchange" column="exchange" jdbcType="VARCHAR"/>
+        <result property="routingKey" column="routing_key" jdbcType="VARCHAR"/>
+        <result property="payload" column="payload" jdbcType="VARCHAR"/>
+        <result property="headers" column="headers" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="nextRetryAt" column="next_retry_at" jdbcType="TIMESTAMP"/>
+        <result property="lastError" column="last_error" jdbcType="VARCHAR"/>
+        <result property="claimedAt" column="claimed_at" jdbcType="TIMESTAMP"/>
+        <result property="claimedBy" column="claimed_by" jdbcType="VARCHAR"/>
+        <result property="retryCount" column="retry_count" jdbcType="INTEGER"/>
+        <result property="version" column="version" jdbcType="INTEGER"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.MqOutbox">
+        INSERT INTO t_mq_outbox
+        (id,
+         event_type,
+         exchange,
+         routing_key,
+         payload,
+         headers,
+         status,
+         next_retry_at,
+         last_error,
+         claimed_at,
+         claimed_by,
+         retry_count,
+         version,
+         created_at)
+        VALUES (CAST(#{id} AS uuid),
+                #{eventType},
+                #{exchange},
+                #{routingKey},
+                CAST(#{payload} AS jsonb),
+                CAST(#{headers} AS jsonb),
+                #{status},
+                #{nextRetryAt},
+                #{lastError},
+                #{claimedAt},
+                #{claimedBy},
+                #{retryCount},
+                #{version},
+                #{createdAt})
+    </insert>
+
+    <select id="selectClaimableBatch" resultMap="BaseResultMap">
+        SELECT id,
+               event_type,
+               exchange,
+               routing_key,
+               payload::text  AS payload,
+               headers::text  AS headers,
+               status,
+               next_retry_at,
+               last_error,
+               claimed_at,
+               claimed_by,
+               retry_count,
+               version,
+               created_at
+        FROM t_mq_outbox
+        WHERE retry_count &lt; #{maxAttempts}
+          AND (
+            (status = 'PENDING' AND next_retry_at &lt;= #{now})
+            OR (status = 'CLAIMED' AND claimed_at IS NOT NULL AND claimed_at &lt;= #{staleClaimBefore})
+          )
+        ORDER BY COALESCE(next_retry_at, claimed_at) ASC
+        LIMIT #{limit}
+        FOR UPDATE SKIP LOCKED
+    </select>
+
+    <update id="markClaimed">
+        UPDATE t_mq_outbox
+        SET status     = 'CLAIMED',
+            claimed_by = #{claimedBy},
+            claimed_at = #{claimedAt},
+            version    = version + 1
+        WHERE id = CAST(#{id} AS uuid)
+          AND version = #{expectedVersion}
+    </update>
+
+    <update id="markSent">
+        UPDATE t_mq_outbox
+        SET status  = 'SENT',
+            claimed_at = NULL,
+            claimed_by = NULL,
+            last_error = NULL,
+            version = version + 1
+        WHERE id = CAST(#{id} AS uuid)
+          AND version = #{expectedVersion}
+    </update>
+
+    <update id="markFailed">
+        UPDATE t_mq_outbox
+        SET status        = 'PENDING',
+            last_error    = #{lastError},
+            next_retry_at = #{nextRetryAt},
+            retry_count   = #{newRetryCount},
+            claimed_at    = NULL,
+            claimed_by    = NULL,
+            version       = version + 1
+        WHERE id = CAST(#{id} AS uuid)
+          AND version = #{expectedVersion}
+    </update>
+
+    <update id="markPermanentlyFailed">
+        UPDATE t_mq_outbox
+        SET status      = 'FAILED',
+            last_error  = #{lastError},
+            retry_count = #{newRetryCount},
+            claimed_at  = NULL,
+            claimed_by  = NULL,
+            version     = version + 1
+        WHERE id = CAST(#{id} AS uuid)
+          AND version = #{expectedVersion}
+    </update>
+
+    <delete id="deleteOlderSentRows">
+        DELETE FROM t_mq_outbox
+        WHERE status = 'SENT'
+          AND created_at &lt; #{cutoff}
+    </delete>
+
+    <select id="countByStatus" resultType="int">
+        SELECT COUNT(*)
+        FROM t_mq_outbox
+        WHERE status = #{status}
+    </select>
+
+    <select id="findRecent" resultMap="BaseResultMap">
+        SELECT id,
+               event_type,
+               exchange,
+               routing_key,
+               payload::text  AS payload,
+               headers::text  AS headers,
+               status,
+               next_retry_at,
+               last_error,
+               claimed_at,
+               claimed_by,
+               retry_count,
+               version,
+               created_at
+        FROM t_mq_outbox
+        <where>
+            <if test="eventId != null and eventId != ''">
+                AND headers -&gt;&gt; 'x-event-id' = #{eventId}
+            </if>
+            <if test="idempotencyKey != null and idempotencyKey != ''">
+                AND headers -&gt;&gt; 'x-idempotency-key' = #{idempotencyKey}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

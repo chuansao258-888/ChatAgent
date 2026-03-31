@@ -11,12 +11,18 @@ import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResp
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeDocumentVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
+import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
+import com.yulong.chatagent.mq.outbox.OutboxEventPublisher;
+import com.yulong.chatagent.mq.outbox.event.KnowledgeIngestTaskPayload;
+import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
+import com.yulong.chatagent.trace.TraceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -48,6 +54,11 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
     private final KnowledgeDocumentIngestionService knowledgeDocumentIngestionService;
     private final com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer;
     private final ResourceAccessGuard resourceAccessGuard;
+    private final ChatAgentMqProperties mqProperties;
+
+    // Absent when chatagent.mq.enabled=false; present when true.
+    @Autowired(required = false)
+    private OutboxEventPublisher outboxEventPublisher;
 
     @Override
     public GetKnowledgeDocumentsResponse getKnowledgeDocuments(String knowledgeBaseId) {
@@ -170,6 +181,21 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
     private void scheduleIngestionAfterCommit(String knowledgeBaseId,
                                               KnowledgeDocumentDTO knowledgeDocument,
                                               boolean clearExistingContentFirst) {
+        if (mqProperties.isEnabled() && outboxEventPublisher != null) {
+            publishToOutbox(knowledgeBaseId, knowledgeDocument, clearExistingContentFirst);
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        clearIndexedContentForReplace(knowledgeDocument, clearExistingContentFirst);
+                    }
+                });
+            } else {
+                clearIndexedContentForReplace(knowledgeDocument, clearExistingContentFirst);
+            }
+            return;
+        }
+
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -182,6 +208,32 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         }
         clearIndexedContentForReplace(knowledgeDocument, clearExistingContentFirst);
         knowledgeDocumentIngestionService.ingest(knowledgeBaseId, knowledgeDocument);
+    }
+
+    private void publishToOutbox(String knowledgeBaseId,
+                                 KnowledgeDocumentDTO knowledgeDocument,
+                                 boolean clearExistingContentFirst) {
+        KnowledgeIngestTaskPayload payload = new KnowledgeIngestTaskPayload(
+                knowledgeBaseId,
+                knowledgeDocument.getId(),
+                clearExistingContentFirst
+        );
+        MqMessageIdentity identity = MqMessageIdentity.initial(
+                "knowledge.ingest",
+                knowledgeDocument.getId(),
+                TraceContext.getTraceId(),
+                mqProperties.getExchanges().getChatDirect(),
+                mqProperties.getRoutingKeys().getIngestTask()
+        );
+        outboxEventPublisher.publish(
+                "knowledge.ingest",
+                mqProperties.getExchanges().getChatDirect(),
+                mqProperties.getRoutingKeys().getIngestTask(),
+                payload,
+                identity
+        );
+        log.info("Knowledge ingest task published to outbox: documentId={}, eventId={}",
+                knowledgeDocument.getId(), identity.eventId());
     }
 
     private void clearIndexedContentForReplace(KnowledgeDocumentDTO knowledgeDocument, boolean clearExistingContentFirst) {

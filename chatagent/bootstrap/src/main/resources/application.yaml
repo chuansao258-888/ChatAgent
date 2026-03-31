@@ -7,6 +7,20 @@ spring:
       port: ${CHATAGENT_REDIS_PORT:6379}
       password: ${CHATAGENT_REDIS_PASSWORD:}
       database: ${CHATAGENT_REDIS_DATABASE:0}
+  rabbitmq:
+    host: ${CHATAGENT_RABBITMQ_HOST:localhost}
+    port: ${CHATAGENT_RABBITMQ_PORT:5672}
+    username: ${CHATAGENT_RABBITMQ_USERNAME:guest}
+    password: ${CHATAGENT_RABBITMQ_PASSWORD:guest}
+    virtual-host: ${CHATAGENT_RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      # Keep unroutable messages observable for the future outbox/confirm flow.
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
 
   datasource:
     url: ${CHATAGENT_DB_URL:jdbc:postgresql://localhost:5432/chatagent}
@@ -129,6 +143,48 @@ chatagent:
         max-chunks-per-file: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CHUNKS_PER_FILE:12}
         min-chunk-chars: ${CHATAGENT_RAG_CONTEXTUAL_MIN_CHUNK_CHARS:160}
         max-context-chars: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CONTEXT_CHARS:600}
+  mq:
+    enabled: ${CHATAGENT_MQ_ENABLED:false}
+    exchanges:
+      chat-direct: ${CHATAGENT_MQ_EXCHANGE_CHAT_DIRECT:chat.direct}
+      retry-direct: ${CHATAGENT_MQ_EXCHANGE_RETRY_DIRECT:retry.direct}
+      dlx-direct: ${CHATAGENT_MQ_EXCHANGE_DLX_DIRECT:dlx.direct}
+    routing-keys:
+      agent-run: ${CHATAGENT_MQ_ROUTING_KEY_AGENT_RUN:agent.run}
+      ingest-task: ${CHATAGENT_MQ_ROUTING_KEY_INGEST_TASK:ingest.task}
+      retry-agent: ${CHATAGENT_MQ_ROUTING_KEY_RETRY_AGENT:retry.agent}
+      retry-ingest: ${CHATAGENT_MQ_ROUTING_KEY_RETRY_INGEST:retry.ingest}
+      dead-letter: ${CHATAGENT_MQ_ROUTING_KEY_DEAD_LETTER:dead.letter}
+    queues:
+      chat-agent-dispatch: ${CHATAGENT_MQ_QUEUE_CHAT_AGENT_DISPATCH:chat.agent.dispatch}
+      knowledge-ingest-task: ${CHATAGENT_MQ_QUEUE_KNOWLEDGE_INGEST_TASK:knowledge.ingest.task}
+      retry-agent10s: ${CHATAGENT_MQ_QUEUE_RETRY_AGENT_10S:retry.agent.10s}
+      retry-ingest30s: ${CHATAGENT_MQ_QUEUE_RETRY_INGEST_30S:retry.ingest.30s}
+      chat-dlq: ${CHATAGENT_MQ_QUEUE_CHAT_DLQ:chat.dlq}
+    retry:
+      agent-delay-ms: ${CHATAGENT_MQ_RETRY_AGENT_DELAY_MS:10000}
+      ingest-delay-ms: ${CHATAGENT_MQ_RETRY_INGEST_DELAY_MS:30000}
+    outbox:
+      poll-interval-ms: ${CHATAGENT_MQ_OUTBOX_POLL_INTERVAL_MS:2000}
+      batch-size: ${CHATAGENT_MQ_OUTBOX_BATCH_SIZE:10}
+      max-publish-attempts: ${CHATAGENT_MQ_OUTBOX_MAX_PUBLISH_ATTEMPTS:5}
+      publish-retry-delay-ms: ${CHATAGENT_MQ_OUTBOX_PUBLISH_RETRY_DELAY_MS:10000}
+      claim-timeout-ms: ${CHATAGENT_MQ_OUTBOX_CLAIM_TIMEOUT_MS:60000}
+      confirm-timeout-ms: ${CHATAGENT_MQ_OUTBOX_CONFIRM_TIMEOUT_MS:5000}
+      cleanup-interval-ms: ${CHATAGENT_MQ_OUTBOX_CLEANUP_INTERVAL_MS:86400000}
+      cleanup-retention-days: ${CHATAGENT_MQ_OUTBOX_CLEANUP_RETENTION_DAYS:7}
+    consumers:
+      agent-prefetch: ${CHATAGENT_MQ_CONSUMER_AGENT_PREFETCH:5}
+      agent-concurrency: ${CHATAGENT_MQ_CONSUMER_AGENT_CONCURRENCY:5}
+      ingest-prefetch: ${CHATAGENT_MQ_CONSUMER_INGEST_PREFETCH:1}
+      ingest-concurrency: ${CHATAGENT_MQ_CONSUMER_INGEST_CONCURRENCY:2}
+    locks:
+      running-ttl-ms: ${CHATAGENT_MQ_LOCK_RUNNING_TTL_MS:60000}
+      watchdog-interval-ms: ${CHATAGENT_MQ_LOCK_WATCHDOG_INTERVAL_MS:20000}
+      completed-ttl-ms: ${CHATAGENT_MQ_LOCK_COMPLETED_TTL_MS:86400000}
+      failed-ttl-ms: ${CHATAGENT_MQ_LOCK_FAILED_TTL_MS:3600000}
+    dispatchers:
+      agent-run-enabled: ${CHATAGENT_MQ_DISPATCHER_AGENT_RUN_ENABLED:false}
 
 auth:
   jwt:

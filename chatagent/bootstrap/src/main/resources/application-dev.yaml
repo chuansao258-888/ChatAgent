@@ -1,0 +1,3 @@
+chatagent:
+  mq:
+    enabled: ${CHATAGENT_MQ_ENABLED:false}

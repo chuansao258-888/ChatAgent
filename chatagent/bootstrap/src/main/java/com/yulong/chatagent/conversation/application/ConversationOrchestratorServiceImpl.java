@@ -1,8 +1,8 @@
 package com.yulong.chatagent.conversation.application;
 
 import com.yulong.chatagent.conversation.application.model.ConversationTurnContext;
-import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.event.ChatEvent;
+import com.yulong.chatagent.conversation.event.ChatEventDispatcher;
 import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
@@ -15,8 +15,8 @@ import com.yulong.chatagent.intent.application.TurnPreparationResult;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 
 import java.util.List;
@@ -33,26 +33,27 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
     private final ChatSessionFacadeService chatSessionFacadeService;
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ConversationTurnPreparationService conversationTurnPreparationService;
-    private final ApplicationEventPublisher applicationEventPublisher;
+    private final ChatEventDispatcher chatEventDispatcher;
     private final ConversationTurnCompletionPublisher conversationTurnCompletionPublisher;
     private final SseService sseService;
 
     public ConversationOrchestratorServiceImpl(ChatSessionFacadeService chatSessionFacadeService,
                                                ChatMessageFacadeService chatMessageFacadeService,
                                                ConversationTurnPreparationService conversationTurnPreparationService,
-                                               ApplicationEventPublisher applicationEventPublisher,
+                                               ChatEventDispatcher chatEventDispatcher,
                                                ConversationTurnCompletionPublisher conversationTurnCompletionPublisher,
                                                SseService sseService) {
         this.chatSessionFacadeService = chatSessionFacadeService;
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.conversationTurnPreparationService = conversationTurnPreparationService;
-        this.applicationEventPublisher = applicationEventPublisher;
+        this.chatEventDispatcher = chatEventDispatcher;
         this.conversationTurnCompletionPublisher = conversationTurnCompletionPublisher;
         this.sseService = sseService;
     }
 
 
     @Override
+    @Transactional
     public CreateChatMessageResponse handleUserTurn(CreateChatMessageRequest request) {
         validateRequest(request);
         ConversationTurnContext turnContext = buildTurnContext(request);
@@ -122,7 +123,7 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
             return;
         }
 
-        applicationEventPublisher.publishEvent(
+        chatEventDispatcher.dispatch(
                 new ChatEvent(
                         resolvedAgentId,
                         turnContext.request().getSessionId(),

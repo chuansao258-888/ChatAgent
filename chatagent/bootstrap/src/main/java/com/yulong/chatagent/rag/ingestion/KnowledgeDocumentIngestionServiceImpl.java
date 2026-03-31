@@ -47,6 +47,11 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
     @Override
     @Async
     public void ingest(String knowledgeBaseId, KnowledgeDocumentDTO knowledgeDocument) {
+        ingestSync(knowledgeBaseId, knowledgeDocument);
+    }
+
+    @Override
+    public void ingestSync(String knowledgeBaseId, KnowledgeDocumentDTO knowledgeDocument) {
         long ingestionStart = System.nanoTime();
         String documentId = knowledgeDocument == null ? null : knowledgeDocument.getId();
         if (knowledgeDocument == null) {
@@ -54,7 +59,7 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
         }
         if (!documentStorageService.fileExists(knowledgeDocument.getStoragePath())) {
             markFailure(knowledgeDocument, "Stored knowledge document is missing");
-            return;
+            throw new IllegalStateException("Stored knowledge document is missing");
         }
 
         String fileExtension = getFileExtension(knowledgeDocument.getOriginalFilename());
@@ -98,6 +103,10 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
             knowledgeChunkRepository.deleteByKnowledgeDocumentId(documentId);
             knowledgeBaseMilvusIndexer.deleteByKnowledgeDocumentId(documentId);
             markFailure(knowledgeDocument, e.getMessage());
+            throw new RetryableKnowledgeDocumentIngestionException(
+                    "Knowledge document ingestion failed for documentId=" + documentId,
+                    e
+            );
         }
     }
 

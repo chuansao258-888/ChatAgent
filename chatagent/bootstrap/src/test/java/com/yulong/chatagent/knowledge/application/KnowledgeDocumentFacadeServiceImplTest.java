@@ -7,6 +7,8 @@ import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.knowledge.converter.KnowledgeDocumentConverter;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
+import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
+import com.yulong.chatagent.mq.outbox.OutboxEventPublisher;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
@@ -20,13 +22,16 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,10 +62,16 @@ class KnowledgeDocumentFacadeServiceImplTest {
     @Mock
     private ResourceAccessGuard resourceAccessGuard;
 
+    @Mock
+    private OutboxEventPublisher outboxEventPublisher;
+
+    private ChatAgentMqProperties mqProperties;
+
     private KnowledgeDocumentFacadeServiceImpl facadeService;
 
     @BeforeEach
     void setUp() {
+        mqProperties = new ChatAgentMqProperties();
         facadeService = new KnowledgeDocumentFacadeServiceImpl(
                 adminAccessService,
                 knowledgeDocumentRepository,
@@ -69,7 +80,8 @@ class KnowledgeDocumentFacadeServiceImplTest {
                 documentStorageService,
                 knowledgeDocumentIngestionService,
                 knowledgeBaseMilvusIndexer,
-                resourceAccessGuard
+                resourceAccessGuard,
+                mqProperties
         );
     }
 
@@ -116,5 +128,45 @@ class KnowledgeDocumentFacadeServiceImplTest {
         inOrder.verify(knowledgeBaseMilvusIndexer).deleteByKnowledgeDocumentId("doc-1");
         inOrder.verify(knowledgeDocumentIngestionService).ingest(eq("kb-1"), any(KnowledgeDocumentDTO.class));
         verify(knowledgeDocumentRepository).update(any(KnowledgeDocumentDTO.class));
+    }
+
+    @Test
+    void shouldWriteOutboxInsteadOfTriggeringAsyncIngestWhenMqEnabled() throws IOException {
+        mqProperties.setEnabled(true);
+        ReflectionTestUtils.setField(facadeService, "outboxEventPublisher", outboxEventPublisher);
+
+        LoginUser adminUser = LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build();
+        UserContext.set(adminUser);
+        when(adminAccessService.requireAdmin()).thenReturn(adminUser);
+        when(resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, "kb-1")).thenReturn(KnowledgeBaseDTO.builder()
+                .id("kb-1")
+                .status("ACTIVE")
+                .build());
+        when(documentStorageService.saveKnowledgeDocument(eq("kb-1"), any(), any()))
+                .thenReturn("knowledge-bases/kb-1/doc-new/source.md");
+        when(knowledgeDocumentRepository.save(any())).thenReturn(true);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "source.md",
+                "text/markdown",
+                "hello stage4a".getBytes()
+        );
+
+        facadeService.uploadKnowledgeDocument("kb-1", file);
+
+        verify(outboxEventPublisher).publish(
+                eq("knowledge.ingest"),
+                eq(mqProperties.getExchanges().getChatDirect()),
+                eq(mqProperties.getRoutingKeys().getIngestTask()),
+                any(),
+                any()
+        );
+        verify(knowledgeDocumentIngestionService, never()).ingest(eq("kb-1"), any(KnowledgeDocumentDTO.class));
+        verify(knowledgeChunkRepository, never()).deleteByKnowledgeDocumentId(any());
+        verify(knowledgeBaseMilvusIndexer, never()).deleteByKnowledgeDocumentId(any());
     }
 }
