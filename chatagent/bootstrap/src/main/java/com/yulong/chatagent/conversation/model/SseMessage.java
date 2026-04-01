@@ -21,6 +21,7 @@ public class SseMessage {
         private ChatMessageVO message;
         private String statusText;
         private Boolean done;
+        private String turnId;
     }
 
     @Data
@@ -35,7 +36,8 @@ public class SseMessage {
         AI_PLANNING,
         AI_THINKING,
         AI_EXECUTING,
-        AI_DONE
+        AI_DONE,
+        TURN_ROLLBACK
     }
 }
 

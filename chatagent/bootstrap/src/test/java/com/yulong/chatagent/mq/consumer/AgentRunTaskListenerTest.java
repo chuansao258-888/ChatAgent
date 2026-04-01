@@ -63,12 +63,41 @@ class AgentRunTaskListenerTest {
         when(lockWatchdog.watch(any())).thenReturn(() -> {
         });
 
-        listener.handle(buildMessage(0), channel);
+        listener.handle(buildMessage(0, false), channel);
 
+        verify(chatEventProcessor, never()).rollbackTurn(anyString(), anyString());
         verify(chatEventProcessor).process(any());
         verify(distributedLockManager).markCompleted(any());
         verify(channel).basicAck(7L, false);
         verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
+    }
+
+    @Test
+    void shouldRollbackAndProcessWhenRetryCountIsGreater() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        });
+
+        listener.handle(buildMessage(1, false), channel);
+
+        verify(chatEventProcessor).rollbackTurn("session-1", "turn-1");
+        verify(chatEventProcessor).process(any());
+        verify(channel).basicAck(7L, false);
+    }
+
+    @Test
+    void shouldRollbackAndProcessWhenForceRollbackIsSetEvenIfRetryCountIsZero() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        });
+
+        listener.handle(buildMessage(0, true), channel);
+
+        verify(chatEventProcessor).rollbackTurn("session-1", "turn-1");
+        verify(chatEventProcessor).process(any());
+        verify(channel).basicAck(7L, false);
     }
 
     @Test
@@ -80,7 +109,7 @@ class AgentRunTaskListenerTest {
         when(distributedLockManager.releaseRunning(any())).thenReturn(true);
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
 
-        listener.handle(buildMessage(0), channel);
+        listener.handle(buildMessage(0, false), channel);
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(rabbitMqMessagePublisher).publish(
@@ -107,7 +136,7 @@ class AgentRunTaskListenerTest {
         doThrow(new AmqpException("retry route failed") {
         }).when(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(), anyString());
 
-        listener.handle(buildMessage(1), channel);
+        listener.handle(buildMessage(1, false), channel);
 
         verify(channel).basicNack(7L, false, true);
     }
@@ -121,7 +150,7 @@ class AgentRunTaskListenerTest {
         when(distributedLockManager.releaseRunning(any())).thenReturn(false);
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
 
-        listener.handle(buildMessage(0), channel);
+        listener.handle(buildMessage(0, false), channel);
 
         verify(channel).basicNack(7L, false, true);
         verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
@@ -135,7 +164,7 @@ class AgentRunTaskListenerTest {
         });
         doThrow(new BizException("bad request")).when(chatEventProcessor).process(any());
 
-        listener.handle(buildMessage(0), channel);
+        listener.handle(buildMessage(0, false), channel);
 
         verify(distributedLockManager).markFailed(any(), anyString());
         verify(chatEventProcessor).publishFailure(any(), any(BizException.class));
@@ -150,7 +179,7 @@ class AgentRunTaskListenerTest {
         });
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
 
-        listener.handle(buildMessage(3), channel);
+        listener.handle(buildMessage(3, false), channel);
 
         verify(distributedLockManager).markFailed(any(), anyString());
         verify(chatEventProcessor).publishFailure(any(), any(RuntimeException.class));
@@ -165,9 +194,61 @@ class AgentRunTaskListenerTest {
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.DUPLICATE, null, MqTaskLockState.COMPLETED)
         );
 
-        listener.handle(buildMessage(0), channel);
+        listener.handle(buildMessage(0, false), channel);
 
         verify(channel).basicAck(7L, false);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldNackWaitRequiredMessage() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
+                new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
+        );
+
+        listener.handle(buildMessage(0, false), channel);
+
+        // Verification of nack(requeue=true)
+        verify(channel).basicNack(7L, false, true);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldFailOpenWhenRedisFailsAndPolicyIsFailOpen() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        // Default agentRunPolicy is FAIL_OPEN in properties
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenThrow(new RuntimeException("Redis down"));
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(chatEventProcessor).process(any());
+        verify(channel).basicAck(7L, false);
+        // markCompleted should be skipped because lease is null in FAIL_OPEN
+        verify(distributedLockManager, never()).markCompleted(any());
+    }
+
+    @Test
+    void shouldFailFastWhenRedisFailsAndPolicyIsFailFast() throws Exception {
+        ChatAgentMqProperties properties = new ChatAgentMqProperties();
+        properties.getDispatchers().setAgentRunEnabled(true);
+        properties.getLocks().setAgentRunPolicy(ChatAgentMqProperties.RedisFailurePolicy.FAIL_FAST);
+        
+        AgentRunTaskListener listener = new AgentRunTaskListener(
+                objectMapper,
+                properties,
+                rabbitMqMessagePublisher,
+                distributedLockManager,
+                lockWatchdog,
+                chatEventProcessor
+        );
+        
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenThrow(new RuntimeException("Redis down"));
+
+        // Fatal error bubbles up to consume() which defaults to basicNack(true) in AbstractRetryingMqConsumer.java
+        listener.handle(buildMessage(0, false), channel);
+        
+        verify(channel).basicNack(7L, false, true);
         verify(chatEventProcessor, never()).process(any());
     }
 
@@ -184,7 +265,7 @@ class AgentRunTaskListenerTest {
         );
     }
 
-    private Message buildMessage(int retryCount) throws Exception {
+    private Message buildMessage(int retryCount, boolean forceRollback) throws Exception {
         AgentRunTaskPayload payload = new AgentRunTaskPayload(
                 "agent-1",
                 "session-1",
@@ -193,7 +274,8 @@ class AgentRunTaskListenerTest {
                 "hello",
                 3,
                 null,
-                "rewritten"
+                "rewritten",
+                forceRollback
         );
         MqMessageIdentity identity = new MqMessageIdentity(
                 "event-1",

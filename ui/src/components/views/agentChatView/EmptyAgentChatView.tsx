@@ -22,7 +22,11 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Cache the created session ID to reuse it during retries if the first message fails
+  const pendingSessionIdRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
   const { refreshChatSessions } = useChatSessions();
@@ -33,10 +37,17 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
       openAuthDialog("login");
       return null;
     }
+
+    // P1 Fix: Reuse the session if we already created one in a previous failed attempt
+    if (pendingSessionIdRef.current) {
+      return { chatSessionId: pendingSessionIdRef.current };
+    }
+
     const response = await createChatSession({
       title: titleSeed.slice(0, 20),
     });
 
+    pendingSessionIdRef.current = response.chatSessionId;
     await refreshChatSessions();
     return {
       chatSessionId: response.chatSessionId,
@@ -45,23 +56,31 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
 
   const handleCreateConversation = async () => {
     const trimmedMessage = inputValue.trim();
-    if (!trimmedMessage) {
+    if (!trimmedMessage || isSubmitting) {
       return;
     }
 
-    const createdSession = await ensureSessionForNewChat(trimmedMessage);
-    if (!createdSession) {
-      return;
+    setIsSubmitting(true);
+    try {
+      const createdSession = await ensureSessionForNewChat(trimmedMessage);
+      if (!createdSession) {
+        return;
+      }
+
+      await createChatMessage({
+        sessionId: createdSession.chatSessionId,
+        content: trimmedMessage,
+        role: "user",
+      });
+
+      setInputValue("");
+      navigate(`/chat/${createdSession.chatSessionId}`);
+    } catch (error) {
+      console.error("Failed to create conversation:", error);
+      antdMessage.error("Failed to start the conversation. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    await createChatMessage({
-      sessionId: createdSession.chatSessionId,
-      content: trimmedMessage,
-      role: "user",
-    });
-
-    setInputValue("");
-    navigate(`/chat/${createdSession.chatSessionId}`);
   };
 
   const handleUploadFile = async (file: File) => {
@@ -148,8 +167,9 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
                 void handleCreateConversation();
               }}
               value={inputValue}
-              loading={loading || uploadingFile}
-              placeholder="Ask anything"
+              loading={loading || uploadingFile || isSubmitting}
+              disabled={isSubmitting}
+              placeholder={isSubmitting ? "Starting chat..." : "Ask anything"}
               classNames={{
                 root: "chat-empty-sender",
                 input: "chat-empty-sender-input",

@@ -63,4 +63,15 @@ public interface ChatMessageRepository {
      * @return {@code true} on success
      */
     boolean deleteById(String id);
+
+    /**
+     * Deletes messages matching the session, turn, and specified roles.
+     *
+     * @param sessionId target session
+     * @param turnId target turn
+     * @param roles message roles to include in the deletion (e.g., ASSISTANT, TOOL)
+     * @return true if the operation completed successfully
+     */
+    boolean deleteBySessionIdAndTurnIdAndRoles(String sessionId, String turnId, List<String> roles);
+
 }

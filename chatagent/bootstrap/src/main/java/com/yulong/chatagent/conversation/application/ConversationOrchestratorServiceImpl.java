@@ -156,7 +156,7 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
                 .build();
 
         // Push AI_GENERATED_CONTENT event
-        sseService.send(sessionId, SseMessage.builder()
+        sseService.publish(sessionId, SseMessage.builder()
                 .type(SseMessage.Type.AI_GENERATED_CONTENT)
                 .payload(SseMessage.Payload.builder()
                         .message(messageVo)
@@ -164,7 +164,7 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
                 .build());
         
         // Push AI_DONE event
-        sseService.send(sessionId, SseMessage.builder()
+        sseService.publish(sessionId, SseMessage.builder()
                 .type(SseMessage.Type.AI_DONE)
                 .payload(SseMessage.Payload.builder()
                         .done(true)

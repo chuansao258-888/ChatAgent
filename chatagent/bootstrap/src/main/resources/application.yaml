@@ -165,7 +165,7 @@ chatagent:
       agent-delay-ms: ${CHATAGENT_MQ_RETRY_AGENT_DELAY_MS:10000}
       ingest-delay-ms: ${CHATAGENT_MQ_RETRY_INGEST_DELAY_MS:30000}
     outbox:
-      poll-interval-ms: ${CHATAGENT_MQ_OUTBOX_POLL_INTERVAL_MS:2000}
+      poll-interval-ms: ${CHATAGENT_MQ_OUTBOX_POLL_INTERVAL_MS:500}
       batch-size: ${CHATAGENT_MQ_OUTBOX_BATCH_SIZE:10}
       max-publish-attempts: ${CHATAGENT_MQ_OUTBOX_MAX_PUBLISH_ATTEMPTS:5}
       publish-retry-delay-ms: ${CHATAGENT_MQ_OUTBOX_PUBLISH_RETRY_DELAY_MS:10000}
@@ -183,6 +183,8 @@ chatagent:
       watchdog-interval-ms: ${CHATAGENT_MQ_LOCK_WATCHDOG_INTERVAL_MS:20000}
       completed-ttl-ms: ${CHATAGENT_MQ_LOCK_COMPLETED_TTL_MS:86400000}
       failed-ttl-ms: ${CHATAGENT_MQ_LOCK_FAILED_TTL_MS:3600000}
+      agent-run-policy: ${CHATAGENT_MQ_LOCK_AGENT_RUN_POLICY:FAIL_OPEN}
+      ingest-task-policy: ${CHATAGENT_MQ_LOCK_INGEST_TASK_POLICY:FAIL_FAST}
     dispatchers:
       agent-run-enabled: ${CHATAGENT_MQ_DISPATCHER_AGENT_RUN_ENABLED:false}
 

@@ -47,7 +47,7 @@ public class KnowledgeIngestTaskListener extends AbstractRetryingMqConsumer<Know
                                        KnowledgeChunkRepository knowledgeChunkRepository,
                                        KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer,
                                        KnowledgeDocumentIngestionService knowledgeDocumentIngestionService) {
-        super(rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
+        super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;

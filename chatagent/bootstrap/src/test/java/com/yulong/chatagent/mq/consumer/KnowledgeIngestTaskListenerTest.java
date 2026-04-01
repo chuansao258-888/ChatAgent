@@ -16,26 +16,20 @@ import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
-import com.yulong.chatagent.rag.ingestion.RetryableKnowledgeDocumentIngestionException;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageProperties;
 
 import java.time.Instant;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,6 +39,12 @@ class KnowledgeIngestTaskListenerTest {
 
     @Mock
     private RabbitMqMessagePublisher rabbitMqMessagePublisher;
+
+    @Mock
+    private DistributedLockManager distributedLockManager;
+
+    @Mock
+    private LockWatchdog lockWatchdog;
 
     @Mock
     private KnowledgeDocumentRepository knowledgeDocumentRepository;
@@ -61,22 +61,21 @@ class KnowledgeIngestTaskListenerTest {
     @Mock
     private Channel channel;
 
-    @Mock
-    private DistributedLockManager distributedLockManager;
-
-    @Mock
-    private LockWatchdog lockWatchdog;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void shouldAckSuccessfulKnowledgeIngestMessage() throws Exception {
-        KnowledgeIngestTaskListener listener = newListener();
-        KnowledgeDocumentDTO document = sampleDocument();
-        when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(document);
+        KnowledgeIngestTaskListener listener = newListener(new ChatAgentMqProperties());
+        KnowledgeDocumentDTO document = KnowledgeDocumentDTO.builder()
+                .id("doc-1")
+                .knowledgeBaseId("kb-1")
+                .deleted(false)
+                .build();
+
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
         when(lockWatchdog.watch(any())).thenReturn(() -> {
         });
+        when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(document);
 
         listener.handle(buildMessage(0, true), channel);
 
@@ -89,90 +88,38 @@ class KnowledgeIngestTaskListenerTest {
     }
 
     @Test
-    void shouldMoveRetryableFailureToRetryQueue() throws Exception {
-        KnowledgeIngestTaskListener listener = newListener();
-        KnowledgeDocumentDTO document = sampleDocument();
-        when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(document);
-        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
-        });
-        when(distributedLockManager.releaseRunning(any())).thenReturn(true);
-        doThrow(new RetryableKnowledgeDocumentIngestionException("transient", new RuntimeException("boom")))
-                .when(knowledgeDocumentIngestionService)
-                .ingestSync("kb-1", document);
+    void shouldNackWaitRequiredMessage() throws Exception {
+        KnowledgeIngestTaskListener listener = newListener(new ChatAgentMqProperties());
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
+                new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
+        );
 
         listener.handle(buildMessage(0, false), channel);
-
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(rabbitMqMessagePublisher).publish(
-                eq("retry.direct"),
-                eq("retry.ingest"),
-                messageCaptor.capture(),
-                anyString()
-        );
-        verify(distributedLockManager).releaseRunning(any());
-        assertThat(messageCaptor.getValue().getMessageProperties().getHeaders())
-                .containsEntry(MqMessageHeaders.RETRY_COUNT, 1);
-        verify(channel).basicAck(7L, false);
-    }
-
-    @Test
-    void shouldRequeueOriginalMessageWhenRetryPublishFails() throws Exception {
-        KnowledgeIngestTaskListener listener = newListener();
-        KnowledgeDocumentDTO document = sampleDocument();
-        when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(document);
-        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
-        });
-        when(distributedLockManager.releaseRunning(any())).thenReturn(true);
-        doThrow(new RetryableKnowledgeDocumentIngestionException("transient", new RuntimeException("boom")))
-                .when(knowledgeDocumentIngestionService)
-                .ingestSync("kb-1", document);
-        doThrow(new AmqpException("retry route failed") {
-        }).when(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(), anyString());
-
-        listener.handle(buildMessage(1, false), channel);
 
         verify(channel).basicNack(7L, false, true);
-    }
-
-    @Test
-    void shouldRejectMessageWhenRetriesAreExhausted() throws Exception {
-        KnowledgeIngestTaskListener listener = newListener();
-        KnowledgeDocumentDTO document = sampleDocument();
-        when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(document);
-        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
-        });
-        doThrow(new RetryableKnowledgeDocumentIngestionException("transient", new RuntimeException("boom")))
-                .when(knowledgeDocumentIngestionService)
-                .ingestSync("kb-1", document);
-
-        listener.handle(buildMessage(3, false), channel);
-
-        verify(distributedLockManager).markFailed(any(), anyString());
-        verify(channel).basicReject(7L, false);
-        verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
-    }
-
-    @Test
-    void shouldAckDuplicateMessageWithoutProcessing() throws Exception {
-        KnowledgeIngestTaskListener listener = newListener();
-        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
-                new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.DUPLICATE, null, MqTaskLockState.COMPLETED)
-        );
-
-        listener.handle(buildMessage(0, false), channel);
-
-        verify(channel).basicAck(7L, false);
         verify(knowledgeDocumentRepository, never()).findById(anyString());
         verify(knowledgeDocumentIngestionService, never()).ingestSync(anyString(), any());
     }
 
-    private KnowledgeIngestTaskListener newListener() {
+    @Test
+    void shouldFailFastWhenRedisFailsAndPolicyIsFailFast() throws Exception {
+        ChatAgentMqProperties properties = new ChatAgentMqProperties();
+        properties.getLocks().setIngestTaskPolicy(ChatAgentMqProperties.RedisFailurePolicy.FAIL_FAST);
+
+        KnowledgeIngestTaskListener listener = newListener(properties);
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenThrow(new RuntimeException("Redis down"));
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(channel).basicNack(7L, false, true);
+        verify(knowledgeDocumentRepository, never()).findById(anyString());
+        verify(knowledgeDocumentIngestionService, never()).ingestSync(anyString(), any());
+    }
+
+    private KnowledgeIngestTaskListener newListener(ChatAgentMqProperties properties) {
         return new KnowledgeIngestTaskListener(
                 objectMapper,
-                new ChatAgentMqProperties(),
+                properties,
                 rabbitMqMessagePublisher,
                 distributedLockManager,
                 lockWatchdog,
@@ -181,14 +128,6 @@ class KnowledgeIngestTaskListenerTest {
                 knowledgeBaseMilvusIndexer,
                 knowledgeDocumentIngestionService
         );
-    }
-
-    private KnowledgeDocumentDTO sampleDocument() {
-        return KnowledgeDocumentDTO.builder()
-                .id("doc-1")
-                .knowledgeBaseId("kb-1")
-                .deleted(false)
-                .build();
     }
 
     private Message buildMessage(int retryCount, boolean clearExistingContentFirst) throws Exception {
@@ -217,7 +156,7 @@ class KnowledgeIngestTaskListenerTest {
                 new MqTaskLockLease(
                         "chatagent:mq:task-lock:knowledge.ingest:doc-1",
                         "token-1",
-                        "KnowledgeIngestTaskListener",
+                        "KnowledgeIngestTaskListener:node-a",
                         new MqMessageIdentity(
                                 "event-1",
                                 "doc-1",

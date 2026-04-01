@@ -13,4 +13,10 @@ public interface KnowledgeDocumentFacadeService {
     UploadKnowledgeDocumentResponse replaceKnowledgeDocument(String knowledgeBaseId, String documentId, MultipartFile file);
 
     void archiveKnowledgeDocument(String knowledgeBaseId, String documentId);
+
+    com.yulong.chatagent.support.persistence.entity.KnowledgeDocument getKnowledgeDocument(String documentId);
+
+    void ingestKnowledgeDocument(com.yulong.chatagent.support.persistence.entity.KnowledgeDocument document);
+
+    void markIngestionFailed(String documentId, String error);
 }

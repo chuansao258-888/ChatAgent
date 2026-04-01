@@ -140,6 +140,16 @@
         DELETE FROM chat_message WHERE id = CAST(#{id} AS uuid)
     </delete>
 
+    <delete id="deleteBySessionIdAndTurnIdAndRoles">
+        DELETE FROM chat_message
+        WHERE session_id = CAST(#{sessionId} AS uuid)
+          AND turn_id = #{turnId}
+          AND role IN
+          <foreach collection="roles" item="role" open="(" separator="," close=")">
+              #{role}
+          </foreach>
+    </delete>
+
     <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.ChatMessage">
         UPDATE chat_message
         <set>

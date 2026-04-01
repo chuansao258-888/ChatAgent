@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { message as antdMessage } from "antd";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getAccessToken } from "../../auth/token.ts";
@@ -45,6 +45,32 @@ const AgentChatView: React.FC = () => {
     SseMessageType | undefined
   >(undefined);
 
+  // Use ref to avoid stale closures in the SSE listener
+  const isProcessingRef = useRef(displayAgentStatus);
+  useEffect(() => {
+    isProcessingRef.current = displayAgentStatus;
+  }, [displayAgentStatus]);
+
+  // Watchdog to prevent permanent UI lock during SSE failures
+  const safetyUnlockTimerRef = useRef<any>(null);
+
+  const clearSafetyTimer = () => {
+    if (safetyUnlockTimerRef.current) {
+      clearTimeout(safetyUnlockTimerRef.current);
+      safetyUnlockTimerRef.current = null;
+    }
+  };
+
+  const startSafetyTimer = (timeoutMs = 15000) => {
+    clearSafetyTimer();
+    safetyUnlockTimerRef.current = setTimeout(() => {
+      console.warn("Safety unlock triggered: No SSE completion received within timeout.");
+      setDisplayAgentStatus(false);
+      setAgentStatusText("");
+      setAgentStatusType(undefined);
+    }, timeoutMs);
+  };
+
   const addMessage = (message: ChatMessageVO) => {
     setMessages((prevMessages) => {
       if (prevMessages.some((m) => m.id === message.id)) {
@@ -75,7 +101,23 @@ const AgentChatView: React.FC = () => {
         getChatSession(chatSessionId),
         getChatSessionFiles(chatSessionId),
       ]);
-      setMessages(messagesResp.chatMessages);
+      
+      const realMessages = messagesResp.chatMessages;
+      
+      // Reconciliation: Merge real messages with existing local assistant/tool messages (SSE)
+      // and remove all local temporary pending messages.
+      setMessages((prev) => {
+        const localRealTimeMessages = prev.filter(
+          (m) => (m.role === "assistant" || m.role === "tool") && !m.id.startsWith("temp-"),
+        );
+        const filteredReal = realMessages.filter(
+          (rm) => !localRealTimeMessages.some((am) => am.id === rm.id),
+        );
+        return [...filteredReal, ...localRealTimeMessages].sort(
+          (a, b) => (a.seqNo || 0) - (b.seqNo || 0),
+        );
+      });
+      
       setSessionFiles(filesResp.files);
     } catch (error) {
       if (isMissingChatSessionError(error)) {
@@ -136,20 +178,55 @@ const AgentChatView: React.FC = () => {
       return;
     }
 
-    if (state?.init) {
-      await createChatMessage({
-        sessionId: activeChatSessionId,
-        role: "user",
-        content: state.initMessage ?? "",
-      });
-    } else {
-      await createChatMessage({
-        sessionId: activeChatSessionId,
-        role: "user",
-        content: message,
-      });
+    // Local Pending State: Instantly show the user's message in the UI
+    const tempId = `temp-user-${Date.now()}`;
+    const tempUserMessage: ChatMessageVO = {
+      id: tempId,
+      sessionId: activeChatSessionId,
+      role: "user",
+      content: message,
+    };
+
+    setMessages((prev) => [...prev, tempUserMessage]);
+
+    // Initial Processing State
+    setDisplayAgentStatus(true);
+    setAgentStatusText("Queuing...");
+    setAgentStatusType("AI_THINKING");
+    startSafetyTimer(20000); 
+
+    try {
+      // 1. Send message to backend
+      if (state?.init) {
+        await createChatMessage({
+          sessionId: activeChatSessionId,
+          role: "user",
+          content: state.initMessage ?? "",
+        });
+      } else {
+        await createChatMessage({
+          sessionId: activeChatSessionId,
+          role: "user",
+          content: message,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      antdMessage.error("Failed to send the message. Please try again.");
+      setDisplayAgentStatus(false);
+      setAgentStatusText("");
+      clearSafetyTimer();
+      // Rethrow to keep message in input box
+      throw error;
     }
-    await getChatData();
+
+    // 2. Synchronize history separately. 
+    // Failure here won't trigger message re-send UI rollback.
+    try {
+      await getChatData();
+    } catch (error) {
+      console.warn("Reconciliation fetch failed after successful send:", error);
+    }
   };
 
   const handleUploadFile = useCallback(
@@ -211,14 +288,24 @@ const AgentChatView: React.FC = () => {
 
     es.onmessage = (event) => {
       console.log("Received message:", event.data);
+      // Refresh the safety timer on any activity
+      if (isProcessingRef.current) startSafetyTimer();
     };
 
     es.onerror = (error) => {
-      console.error("SSE error:", error);
+      console.error("SSE error, attempting to reconnect...", error);
+      // P1 Fix (Recovery): If the connection is definitively closed, unlock after a short grace period
+      if (es.readyState === EventSource.CLOSED) {
+        startSafetyTimer(3000); 
+      }
     };
 
     es.addEventListener("message", (event) => {
       const message = JSON.parse(event.data) as SseMessage;
+      
+      // Refresh timer on typed messages too
+      if (isProcessingRef.current) startSafetyTimer();
+
       if (message.type === "AI_GENERATED_CONTENT") {
         addMessage(message.payload.message);
       } else if (message.type === "AI_PLANNING") {
@@ -234,16 +321,25 @@ const AgentChatView: React.FC = () => {
         setAgentStatusText(message.payload.statusText);
         setAgentStatusType("AI_EXECUTING");
       } else if (message.type === "AI_DONE") {
+        clearSafetyTimer(); // P1 Fix: Definitive end
         setDisplayAgentStatus(false);
         setAgentStatusText("");
         setAgentStatusType(undefined);
+      } else if (message.type === "TURN_ROLLBACK") {
+        const rollbackTurnId = message.payload.turnId;
+        if (rollbackTurnId) {
+          setMessages((prev) =>
+            prev.filter((msg) => msg.turnId !== rollbackTurnId || msg.role === "user"),
+          );
+        }
       } else {
-        throw new Error(`Unknown message type: ${message.type}`);
+        console.warn(`Unknown message type: ${message.type}`);
       }
     });
 
     return () => {
       es.close();
+      clearSafetyTimer();
     };
   }, [chatSessionId, initializing, isAuthenticated]);
 
@@ -266,6 +362,7 @@ const AgentChatView: React.FC = () => {
           onRemoveFile={handleRemoveFile}
           attachments={sessionFiles}
           uploading={uploadingFile}
+          disabled={displayAgentStatus}
         />
       </div>
     </div>

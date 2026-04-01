@@ -80,6 +80,11 @@ public class ChatAgentMqProperties {
         private int ingestConcurrency = 2;
     }
 
+    public enum RedisFailurePolicy {
+        FAIL_FAST,
+        FAIL_OPEN
+    }
+
     @Data
     public static class Locks {
 
@@ -87,6 +92,18 @@ public class ChatAgentMqProperties {
         private int watchdogIntervalMs = 20_000;
         private int completedTtlMs = 86_400_000;
         private int failedTtlMs = 3_600_000;
+        private RedisFailurePolicy agentRunPolicy = RedisFailurePolicy.FAIL_OPEN;
+        private RedisFailurePolicy ingestTaskPolicy = RedisFailurePolicy.FAIL_FAST;
+
+        public RedisFailurePolicy getPolicyForTask(String taskType) {
+            if ("knowledge.ingest".equals(taskType)) {
+                return ingestTaskPolicy;
+            }
+            if ("agent.run".equals(taskType)) {
+                return agentRunPolicy;
+            }
+            return RedisFailurePolicy.FAIL_FAST;
+        }
     }
 
     @Data

@@ -91,6 +91,21 @@ class DistributedLockManagerTest {
     }
 
     @Test
+    void shouldWaitWhenExistingStateIsRunningEvenForSameOwner() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), anyString(), eq(Duration.ofSeconds(60)))).thenReturn(Boolean.FALSE);
+        when(valueOperations.get("chatagent:mq:task-lock:knowledge.ingest:doc-1"))
+                .thenReturn("""
+                        {"status":"RUNNING","token":"token-1","owner":"consumer-1","taskType":"knowledge.ingest","eventId":"event-1","idempotencyKey":"doc-1","traceId":"trace-1","updatedAtEpochMs":1711756800000,"lastError":""}
+                        """);
+
+        MqTaskLockAcquisition acquisition = distributedLockManager.tryAcquire(sampleIdentity(), "consumer-1");
+
+        assertThat(acquisition.outcome()).isEqualTo(MqTaskLockAcquireOutcome.WAIT_REQUIRED);
+        assertThat(acquisition.existingState()).isEqualTo(MqTaskLockState.RUNNING);
+    }
+
+    @Test
     void shouldMarkLockCompleted() {
         when(stringRedisTemplate.execute(any(DefaultRedisScript.class), eq(List.of("lock-1")), eq("token-1"), eq("COMPLETED"), anyString(), eq("consumer-1"), eq(""), eq("86400000")))
                 .thenReturn(1L);

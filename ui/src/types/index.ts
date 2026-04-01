@@ -47,12 +47,14 @@ export type SseMessageType =
   | "AI_PLANNING"
   | "AI_THINKING"
   | "AI_EXECUTING"
-  | "AI_DONE";
+  | "AI_DONE"
+  | "TURN_ROLLBACK";
 
 export interface SseMessagePayload {
   message: ChatMessageVO;
   statusText: string;
   done: boolean;
+  turnId?: string;
 }
 
 export interface SseMessageMetadata {

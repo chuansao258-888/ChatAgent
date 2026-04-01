@@ -20,6 +20,7 @@ import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import com.yulong.chatagent.trace.TraceContext;
+import com.yulong.chatagent.support.persistence.entity.KnowledgeDocument;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -117,6 +118,38 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
 
         knowledgeChunkRepository.deleteByKnowledgeDocumentId(documentId);
         knowledgeBaseMilvusIndexer.deleteByKnowledgeDocumentId(documentId);
+    }
+
+    @Override
+    public KnowledgeDocument getKnowledgeDocument(String documentId) {
+        return toEntity(knowledgeDocumentRepository.findById(documentId));
+    }
+
+    @Override
+    public void ingestKnowledgeDocument(KnowledgeDocument document) {
+        if (document == null || !StringUtils.hasText(document.getKnowledgeBaseId())) {
+            throw new BizException("Knowledge document is invalid for ingestion");
+        }
+        knowledgeDocumentIngestionService.ingestSync(document.getKnowledgeBaseId(), toDto(document));
+    }
+
+    @Override
+    public void markIngestionFailed(String documentId, String error) {
+        if (!StringUtils.hasText(documentId)) {
+            throw new BizException("Knowledge document id is required");
+        }
+        KnowledgeDocumentDTO document = knowledgeDocumentRepository.findById(documentId);
+        if (document == null) {
+            log.warn("Skip marking knowledge ingestion as failed because document does not exist: documentId={}", documentId);
+            return;
+        }
+        document.setParseStatus("FAILED");
+        document.setFailedReason(error);
+        document.setRetryCount((document.getRetryCount() == null ? 0 : document.getRetryCount()) + 1);
+        document.setUpdatedAt(LocalDateTime.now());
+        if (!knowledgeDocumentRepository.update(document)) {
+            throw new BizException("Failed to update knowledge document failure status: " + documentId);
+        }
     }
 
     private UploadKnowledgeDocumentResponse createOrReplaceDocument(KnowledgeBaseDTO knowledgeBase,
@@ -287,5 +320,53 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             log.warn("Failed to clean up stored knowledge document after {}: documentId={}, error={}",
                     reason, documentId, ex.getMessage());
         }
+    }
+
+    private KnowledgeDocumentDTO toDto(KnowledgeDocument entity) {
+        if (entity == null) {
+            return null;
+        }
+        return KnowledgeDocumentDTO.builder()
+                .id(entity.getId())
+                .knowledgeBaseId(entity.getKnowledgeBaseId())
+                .filename(entity.getFilename())
+                .originalFilename(entity.getOriginalFilename())
+                .mimeType(entity.getMimeType())
+                .sizeBytes(entity.getSizeBytes())
+                .storagePath(entity.getStoragePath())
+                .parseStatus(entity.getParseStatus())
+                .contentHash(entity.getContentHash())
+                .failedReason(entity.getFailedReason())
+                .indexedAt(entity.getIndexedAt())
+                .retryCount(entity.getRetryCount())
+                .metadata(entity.getMetadata())
+                .deleted(entity.getDeleted())
+                .createdAt(entity.getCreatedAt())
+                .updatedAt(entity.getUpdatedAt())
+                .build();
+    }
+
+    private KnowledgeDocument toEntity(KnowledgeDocumentDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        return KnowledgeDocument.builder()
+                .id(dto.getId())
+                .knowledgeBaseId(dto.getKnowledgeBaseId())
+                .filename(dto.getFilename())
+                .originalFilename(dto.getOriginalFilename())
+                .mimeType(dto.getMimeType())
+                .sizeBytes(dto.getSizeBytes())
+                .storagePath(dto.getStoragePath())
+                .parseStatus(dto.getParseStatus())
+                .contentHash(dto.getContentHash())
+                .failedReason(dto.getFailedReason())
+                .indexedAt(dto.getIndexedAt())
+                .retryCount(dto.getRetryCount())
+                .metadata(dto.getMetadata())
+                .deleted(dto.getDeleted())
+                .createdAt(dto.getCreatedAt())
+                .updatedAt(dto.getUpdatedAt())
+                .build();
     }
 }

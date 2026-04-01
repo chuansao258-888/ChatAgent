@@ -74,6 +74,15 @@ public interface ChatMessageFacadeService {
     void deleteChatMessage(String chatMessageId);
 
     /**
+     * Deletes all assistant and tool messages for a specific turn in a session.
+     * Used for rollbacks and idempotency during MQ retries.
+     *
+     * @param sessionId chat session identifier
+     * @param turnId session-local turn identifier
+     */
+    void deleteAssistantAndToolMessagesForTurn(String sessionId, String turnId);
+
+    /**
      * Updates mutable fields of a chat message.
      *
      * @param chatMessageId target message identifier

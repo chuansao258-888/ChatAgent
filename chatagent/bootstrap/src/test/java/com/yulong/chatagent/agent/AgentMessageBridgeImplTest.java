@@ -66,7 +66,7 @@ class AgentMessageBridgeImplTest {
         assertThat(currentTurnCitationHolder.peek("session-1", "turn-1")).isEmpty();
 
         ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
-        verify(sseService).send(org.mockito.ArgumentMatchers.eq("session-1"), sseCaptor.capture());
+        verify(sseService).publish(org.mockito.ArgumentMatchers.eq("session-1"), sseCaptor.capture());
         assertThat(sseCaptor.getValue().getPayload().getMessage().getMetadata().getCitations()).hasSize(1);
     }
 

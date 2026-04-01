@@ -78,6 +78,9 @@ public class DistributedLockManager {
                     }
                     existing = deserialize(existingPayload);
                 }
+                if (existing.status == MqTaskLockState.RUNNING) {
+                    return new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, existing.status);
+                }
                 return new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.DUPLICATE, null, existing.status);
             }
         }

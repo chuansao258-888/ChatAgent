@@ -18,6 +18,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -26,7 +27,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,7 +79,7 @@ class ChatEventProcessorTest {
         ArgumentCaptor<ChatMessageDTO> messageCaptor = ArgumentCaptor.forClass(ChatMessageDTO.class);
         verify(chatMessageFacadeService).createChatMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getContent()).contains("ChatAgent is running without a configured chat model");
-        verify(sseService).send(anyString(), any(SseMessage.class));
+        verify(sseService).publish(anyString(), any(SseMessage.class));
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
         verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString());
         verify(currentTurnCitationHolder).clear("session-1", "turn-1");
@@ -102,8 +105,28 @@ class ChatEventProcessorTest {
 
         processor.publishFailure(event, new RuntimeException("boom"));
 
-        verify(chatMessageFacadeService).createChatMessage(any(ChatMessageDTO.class));
-        verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
+        verify(chatMessageFacadeService).deleteAssistantAndToolMessagesForTurn("session-1", "turn-1");
+        ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
+        verify(sseService, times(2)).publish(anyString(), sseCaptor.capture());
+        assertThat(sseCaptor.getAllValues())
+                .extracting(SseMessage::getType)
+                .containsExactly(SseMessage.Type.TURN_ROLLBACK, SseMessage.Type.AI_GENERATED_CONTENT);
+        InOrder inOrder = inOrder(sseService, conversationTurnCompletionPublisher);
+        inOrder.verify(sseService, times(2)).publish(anyString(), any(SseMessage.class));
+        inOrder.verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
+    }
+
+    @Test
+    void shouldTriggerRollbackAndNotifyFrontend() {
+        ChatEventProcessor processor = newProcessor();
+
+        processor.rollbackTurn("session-1", "turn-1");
+
+        verify(chatMessageFacadeService).deleteAssistantAndToolMessagesForTurn("session-1", "turn-1");
+        ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
+        verify(sseService).publish(anyString(), sseCaptor.capture());
+        assertThat(sseCaptor.getValue().getType()).isEqualTo(SseMessage.Type.TURN_ROLLBACK);
+        assertThat(sseCaptor.getValue().getPayload().getTurnId()).isEqualTo("turn-1");
     }
 
     private ChatEventProcessor newProcessor() {

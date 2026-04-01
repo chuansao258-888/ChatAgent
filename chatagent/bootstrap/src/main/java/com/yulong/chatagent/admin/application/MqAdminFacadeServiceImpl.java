@@ -9,6 +9,7 @@ import com.yulong.chatagent.admin.model.response.ReplayDlqMessagesResponse;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.outbox.OutboxRepository;
+import com.yulong.chatagent.mq.outbox.event.AgentRunTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
@@ -104,10 +105,22 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
                 try {
                     MqMessageIdentity identity = MqMessageHeaders.read(message.getMessageProperties());
                     MqMessageIdentity replayIdentity = resetRetryCount ? identity.withRetryCount(0) : identity;
+                    
+                    Message replayMessage = buildReplayMessage(message, replayIdentity);
+                    
+                    // If this is an agent run task, ensure we signal a forced rollback upon replay
+                    if (properties.getRoutingKeys().getAgentRun().equals(replayIdentity.originalRoutingKey())) {
+                        AgentRunTaskPayload payload = objectMapper.readValue(message.getBody(), AgentRunTaskPayload.class);
+                        AgentRunTaskPayload forcedPayload = payload.withForceRollback(true);
+                        replayMessage = MessageBuilder.fromMessage(replayMessage)
+                                .withBody(objectMapper.writeValueAsBytes(forcedPayload))
+                                .build();
+                    }
+
                     rabbitMqMessagePublisher.publish(
                             replayIdentity.originalExchange(),
                             replayIdentity.originalRoutingKey(),
-                            buildReplayMessage(message, replayIdentity),
+                            replayMessage,
                             replayIdentity.eventId() + "-replay-" + (count + 1)
                     );
                     channel.basicAck(deliveryTag, false);

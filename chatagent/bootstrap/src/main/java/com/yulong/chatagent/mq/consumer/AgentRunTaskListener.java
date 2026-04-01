@@ -37,7 +37,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                                 DistributedLockManager distributedLockManager,
                                 LockWatchdog lockWatchdog,
                                 ChatEventProcessor chatEventProcessor) {
-        super(rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
+        super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.chatEventProcessor = chatEventProcessor;
@@ -79,6 +79,12 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     @Override
     protected void processTask(AgentRunTaskPayload payload, MqMessageIdentity identity) {
         ChatEvent event = payload.toChatEvent();
+        
+        // Rollback any partial output if this is a retry OR a forced rollback (e.g. from DLQ replay)
+        if (identity.retryCount() > 0 || payload.forceRollback()) {
+            chatEventProcessor.rollbackTurn(event.getSessionId(), event.getTurnId());
+        }
+        
         chatEventProcessor.process(event);
         log.info("Agent run task processed: eventId={}, turnId={}, sessionId={}",
                 identity.eventId(), event.getTurnId(), event.getSessionId());

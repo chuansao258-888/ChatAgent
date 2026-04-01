@@ -14,7 +14,8 @@ public record AgentRunTaskPayload(
         String userInput,
         int recentHistorySize,
         IntentResolution intentResolution,
-        String rewrittenInput
+        String rewrittenInput,
+        boolean forceRollback
 ) {
 
     public static AgentRunTaskPayload fromChatEvent(ChatEvent event) {
@@ -26,7 +27,22 @@ public record AgentRunTaskPayload(
                 event.getUserInput(),
                 event.getRecentHistorySize(),
                 event.getIntentResolution(),
-                event.getRewrittenInput()
+                event.getRewrittenInput(),
+                false
+        );
+    }
+
+    public AgentRunTaskPayload withForceRollback(boolean forceRollback) {
+        return new AgentRunTaskPayload(
+                agentId,
+                sessionId,
+                turnId,
+                chatMessageId,
+                userInput,
+                recentHistorySize,
+                intentResolution,
+                rewrittenInput,
+                forceRollback
         );
     }
 

@@ -5,5 +5,6 @@ package com.yulong.chatagent.mq.lock;
  */
 public enum MqTaskLockAcquireOutcome {
     ACQUIRED,
-    DUPLICATE
+    DUPLICATE,
+    WAIT_REQUIRED
 }

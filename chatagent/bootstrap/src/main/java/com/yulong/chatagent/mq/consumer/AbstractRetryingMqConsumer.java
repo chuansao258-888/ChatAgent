@@ -1,6 +1,7 @@
 package com.yulong.chatagent.mq.consumer;
 
 import com.rabbitmq.client.Channel;
+import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
 import com.yulong.chatagent.mq.lock.LockWatchdog;
 import com.yulong.chatagent.mq.lock.MqTaskLockAcquireOutcome;
@@ -16,6 +17,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 
 import java.io.IOException;
+import java.util.UUID;
 
 /**
  * Shared retry, lock, and logging workflow for MQ task consumers.
@@ -23,16 +25,21 @@ import java.io.IOException;
 @Slf4j
 public abstract class AbstractRetryingMqConsumer<T> {
 
+    private final ChatAgentMqProperties properties;
     private final RabbitMqMessagePublisher rabbitMqMessagePublisher;
     private final DistributedLockManager distributedLockManager;
     private final LockWatchdog lockWatchdog;
+    private final String ownerId;
 
-    protected AbstractRetryingMqConsumer(RabbitMqMessagePublisher rabbitMqMessagePublisher,
+    protected AbstractRetryingMqConsumer(ChatAgentMqProperties properties,
+                                         RabbitMqMessagePublisher rabbitMqMessagePublisher,
                                          DistributedLockManager distributedLockManager,
                                          LockWatchdog lockWatchdog) {
+        this.properties = properties;
         this.rabbitMqMessagePublisher = rabbitMqMessagePublisher;
         this.distributedLockManager = distributedLockManager;
         this.lockWatchdog = lockWatchdog;
+        this.ownerId = consumerName() + ":" + UUID.randomUUID();
     }
 
     protected final void consume(Message message, Channel channel) throws IOException {
@@ -40,14 +47,43 @@ public abstract class AbstractRetryingMqConsumer<T> {
         MqMessageIdentity identity = MqMessageHeaders.read(message.getMessageProperties());
         TraceContext.setTraceId(identity.traceId());
         try {
-            MqTaskLockAcquisition acquisition = distributedLockManager.tryAcquire(identity, consumerName());
-            if (acquisition.outcome() != MqTaskLockAcquireOutcome.ACQUIRED) {
+            MqTaskLockAcquisition acquisition;
+            try {
+                acquisition = distributedLockManager.tryAcquire(identity, ownerId);
+            } catch (Exception acquisitionException) {
+                ChatAgentMqProperties.RedisFailurePolicy policy =
+                        properties.getLocks().getPolicyForTask(identity.taskType());
+                if (policy == ChatAgentMqProperties.RedisFailurePolicy.FAIL_OPEN) {
+                    log.warn("Redis failure during tryAcquire, continuing without idempotency: taskType={}, eventId={}, error={}",
+                            identity.taskType(), identity.eventId(), acquisitionException.getMessage());
+                    handleOwnedMessage(message, channel, deliveryTag, identity, null);
+                    return;
+                }
+                log.warn("Redis failure during tryAcquire, requeueing because policy is FAIL_FAST: taskType={}, eventId={}, error={}",
+                        identity.taskType(), identity.eventId(), acquisitionException.getMessage());
+                channel.basicNack(deliveryTag, false, true);
+                return;
+            }
+            if (acquisition.outcome() == MqTaskLockAcquireOutcome.WAIT_REQUIRED) {
+                log.info("MQ task is currently RUNNING by another instance, requeueing to wait: taskType={}, eventId={}",
+                        identity.taskType(), identity.eventId());
+                // Mitigate hot-looping by introducing a small passive delay before nack(requeue=true)
+                Thread.sleep(200);
+                channel.basicNack(deliveryTag, false, true);
+                return;
+            }
+            if (acquisition.outcome() == MqTaskLockAcquireOutcome.DUPLICATE) {
                 log.info("MQ task skipped as duplicate: taskType={}, eventId={}, state={}",
                         identity.taskType(), identity.eventId(), acquisition.existingState());
                 channel.basicAck(deliveryTag, false);
                 return;
             }
             handleOwnedMessage(message, channel, deliveryTag, identity, acquisition.lease());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Consumer interrupted during wait/requeue: taskType={}, eventId={}",
+                    identity.taskType(), identity.eventId());
+            channel.basicNack(deliveryTag, false, true);
         } finally {
             TraceContext.clear();
         }
@@ -59,10 +95,12 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                     MqMessageIdentity identity,
                                     MqTaskLockLease lease) throws IOException {
         T payload = null;
-        try (LockWatchdog.Registration ignored = lockWatchdog.watch(lease)) {
+        try (LockWatchdog.Registration ignored = lease == null ? () -> { } : lockWatchdog.watch(lease)) {
             payload = deserializePayload(message);
             processTask(payload, identity);
-            distributedLockManager.markCompleted(lease);
+            if (lease != null) {
+                distributedLockManager.markCompleted(lease);
+            }
             channel.basicAck(deliveryTag, false);
             log.info("MQ task processed successfully: taskType={}, eventId={}, idempotencyKey={}",
                     identity.taskType(), identity.eventId(), identity.idempotencyKey());
@@ -91,20 +129,22 @@ public abstract class AbstractRetryingMqConsumer<T> {
             return;
         }
 
-        boolean released;
-        try {
-            released = distributedLockManager.releaseRunning(lease);
-        } catch (Exception releaseException) {
-            log.warn("Failed to release RUNNING lock before retry handoff, requeueing original: taskType={}, eventId={}",
-                    identity.taskType(), identity.eventId(), releaseException);
-            channel.basicNack(deliveryTag, false, true);
-            return;
-        }
-        if (!released) {
-            log.warn("RUNNING lock was not released before retry handoff, requeueing original: taskType={}, eventId={}",
-                    identity.taskType(), identity.eventId());
-            channel.basicNack(deliveryTag, false, true);
-            return;
+        if (lease != null) {
+            boolean released;
+            try {
+                released = distributedLockManager.releaseRunning(lease);
+            } catch (Exception releaseException) {
+                log.warn("Failed to release RUNNING lock before retry handoff, requeueing original: taskType={}, eventId={}",
+                        identity.taskType(), identity.eventId(), releaseException);
+                channel.basicNack(deliveryTag, false, true);
+                return;
+            }
+            if (!released) {
+                log.warn("RUNNING lock was not released before retry handoff, requeueing original: taskType={}, eventId={}",
+                        identity.taskType(), identity.eventId());
+                channel.basicNack(deliveryTag, false, true);
+                return;
+            }
         }
 
         MqMessageIdentity retryIdentity = identity.withRetryCount(identity.retryCount() + 1);
@@ -142,6 +182,9 @@ public abstract class AbstractRetryingMqConsumer<T> {
     }
 
     private void safeMarkFailed(MqTaskLockLease lease, Exception exception) {
+        if (lease == null) {
+            return;
+        }
         try {
             distributedLockManager.markFailed(lease, abbreviateError(exception));
         } catch (Exception markFailedException) {

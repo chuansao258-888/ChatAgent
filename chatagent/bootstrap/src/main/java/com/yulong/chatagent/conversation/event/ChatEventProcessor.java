@@ -72,10 +72,30 @@ public class ChatEventProcessor {
     }
 
     /**
+     * surgically removes any assistant or tool messages for a given turn.
+     * Use this to prepare for a retry or replay to avoid duplicate output.
+     */
+    public void rollbackTurn(String sessionId, String turnId) {
+        log.info("Rolling back chat turn output: sessionId={}, turnId={}", sessionId, turnId);
+        chatMessageFacadeService.deleteAssistantAndToolMessagesForTurn(sessionId, turnId);
+
+        // Notify the frontend to clear this turn's messages from the UI state
+        sseService.publish(sessionId, SseMessage.builder()
+                .type(SseMessage.Type.TURN_ROLLBACK)
+                .payload(SseMessage.Payload.builder()
+                        .turnId(turnId)
+                        .build())
+                .build());
+    }
+
+    /**
      * Persists a fallback assistant message so failed async work is still visible in the user's current stream.
      */
     public void publishFailure(ChatEvent event, Exception ex) {
         try {
+            // Ensure any partial output from the failed attempt is cleared before showing the error
+            rollbackTurn(event.getSessionId(), event.getTurnId());
+
             publishAssistantMessage(event, "Sorry, the agent failed to process this request. Please try again.");
             conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
         } catch (Exception failureHandlingException) {
@@ -104,6 +124,6 @@ public class ChatEventProcessor {
                         .chatMessageId(chatMessageDTO.getId())
                         .build())
                 .build();
-        sseService.send(event.getSessionId(), sseMessage);
+        sseService.publish(event.getSessionId(), sseMessage);
     }
 }

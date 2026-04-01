@@ -1,6 +1,9 @@
 package com.yulong.chatagent.sse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -9,14 +12,18 @@ import java.util.concurrent.ConcurrentMap;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 /**
- * Default in-memory SSE implementation keyed by a logical stream ID.
+ * Default memory-backed SSE implementation with Redis broadcasting capability.
  */
 public class DefaultSseService implements SseService {
 
+    private static final String REDIS_CHANNEL = "chatagent:sse:broadcast";
     private static final long SSE_TIMEOUT_MILLIS = 30 * 60 * 1000L;
 
     private final ConcurrentMap<String, SseEmitterSender> clients = new ConcurrentHashMap<>();
+    private final StringRedisTemplate stringRedisTemplate;
+    private final ObjectMapper objectMapper;
 
     @Override
     public SseEmitter connect(String streamKey) {
@@ -41,11 +48,20 @@ public class DefaultSseService implements SseService {
     }
 
     @Override
-    public void send(String streamKey, Object message) {
+    public void publish(String streamKey, Object message) {
+        try {
+            BroadcastPayload payload = new BroadcastPayload(streamKey, message);
+            stringRedisTemplate.convertAndSend(REDIS_CHANNEL, objectMapper.writeValueAsString(payload));
+        } catch (Exception e) {
+            log.warn("Failed to broadcast SSE message for streamKey={}", streamKey, e);
+        }
+    }
+
+    @Override
+    public void deliverLocal(String streamKey, Object message) {
         SseEmitterSender sender = clients.get(streamKey);
         if (sender == null) {
-            log.warn("No SSE client found for chatSessionId={}", streamKey);
-            return;
+            return; // Not on this node, silently ignore.
         }
 
         try {
@@ -53,7 +69,10 @@ public class DefaultSseService implements SseService {
         } catch (Exception e) {
             // Remove broken emitters immediately so later sends do not keep failing.
             clients.remove(streamKey, sender);
-            log.warn("SSE connection lost: chatSessionId={}", streamKey, e);
+            log.warn("SSE connection lost during local delivery: streamKey={}", streamKey, e);
         }
+    }
+
+    public record BroadcastPayload(String streamKey, Object message) {
     }
 }

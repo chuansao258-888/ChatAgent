@@ -98,6 +98,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                         .chatMessageId(chatMessageDTO.getId())
                         .build())
                 .build();
-        sseService.send(chatMessageDTO.getSessionId(), sseMessage);
+        sseService.publish(chatMessageDTO.getSessionId(), sseMessage);
     }
 }

@@ -10,6 +10,7 @@ interface AgentChatInputProps {
   onRemoveFile: (sessionFileId: string) => Promise<void> | void;
   attachments: ChatSessionFileVO[];
   uploading?: boolean;
+  disabled?: boolean;
 }
 
 const AgentChatInput: React.FC<AgentChatInputProps> = ({
@@ -18,17 +19,28 @@ const AgentChatInput: React.FC<AgentChatInputProps> = ({
   onRemoveFile,
   attachments,
   uploading = false,
+  disabled = false,
 }) => {
   const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSubmit = async () => {
+    if (isSubmitting || disabled) {
+      return;
+    }
     const trimmed = message.trim();
     if (!trimmed) {
       return;
     }
-    await onSend(trimmed);
-    setMessage("");
+
+    setIsSubmitting(true);
+    try {
+      await onSend(trimmed);
+      setMessage("");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSelectFile = async (
@@ -81,8 +93,9 @@ const AgentChatInput: React.FC<AgentChatInputProps> = ({
 
       <Sender
         value={message}
-        loading={uploading}
-        placeholder="Ask anything"
+        loading={uploading || isSubmitting}
+        disabled={disabled || isSubmitting}
+        placeholder={disabled || isSubmitting ? "AI is thinking..." : "Ask anything"}
         classNames={{
           root: "chat-active-sender",
           input: "chat-active-sender-input",

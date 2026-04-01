@@ -81,6 +81,11 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
         return chatMessageMapper.deleteById(id) > 0;
     }
 
+    @Override
+    public boolean deleteBySessionIdAndTurnIdAndRoles(String sessionId, String turnId, List<String> roles) {
+        return chatMessageMapper.deleteBySessionIdAndTurnIdAndRoles(sessionId, turnId, roles) >= 0;
+    }
+
     /**
      * Converts persistence entities to DTOs while preserving list ordering.
      */

@@ -115,6 +115,17 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
     }
 
     @Override
+    public void deleteAssistantAndToolMessagesForTurn(String sessionId, String turnId) {
+        // Rollbacks are typically triggered by background task retries where no user context exists,
+        // so we bypass session ownership checks or rely on internal system-level authority.
+        List<String> roles = List.of(
+                ChatMessageDTO.RoleType.ASSISTANT.getRole(),
+                ChatMessageDTO.RoleType.TOOL.getRole()
+        );
+        chatMessageRepository.deleteBySessionIdAndTurnIdAndRoles(sessionId, turnId, roles);
+    }
+
+    @Override
     public void updateChatMessage(String chatMessageId, UpdateChatMessageRequest request) {
         ChatMessageDTO existingChatMessage = chatMessageRepository.findById(chatMessageId);
         if (existingChatMessage == null) {
