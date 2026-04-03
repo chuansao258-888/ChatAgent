@@ -57,6 +57,11 @@ public class MyBatisKnowledgeBaseRepository implements KnowledgeBaseRepository {
         return knowledgeBaseMapper.updateById(toEntity(knowledgeBase)) > 0;
     }
 
+    @Override
+    public boolean deleteById(String id) {
+        return knowledgeBaseMapper.deleteById(id) > 0;
+    }
+
     private List<KnowledgeBaseDTO> toDTOList(List<KnowledgeBase> entities) {
         List<KnowledgeBaseDTO> result = new ArrayList<>();
         for (KnowledgeBase entity : entities) {

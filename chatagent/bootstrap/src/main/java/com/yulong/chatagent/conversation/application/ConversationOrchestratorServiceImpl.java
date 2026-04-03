@@ -18,9 +18,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Default turn orchestrator for the current conversation workflow.
@@ -29,6 +31,9 @@ import java.util.UUID;
 @Slf4j
 public class ConversationOrchestratorServiceImpl implements ConversationOrchestratorService {
     private static final int RECENT_HISTORY_LIMIT = 12;
+    private static final Pattern TURN_ID_PATTERN = Pattern.compile(
+            "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    );
 
     private final ChatSessionFacadeService chatSessionFacadeService;
     private final ChatMessageFacadeService chatMessageFacadeService;
@@ -69,6 +74,10 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
         Assert.notNull(request.getRole(), "Role must not be null");
         if (request.getRole() != ChatMessageDTO.RoleType.USER) {
             throw new BizException("Conversation entrypoint only accepts user messages");
+        }
+        if (StringUtils.hasText(request.getTurnId())
+                && !TURN_ID_PATTERN.matcher(request.getTurnId().trim()).matches()) {
+            throw new BizException("turnId must be a canonical lowercase UUID");
         }
     }
 

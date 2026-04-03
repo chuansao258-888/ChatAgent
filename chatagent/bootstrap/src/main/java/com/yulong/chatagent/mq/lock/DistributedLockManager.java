@@ -23,10 +23,13 @@ import java.util.UUID;
 public class DistributedLockManager {
 
     private static final String KEY_PREFIX = "chatagent:mq:task-lock:";
+    private static final String SESSION_EXEC_KEY_PREFIX = "chatagent:mq:session-exec-lock:";
     private static final DefaultRedisScript<Long> RENEW_SCRIPT = buildRenewScript();
     private static final DefaultRedisScript<Long> SET_STATE_SCRIPT = buildSetStateScript();
     private static final DefaultRedisScript<Long> RELEASE_SCRIPT = buildReleaseScript();
     private static final DefaultRedisScript<Long> CLAIM_FAILED_SCRIPT = buildClaimFailedScript();
+    private static final DefaultRedisScript<Long> RENEW_SESSION_SCRIPT = buildRenewSessionScript();
+    private static final DefaultRedisScript<Long> RELEASE_SESSION_SCRIPT = buildReleaseSessionScript();
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
@@ -90,12 +93,56 @@ public class DistributedLockManager {
         );
     }
 
+    public MqSessionExecLockAcquisition acquireSessionExecLock(String sessionId, String owner) {
+        String key = sessionExecKey(sessionId);
+        String token = UUID.randomUUID().toString();
+        StoredSessionLock runningState = StoredSessionLock.running(sessionId, token, owner, Instant.now());
+        String serializedRunningState = serialize(runningState);
+        ValueOperations<String, String> valueOperations = stringRedisTemplate.opsForValue();
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Boolean acquired = valueOperations.setIfAbsent(key, serializedRunningState, sessionExecTtl());
+            if (Boolean.TRUE.equals(acquired)) {
+                return new MqSessionExecLockAcquisition(
+                        MqTaskLockAcquireOutcome.ACQUIRED,
+                        new MqSessionExecLockLease(key, token, owner, sessionId)
+                );
+            }
+            String existingPayload = valueOperations.get(key);
+            if (existingPayload != null) {
+                return new MqSessionExecLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null);
+            }
+        }
+
+        throw new IllegalStateException(
+                "Failed to classify session execution lock state after an extreme contention window: " + key
+        );
+    }
+
     public boolean renew(MqTaskLockLease lease) {
         return executeRenew(lease.key(), lease.token(), lease.owner(), Instant.now(), runningTtl()) == 1L;
     }
 
+    public boolean renewSessionExecLock(MqSessionExecLockLease lease) {
+        Long renewed = stringRedisTemplate.execute(
+                RENEW_SESSION_SCRIPT,
+                List.of(lease.key()),
+                lease.token(),
+                lease.owner(),
+                lease.sessionId(),
+                Long.toString(Instant.now().toEpochMilli()),
+                Long.toString(sessionExecTtl().toMillis())
+        );
+        return Long.valueOf(1L).equals(renewed);
+    }
+
     public boolean releaseRunning(MqTaskLockLease lease) {
         Long deleted = stringRedisTemplate.execute(RELEASE_SCRIPT, List.of(lease.key()), lease.token());
+        return Long.valueOf(1L).equals(deleted);
+    }
+
+    public boolean releaseSessionExecLock(MqSessionExecLockLease lease) {
+        Long deleted = stringRedisTemplate.execute(RELEASE_SESSION_SCRIPT, List.of(lease.key()), lease.token());
         return Long.valueOf(1L).equals(deleted);
     }
 
@@ -169,6 +216,10 @@ public class DistributedLockManager {
         return Duration.ofMillis(properties.getLocks().getCompletedTtlMs());
     }
 
+    private Duration sessionExecTtl() {
+        return Duration.ofMillis(properties.getLocks().getSessionExecTtlMs());
+    }
+
     private Duration failedTtl() {
         return Duration.ofMillis(properties.getLocks().getFailedTtlMs());
     }
@@ -177,7 +228,11 @@ public class DistributedLockManager {
         return KEY_PREFIX + identity.taskType() + ":" + identity.idempotencyKey();
     }
 
-    private String serialize(StoredTaskLock state) {
+    private String sessionExecKey(String sessionId) {
+        return SESSION_EXEC_KEY_PREFIX + sessionId;
+    }
+
+    private String serialize(Object state) {
         try {
             return objectMapper.writeValueAsString(state);
         } catch (JsonProcessingException e) {
@@ -270,6 +325,44 @@ public class DistributedLockManager {
         return script;
     }
 
+    private static DefaultRedisScript<Long> buildRenewSessionScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptText("""
+                local current = redis.call('get', KEYS[1])
+                if not current then
+                    return 0
+                end
+                local decoded = cjson.decode(current)
+                if decoded['token'] ~= ARGV[1] then
+                    return 0
+                end
+                decoded['owner'] = ARGV[2]
+                decoded['sessionId'] = ARGV[3]
+                decoded['updatedAtEpochMs'] = tonumber(ARGV[4])
+                redis.call('psetex', KEYS[1], tonumber(ARGV[5]), cjson.encode(decoded))
+                return 1
+                """);
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static DefaultRedisScript<Long> buildReleaseSessionScript() {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptText("""
+                local current = redis.call('get', KEYS[1])
+                if not current then
+                    return 0
+                end
+                local decoded = cjson.decode(current)
+                if decoded['token'] ~= ARGV[1] then
+                    return 0
+                end
+                return redis.call('del', KEYS[1])
+                """);
+        script.setResultType(Long.class);
+        return script;
+    }
+
     private static final class StoredTaskLock {
         public MqTaskLockState status;
         public String token;
@@ -295,6 +388,25 @@ public class DistributedLockManager {
             record.traceId = identity.traceId();
             record.updatedAtEpochMs = now.toEpochMilli();
             record.lastError = "";
+            return record;
+        }
+    }
+
+    private static final class StoredSessionLock {
+        public String token;
+        public String owner;
+        public String sessionId;
+        public long updatedAtEpochMs;
+
+        public StoredSessionLock() {
+        }
+
+        private static StoredSessionLock running(String sessionId, String token, String owner, Instant now) {
+            StoredSessionLock record = new StoredSessionLock();
+            record.token = token;
+            record.owner = owner;
+            record.sessionId = sessionId;
+            record.updatedAtEpochMs = now.toEpochMilli();
             return record;
         }
     }

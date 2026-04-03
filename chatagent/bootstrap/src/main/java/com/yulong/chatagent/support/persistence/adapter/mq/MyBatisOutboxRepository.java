@@ -21,8 +21,13 @@ public class MyBatisOutboxRepository implements OutboxRepository {
     }
 
     @Override
-    public void insert(MqOutbox outbox) {
-        mqOutboxMapper.insert(outbox);
+    public int insert(MqOutbox outbox) {
+        return mqOutboxMapper.insert(outbox);
+    }
+
+    @Override
+    public MqOutbox findById(String id) {
+        return mqOutboxMapper.findById(id);
     }
 
     @Override
@@ -41,6 +46,11 @@ public class MyBatisOutboxRepository implements OutboxRepository {
     @Override
     public boolean markSent(String id, int expectedVersion) {
         return mqOutboxMapper.markSent(id, expectedVersion) > 0;
+    }
+
+    @Override
+    public boolean markDiscarded(String id, String lastError, int expectedVersion) {
+        return mqOutboxMapper.markDiscarded(id, lastError, expectedVersion) > 0;
     }
 
     @Override

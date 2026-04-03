@@ -131,6 +131,7 @@ class DistributedLockManagerTest {
                 "doc-1",
                 "trace-1",
                 "knowledge.ingest",
+                null,
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),

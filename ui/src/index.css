@@ -78,6 +78,35 @@
   color: rgba(255, 255, 255, 0.60);
 }
 
+.admin-primary-button.ant-btn.ant-btn-primary {
+  border-color: #2f8f63 !important;
+  background: linear-gradient(135deg, #2f8f63 0%, #3da876 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(25, 92, 61, 0.32);
+}
+
+.admin-primary-button.ant-btn.ant-btn-primary:hover,
+.admin-primary-button.ant-btn.ant-btn-primary:focus {
+  border-color: #45b883 !important;
+  background: linear-gradient(135deg, #3a9f72 0%, #45b883 100%) !important;
+  color: #ffffff !important;
+}
+
+.admin-primary-button.ant-btn.ant-btn-primary:active {
+  border-color: #287650 !important;
+  background: linear-gradient(135deg, #287650 0%, #318a5e 100%) !important;
+  color: #ffffff !important;
+}
+
+.admin-primary-button.ant-btn.ant-btn-primary.ant-btn-loading,
+.admin-primary-button.ant-btn.ant-btn-primary:disabled,
+.admin-primary-button.ant-btn.ant-btn-primary[disabled] {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
 /* 修复 Ant Design Tabs 在 flex 布局中的滚动问题 */
 .ant-tabs {
   display: flex;

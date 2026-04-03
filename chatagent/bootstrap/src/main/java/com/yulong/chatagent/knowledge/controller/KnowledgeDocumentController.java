@@ -7,6 +7,7 @@ import com.yulong.chatagent.knowledge.model.response.GetKnowledgeDocumentsRespon
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,10 +45,10 @@ public class KnowledgeDocumentController {
         return ApiResponse.success(knowledgeDocumentFacadeService.replaceKnowledgeDocument(knowledgeBaseId, documentId, file));
     }
 
-    @PostMapping("/{documentId}/archive")
-    public ApiResponse<Void> archiveKnowledgeDocument(@PathVariable String knowledgeBaseId,
-                                                      @PathVariable String documentId) {
-        knowledgeDocumentFacadeService.archiveKnowledgeDocument(knowledgeBaseId, documentId);
+    @DeleteMapping("/{documentId}")
+    public ApiResponse<Void> deleteKnowledgeDocument(@PathVariable String knowledgeBaseId,
+                                                     @PathVariable String documentId) {
+        knowledgeDocumentFacadeService.deleteKnowledgeDocument(knowledgeBaseId, documentId);
         return ApiResponse.success();
     }
 }

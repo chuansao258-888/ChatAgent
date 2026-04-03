@@ -52,6 +52,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         ChatMessageDTO chatMessage = doCreateChatMessage(request);
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
+                .turnId(chatMessage.getTurnId())
                 .build();
     }
 
@@ -60,6 +61,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         ChatMessageDTO chatMessage = doCreateChatMessage(chatMessageDTO);
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
+                .turnId(chatMessage.getTurnId())
                 .build();
     }
 
@@ -68,6 +70,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         ChatMessageDTO chatMessage = doCreateChatMessage(request);
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
+                .turnId(chatMessage.getTurnId())
                 .build();
     }
 
@@ -98,6 +101,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
 
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessageId)
+                .turnId(existingChatMessage.getTurnId())
                 .build();
     }
 

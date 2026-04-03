@@ -309,7 +309,7 @@ export default function IntentNodeEditDrawer({
               htmlType="submit"
               type="primary"
               loading={submitting}
-              className=""
+              className="admin-primary-button"
             >
               {mode === "create" ? "Create node" : "Save changes"}
             </Button>

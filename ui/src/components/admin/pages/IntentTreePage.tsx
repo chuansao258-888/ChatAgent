@@ -341,7 +341,7 @@ export default function IntentTreePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-white/40">
@@ -388,7 +388,7 @@ export default function IntentTreePage() {
         </Space>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Card
           loading={loading}
           className="shadow-admin-card"
@@ -463,7 +463,7 @@ export default function IntentTreePage() {
           />
         </Card>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           <Card className="shadow-admin-card">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>

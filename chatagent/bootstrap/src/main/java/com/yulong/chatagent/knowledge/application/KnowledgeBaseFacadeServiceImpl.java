@@ -6,6 +6,7 @@ import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.admin.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.exception.BizException;
+import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
 import com.yulong.chatagent.knowledge.model.request.CreateKnowledgeBaseRequest;
 import com.yulong.chatagent.knowledge.model.request.UpdateKnowledgeBaseRequest;
@@ -14,10 +15,18 @@ import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBaseResponse;
 import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
+import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
+import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
+import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
+import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -30,11 +39,17 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeService {
 
     private final AdminAccessService adminAccessService;
     private final AgentKnowledgeBaseRepository agentKnowledgeBaseRepository;
+    private final IntentKnowledgeBaseRepository intentKnowledgeBaseRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private final KnowledgeChunkRepository knowledgeChunkRepository;
+    private final KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer;
+    private final DocumentStorageService documentStorageService;
     private final KnowledgeBaseConverter knowledgeBaseConverter;
     private final ResourceAccessGuard resourceAccessGuard;
 
@@ -110,29 +125,30 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void archiveKnowledgeBase(String knowledgeBaseId) {
+    public void deleteKnowledgeBase(String knowledgeBaseId) {
         KnowledgeBaseDTO knowledgeBase = resourceAccessGuard.assertCanManageKnowledgeBase(
                 UserContext.requireUser(),
                 knowledgeBaseId
         );
-        updateKnowledgeBaseStatus(knowledgeBase, "ARCHIVED");
-        agentKnowledgeBaseRepository.deleteByKnowledgeBaseId(knowledgeBase.getId());
-    }
-
-    @Override
-    public void restoreKnowledgeBase(String knowledgeBaseId) {
-        updateKnowledgeBaseStatus(
-                resourceAccessGuard.assertCanManageKnowledgeBase(UserContext.requireUser(), knowledgeBaseId),
-                "ACTIVE"
-        );
-    }
-
-    private void updateKnowledgeBaseStatus(KnowledgeBaseDTO knowledgeBase, String status) {
-        knowledgeBase.setStatus(status);
-        knowledgeBase.setUpdatedAt(LocalDateTime.now());
-        if (!knowledgeBaseRepository.update(knowledgeBase)) {
-            throw new BizException("Failed to update knowledge base status");
+        List<KnowledgeDocumentDTO> documents = knowledgeDocumentRepository.findByKnowledgeBaseId(knowledgeBase.getId());
+        List<String> storagePaths = new ArrayList<>();
+        for (KnowledgeDocumentDTO document : documents) {
+            knowledgeChunkRepository.deleteByKnowledgeDocumentId(document.getId());
+            if (!knowledgeDocumentRepository.deleteById(document.getId())) {
+                throw new BizException("Failed to delete knowledge document: " + document.getId());
+            }
+            if (StringUtils.hasText(document.getStoragePath())) {
+                storagePaths.add(document.getStoragePath());
+            }
         }
+
+        knowledgeBaseMilvusIndexer.deleteByKnowledgeBaseId(knowledgeBase.getId());
+        agentKnowledgeBaseRepository.deleteByKnowledgeBaseId(knowledgeBase.getId());
+        intentKnowledgeBaseRepository.deleteByKnowledgeBaseId(knowledgeBase.getId());
+        if (!knowledgeBaseRepository.deleteById(knowledgeBase.getId())) {
+            throw new BizException("Failed to delete knowledge base");
+        }
+        scheduleStoredFileDeletionAfterCommit(knowledgeBase.getId(), storagePaths);
     }
 
     private String trimToNull(String value) {
@@ -140,5 +156,35 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
             return null;
         }
         return value.trim();
+    }
+
+    private void scheduleStoredFileDeletionAfterCommit(String knowledgeBaseId, List<String> storagePaths) {
+        if (storagePaths == null || storagePaths.isEmpty()) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    cleanupStoredFilesQuietly(knowledgeBaseId, storagePaths);
+                }
+            });
+            return;
+        }
+        cleanupStoredFilesQuietly(knowledgeBaseId, storagePaths);
+    }
+
+    private void cleanupStoredFilesQuietly(String knowledgeBaseId, List<String> storagePaths) {
+        for (String storagePath : storagePaths) {
+            if (!StringUtils.hasText(storagePath)) {
+                continue;
+            }
+            try {
+                documentStorageService.deleteFile(storagePath);
+            } catch (Exception ex) {
+                log.warn("Failed to clean up stored knowledge-base document after delete: knowledgeBaseId={}, path={}, error={}",
+                        knowledgeBaseId, storagePath, ex.getMessage());
+            }
+        }
     }
 }

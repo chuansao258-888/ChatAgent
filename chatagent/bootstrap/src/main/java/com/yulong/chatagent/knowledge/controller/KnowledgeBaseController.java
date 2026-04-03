@@ -10,6 +10,7 @@ import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBaseResponse;
 import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,15 +52,9 @@ public class KnowledgeBaseController {
         return ApiResponse.success();
     }
 
-    @PostMapping("/{knowledgeBaseId}/archive")
-    public ApiResponse<Void> archiveKnowledgeBase(@PathVariable String knowledgeBaseId) {
-        knowledgeBaseFacadeService.archiveKnowledgeBase(knowledgeBaseId);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/{knowledgeBaseId}/restore")
-    public ApiResponse<Void> restoreKnowledgeBase(@PathVariable String knowledgeBaseId) {
-        knowledgeBaseFacadeService.restoreKnowledgeBase(knowledgeBaseId);
+    @DeleteMapping("/{knowledgeBaseId}")
+    public ApiResponse<Void> deleteKnowledgeBase(@PathVariable String knowledgeBaseId) {
+        knowledgeBaseFacadeService.deleteKnowledgeBase(knowledgeBaseId);
         return ApiResponse.success();
     }
 }

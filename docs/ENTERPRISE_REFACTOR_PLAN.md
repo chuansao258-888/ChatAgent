@@ -248,14 +248,27 @@ POST   /api/admin/knowledge-bases                            创建知识库
 GET    /api/admin/knowledge-bases                            列出知识库
 GET    /api/admin/knowledge-bases/{kbId}                     知识库详情
 PATCH  /api/admin/knowledge-bases/{kbId}                     更新知识库
-POST   /api/admin/knowledge-bases/{kbId}/archive             归档知识库
-POST   /api/admin/knowledge-bases/{kbId}/restore             恢复知识库
+DELETE /api/admin/knowledge-bases/{kbId}                     删除知识库
+
+其中 `delete knowledge base` 的语义应为真正删除，而不是“将状态标记为 ARCHIVED”：
+- 删除知识库元数据记录
+- 删除其下所有文档记录
+- 删除关联 chunk / 向量索引
+- 删除原始存储文件
+- 删除 assistant / intent 与该知识库的绑定关系
 
 文档管理（ADMIN）：
 POST   /api/admin/knowledge-bases/{kbId}/documents/upload          上传文档
 GET    /api/admin/knowledge-bases/{kbId}/documents                 列出文档
 POST   /api/admin/knowledge-bases/{kbId}/documents/{docId}/replace 替换文档
-POST   /api/admin/knowledge-bases/{kbId}/documents/{docId}/archive 归档文档
+DELETE /api/admin/knowledge-bases/{kbId}/documents/{docId}         删除文档
+
+其中 `replace document` 的正确语义不是“沿用同一个 `documentId` 重复发送同一个 ingest 事件”，而是“同一 `documentId` 下产生了一个新的文档版本，需要重新执行一轮 RAG ingest / index”：
+- 文档元数据更新并重置为 `PENDING`
+- 旧 chunk / 旧向量先清理
+- 新的 `knowledge.ingest` 事件按**文档版本**生成幂等键，推荐使用 `documentId:contentHash`
+- 如果仍把幂等键固定成 `documentId`，Outbox 会把 replace 误判为重复事件，导致新文件不会重新进入 RAG 流程
+- `delete document` 的语义则收敛为真正删除：移除文档元数据、删除 chunk / 向量索引，并在事务提交后清理原始文件；不再保留一个语义不完整的“archive document”状态
 
 内部助手绑定（ADMIN）：
 PUT    /api/admin/assistant/knowledge-bases                  设置系统内部助手绑定知识库
@@ -1109,14 +1122,14 @@ createKnowledgeBase(req: CreateKnowledgeBaseRequest): Promise<KnowledgeBaseVO>
 getKnowledgeBases(): Promise<KnowledgeBaseVO[]>
 getKnowledgeBase(kbId: string): Promise<KnowledgeBaseVO>
 updateKnowledgeBase(kbId: string, req: UpdateKnowledgeBaseRequest): Promise<void>
-archiveKnowledgeBase(kbId: string): Promise<void>
-restoreKnowledgeBase(kbId: string): Promise<void>
+deleteKnowledgeBase(kbId: string): Promise<void>
 
 // 文档
 uploadDocument(kbId: string, file: File): Promise<KnowledgeDocumentVO>
 getDocuments(kbId: string): Promise<KnowledgeDocumentVO[]>
+// replace = 新文档版本重入库；后端应重置状态、清理旧索引，并以 `documentId:contentHash` 触发新的 ingest
 replaceDocument(kbId: string, docId: string, file: File): Promise<void>
-archiveDocument(kbId: string, docId: string): Promise<void>
+deleteDocument(kbId: string, docId: string): Promise<void>
 
 // 内部助手绑定
 getAssistantKnowledgeBases(): Promise<KnowledgeBaseVO[]>
@@ -1131,7 +1144,7 @@ interface KnowledgeBaseVO {
   name: string
   description?: string
   visibility: 'SHARED' | 'PRIVATE'
-  status: 'ACTIVE' | 'ARCHIVED'
+  status: 'ACTIVE'
   documentCount?: number
   createdAt: string
   updatedAt: string

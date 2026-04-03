@@ -54,6 +54,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
     private final DocumentStorageService documentStorageService;
     private final KnowledgeDocumentIngestionService knowledgeDocumentIngestionService;
     private final com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer;
+    private final KnowledgeDocumentStatusSseService knowledgeDocumentStatusSseService;
     private final ResourceAccessGuard resourceAccessGuard;
     private final ChatAgentMqProperties mqProperties;
 
@@ -102,22 +103,16 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void archiveKnowledgeDocument(String knowledgeBaseId, String documentId) {
+    public void deleteKnowledgeDocument(String knowledgeBaseId, String documentId) {
         adminAccessService.requireAdmin();
         resourceAccessGuard.assertCanManageKnowledgeBase(UserContext.requireUser(), knowledgeBaseId);
         KnowledgeDocumentDTO document = requireKnowledgeDocument(knowledgeBaseId, documentId);
-        if (Boolean.TRUE.equals(document.getDeleted())) {
-            return;
-        }
-
-        document.setDeleted(true);
-        document.setUpdatedAt(LocalDateTime.now());
-        if (!knowledgeDocumentRepository.update(document)) {
-            throw new BizException("Failed to archive knowledge document");
-        }
-
         knowledgeChunkRepository.deleteByKnowledgeDocumentId(documentId);
         knowledgeBaseMilvusIndexer.deleteByKnowledgeDocumentId(documentId);
+        if (!knowledgeDocumentRepository.deleteById(documentId)) {
+            throw new BizException("Failed to delete knowledge document");
+        }
+        scheduleStoredFileDeletionAfterCommit(documentId, document.getStoragePath());
     }
 
     @Override
@@ -150,6 +145,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         if (!knowledgeDocumentRepository.update(document)) {
             throw new BizException("Failed to update knowledge document failure status: " + documentId);
         }
+        knowledgeDocumentStatusSseService.publishStatusUpdated(document);
     }
 
     private UploadKnowledgeDocumentResponse createOrReplaceDocument(KnowledgeBaseDTO knowledgeBase,
@@ -253,7 +249,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         );
         MqMessageIdentity identity = MqMessageIdentity.initial(
                 "knowledge.ingest",
-                knowledgeDocument.getId(),
+                buildKnowledgeIngestIdempotencyKey(knowledgeDocument),
                 TraceContext.getTraceId(),
                 mqProperties.getExchanges().getChatDirect(),
                 mqProperties.getRoutingKeys().getIngestTask()
@@ -267,6 +263,16 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         );
         log.info("Knowledge ingest task published to outbox: documentId={}, eventId={}",
                 knowledgeDocument.getId(), identity.eventId());
+    }
+
+    private String buildKnowledgeIngestIdempotencyKey(KnowledgeDocumentDTO knowledgeDocument) {
+        if (knowledgeDocument == null || !StringUtils.hasText(knowledgeDocument.getId())) {
+            throw new BizException("Knowledge document is invalid for MQ ingestion");
+        }
+        if (StringUtils.hasText(knowledgeDocument.getContentHash())) {
+            return knowledgeDocument.getId() + ":" + knowledgeDocument.getContentHash().trim();
+        }
+        return knowledgeDocument.getId();
     }
 
     private void clearIndexedContentForReplace(KnowledgeDocumentDTO knowledgeDocument, boolean clearExistingContentFirst) {
@@ -320,6 +326,22 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             log.warn("Failed to clean up stored knowledge document after {}: documentId={}, error={}",
                     reason, documentId, ex.getMessage());
         }
+    }
+
+    private void scheduleStoredFileDeletionAfterCommit(String documentId, String storagePath) {
+        if (!StringUtils.hasText(storagePath)) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    cleanupStoredFileQuietly(documentId, storagePath, "delete");
+                }
+            });
+            return;
+        }
+        cleanupStoredFileQuietly(documentId, storagePath, "delete");
     }
 
     private KnowledgeDocumentDTO toDto(KnowledgeDocument entity) {

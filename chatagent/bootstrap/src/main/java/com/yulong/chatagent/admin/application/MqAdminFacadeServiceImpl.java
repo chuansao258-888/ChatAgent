@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
-import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.support.DefaultMessagePropertiesConverter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -42,12 +42,13 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
+    private static final String QUEUE_MESSAGE_COUNT = "QUEUE_MESSAGE_COUNT";
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
 
     private final AdminAccessService adminAccessService;
     private final OutboxRepository outboxRepository;
-    private final RabbitAdmin rabbitAdmin;
+    private final AmqpAdmin amqpAdmin;
     private final RabbitTemplate rabbitTemplate;
     private final RabbitMqMessagePublisher rabbitMqMessagePublisher;
     private final ObjectMapper objectMapper;
@@ -177,11 +178,11 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
     }
 
     private long queueDepth(String queueName) {
-        Properties queueProperties = rabbitAdmin.getQueueProperties(queueName);
+        Properties queueProperties = amqpAdmin.getQueueProperties(queueName);
         if (queueProperties == null) {
             return 0L;
         }
-        Object value = queueProperties.get(RabbitAdmin.QUEUE_MESSAGE_COUNT);
+        Object value = queueProperties.get(QUEUE_MESSAGE_COUNT);
         if (value instanceof Number number) {
             return number.longValue();
         }

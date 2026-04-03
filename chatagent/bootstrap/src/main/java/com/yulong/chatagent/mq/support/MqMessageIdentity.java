@@ -13,6 +13,7 @@ public record MqMessageIdentity(
         String idempotencyKey,
         String traceId,
         String taskType,
+        String sessionId,
         String originalExchange,
         String originalRoutingKey,
         Instant firstPublishedAt,
@@ -24,6 +25,7 @@ public record MqMessageIdentity(
         idempotencyKey = requireText(idempotencyKey, MqMessageHeaders.IDEMPOTENCY_KEY);
         traceId = requireText(traceId, MqMessageHeaders.TRACE_ID);
         taskType = requireText(taskType, MqMessageHeaders.TASK_TYPE);
+        sessionId = normalizeOptionalText(sessionId);
         originalExchange = requireText(originalExchange, MqMessageHeaders.ORIGINAL_EXCHANGE);
         originalRoutingKey = requireText(originalRoutingKey, MqMessageHeaders.ORIGINAL_ROUTING_KEY);
         if (firstPublishedAt == null) {
@@ -39,12 +41,22 @@ public record MqMessageIdentity(
                                             String traceId,
                                             String originalExchange,
                                             String originalRoutingKey) {
+        return initial(taskType, idempotencyKey, traceId, null, originalExchange, originalRoutingKey);
+    }
+
+    public static MqMessageIdentity initial(String taskType,
+                                            String idempotencyKey,
+                                            String traceId,
+                                            String sessionId,
+                                            String originalExchange,
+                                            String originalRoutingKey) {
         String resolvedTraceId = StringUtils.hasText(traceId) ? traceId.trim() : UUID.randomUUID().toString();
         return new MqMessageIdentity(
                 UUID.randomUUID().toString(),
                 idempotencyKey,
                 resolvedTraceId,
                 taskType,
+                sessionId,
                 originalExchange,
                 originalRoutingKey,
                 Instant.now(),
@@ -58,6 +70,7 @@ public record MqMessageIdentity(
                 idempotencyKey,
                 traceId,
                 taskType,
+                sessionId,
                 originalExchange,
                 originalRoutingKey,
                 firstPublishedAt,
@@ -70,5 +83,9 @@ public record MqMessageIdentity(
             throw new IllegalArgumentException(headerName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static String normalizeOptionalText(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

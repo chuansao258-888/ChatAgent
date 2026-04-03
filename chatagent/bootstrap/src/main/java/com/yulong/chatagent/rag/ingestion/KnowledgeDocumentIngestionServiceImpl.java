@@ -2,6 +2,7 @@ package com.yulong.chatagent.rag.ingestion;
 
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
+import com.yulong.chatagent.knowledge.application.KnowledgeDocumentStatusSseService;
 import com.yulong.chatagent.rag.ingestion.model.FileIngestionContext;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeChunkDraft;
 import com.yulong.chatagent.rag.parser.DocumentParser;
@@ -43,6 +44,7 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
     private final ChunkEnricher chunkEnricher;
     private final PlainTextChunker plainTextChunker;
     private final KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer;
+    private final KnowledgeDocumentStatusSseService knowledgeDocumentStatusSseService;
 
     @Override
     @Async
@@ -189,6 +191,7 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
         knowledgeDocument.setFailedReason(null);
         knowledgeDocument.setUpdatedAt(LocalDateTime.now());
         knowledgeDocumentRepository.update(knowledgeDocument);
+        knowledgeDocumentStatusSseService.publishStatusUpdated(knowledgeDocument);
     }
 
     private void markCompleted(KnowledgeDocumentDTO knowledgeDocument) {
@@ -197,6 +200,7 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
         knowledgeDocument.setIndexedAt(LocalDateTime.now());
         knowledgeDocument.setUpdatedAt(LocalDateTime.now());
         knowledgeDocumentRepository.update(knowledgeDocument);
+        knowledgeDocumentStatusSseService.publishStatusUpdated(knowledgeDocument);
     }
 
     private void markFailure(KnowledgeDocumentDTO knowledgeDocument, String errorMessage) {
@@ -205,6 +209,7 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
         knowledgeDocument.setRetryCount((knowledgeDocument.getRetryCount() == null ? 0 : knowledgeDocument.getRetryCount()) + 1);
         knowledgeDocument.setUpdatedAt(LocalDateTime.now());
         knowledgeDocumentRepository.update(knowledgeDocument);
+        knowledgeDocumentStatusSseService.publishStatusUpdated(knowledgeDocument);
     }
 
     private String getFileExtension(String filename) {

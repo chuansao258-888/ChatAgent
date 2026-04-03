@@ -19,6 +19,15 @@ import type { ChatMessageVO, SseMessage, SseMessageType } from "../../types";
 import AgentChatHistory from "./agentChatView/AgentChatHistory.tsx";
 import AgentChatInput from "./agentChatView/AgentChatInput.tsx";
 import EmptyAgentChatView from "./agentChatView/EmptyAgentChatView.tsx";
+import {
+  clearPendingTurnId,
+  getPendingTurnId,
+  setPendingTurnId,
+} from "./agentChatView/pendingTurnStorage.ts";
+
+const PENDING_HINT_MS = 15_000;
+const PENDING_TIMEOUT_MS = 30_000;
+const COMPENSATION_POLL_MS = 10_000;
 
 function isMissingChatSessionError(error: unknown): boolean {
   return (
@@ -44,6 +53,9 @@ const AgentChatView: React.FC = () => {
   const [agentStatusType, setAgentStatusType] = useState<
     SseMessageType | undefined
   >(undefined);
+  const [activePendingTurnId, setActivePendingTurnId] = useState<string | null>(
+    null,
+  );
 
   // Use ref to avoid stale closures in the SSE listener
   const isProcessingRef = useRef(displayAgentStatus);
@@ -51,25 +63,123 @@ const AgentChatView: React.FC = () => {
     isProcessingRef.current = displayAgentStatus;
   }, [displayAgentStatus]);
 
-  // Watchdog to prevent permanent UI lock during SSE failures
+  const activePendingTurnIdRef = useRef<string | null>(activePendingTurnId);
+  useEffect(() => {
+    activePendingTurnIdRef.current = activePendingTurnId;
+  }, [activePendingTurnId]);
+
+  const observedTurnMessageCountRef = useRef(0);
   const safetyUnlockTimerRef = useRef<any>(null);
+  const safetyHintTimerRef = useRef<any>(null);
+  const compensationPollTimerRef = useRef<any>(null);
 
   const clearSafetyTimer = () => {
     if (safetyUnlockTimerRef.current) {
       clearTimeout(safetyUnlockTimerRef.current);
       safetyUnlockTimerRef.current = null;
     }
+    if (safetyHintTimerRef.current) {
+      clearTimeout(safetyHintTimerRef.current);
+      safetyHintTimerRef.current = null;
+    }
   };
 
-  const startSafetyTimer = (timeoutMs = 15000) => {
-    clearSafetyTimer();
-    safetyUnlockTimerRef.current = setTimeout(() => {
-      console.warn("Safety unlock triggered: No SSE completion received within timeout.");
+  const clearCompensationPoll = () => {
+    if (compensationPollTimerRef.current) {
+      clearInterval(compensationPollTimerRef.current);
+      compensationPollTimerRef.current = null;
+    }
+  };
+
+  const clearPendingState = useCallback(
+    (sessionId?: string) => {
+      const targetSessionId = sessionId ?? chatSessionId;
+      if (targetSessionId) {
+        clearPendingTurnId(targetSessionId);
+      }
+      setActivePendingTurnId(null);
+      observedTurnMessageCountRef.current = 0;
+      clearSafetyTimer();
+      clearCompensationPoll();
       setDisplayAgentStatus(false);
       setAgentStatusText("");
       setAgentStatusType(undefined);
-    }, timeoutMs);
-  };
+    },
+    [chatSessionId],
+  );
+
+  const startSafetyTimer = useCallback(() => {
+    clearSafetyTimer();
+    safetyHintTimerRef.current = setTimeout(() => {
+      if (!isProcessingRef.current) {
+        return;
+      }
+      setAgentStatusText("连接不稳，正在确认状态...");
+    }, PENDING_HINT_MS);
+    safetyUnlockTimerRef.current = setTimeout(() => {
+      console.warn("Safety unlock triggered: No SSE completion received within timeout.");
+      antdMessage.error("长时间未收到稳定回复，请稍后重试。");
+      clearPendingState();
+    }, PENDING_TIMEOUT_MS);
+  }, [clearPendingState]);
+
+  const markPendingActivity = useCallback(() => {
+    if (!isProcessingRef.current) {
+      return;
+    }
+    startSafetyTimer();
+  }, [startSafetyTimer]);
+
+  const mergeRealtimeMessages = useCallback((realMessages: ChatMessageVO[]) => {
+    setMessages((prev) => {
+      const persistedUserTurnIds = new Set(
+        realMessages
+          .filter((message) => message.role === "user" && message.turnId)
+          .map((message) => message.turnId as string),
+      );
+      const localRealTimeMessages = prev.filter(
+        (m) => {
+          if ((m.role === "assistant" || m.role === "tool") && !m.id.startsWith("temp-")) {
+            return true;
+          }
+          if (m.id.startsWith("temp-user-")) {
+            return !m.turnId || !persistedUserTurnIds.has(m.turnId);
+          }
+          return false;
+        },
+      );
+      const filteredReal = realMessages.filter(
+        (rm) => !localRealTimeMessages.some((am) => am.id === rm.id),
+      );
+      return [...filteredReal, ...localRealTimeMessages].sort(
+        (a, b) => (a.seqNo || 0) - (b.seqNo || 0),
+      );
+    });
+  }, []);
+
+  const evaluatePendingProgress = useCallback(
+    (sessionId: string, chatMessages: ChatMessageVO[]) => {
+      const pendingTurnId = activePendingTurnIdRef.current;
+      if (!pendingTurnId) {
+        return;
+      }
+      const sameTurnMessages = chatMessages.filter(
+        (msg) =>
+          msg.turnId === pendingTurnId &&
+          (msg.role === "assistant" || msg.role === "tool"),
+      );
+      const hasAssistant = sameTurnMessages.some((msg) => msg.role === "assistant");
+      if (hasAssistant) {
+        clearPendingState(sessionId);
+        return;
+      }
+      if (sameTurnMessages.length > observedTurnMessageCountRef.current) {
+        observedTurnMessageCountRef.current = sameTurnMessages.length;
+        markPendingActivity();
+      }
+    },
+    [clearPendingState, markPendingActivity],
+  );
 
   const addMessage = (message: ChatMessageVO) => {
     setMessages((prevMessages) => {
@@ -101,23 +211,9 @@ const AgentChatView: React.FC = () => {
         getChatSession(chatSessionId),
         getChatSessionFiles(chatSessionId),
       ]);
-      
-      const realMessages = messagesResp.chatMessages;
-      
-      // Reconciliation: Merge real messages with existing local assistant/tool messages (SSE)
-      // and remove all local temporary pending messages.
-      setMessages((prev) => {
-        const localRealTimeMessages = prev.filter(
-          (m) => (m.role === "assistant" || m.role === "tool") && !m.id.startsWith("temp-"),
-        );
-        const filteredReal = realMessages.filter(
-          (rm) => !localRealTimeMessages.some((am) => am.id === rm.id),
-        );
-        return [...filteredReal, ...localRealTimeMessages].sort(
-          (a, b) => (a.seqNo || 0) - (b.seqNo || 0),
-        );
-      });
-      
+
+      mergeRealtimeMessages(messagesResp.chatMessages);
+      evaluatePendingProgress(chatSessionId, messagesResp.chatMessages);
       setSessionFiles(filesResp.files);
     } catch (error) {
       if (isMissingChatSessionError(error)) {
@@ -129,7 +225,15 @@ const AgentChatView: React.FC = () => {
       }
       throw error;
     }
-  }, [chatSessionId, initializing, isAuthenticated, navigate, refreshChatSessions]);
+  }, [
+    chatSessionId,
+    evaluatePendingProgress,
+    initializing,
+    isAuthenticated,
+    mergeRealtimeMessages,
+    navigate,
+    refreshChatSessions,
+  ]);
 
   useEffect(() => {
     if (!chatSessionId || initializing) {
@@ -140,6 +244,52 @@ const AgentChatView: React.FC = () => {
       antdMessage.error("Failed to load the conversation. Please try again.");
     });
   }, [chatSessionId, getChatData, initializing]);
+
+  useEffect(() => {
+    if (!chatSessionId) {
+      setActivePendingTurnId(null);
+      observedTurnMessageCountRef.current = 0;
+      clearSafetyTimer();
+      clearCompensationPoll();
+      return;
+    }
+    const pendingTurnId = getPendingTurnId(chatSessionId);
+    setActivePendingTurnId(pendingTurnId);
+    observedTurnMessageCountRef.current = 0;
+    if (pendingTurnId) {
+      setDisplayAgentStatus(true);
+      setAgentStatusType("AI_THINKING");
+      setAgentStatusText("Queuing...");
+      startSafetyTimer();
+    }
+  }, [chatSessionId, startSafetyTimer]);
+
+  useEffect(() => {
+    if (!chatSessionId || !activePendingTurnId || !isAuthenticated) {
+      clearCompensationPoll();
+      return;
+    }
+    clearCompensationPoll();
+    compensationPollTimerRef.current = setInterval(() => {
+      void getChatMessagesBySessionId(chatSessionId)
+        .then((response) => {
+          mergeRealtimeMessages(response.chatMessages);
+          evaluatePendingProgress(chatSessionId, response.chatMessages);
+        })
+        .catch((error) => {
+          console.warn("Compensation poll failed:", error);
+        });
+    }, COMPENSATION_POLL_MS);
+    return () => {
+      clearCompensationPoll();
+    };
+  }, [
+    activePendingTurnId,
+    chatSessionId,
+    evaluatePendingProgress,
+    isAuthenticated,
+    mergeRealtimeMessages,
+  ]);
 
   const handleSendMessage = async (value: string | { text: string }) => {
     const message = typeof value === "string" ? value : value.text;
@@ -178,11 +328,14 @@ const AgentChatView: React.FC = () => {
       return;
     }
 
+    const turnId = crypto.randomUUID();
+
     // Local Pending State: Instantly show the user's message in the UI
     const tempId = `temp-user-${Date.now()}`;
     const tempUserMessage: ChatMessageVO = {
       id: tempId,
       sessionId: activeChatSessionId,
+      turnId,
       role: "user",
       content: message,
     };
@@ -190,32 +343,39 @@ const AgentChatView: React.FC = () => {
     setMessages((prev) => [...prev, tempUserMessage]);
 
     // Initial Processing State
+    observedTurnMessageCountRef.current = 0;
+    setPendingTurnId(activeChatSessionId, turnId);
+    setActivePendingTurnId(turnId);
     setDisplayAgentStatus(true);
     setAgentStatusText("Queuing...");
     setAgentStatusType("AI_THINKING");
-    startSafetyTimer(20000); 
+    startSafetyTimer();
 
     try {
       // 1. Send message to backend
       if (state?.init) {
-        await createChatMessage({
+        const response = await createChatMessage({
           sessionId: activeChatSessionId,
+          turnId,
           role: "user",
           content: state.initMessage ?? "",
         });
+        setPendingTurnId(activeChatSessionId, response.turnId);
+        setActivePendingTurnId(response.turnId);
       } else {
-        await createChatMessage({
+        const response = await createChatMessage({
           sessionId: activeChatSessionId,
+          turnId,
           role: "user",
           content: message,
         });
+        setPendingTurnId(activeChatSessionId, response.turnId);
+        setActivePendingTurnId(response.turnId);
       }
     } catch (error) {
       console.error("Failed to send message:", error);
       antdMessage.error("Failed to send the message. Please try again.");
-      setDisplayAgentStatus(false);
-      setAgentStatusText("");
-      clearSafetyTimer();
+      clearPendingState(activeChatSessionId);
       // Rethrow to keep message in input box
       throw error;
     }
@@ -289,25 +449,29 @@ const AgentChatView: React.FC = () => {
     es.onmessage = (event) => {
       console.log("Received message:", event.data);
       // Refresh the safety timer on any activity
-      if (isProcessingRef.current) startSafetyTimer();
+      if (isProcessingRef.current) markPendingActivity();
     };
 
     es.onerror = (error) => {
       console.error("SSE error, attempting to reconnect...", error);
-      // P1 Fix (Recovery): If the connection is definitively closed, unlock after a short grace period
-      if (es.readyState === EventSource.CLOSED) {
-        startSafetyTimer(3000); 
-      }
     };
 
     es.addEventListener("message", (event) => {
       const message = JSON.parse(event.data) as SseMessage;
       
       // Refresh timer on typed messages too
-      if (isProcessingRef.current) startSafetyTimer();
+      if (isProcessingRef.current) markPendingActivity();
 
       if (message.type === "AI_GENERATED_CONTENT") {
         addMessage(message.payload.message);
+        if (
+          activePendingTurnIdRef.current &&
+          message.payload.message.turnId === activePendingTurnIdRef.current &&
+          (message.payload.message.role === "assistant" ||
+            message.payload.message.role === "tool")
+        ) {
+          observedTurnMessageCountRef.current += 1;
+        }
       } else if (message.type === "AI_PLANNING") {
         setDisplayAgentStatus(true);
         setAgentStatusText(message.payload.statusText);
@@ -321,10 +485,7 @@ const AgentChatView: React.FC = () => {
         setAgentStatusText(message.payload.statusText);
         setAgentStatusType("AI_EXECUTING");
       } else if (message.type === "AI_DONE") {
-        clearSafetyTimer(); // P1 Fix: Definitive end
-        setDisplayAgentStatus(false);
-        setAgentStatusText("");
-        setAgentStatusType(undefined);
+        clearPendingState(chatSessionId);
       } else if (message.type === "TURN_ROLLBACK") {
         const rollbackTurnId = message.payload.turnId;
         if (rollbackTurnId) {
@@ -340,8 +501,9 @@ const AgentChatView: React.FC = () => {
     return () => {
       es.close();
       clearSafetyTimer();
+      clearCompensationPoll();
     };
-  }, [chatSessionId, initializing, isAuthenticated]);
+  }, [chatSessionId, clearPendingState, initializing, isAuthenticated, markPendingActivity]);
 
   if (!chatSessionId) {
     return <EmptyAgentChatView loading={loading} />;

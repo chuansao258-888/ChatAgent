@@ -26,7 +26,7 @@ function ChatWorkspaceLayout() {
   );
 }
 
-export default function JChatMindLayout() {
+export default function ChatAgentLayout() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/chat" replace />} />

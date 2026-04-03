@@ -116,4 +116,9 @@
         </set>
         WHERE id = CAST(#{id} AS uuid)
     </update>
+
+    <delete id="deleteById">
+        DELETE FROM knowledge_base
+        WHERE id = CAST(#{id} AS uuid)
+    </delete>
 </mapper>

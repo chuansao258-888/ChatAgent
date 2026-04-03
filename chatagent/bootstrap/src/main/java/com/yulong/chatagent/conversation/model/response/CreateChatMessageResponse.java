@@ -7,5 +7,5 @@ import lombok.Data;
 @Builder
 public class CreateChatMessageResponse {
     private String chatMessageId;
+    private String turnId;
 }
-

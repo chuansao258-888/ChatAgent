@@ -29,6 +29,7 @@ public class MqChatEventDispatcher implements ChatEventDispatcher {
                 "agent.run",
                 event.getTurnId(),
                 TraceContext.getTraceId(),
+                event.getSessionId(),
                 properties.getExchanges().getChatDirect(),
                 properties.getRoutingKeys().getAgentRun()
         );

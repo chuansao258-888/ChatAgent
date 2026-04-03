@@ -4,6 +4,7 @@ import {
   Card,
   Form,
   Input,
+  Popconfirm,
   Space,
   Table,
   Tag,
@@ -14,13 +15,12 @@ import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  archiveKnowledgeBase,
   createKnowledgeBase,
+  deleteKnowledgeBase,
   getKnowledgeBases,
-  restoreKnowledgeBase,
 } from "../../../api/admin.ts";
 import type { KnowledgeBaseVO } from "../../../types/admin.ts";
-import { formatTimestamp, statusTone } from "../adminUtils.ts";
+import { formatTimestamp } from "../adminUtils.ts";
 
 interface CreateKnowledgeBaseFormValues {
   name: string;
@@ -51,25 +51,14 @@ export default function KnowledgeBaseListPage() {
     void loadKnowledgeBases();
   }, []);
 
-  const handleArchive = async (knowledgeBaseId: string) => {
+  const handleDelete = async (knowledgeBaseId: string) => {
     try {
-      await archiveKnowledgeBase(knowledgeBaseId);
-      message.success("Knowledge base archived.");
+      await deleteKnowledgeBase(knowledgeBaseId);
+      message.success("Knowledge base deleted.");
       await loadKnowledgeBases();
     } catch (error) {
-      console.error("Failed to archive knowledge base:", error);
-      message.error("Unable to archive the knowledge base.");
-    }
-  };
-
-  const handleRestore = async (knowledgeBaseId: string) => {
-    try {
-      await restoreKnowledgeBase(knowledgeBaseId);
-      message.success("Knowledge base restored.");
-      await loadKnowledgeBases();
-    } catch (error) {
-      console.error("Failed to restore knowledge base:", error);
-      message.error("Unable to restore the knowledge base.");
+      console.error("Failed to delete knowledge base:", error);
+      message.error("Unable to delete the knowledge base.");
     }
   };
 
@@ -92,13 +81,6 @@ export default function KnowledgeBaseListPage() {
         ),
       },
       {
-        title: "Status",
-        dataIndex: "status",
-        key: "status",
-        width: 140,
-        render: (status: string) => <Tag color={statusTone(status)}>{status}</Tag>,
-      },
-      {
         title: "Description",
         dataIndex: "description",
         key: "description",
@@ -115,27 +97,22 @@ export default function KnowledgeBaseListPage() {
         title: "Action",
         key: "action",
         width: 160,
-        render: (_, record) =>
-          record.status.toUpperCase() === "ARCHIVED" ? (
-            <Button
-              size="small"
-              onClick={() => {
-                void handleRestore(record.id);
-              }}
-            >
-              Restore
+        render: (_, record) => (
+          <Popconfirm
+            title="Delete this knowledge base?"
+            description="This will delete the knowledge base, its documents, chunks, vector index, and stored source files."
+            okText="Delete"
+            cancelText="Cancel"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => {
+              void handleDelete(record.id);
+            }}
+          >
+            <Button size="small" danger>
+              Delete
             </Button>
-          ) : (
-            <Button
-              size="small"
-              danger
-              onClick={() => {
-                void handleArchive(record.id);
-              }}
-            >
-              Archive
-            </Button>
-          ),
+          </Popconfirm>
+        ),
       },
     ],
     [navigate],
@@ -158,7 +135,7 @@ export default function KnowledgeBaseListPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-white/40">
@@ -168,7 +145,7 @@ export default function KnowledgeBaseListPage() {
             Knowledge base catalog
           </Typography.Title>
           <Typography.Text className="block !text-white/60">
-            Create, archive, and inspect the knowledge assets available for the
+            Create, delete, and inspect the knowledge assets available for the
             internal assistant.
           </Typography.Text>
         </div>

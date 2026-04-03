@@ -30,6 +30,7 @@ import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -73,7 +74,7 @@ class KnowledgeIngestTaskListenerTest {
                 .build();
 
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
         when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(document);
 
@@ -88,7 +89,7 @@ class KnowledgeIngestTaskListenerTest {
     }
 
     @Test
-    void shouldNackWaitRequiredMessage() throws Exception {
+    void shouldDelayWaitRequiredMessage() throws Exception {
         KnowledgeIngestTaskListener listener = newListener(new ChatAgentMqProperties());
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
@@ -96,7 +97,8 @@ class KnowledgeIngestTaskListenerTest {
 
         listener.handle(buildMessage(0, false), channel);
 
-        verify(channel).basicNack(7L, false, true);
+        verify(rabbitMqMessagePublisher).publish(eq("retry.direct"), eq("retry.ingest"), any(), anyString());
+        verify(channel).basicAck(7L, false);
         verify(knowledgeDocumentRepository, never()).findById(anyString());
         verify(knowledgeDocumentIngestionService, never()).ingestSync(anyString(), any());
     }
@@ -137,6 +139,7 @@ class KnowledgeIngestTaskListenerTest {
                 "doc-1",
                 "trace-1",
                 "knowledge.ingest",
+                null,
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
@@ -158,14 +161,15 @@ class KnowledgeIngestTaskListenerTest {
                         "token-1",
                         "KnowledgeIngestTaskListener:node-a",
                         new MqMessageIdentity(
-                                "event-1",
-                                "doc-1",
-                                "trace-1",
-                                "knowledge.ingest",
-                                "chat.direct",
-                                "ingest.task",
-                                Instant.parse("2026-03-30T00:00:00Z"),
-                                0
+                        "event-1",
+                        "doc-1",
+                        "trace-1",
+                        "knowledge.ingest",
+                        null,
+                        "chat.direct",
+                        "ingest.task",
+                        Instant.parse("2026-03-30T00:00:00Z"),
+                        0
                         )
                 ),
                 null

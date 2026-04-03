@@ -21,6 +21,13 @@ export interface KnowledgeDocumentVO {
   updatedAt?: string;
 }
 
+export interface KnowledgeDocumentStatusSseMessage {
+  type: "DOCUMENT_STATUS_UPDATED";
+  payload: {
+    document: KnowledgeDocumentVO;
+  };
+}
+
 export interface GetKnowledgeBasesResponse {
   knowledgeBases: KnowledgeBaseVO[];
 }

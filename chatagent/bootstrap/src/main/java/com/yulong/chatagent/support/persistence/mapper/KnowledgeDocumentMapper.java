@@ -18,4 +18,6 @@ public interface KnowledgeDocumentMapper {
     KnowledgeDocument selectById(@Param("id") String id);
 
     int updateById(KnowledgeDocument knowledgeDocument);
+
+    int deleteById(@Param("id") String id);
 }

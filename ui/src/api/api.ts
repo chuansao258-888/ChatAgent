@@ -84,6 +84,7 @@ export interface GetChatMessagesResponse {
 
 export interface CreateChatMessageRequest {
   sessionId: string;
+  turnId?: string;
   role: MessageType;
   content: string;
   metadata?: MetaData;
@@ -91,6 +92,7 @@ export interface CreateChatMessageRequest {
 
 export interface CreateChatMessageResponse {
   chatMessageId: string;
+  turnId: string;
 }
 
 export interface UpdateChatMessageRequest {

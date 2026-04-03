@@ -10,7 +10,9 @@ import java.util.List;
  */
 public interface OutboxRepository {
 
-    void insert(MqOutbox outbox);
+    int insert(MqOutbox outbox);
+
+    MqOutbox findById(String id);
 
     List<MqOutbox> selectClaimableBatch(int limit,
                                         LocalDateTime now,
@@ -20,6 +22,8 @@ public interface OutboxRepository {
     boolean markClaimed(String id, String claimedBy, LocalDateTime claimedAt, int expectedVersion);
 
     boolean markSent(String id, int expectedVersion);
+
+    boolean markDiscarded(String id, String lastError, int expectedVersion);
 
     boolean markFailed(String id, String lastError, LocalDateTime nextRetryAt, int newRetryCount, int expectedVersion);
 

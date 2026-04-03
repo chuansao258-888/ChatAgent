@@ -144,7 +144,7 @@ chatagent:
         min-chunk-chars: ${CHATAGENT_RAG_CONTEXTUAL_MIN_CHUNK_CHARS:160}
         max-context-chars: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CONTEXT_CHARS:600}
   mq:
-    enabled: ${CHATAGENT_MQ_ENABLED:false}
+    enabled: ${CHATAGENT_MQ_ENABLED:true}
     exchanges:
       chat-direct: ${CHATAGENT_MQ_EXCHANGE_CHAT_DIRECT:chat.direct}
       retry-direct: ${CHATAGENT_MQ_EXCHANGE_RETRY_DIRECT:retry.direct}
@@ -173,6 +173,7 @@ chatagent:
       confirm-timeout-ms: ${CHATAGENT_MQ_OUTBOX_CONFIRM_TIMEOUT_MS:5000}
       cleanup-interval-ms: ${CHATAGENT_MQ_OUTBOX_CLEANUP_INTERVAL_MS:86400000}
       cleanup-retention-days: ${CHATAGENT_MQ_OUTBOX_CLEANUP_RETENTION_DAYS:7}
+      id-namespace: ${CHATAGENT_MQ_OUTBOX_ID_NAMESPACE:a41c8a5f-f0d4-58f6-a4f5-bf4a8ef7ca55}
     consumers:
       agent-prefetch: ${CHATAGENT_MQ_CONSUMER_AGENT_PREFETCH:5}
       agent-concurrency: ${CHATAGENT_MQ_CONSUMER_AGENT_CONCURRENCY:5}
@@ -180,13 +181,19 @@ chatagent:
       ingest-concurrency: ${CHATAGENT_MQ_CONSUMER_INGEST_CONCURRENCY:2}
     locks:
       running-ttl-ms: ${CHATAGENT_MQ_LOCK_RUNNING_TTL_MS:60000}
+      session-exec-ttl-ms: ${CHATAGENT_MQ_LOCK_SESSION_EXEC_TTL_MS:120000}
       watchdog-interval-ms: ${CHATAGENT_MQ_LOCK_WATCHDOG_INTERVAL_MS:20000}
       completed-ttl-ms: ${CHATAGENT_MQ_LOCK_COMPLETED_TTL_MS:86400000}
       failed-ttl-ms: ${CHATAGENT_MQ_LOCK_FAILED_TTL_MS:3600000}
       agent-run-policy: ${CHATAGENT_MQ_LOCK_AGENT_RUN_POLICY:FAIL_OPEN}
       ingest-task-policy: ${CHATAGENT_MQ_LOCK_INGEST_TASK_POLICY:FAIL_FAST}
+      session-exec-policy: ${CHATAGENT_MQ_LOCK_SESSION_EXEC_POLICY:FAIL_OPEN}
     dispatchers:
       agent-run-enabled: ${CHATAGENT_MQ_DISPATCHER_AGENT_RUN_ENABLED:false}
+  session-guard:
+    enabled: ${CHATAGENT_SESSION_GUARD_ENABLED:true}
+    ttl-ms: ${CHATAGENT_SESSION_GUARD_TTL_MS:120000}
+    fail-open: ${CHATAGENT_SESSION_GUARD_FAIL_OPEN:true}
 
 auth:
   jwt:

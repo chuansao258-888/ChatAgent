@@ -21,9 +21,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.core.ChannelCallback;
-import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.time.Instant;
@@ -48,7 +48,7 @@ class MqAdminFacadeServiceImplTest {
     private OutboxRepository outboxRepository;
 
     @Mock
-    private RabbitAdmin rabbitAdmin;
+    private AmqpAdmin amqpAdmin;
 
     @Mock
     private RabbitTemplate rabbitTemplate;
@@ -70,7 +70,7 @@ class MqAdminFacadeServiceImplTest {
         mqAdminFacadeService = new MqAdminFacadeServiceImpl(
                 adminAccessService,
                 outboxRepository,
-                rabbitAdmin,
+                amqpAdmin,
                 rabbitTemplate,
                 rabbitMqMessagePublisher,
                 objectMapper,
@@ -86,9 +86,9 @@ class MqAdminFacadeServiceImplTest {
         when(outboxRepository.countByStatus("SENT")).thenReturn(7);
         when(outboxRepository.countByStatus("FAILED")).thenReturn(3);
         when(outboxRepository.findRecent("event-1", null, null, 10)).thenReturn(java.util.List.of(sampleOutbox()));
-        when(rabbitAdmin.getQueueProperties(properties.getQueues().getRetryAgent10s())).thenReturn(queueDepth(4));
-        when(rabbitAdmin.getQueueProperties(properties.getQueues().getRetryIngest30s())).thenReturn(queueDepth(5));
-        when(rabbitAdmin.getQueueProperties(properties.getQueues().getChatDlq())).thenReturn(queueDepth(6));
+        when(amqpAdmin.getQueueProperties(properties.getQueues().getRetryAgent10s())).thenReturn(queueDepth(4));
+        when(amqpAdmin.getQueueProperties(properties.getQueues().getRetryIngest30s())).thenReturn(queueDepth(5));
+        when(amqpAdmin.getQueueProperties(properties.getQueues().getChatDlq())).thenReturn(queueDepth(6));
 
         GetMqOutboxRetryResponse response = mqAdminFacadeService.getOutboxRetryState("event-1", null, null, 10);
 
@@ -120,7 +120,7 @@ class MqAdminFacadeServiceImplTest {
         when(channel.basicGet(properties.getQueues().getChatDlq(), false))
                 .thenReturn(sampleGetResponse())
                 .thenReturn(null);
-        when(rabbitAdmin.getQueueProperties(properties.getQueues().getChatDlq())).thenReturn(queueDepth(0));
+        when(amqpAdmin.getQueueProperties(properties.getQueues().getChatDlq())).thenReturn(queueDepth(0));
 
         ReplayDlqMessagesResponse response = mqAdminFacadeService.replayDlqMessages(request);
 
@@ -145,6 +145,7 @@ class MqAdminFacadeServiceImplTest {
                 "doc-1",
                 "trace-1",
                 "knowledge.ingest",
+                null,
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
@@ -169,6 +170,7 @@ class MqAdminFacadeServiceImplTest {
                 "doc-1",
                 "trace-1",
                 "knowledge.ingest",
+                null,
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
@@ -194,7 +196,7 @@ class MqAdminFacadeServiceImplTest {
 
     private Properties queueDepth(long depth) {
         Properties properties = new Properties();
-        properties.put(RabbitAdmin.QUEUE_MESSAGE_COUNT, depth);
+        properties.put("QUEUE_MESSAGE_COUNT", depth);
         return properties;
     }
 }

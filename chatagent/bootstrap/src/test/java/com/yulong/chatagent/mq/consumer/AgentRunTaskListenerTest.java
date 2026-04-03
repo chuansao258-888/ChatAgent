@@ -7,6 +7,8 @@ import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
 import com.yulong.chatagent.mq.lock.LockWatchdog;
+import com.yulong.chatagent.mq.lock.MqSessionExecLockAcquisition;
+import com.yulong.chatagent.mq.lock.MqSessionExecLockLease;
 import com.yulong.chatagent.mq.lock.MqTaskLockAcquireOutcome;
 import com.yulong.chatagent.mq.lock.MqTaskLockAcquisition;
 import com.yulong.chatagent.mq.lock.MqTaskLockLease;
@@ -60,7 +62,8 @@ class AgentRunTaskListenerTest {
     void shouldAckSuccessfulAgentRunMessage() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
 
         listener.handle(buildMessage(0, false), channel);
@@ -76,7 +79,8 @@ class AgentRunTaskListenerTest {
     void shouldRollbackAndProcessWhenRetryCountIsGreater() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
 
         listener.handle(buildMessage(1, false), channel);
@@ -90,7 +94,8 @@ class AgentRunTaskListenerTest {
     void shouldRollbackAndProcessWhenForceRollbackIsSetEvenIfRetryCountIsZero() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
 
         listener.handle(buildMessage(0, true), channel);
@@ -104,7 +109,8 @@ class AgentRunTaskListenerTest {
     void shouldMoveRetryableFailureToRetryQueue() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
         when(distributedLockManager.releaseRunning(any())).thenReturn(true);
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
@@ -129,7 +135,8 @@ class AgentRunTaskListenerTest {
     void shouldRequeueOriginalMessageWhenRetryPublishFails() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
         when(distributedLockManager.releaseRunning(any())).thenReturn(true);
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
@@ -145,7 +152,8 @@ class AgentRunTaskListenerTest {
     void shouldRequeueOriginalMessageWhenRunningLockCannotBeReleasedBeforeRetry() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
         when(distributedLockManager.releaseRunning(any())).thenReturn(false);
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
@@ -160,7 +168,8 @@ class AgentRunTaskListenerTest {
     void shouldRejectTerminalFailureAndPublishFallbackMessage() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
         doThrow(new BizException("bad request")).when(chatEventProcessor).process(any());
 
@@ -175,7 +184,8 @@ class AgentRunTaskListenerTest {
     void shouldRejectMessageWhenRetriesAreExhaustedAndPublishFallbackMessage() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
-        when(lockWatchdog.watch(any())).thenReturn(() -> {
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
         });
         doThrow(new RuntimeException("transient")).when(chatEventProcessor).process(any());
 
@@ -201,7 +211,7 @@ class AgentRunTaskListenerTest {
     }
 
     @Test
-    void shouldNackWaitRequiredMessage() throws Exception {
+    void shouldDelayWaitRequiredMessage() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
@@ -209,8 +219,8 @@ class AgentRunTaskListenerTest {
 
         listener.handle(buildMessage(0, false), channel);
 
-        // Verification of nack(requeue=true)
-        verify(channel).basicNack(7L, false, true);
+        verify(rabbitMqMessagePublisher).publish(eq("retry.direct"), eq("retry.agent"), any(), anyString());
+        verify(channel).basicAck(7L, false);
         verify(chatEventProcessor, never()).process(any());
     }
 
@@ -282,6 +292,7 @@ class AgentRunTaskListenerTest {
                 "turn-1",
                 "trace-1",
                 "agent.run",
+                "session-1",
                 "chat.direct",
                 "agent.run",
                 Instant.parse("2026-03-30T00:00:00Z"),
@@ -303,17 +314,30 @@ class AgentRunTaskListenerTest {
                         "token-1",
                         "AgentRunTaskListener",
                         new MqMessageIdentity(
-                                "event-1",
-                                "turn-1",
-                                "trace-1",
-                                "agent.run",
-                                "chat.direct",
-                                "agent.run",
-                                Instant.parse("2026-03-30T00:00:00Z"),
-                                0
+                        "event-1",
+                        "turn-1",
+                        "trace-1",
+                        "agent.run",
+                        "session-1",
+                        "chat.direct",
+                        "agent.run",
+                        Instant.parse("2026-03-30T00:00:00Z"),
+                        0
                         )
                 ),
                 null
+        );
+    }
+
+    private MqSessionExecLockAcquisition acquiredSessionLock() {
+        return new MqSessionExecLockAcquisition(
+                MqTaskLockAcquireOutcome.ACQUIRED,
+                new MqSessionExecLockLease(
+                        "chatagent:mq:session-exec-lock:session-1",
+                        "session-token-1",
+                        "AgentRunTaskListener",
+                        "session-1"
+                )
         );
     }
 }

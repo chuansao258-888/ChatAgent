@@ -68,6 +68,7 @@ public class ChatAgentMqProperties {
         private int confirmTimeoutMs = 5_000;
         private int cleanupIntervalMs = 86_400_000;
         private int cleanupRetentionDays = 7;
+        private String idNamespace = "a41c8a5f-f0d4-58f6-a4f5-bf4a8ef7ca55";
     }
 
     @Data
@@ -89,11 +90,13 @@ public class ChatAgentMqProperties {
     public static class Locks {
 
         private int runningTtlMs = 60_000;
+        private int sessionExecTtlMs = 120_000;
         private int watchdogIntervalMs = 20_000;
         private int completedTtlMs = 86_400_000;
         private int failedTtlMs = 3_600_000;
         private RedisFailurePolicy agentRunPolicy = RedisFailurePolicy.FAIL_OPEN;
         private RedisFailurePolicy ingestTaskPolicy = RedisFailurePolicy.FAIL_FAST;
+        private RedisFailurePolicy sessionExecPolicy = RedisFailurePolicy.FAIL_OPEN;
 
         public RedisFailurePolicy getPolicyForTask(String taskType) {
             if ("knowledge.ingest".equals(taskType)) {
@@ -101,6 +104,13 @@ public class ChatAgentMqProperties {
             }
             if ("agent.run".equals(taskType)) {
                 return agentRunPolicy;
+            }
+            return RedisFailurePolicy.FAIL_FAST;
+        }
+
+        public RedisFailurePolicy getSessionExecPolicyForTask(String taskType) {
+            if ("agent.run".equals(taskType)) {
+                return sessionExecPolicy;
             }
             return RedisFailurePolicy.FAIL_FAST;
         }

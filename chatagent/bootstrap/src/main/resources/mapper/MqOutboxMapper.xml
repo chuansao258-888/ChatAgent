@@ -51,7 +51,27 @@
                 #{retryCount},
                 #{version},
                 #{createdAt})
+        ON CONFLICT (id) DO NOTHING
     </insert>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT id,
+               event_type,
+               exchange,
+               routing_key,
+               payload::text  AS payload,
+               headers::text  AS headers,
+               status,
+               next_retry_at,
+               last_error,
+               claimed_at,
+               claimed_by,
+               retry_count,
+               version,
+               created_at
+        FROM t_mq_outbox
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
 
     <select id="selectClaimableBatch" resultMap="BaseResultMap">
         SELECT id,
@@ -98,6 +118,18 @@
             version = version + 1
         WHERE id = CAST(#{id} AS uuid)
           AND version = #{expectedVersion}
+    </update>
+
+    <update id="markDiscarded">
+        UPDATE t_mq_outbox
+        SET status     = 'DISCARDED',
+            claimed_at = NULL,
+            claimed_by = NULL,
+            last_error = #{lastError},
+            version    = version + 1
+        WHERE id = CAST(#{id} AS uuid)
+          AND version = #{expectedVersion}
+          AND status IN ('PENDING', 'FAILED', 'CLAIMED')
     </update>
 
     <update id="markFailed">

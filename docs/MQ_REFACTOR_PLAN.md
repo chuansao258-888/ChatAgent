@@ -25,7 +25,7 @@
 | Header | 含义 | 是否可变 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `x-event-id` | 事件唯一标识 | 否 | 贯穿生产、消费、重试、死信、重放的主键 |
-| `x-idempotency-key` | 幂等键 | 否 | 锁与去重判断依据；ingest 推荐使用 `documentId` 或等价业务主键 |
+| `x-idempotency-key` | 幂等键 | 否 | 锁与去重判断依据；`knowledge.ingest` 不应只使用 `documentId`，而应使用**文档版本键**（如 `documentId:contentHash`）以支持 replace 后重新入库 |
 | `x-trace-id` | 链路追踪标识 | 否 | 日志与审计关联 |
 | `x-task-type` | 任务类型 | 否 | 如 `knowledge.ingest`、`agent.run` |
 | `x-original-exchange` | 原始交换机 | 否 | DLQ replay 时用于恢复原始投递路径 |
@@ -75,9 +75,17 @@
 - MQ 幂等锁与现有摘要/会话场景中的 Redis mutex 不是同一抽象，不直接复用现有 `RedisLockManager`。
 - 这里的锁语义是 **at-least-once 消费去重状态机**，不是短生命周期的互斥锁。
 - 幂等键建议按任务类型约定：
-  - `knowledge.ingest`：优先使用 `documentId`
+  - `knowledge.ingest`：优先使用文档版本级键，例如 `documentId:contentHash`
   - `agent.run`：优先使用 `turnId`
   - 若任务不存在天然业务主键，必须在生产端显式生成 `x-idempotency-key`
+
+**知识库文档 replace 语义**：
+- `replace document` 的正确语义不是“同一个文档实体重复发同一个 ingest 事件”，而是“同一 `documentId` 下产生了一个**新的文档版本**，需要重新执行一轮 ingest / index”。
+- 因此，替换文档时：
+  - 文档记录重置为 `PENDING`
+  - 旧 chunk / 旧向量需要清理
+  - 新的 `knowledge.ingest` 事件必须使用**版本级**幂等键（推荐 `documentId:contentHash`）
+- 如果继续把幂等键固定成 `documentId`，Outbox/锁层会把 replace 误判成重复事件，导致新文件不会重新进入 RAG 流程。
 
 ### 3.2 Transactional Outbox
 1. **重试上限**：Polling Publisher 尝试发送超过 **5 次**后，将记录标记为 `FAILED` 并停止自动轮询。

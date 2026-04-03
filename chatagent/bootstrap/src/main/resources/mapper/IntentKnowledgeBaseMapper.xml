@@ -61,4 +61,9 @@
             CAST(#{intentNodeId} AS uuid)
         </foreach>
     </delete>
+
+    <delete id="deleteByKnowledgeBaseId">
+        DELETE FROM intent_knowledge_base
+        WHERE knowledge_base_id = CAST(#{knowledgeBaseId} AS uuid)
+    </delete>
 </mapper>

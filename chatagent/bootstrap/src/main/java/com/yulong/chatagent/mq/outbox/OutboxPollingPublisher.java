@@ -57,7 +57,11 @@ public class OutboxPollingPublisher {
                         buildMessage(outbox),
                         outbox.getId()
                 );
-                outboxRecordService.markSent(outbox);
+                if (!outboxRecordService.markSent(outbox)) {
+                    log.error("Outbox markSent conflict detected after successful publish, scheduling discard: id={}", outbox.getId());
+                    outboxRecordService.scheduleDiscardedConflict(outbox);
+                    continue;
+                }
                 log.info("Outbox row published successfully: id={}, exchange={}, routingKey={}",
                         outbox.getId(), outbox.getExchange(), outbox.getRoutingKey());
             } catch (Exception e) {

@@ -44,6 +44,7 @@ class OutboxPollingPublisherTest {
         );
         MqOutbox outbox = sampleOutbox(0);
         when(outboxRecordService.claimBatch(anyString(), any(LocalDateTime.class))).thenReturn(List.of(outbox));
+        when(outboxRecordService.markSent(outbox)).thenReturn(true);
 
         poller.publishDueRows();
 
@@ -85,6 +86,7 @@ class OutboxPollingPublisherTest {
                 "doc-1",
                 "trace-1",
                 "knowledge.ingest",
+                null,
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),

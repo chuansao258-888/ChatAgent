@@ -20,4 +20,6 @@ public interface KnowledgeBaseRepository {
     boolean save(KnowledgeBaseDTO knowledgeBase);
 
     boolean update(KnowledgeBaseDTO knowledgeBase);
+
+    boolean deleteById(String id);
 }

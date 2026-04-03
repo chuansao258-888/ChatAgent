@@ -17,6 +17,7 @@ public final class MqMessageHeaders {
     public static final String IDEMPOTENCY_KEY = "x-idempotency-key";
     public static final String TRACE_ID = "x-trace-id";
     public static final String TASK_TYPE = "x-task-type";
+    public static final String SESSION_ID = "x-session-id";
     public static final String ORIGINAL_EXCHANGE = "x-original-exchange";
     public static final String ORIGINAL_ROUTING_KEY = "x-original-routing-key";
     public static final String FIRST_PUBLISHED_AT = "x-first-published-at";
@@ -54,6 +55,9 @@ public final class MqMessageHeaders {
         headers.put(IDEMPOTENCY_KEY, identity.idempotencyKey());
         headers.put(TRACE_ID, identity.traceId());
         headers.put(TASK_TYPE, identity.taskType());
+        if (StringUtils.hasText(identity.sessionId())) {
+            headers.put(SESSION_ID, identity.sessionId());
+        }
         headers.put(ORIGINAL_EXCHANGE, identity.originalExchange());
         headers.put(ORIGINAL_ROUTING_KEY, identity.originalRoutingKey());
         headers.put(FIRST_PUBLISHED_AT, identity.firstPublishedAt().toString());
@@ -77,6 +81,7 @@ public final class MqMessageHeaders {
                 getRequiredText(headers, IDEMPOTENCY_KEY),
                 getRequiredText(headers, TRACE_ID),
                 getRequiredText(headers, TASK_TYPE),
+                getOptionalText(headers, SESSION_ID),
                 getRequiredText(headers, ORIGINAL_EXCHANGE),
                 getRequiredText(headers, ORIGINAL_ROUTING_KEY),
                 Instant.parse(getRequiredText(headers, FIRST_PUBLISHED_AT)),
@@ -94,6 +99,14 @@ public final class MqMessageHeaders {
             return stringValue.trim();
         }
         throw new IllegalArgumentException("Missing required MQ header: " + headerName);
+    }
+
+    private static String getOptionalText(Map<String, ?> headers, String headerName) {
+        Object value = headers.get(headerName);
+        if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+            return stringValue.trim();
+        }
+        return null;
     }
 
     private static int getNonNegativeInt(Map<String, ?> headers, String headerName) {

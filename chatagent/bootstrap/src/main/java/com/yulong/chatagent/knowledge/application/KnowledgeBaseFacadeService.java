@@ -16,7 +16,5 @@ public interface KnowledgeBaseFacadeService {
 
     void updateKnowledgeBase(String knowledgeBaseId, UpdateKnowledgeBaseRequest request);
 
-    void archiveKnowledgeBase(String knowledgeBaseId);
-
-    void restoreKnowledgeBase(String knowledgeBaseId);
+    void deleteKnowledgeBase(String knowledgeBaseId);
 }

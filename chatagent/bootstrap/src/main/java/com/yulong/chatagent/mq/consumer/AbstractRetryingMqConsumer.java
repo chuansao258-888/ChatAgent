@@ -4,6 +4,8 @@ import com.rabbitmq.client.Channel;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
 import com.yulong.chatagent.mq.lock.LockWatchdog;
+import com.yulong.chatagent.mq.lock.MqSessionExecLockAcquisition;
+import com.yulong.chatagent.mq.lock.MqSessionExecLockLease;
 import com.yulong.chatagent.mq.lock.MqTaskLockAcquireOutcome;
 import com.yulong.chatagent.mq.lock.MqTaskLockAcquisition;
 import com.yulong.chatagent.mq.lock.MqTaskLockLease;
@@ -15,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -56,7 +59,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 if (policy == ChatAgentMqProperties.RedisFailurePolicy.FAIL_OPEN) {
                     log.warn("Redis failure during tryAcquire, continuing without idempotency: taskType={}, eventId={}, error={}",
                             identity.taskType(), identity.eventId(), acquisitionException.getMessage());
-                    handleOwnedMessage(message, channel, deliveryTag, identity, null);
+                    handleOwnedMessage(message, channel, deliveryTag, identity, null, null);
                     return;
                 }
                 log.warn("Redis failure during tryAcquire, requeueing because policy is FAIL_FAST: taskType={}, eventId={}, error={}",
@@ -65,11 +68,13 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 return;
             }
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.WAIT_REQUIRED) {
-                log.info("MQ task is currently RUNNING by another instance, requeueing to wait: taskType={}, eventId={}",
-                        identity.taskType(), identity.eventId());
-                // Mitigate hot-looping by introducing a small passive delay before nack(requeue=true)
-                Thread.sleep(200);
-                channel.basicNack(deliveryTag, false, true);
+                requeueWithDelay(
+                        originalMessage(message, identity),
+                        channel,
+                        deliveryTag,
+                        identity,
+                        "task lock is already RUNNING"
+                );
                 return;
             }
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.DUPLICATE) {
@@ -78,12 +83,19 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 channel.basicAck(deliveryTag, false);
                 return;
             }
-            handleOwnedMessage(message, channel, deliveryTag, identity, acquisition.lease());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("Consumer interrupted during wait/requeue: taskType={}, eventId={}",
-                    identity.taskType(), identity.eventId());
-            channel.basicNack(deliveryTag, false, true);
+            MqTaskLockLease taskLease = acquisition.lease();
+            SessionAcquireResult sessionAcquireResult = acquireSessionExecLockOrHandle(
+                    message,
+                    channel,
+                    deliveryTag,
+                    identity,
+                    taskLease
+            );
+            if (sessionAcquireResult.handled()) {
+                return;
+            }
+            MqSessionExecLockLease sessionLease = sessionAcquireResult.lease();
+            handleOwnedMessage(message, channel, deliveryTag, identity, taskLease, sessionLease);
         } finally {
             TraceContext.clear();
         }
@@ -93,9 +105,12 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                     Channel channel,
                                     long deliveryTag,
                                     MqMessageIdentity identity,
-                                    MqTaskLockLease lease) throws IOException {
+                                    MqTaskLockLease lease,
+                                    MqSessionExecLockLease sessionLease) throws IOException {
         T payload = null;
-        try (LockWatchdog.Registration ignored = lease == null ? () -> { } : lockWatchdog.watch(lease)) {
+        try (LockWatchdog.Registration ignored =
+                     (lease == null && sessionLease == null) ? (() -> {
+                     }) : lockWatchdog.watch(lease, sessionLease)) {
             payload = deserializePayload(message);
             processTask(payload, identity);
             if (lease != null) {
@@ -106,10 +121,12 @@ public abstract class AbstractRetryingMqConsumer<T> {
                     identity.taskType(), identity.eventId(), identity.idempotencyKey());
         } catch (Exception e) {
             if (isRetryable(e)) {
-                handleRetryableFailure(payload, message, channel, deliveryTag, identity, lease, e);
+                handleRetryableFailure(payload, message, channel, deliveryTag, identity, lease, sessionLease, e);
                 return;
             }
             handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+        } finally {
+            safeReleaseSessionExecLock(sessionLease);
         }
     }
 
@@ -119,6 +136,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                         long deliveryTag,
                                         MqMessageIdentity identity,
                                         MqTaskLockLease lease,
+                                        MqSessionExecLockLease sessionLease,
                                         Exception exception) throws IOException {
         if (identity.retryCount() >= maxRetryCount()) {
             safeMarkFailed(lease, exception);
@@ -146,7 +164,6 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 return;
             }
         }
-
         MqMessageIdentity retryIdentity = identity.withRetryCount(identity.retryCount() + 1);
         try {
             rabbitMqMessagePublisher.publish(
@@ -209,6 +226,10 @@ public abstract class AbstractRetryingMqConsumer<T> {
         return getClass().getSimpleName();
     }
 
+    protected boolean requiresSessionExecutionLock(MqMessageIdentity identity) {
+        return StringUtils.hasText(identity.sessionId());
+    }
+
     private void runFailureHook(FailureHook hook, String hookName) {
         try {
             hook.run();
@@ -244,8 +265,100 @@ public abstract class AbstractRetryingMqConsumer<T> {
     protected void onTerminalFailure(T payload, MqMessageIdentity identity, Exception exception) {
     }
 
+    private SessionAcquireResult acquireSessionExecLockOrHandle(Message originalMessage,
+                                                                Channel channel,
+                                                                long deliveryTag,
+                                                                MqMessageIdentity identity,
+                                                                MqTaskLockLease taskLease) throws IOException {
+        if (!requiresSessionExecutionLock(identity)) {
+            return new SessionAcquireResult(false, null);
+        }
+        try {
+            MqSessionExecLockAcquisition acquisition =
+                    distributedLockManager.acquireSessionExecLock(identity.sessionId(), ownerId);
+            if (acquisition.outcome() == MqTaskLockAcquireOutcome.WAIT_REQUIRED) {
+                safeReleaseTaskLockForWait(identity, taskLease);
+                requeueWithDelay(originalMessage, channel, deliveryTag, identity, "session execution lock is busy");
+                return new SessionAcquireResult(true, null);
+            }
+            return new SessionAcquireResult(false, acquisition.lease());
+        } catch (Exception acquisitionException) {
+            ChatAgentMqProperties.RedisFailurePolicy policy =
+                    properties.getLocks().getSessionExecPolicyForTask(identity.taskType());
+            if (policy == ChatAgentMqProperties.RedisFailurePolicy.FAIL_OPEN) {
+                log.warn("Redis failure during session-exec acquire, continuing without session serialization: taskType={}, eventId={}, sessionId={}, error={}",
+                        identity.taskType(), identity.eventId(), identity.sessionId(), acquisitionException.getMessage());
+                return new SessionAcquireResult(false, null);
+            }
+            safeReleaseTaskLockForWait(identity, taskLease);
+            log.warn("Redis failure during session-exec acquire, requeueing because policy is FAIL_FAST: taskType={}, eventId={}, sessionId={}, error={}",
+                    identity.taskType(), identity.eventId(), identity.sessionId(), acquisitionException.getMessage());
+            channel.basicNack(deliveryTag, false, true);
+            return new SessionAcquireResult(true, null);
+        }
+    }
+
+    private void requeueWithDelay(Message originalMessage,
+                                  Channel channel,
+                                  long deliveryTag,
+                                  MqMessageIdentity identity,
+                                  String reason) throws IOException {
+        try {
+            rabbitMqMessagePublisher.publish(
+                    retryExchange(),
+                    retryRoutingKey(),
+                    originalMessage,
+                    retryCorrelationId(identity) + "-wait-" + System.nanoTime()
+            );
+            channel.basicAck(deliveryTag, false);
+            log.info("MQ task moved to delayed requeue: taskType={}, eventId={}, reason={}",
+                    identity.taskType(), identity.eventId(), reason);
+        } catch (AmqpException requeueException) {
+            log.warn("Failed to move MQ task to delayed requeue, falling back to nack(requeue=true): taskType={}, eventId={}, reason={}",
+                    identity.taskType(), identity.eventId(), reason, requeueException);
+            channel.basicNack(deliveryTag, false, true);
+        }
+    }
+
+    private Message originalMessage(Message message, MqMessageIdentity identity) {
+        return buildRetryMessage(message, identity);
+    }
+
+    private void safeReleaseTaskLockForWait(MqMessageIdentity identity, MqTaskLockLease lease) {
+        if (lease == null) {
+            return;
+        }
+        try {
+            if (!distributedLockManager.releaseRunning(lease)) {
+                log.warn("Failed to release task lock before wait requeue: taskType={}, eventId={}",
+                        identity.taskType(), identity.eventId());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to release task lock before wait requeue: taskType={}, eventId={}, error={}",
+                    identity.taskType(), identity.eventId(), e.getMessage());
+        }
+    }
+
+    private void safeReleaseSessionExecLock(MqSessionExecLockLease lease) {
+        if (lease == null) {
+            return;
+        }
+        try {
+            if (!distributedLockManager.releaseSessionExecLock(lease)) {
+                log.warn("Failed to release session execution lock after processing: sessionId={}", lease.sessionId());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to release session execution lock after processing: sessionId={}, error={}",
+                    lease.sessionId(),
+                    e.getMessage());
+        }
+    }
+
     @FunctionalInterface
     private interface FailureHook {
         void run() throws Exception;
+    }
+
+    private record SessionAcquireResult(boolean handled, MqSessionExecLockLease lease) {
     }
 }

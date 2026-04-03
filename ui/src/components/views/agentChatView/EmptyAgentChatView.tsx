@@ -10,6 +10,7 @@ import {
 } from "../../../api/api.ts";
 import { useAuth } from "../../../hooks/useAuth.ts";
 import { useChatSessions } from "../../../hooks/useChatSessions.ts";
+import { clearPendingTurnId, setPendingTurnId } from "./pendingTurnStorage.ts";
 
 const { Title, Text } = Typography;
 
@@ -61,21 +62,31 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
     }
 
     setIsSubmitting(true);
+    let targetSessionId: string | null = null;
     try {
       const createdSession = await ensureSessionForNewChat(trimmedMessage);
       if (!createdSession) {
         return;
       }
+      targetSessionId = createdSession.chatSessionId;
 
-      await createChatMessage({
+      const turnId = crypto.randomUUID();
+      setPendingTurnId(createdSession.chatSessionId, turnId);
+
+      const response = await createChatMessage({
         sessionId: createdSession.chatSessionId,
+        turnId,
         content: trimmedMessage,
         role: "user",
       });
+      setPendingTurnId(createdSession.chatSessionId, response.turnId);
 
       setInputValue("");
       navigate(`/chat/${createdSession.chatSessionId}`);
     } catch (error) {
+      if (targetSessionId) {
+        clearPendingTurnId(targetSessionId);
+      }
       console.error("Failed to create conversation:", error);
       antdMessage.error("Failed to start the conversation. Please try again.");
     } finally {

@@ -2,6 +2,7 @@ package com.yulong.chatagent.conversation.controller;
 
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.application.ConversationOrchestratorService;
+import com.yulong.chatagent.conversation.application.SessionConcurrencyGuard;
 import com.yulong.chatagent.model.common.ApiResponse;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
@@ -27,6 +28,7 @@ public class ChatMessageController {
 
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ConversationOrchestratorService conversationOrchestratorService;
+    private final SessionConcurrencyGuard sessionConcurrencyGuard;
 
     /**
      * Returns all messages for the given session.
@@ -51,7 +53,9 @@ public class ChatMessageController {
      */
     @PostMapping("/chat-messages")
     public ApiResponse<CreateChatMessageResponse> createChatMessage(@RequestBody CreateChatMessageRequest request) {
-        return ApiResponse.success(conversationOrchestratorService.handleUserTurn(request));
+        try (SessionConcurrencyGuard.SessionLock ignored = sessionConcurrencyGuard.acquire(request.getSessionId())) {
+            return ApiResponse.success(conversationOrchestratorService.handleUserTurn(request));
+        }
     }
 
     /**

@@ -16,4 +16,6 @@ public interface IntentKnowledgeBaseRepository {
     boolean saveAll(List<IntentKnowledgeBaseDTO> bindings);
 
     boolean deleteByIntentNodeIds(List<String> intentNodeIds);
+
+    boolean deleteByKnowledgeBaseId(String knowledgeBaseId);
 }

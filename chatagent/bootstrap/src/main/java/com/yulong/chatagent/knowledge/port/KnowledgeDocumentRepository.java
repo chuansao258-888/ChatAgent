@@ -16,4 +16,6 @@ public interface KnowledgeDocumentRepository {
     boolean save(KnowledgeDocumentDTO knowledgeDocument);
 
     boolean update(KnowledgeDocumentDTO knowledgeDocument);
+
+    boolean deleteById(String id);
 }

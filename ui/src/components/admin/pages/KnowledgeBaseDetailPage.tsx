@@ -9,6 +9,7 @@ import {
   Empty,
   Form,
   Input,
+  Popconfirm,
   Space,
   Table,
   Tag,
@@ -19,15 +20,17 @@ import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  archiveKnowledgeBase,
-  archiveKnowledgeDocument,
+  deleteKnowledgeDocument,
+  deleteKnowledgeBase,
   getKnowledgeBase,
   getKnowledgeDocuments,
-  restoreKnowledgeBase,
   updateKnowledgeBase,
 } from "../../../api/admin.ts";
+import { BASE_URL } from "../../../api/http.ts";
+import { getAccessToken } from "../../../auth/token.ts";
 import type {
   KnowledgeBaseVO,
+  KnowledgeDocumentStatusSseMessage,
   KnowledgeDocumentVO,
 } from "../../../types/admin.ts";
 import DocumentUploadDrawer from "../DocumentUploadDrawer.tsx";
@@ -37,6 +40,9 @@ interface KnowledgeBaseFormValues {
   name: string;
   description?: string;
 }
+
+const TERMINAL_DOCUMENT_STATUSES = new Set(["COMPLETED", "FAILED", "SKIPPED"]);
+const DOCUMENT_STATUS_POLL_INTERVAL_MS = 3000;
 
 export default function KnowledgeBaseDetailPage() {
   const { kbId } = useParams<{ kbId: string }>();
@@ -49,8 +55,18 @@ export default function KnowledgeBaseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [documentStatusFallbackEnabled, setDocumentStatusFallbackEnabled] =
+    useState(false);
   const [replaceTarget, setReplaceTarget] =
     useState<KnowledgeDocumentVO | null>(null);
+
+  const loadDocuments = async () => {
+    if (!kbId) {
+      return;
+    }
+    const documentsResponse = await getKnowledgeDocuments(kbId);
+    setDocuments(documentsResponse.documents);
+  };
 
   const loadKnowledgeBase = async () => {
     if (!kbId) {
@@ -81,6 +97,87 @@ export default function KnowledgeBaseDetailPage() {
     void loadKnowledgeBase();
   }, [kbId]);
 
+  const applyDocumentStatusUpdate = (updatedDocument: KnowledgeDocumentVO) => {
+    setDocuments((previousDocuments) => {
+      const existingIndex = previousDocuments.findIndex(
+        (document) => document.id === updatedDocument.id,
+      );
+      if (existingIndex < 0) {
+        return [updatedDocument, ...previousDocuments];
+      }
+      const nextDocuments = [...previousDocuments];
+      nextDocuments[existingIndex] = {
+        ...nextDocuments[existingIndex],
+        ...updatedDocument,
+      };
+      return nextDocuments;
+    });
+  };
+
+  const hasActiveDocumentIngestion = documents.some(
+    (document) => !TERMINAL_DOCUMENT_STATUSES.has(document.parseStatus),
+  );
+
+  useEffect(() => {
+    if (!kbId) {
+      return;
+    }
+
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+      setDocumentStatusFallbackEnabled(true);
+      return;
+    }
+
+    const eventSource = new EventSource(
+      `${BASE_URL}/sse/admin/knowledge-bases/${kbId}/documents?access_token=${encodeURIComponent(accessToken)}`,
+    );
+
+    eventSource.onopen = () => {
+      setDocumentStatusFallbackEnabled(false);
+    };
+
+    eventSource.onerror = (error) => {
+      console.warn("Knowledge document status SSE disconnected, enabling fallback polling.", error);
+      setDocumentStatusFallbackEnabled(true);
+    };
+
+    eventSource.addEventListener("message", (event) => {
+      try {
+        const message = JSON.parse(
+          event.data,
+        ) as KnowledgeDocumentStatusSseMessage;
+        if (message.type !== "DOCUMENT_STATUS_UPDATED") {
+          return;
+        }
+        applyDocumentStatusUpdate(message.payload.document);
+        setDocumentStatusFallbackEnabled(false);
+      } catch (error) {
+        console.warn("Failed to parse knowledge document SSE payload:", error);
+      }
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [kbId]);
+
+  useEffect(() => {
+    if (!kbId || !hasActiveDocumentIngestion || !documentStatusFallbackEnabled) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadDocuments().catch((error) => {
+        console.error("Failed to refresh knowledge document statuses:", error);
+      });
+    }, DOCUMENT_STATUS_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [kbId, hasActiveDocumentIngestion, documentStatusFallbackEnabled]);
+
   const handleSave = async (values: KnowledgeBaseFormValues) => {
     if (!kbId) {
       return;
@@ -98,36 +195,31 @@ export default function KnowledgeBaseDetailPage() {
     }
   };
 
-  const handleToggleArchive = async () => {
+  const handleDeleteKnowledgeBase = async () => {
     if (!kbId || !knowledgeBase) {
       return;
     }
     try {
-      if (knowledgeBase.status.toUpperCase() === "ARCHIVED") {
-        await restoreKnowledgeBase(kbId);
-        message.success("Knowledge base restored.");
-      } else {
-        await archiveKnowledgeBase(kbId);
-        message.success("Knowledge base archived.");
-      }
-      await loadKnowledgeBase();
+      await deleteKnowledgeBase(kbId);
+      message.success("Knowledge base deleted.");
+      navigate("/admin/knowledge-bases", { replace: true });
     } catch (error) {
-      console.error("Failed to toggle knowledge base status:", error);
-      message.error("Unable to update knowledge base status.");
+      console.error("Failed to delete knowledge base:", error);
+      message.error("Unable to delete the knowledge base.");
     }
   };
 
-  const handleArchiveDocument = async (documentId: string) => {
+  const handleDeleteDocument = async (documentId: string) => {
     if (!kbId) {
       return;
     }
     try {
-      await archiveKnowledgeDocument(kbId, documentId);
-      message.success("Document archived.");
+      await deleteKnowledgeDocument(kbId, documentId);
+      message.success("Document deleted.");
       await loadKnowledgeBase();
     } catch (error) {
-      console.error("Failed to archive document:", error);
-      message.error("Unable to archive the document.");
+      console.error("Failed to delete document:", error);
+      message.error("Unable to delete the document.");
     }
   };
 
@@ -182,15 +274,20 @@ export default function KnowledgeBaseDetailPage() {
             >
               Replace
             </Button>
-            <Button
-              size="small"
-              danger
-              onClick={() => {
-                void handleArchiveDocument(record.id);
+            <Popconfirm
+              title="Delete this document?"
+              description="This will remove the document record, chunks, vector index, and stored source file."
+              okText="Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
+                void handleDeleteDocument(record.id);
               }}
             >
-              Archive
-            </Button>
+              <Button size="small" danger>
+                Delete
+              </Button>
+            </Popconfirm>
           </Space>
         ),
       },
@@ -203,7 +300,7 @@ export default function KnowledgeBaseDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <Link
@@ -217,8 +314,7 @@ export default function KnowledgeBaseDetailPage() {
             {knowledgeBase?.name ?? "Knowledge base"}
           </Typography.Title>
           <Typography.Text className="block !text-white/60">
-            Manage metadata, uploaded documents, and lifecycle state for this
-            knowledge base.
+            Manage metadata and uploaded documents for this knowledge base.
           </Typography.Text>
         </div>
         <Space wrap>
@@ -238,25 +334,27 @@ export default function KnowledgeBaseDetailPage() {
               setReplaceTarget(null);
               setDrawerOpen(true);
             }}
-            disabled={knowledgeBase?.status?.toUpperCase() === "ARCHIVED"}
           >
             Upload document
           </Button>
-          <Button
-            danger={knowledgeBase?.status?.toUpperCase() !== "ARCHIVED"}
-            className=""
-            onClick={() => {
-              void handleToggleArchive();
+          <Popconfirm
+            title="Delete this knowledge base?"
+            description="This will delete the knowledge base, all document records, chunks, vector index, and stored source files."
+            okText="Delete"
+            cancelText="Cancel"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => {
+              void handleDeleteKnowledgeBase();
             }}
           >
-            {knowledgeBase?.status?.toUpperCase() === "ARCHIVED"
-              ? "Restore"
-              : "Archive"}
-          </Button>
+            <Button danger className="">
+              Delete
+            </Button>
+          </Popconfirm>
         </Space>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
         <Card
           loading={loading}
           className="shadow-admin-card"
@@ -290,7 +388,7 @@ export default function KnowledgeBaseDetailPage() {
               htmlType="submit"
               type="primary"
               loading={saving}
-              className=""
+              className="admin-primary-button"
             >
               Save changes
             </Button>
@@ -302,15 +400,9 @@ export default function KnowledgeBaseDetailPage() {
           className="!bg-white/[0.06] !border !border-white/[0.08] shadow-admin-card-dark"
         >
           <Typography.Title level={4} className="!mt-0 !text-white">
-            Lifecycle snapshot
+            Knowledge base overview
           </Typography.Title>
           <div className="space-y-4 text-sm leading-7 text-white/60">
-            <div className="flex items-center justify-between">
-              <span>Status</span>
-              <Tag color={statusTone(knowledgeBase?.status)}>
-                {knowledgeBase?.status ?? "UNKNOWN"}
-              </Tag>
-            </div>
             <div className="flex items-center justify-between">
               <span>Visibility</span>
               <span>{knowledgeBase?.visibility ?? "SHARED"}</span>
@@ -337,7 +429,12 @@ export default function KnowledgeBaseDetailPage() {
               Uploaded documents
             </Typography.Title>
             <Typography.Text className="!text-white/60">
-              Replace or archive documents without leaving the detail page.
+              Replace or delete documents without leaving the detail page.
+              {hasActiveDocumentIngestion
+                ? documentStatusFallbackEnabled
+                  ? " Live updates are temporarily unavailable, so status is falling back to background refresh."
+                  : " Status updates refresh automatically while ingestion is running."
+                : ""}
             </Typography.Text>
           </div>
           <Tag color="blue">{documents.length} items</Tag>

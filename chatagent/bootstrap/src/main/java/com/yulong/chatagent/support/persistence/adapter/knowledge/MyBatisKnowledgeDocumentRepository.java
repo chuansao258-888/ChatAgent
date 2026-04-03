@@ -45,6 +45,11 @@ public class MyBatisKnowledgeDocumentRepository implements KnowledgeDocumentRepo
         return knowledgeDocumentMapper.updateById(toEntity(knowledgeDocument)) > 0;
     }
 
+    @Override
+    public boolean deleteById(String id) {
+        return knowledgeDocumentMapper.deleteById(id) > 0;
+    }
+
     private KnowledgeDocumentDTO toDTO(KnowledgeDocument entity) {
         if (entity == null) {
             return null;

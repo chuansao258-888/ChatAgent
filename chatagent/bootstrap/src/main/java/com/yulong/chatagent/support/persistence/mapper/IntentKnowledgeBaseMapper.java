@@ -19,4 +19,6 @@ public interface IntentKnowledgeBaseMapper {
     int batchInsert(@Param("bindings") List<IntentKnowledgeBase> bindings);
 
     int deleteByIntentNodeIds(@Param("intentNodeIds") List<String> intentNodeIds);
+
+    int deleteByKnowledgeBaseId(@Param("knowledgeBaseId") String knowledgeBaseId);
 }

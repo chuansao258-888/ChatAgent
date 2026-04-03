@@ -2,6 +2,7 @@ package com.yulong.chatagent.mq.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.support.persistence.entity.MqOutbox;
@@ -21,10 +22,14 @@ public class OutboxEventPublisher {
 
     private final OutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
+    private final UUID outboxIdNamespace;
 
-    public OutboxEventPublisher(OutboxRepository outboxRepository, ObjectMapper objectMapper) {
+    public OutboxEventPublisher(OutboxRepository outboxRepository,
+                                ObjectMapper objectMapper,
+                                ChatAgentMqProperties properties) {
         this.outboxRepository = outboxRepository;
         this.objectMapper = objectMapper;
+        this.outboxIdNamespace = UUID.fromString(properties.getOutbox().getIdNamespace());
     }
 
     public void publish(String eventType, String exchange, String routingKey,
@@ -33,7 +38,7 @@ public class OutboxEventPublisher {
         String headersJson = serializeHeaders(identity);
 
         MqOutbox outbox = MqOutbox.builder()
-                .id(UUID.randomUUID().toString())
+                .id(UuidV5Generator.generate(outboxIdNamespace, eventType + ":" + identity.idempotencyKey()).toString())
                 .eventType(eventType)
                 .exchange(exchange)
                 .routingKey(routingKey)
@@ -46,7 +51,19 @@ public class OutboxEventPublisher {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        outboxRepository.insert(outbox);
+        int inserted = outboxRepository.insert(outbox);
+        if (inserted == 0) {
+            throwDuplicateInsertWarning(eventType, identity);
+        }
+    }
+
+    private void throwDuplicateInsertWarning(String eventType, MqMessageIdentity identity) {
+        org.slf4j.LoggerFactory.getLogger(OutboxEventPublisher.class).warn(
+                "Outbox duplicate insert skipped: eventType={}, idempotencyKey={}, eventId={}",
+                eventType,
+                identity.idempotencyKey(),
+                identity.eventId()
+        );
     }
 
     private String serializeHeaders(MqMessageIdentity identity) {

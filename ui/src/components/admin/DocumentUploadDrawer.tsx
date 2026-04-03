@@ -115,7 +115,7 @@ export default function DocumentUploadDrawer({
             onClick={() => {
               void handleSubmit();
             }}
-            className=""
+            className="admin-primary-button"
           >
             {document ? "Replace document" : "Upload document"}
           </Button>

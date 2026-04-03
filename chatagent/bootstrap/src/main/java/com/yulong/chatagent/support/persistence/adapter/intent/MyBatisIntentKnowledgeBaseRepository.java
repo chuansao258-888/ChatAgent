@@ -63,6 +63,11 @@ public class MyBatisIntentKnowledgeBaseRepository implements IntentKnowledgeBase
         return intentKnowledgeBaseMapper.deleteByIntentNodeIds(intentNodeIds) >= 0;
     }
 
+    @Override
+    public boolean deleteByKnowledgeBaseId(String knowledgeBaseId) {
+        return intentKnowledgeBaseMapper.deleteByKnowledgeBaseId(knowledgeBaseId) >= 0;
+    }
+
     private IntentKnowledgeBaseDTO toDTO(IntentKnowledgeBase entity) {
         if (entity == null) {
             return null;

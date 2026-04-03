@@ -15,6 +15,8 @@ public interface MqOutboxMapper {
 
     int insert(MqOutbox outbox);
 
+    MqOutbox findById(@Param("id") String id);
+
     List<MqOutbox> selectClaimableBatch(@Param("limit") int limit,
                                         @Param("now") LocalDateTime now,
                                         @Param("staleClaimBefore") LocalDateTime staleClaimBefore,
@@ -27,6 +29,10 @@ public interface MqOutboxMapper {
 
     int markSent(@Param("id") String id,
                  @Param("expectedVersion") int expectedVersion);
+
+    int markDiscarded(@Param("id") String id,
+                      @Param("lastError") String lastError,
+                      @Param("expectedVersion") int expectedVersion);
 
     int markFailed(@Param("id") String id,
                    @Param("lastError") String lastError,

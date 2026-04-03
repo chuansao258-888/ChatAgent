@@ -48,16 +48,10 @@ export async function updateKnowledgeBase(
   return patch<void>(`/admin/knowledge-bases/${knowledgeBaseId}`, request);
 }
 
-export async function archiveKnowledgeBase(
+export async function deleteKnowledgeBase(
   knowledgeBaseId: string,
 ): Promise<void> {
-  return post<void>(`/admin/knowledge-bases/${knowledgeBaseId}/archive`);
-}
-
-export async function restoreKnowledgeBase(
-  knowledgeBaseId: string,
-): Promise<void> {
-  return post<void>(`/admin/knowledge-bases/${knowledgeBaseId}/restore`);
+  return del<void>(`/admin/knowledge-bases/${knowledgeBaseId}`);
 }
 
 export async function getKnowledgeDocuments(
@@ -93,12 +87,12 @@ export async function replaceKnowledgeDocument(
   );
 }
 
-export async function archiveKnowledgeDocument(
+export async function deleteKnowledgeDocument(
   knowledgeBaseId: string,
   documentId: string,
 ): Promise<void> {
-  return post<void>(
-    `/admin/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/archive`,
+  return del<void>(
+    `/admin/knowledge-bases/${knowledgeBaseId}/documents/${documentId}`,
   );
 }
 

@@ -22,4 +22,6 @@ public interface KnowledgeBaseMapper {
     KnowledgeBase selectById(@Param("id") String id);
 
     int updateById(KnowledgeBase knowledgeBase);
+
+    int deleteById(@Param("id") String id);
 }
