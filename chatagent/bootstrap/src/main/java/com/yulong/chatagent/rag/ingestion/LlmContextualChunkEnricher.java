@@ -4,8 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.rag.ingestion.enrich.ContextualChunkEnricherProperties;
-import com.yulong.chatagent.rag.ingestion.model.FileIngestionContext;
+import com.yulong.chatagent.rag.ingestion.model.BaseIngestionContext;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeChunkDraft;
+import com.yulong.chatagent.rag.ingestion.model.KnowledgeIngestionContext;
+import com.yulong.chatagent.rag.ingestion.model.SessionIngestionContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -47,7 +49,7 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
     }
 
     @Override
-    public List<KnowledgeChunkDraft> enrich(FileIngestionContext context, List<KnowledgeChunkDraft> drafts) {
+    public List<KnowledgeChunkDraft> enrich(BaseIngestionContext context, List<KnowledgeChunkDraft> drafts) {
         if (drafts == null || drafts.isEmpty()) {
             return drafts;
         }
@@ -71,8 +73,8 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
 
             long chunkStart = System.nanoTime();
             try {
-                log.info("Contextual chunk enrichment started: sessionFileId={}, chunkIndex={}, contentLength={}, modelId={}",
-                        context.getSessionFile() == null ? null : context.getSessionFile().getId(),
+                log.info("Contextual chunk enrichment started: sourceId={}, chunkIndex={}, contentLength={}, modelId={}",
+                        resolveContextOwnerId(context),
                         i,
                         draft.content() == null ? 0 : draft.content().length(),
                         properties.getModelId());
@@ -110,14 +112,14 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
                         retrievalText
                 ));
                 contextualizedCount++;
-                log.info("Contextual chunk enrichment completed: sessionFileId={}, chunkIndex={}, contextLength={}, durationMs={}",
-                        context.getSessionFile() == null ? null : context.getSessionFile().getId(),
+                log.info("Contextual chunk enrichment completed: sourceId={}, chunkIndex={}, contextLength={}, durationMs={}",
+                        resolveContextOwnerId(context),
                         i,
                         contextText.length(),
                         (System.nanoTime() - chunkStart) / 1_000_000);
             } catch (Exception e) {
-                log.warn("Contextual chunk enrichment skipped: sessionFileId={}, chunkIndex={}, error={}",
-                        context.getSessionFile() == null ? null : context.getSessionFile().getId(),
+                log.warn("Contextual chunk enrichment skipped: sourceId={}, chunkIndex={}, error={}",
+                        resolveContextOwnerId(context),
                         i,
                         e.getMessage());
                 enriched.add(draft);
@@ -138,11 +140,18 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
                 && contextualizedCount < properties.getMaxChunksPerFile();
     }
 
-    private String resolveWholeDocument(FileIngestionContext context) {
-        if (StringUtils.hasText(context.getEnhancedText())) {
-            return context.getEnhancedText();
+    private String resolveWholeDocument(BaseIngestionContext context) {
+        return context.resolveDocumentPrefix(properties.getMaxDocumentChars());
+    }
+
+    private String resolveContextOwnerId(BaseIngestionContext context) {
+        if (context instanceof SessionIngestionContext sessionContext) {
+            return sessionContext.getSessionFile() == null ? null : sessionContext.getSessionFile().getId();
         }
-        return context.getRawText();
+        if (context instanceof KnowledgeIngestionContext knowledgeContext) {
+            return knowledgeContext.getDocumentId();
+        }
+        return null;
     }
 
     private String buildUserPrompt(String wholeDocument, String chunkContent) {

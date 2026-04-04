@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -87,6 +88,24 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     @Override
     public Path getFilePath(String filePath) {
         return Paths.get(baseStoragePath, filePath);
+    }
+
+    @Override
+    public long getFileSize(String filePath) throws IOException {
+        return Files.size(getFilePath(filePath));
+    }
+
+    @Override
+    public byte[] readPrefix(String filePath, int maxBytes) throws IOException {
+        Path fullPath = getFilePath(filePath);
+        try (InputStream inputStream = Files.newInputStream(fullPath)) {
+            return inputStream.readNBytes(Math.max(0, maxBytes));
+        }
+    }
+
+    @Override
+    public InputStream openInputStream(String filePath) throws IOException {
+        return Files.newInputStream(getFilePath(filePath));
     }
 
     @Override

@@ -135,7 +135,53 @@ chatagent:
     summary-model: ${CHATAGENT_MEMORY_SUMMARY_MODEL:deepseek-chat}
     summary-max-chars: ${CHATAGENT_MEMORY_SUMMARY_MAX_CHARS:500}
   rag:
+    vdp:
+      cache:
+        enabled: ${CHATAGENT_RAG_VDP_CACHE_ENABLED:true}
+        session-ttl-minutes: ${CHATAGENT_RAG_VDP_CACHE_SESSION_TTL_MINUTES:30}
+        session-max-size: ${CHATAGENT_RAG_VDP_CACHE_SESSION_MAX_SIZE:512}
+        knowledge-ttl-minutes: ${CHATAGENT_RAG_VDP_CACHE_KNOWLEDGE_TTL_MINUTES:1440}
+      char-density-threshold: ${CHATAGENT_RAG_VDP_CHAR_DENSITY_THRESHOLD:150}
+      short-text-fast-track-threshold: ${CHATAGENT_RAG_VDP_SHORT_TEXT_FAST_TRACK_THRESHOLD:80}
+      whitespace-alignment-line-threshold: ${CHATAGENT_RAG_VDP_WHITESPACE_ALIGNMENT_LINE_THRESHOLD:2}
+      pdf-page-max-in-flight: ${CHATAGENT_RAG_VDP_PDF_PAGE_MAX_IN_FLIGHT:2}
+      pdf-page-timeout-ms: ${CHATAGENT_RAG_VDP_PDF_PAGE_TIMEOUT_MS:5000}
+      knowledge-document-timeout-ms: ${CHATAGENT_RAG_VDP_KNOWLEDGE_DOCUMENT_TIMEOUT_MS:120000}
+      pdf-page-dispatch-core-pool-size: ${CHATAGENT_RAG_VDP_PDF_PAGE_DISPATCH_CORE_POOL_SIZE:2}
+      pdf-page-dispatch-max-pool-size: ${CHATAGENT_RAG_VDP_PDF_PAGE_DISPATCH_MAX_POOL_SIZE:2}
+      pdf-page-dispatch-queue-capacity: ${CHATAGENT_RAG_VDP_PDF_PAGE_DISPATCH_QUEUE_CAPACITY:0}
+      pdf-batch-core-pool-size: ${CHATAGENT_RAG_VDP_PDF_BATCH_CORE_POOL_SIZE:1}
+      pdf-batch-max-pool-size: ${CHATAGENT_RAG_VDP_PDF_BATCH_MAX_POOL_SIZE:1}
+      pdf-batch-queue-capacity: ${CHATAGENT_RAG_VDP_PDF_BATCH_QUEUE_CAPACITY:0}
+      pdf-render-dpi: ${CHATAGENT_RAG_VDP_PDF_RENDER_DPI:120}
+      vlm:
+        enabled: ${CHATAGENT_RAG_VDP_VLM_ENABLED:true}
+        client-id: ${CHATAGENT_RAG_VDP_VLM_CLIENT_ID:glm-4.6}
+        model-id: ${CHATAGENT_RAG_VDP_VLM_MODEL_ID:glm-4v-flash}
+        prompt-version: ${CHATAGENT_RAG_VDP_VLM_PROMPT_VERSION:v1}
+        max-tokens: ${CHATAGENT_RAG_VDP_VLM_MAX_TOKENS:1200}
+        temperature: ${CHATAGENT_RAG_VDP_VLM_TEMPERATURE:0.1}
+        timeout-ms: ${CHATAGENT_RAG_VDP_VLM_TIMEOUT_MS:5000}
+        core-pool-size: ${CHATAGENT_RAG_VDP_CORE_POOL_SIZE:1}
+        max-pool-size: ${CHATAGENT_RAG_VDP_MAX_POOL_SIZE:2}
+        queue-capacity: ${CHATAGENT_RAG_VDP_QUEUE_CAPACITY:0}
+        failure-placeholder: "${CHATAGENT_RAG_VDP_FAILURE_PLACEHOLDER:[图像解析失败]}"
+    retrieval:
+      document-signals:
+        cache-ttl-minutes: ${CHATAGENT_RAG_DOCUMENT_SIGNAL_CACHE_TTL_MINUTES:30}
     ingestion:
+      document-enhancer:
+        enabled: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_ENABLED:false}
+        model-id: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MODEL:}
+        prompt-version: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_PROMPT_VERSION:v1}
+        short-doc-char-limit: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_SHORT_DOC_CHAR_LIMIT:12000}
+        map-window-max-chars: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAP_WINDOW_MAX_CHARS:6000}
+        max-keywords: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_KEYWORDS:10}
+        max-questions: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_QUESTIONS:5}
+        max-keyword-chars: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_KEYWORD_CHARS:80}
+        max-question-chars: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_QUESTION_CHARS:180}
+        min-enhanced-length-ratio: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MIN_LENGTH_RATIO:0.5}
+        max-enhanced-length-ratio: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_LENGTH_RATIO:2.0}
       contextual-enricher:
         enabled: ${CHATAGENT_RAG_CONTEXTUAL_ENRICHER_ENABLED:true}
         model-id: ${CHATAGENT_RAG_CONTEXTUAL_MODEL:}

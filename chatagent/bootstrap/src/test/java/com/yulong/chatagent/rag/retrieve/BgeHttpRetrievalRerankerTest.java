@@ -134,6 +134,24 @@ class BgeHttpRetrievalRerankerTest {
     }
 
     @Test
+    void testBuildDocumentIncludesDocumentSignals() {
+        BgeHttpRetrievalReranker reranker = createReranker(request -> Mono.just(jsonResponse("""
+                {"results":[{"index":0,"relevance_score":0.95}]}
+                """)));
+
+        String document = reranker.buildDocument(MilvusSearchHit.builder()
+                .chunkId("id0")
+                .content("Employees may carry over up to five days.")
+                .contextText("Annual leave section")
+                .documentKeywords(List.of("leave policy"))
+                .documentQuestions(List.of("How many leave days can be carried over?"))
+                .build());
+
+        assertTrue(document.contains("Document Keywords: leave policy"));
+        assertTrue(document.contains("Document Questions: How many leave days can be carried over?"));
+    }
+
+    @Test
     void testLowConfidenceRerankMarksHitsAsFiltered() {
         properties.setScoreThreshold(0.15d);
         properties.setEnableConfidenceFilter(true);

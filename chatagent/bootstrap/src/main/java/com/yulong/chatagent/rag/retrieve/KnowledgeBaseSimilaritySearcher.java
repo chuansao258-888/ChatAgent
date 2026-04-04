@@ -26,6 +26,7 @@ public class KnowledgeBaseSimilaritySearcher {
     private final int topK;
     private final int candidateK;
     private final int rrfK;
+    private final KnowledgeDocumentSignalService knowledgeDocumentSignalService;
     private final RetrievalReranker retrievalReranker;
     private final ObjectProvider<KnowledgeBaseMilvusIndexService> knowledgeBaseMilvusIndexServiceProvider;
     private final com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient embeddingClient;
@@ -34,19 +35,24 @@ public class KnowledgeBaseSimilaritySearcher {
                                            @Value("${rag.retrieval.top-k:3}") int topK,
                                            @Value("${rag.retrieval.candidate-k:12}") int candidateK,
                                            @Value("${rag.retrieval.rrf-k:60}") int rrfK,
+                                           KnowledgeDocumentSignalService knowledgeDocumentSignalService,
                                            RetrievalReranker retrievalReranker,
                                            ObjectProvider<KnowledgeBaseMilvusIndexService> knowledgeBaseMilvusIndexServiceProvider) {
         this.embeddingClient = embeddingClient;
         this.topK = topK;
         this.candidateK = candidateK;
         this.rrfK = rrfK;
+        this.knowledgeDocumentSignalService = knowledgeDocumentSignalService;
         this.retrievalReranker = retrievalReranker;
         this.knowledgeBaseMilvusIndexServiceProvider = knowledgeBaseMilvusIndexServiceProvider;
     }
 
     public List<RetrievalHit> searchByKnowledgeBaseIds(List<String> knowledgeBaseIds, String queryText) {
         List<MilvusSearchHit> candidates = searchCandidateHitsByKnowledgeBaseIds(knowledgeBaseIds, queryText);
-        List<MilvusSearchHit> rerankedHits = retrievalReranker.rerank(queryText, candidates);
+        List<MilvusSearchHit> rerankedHits = retrievalReranker.rerank(
+                queryText,
+                knowledgeDocumentSignalService.attachSignals(candidates)
+        );
         return rerankedHits.stream()
                 .limit(topK)
                 .map(this::toRetrievalHit)

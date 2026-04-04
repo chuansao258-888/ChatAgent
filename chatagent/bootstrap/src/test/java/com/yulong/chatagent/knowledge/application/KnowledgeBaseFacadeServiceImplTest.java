@@ -10,6 +10,7 @@ import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
+import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
@@ -58,6 +59,9 @@ class KnowledgeBaseFacadeServiceImplTest {
     private KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer;
 
     @Mock
+    private KnowledgeDocumentSignalService knowledgeDocumentSignalService;
+
+    @Mock
     private DocumentStorageService documentStorageService;
 
     @Mock
@@ -75,6 +79,7 @@ class KnowledgeBaseFacadeServiceImplTest {
                 knowledgeDocumentRepository,
                 knowledgeChunkRepository,
                 knowledgeBaseMilvusIndexer,
+                knowledgeDocumentSignalService,
                 documentStorageService,
                 new KnowledgeBaseConverter(),
                 resourceAccessGuard
@@ -122,6 +127,7 @@ class KnowledgeBaseFacadeServiceImplTest {
                 knowledgeChunkRepository,
                 knowledgeDocumentRepository,
                 knowledgeBaseMilvusIndexer,
+                knowledgeDocumentSignalService,
                 agentKnowledgeBaseRepository,
                 intentKnowledgeBaseRepository,
                 knowledgeBaseRepository,
@@ -135,6 +141,7 @@ class KnowledgeBaseFacadeServiceImplTest {
         inOrder.verify(agentKnowledgeBaseRepository).deleteByKnowledgeBaseId("kb-1");
         inOrder.verify(intentKnowledgeBaseRepository).deleteByKnowledgeBaseId("kb-1");
         inOrder.verify(knowledgeBaseRepository).deleteById("kb-1");
+        inOrder.verify(knowledgeDocumentSignalService).evictCaches(List.of("doc-1", "doc-2"));
         inOrder.verify(documentStorageService).deleteFile("knowledge-bases/kb-1/doc-1/a.pdf");
         inOrder.verify(documentStorageService).deleteFile("knowledge-bases/kb-1/doc-2/b.pdf");
         verify(documentStorageService, never()).deleteFile((String) null);

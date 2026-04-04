@@ -11,10 +11,13 @@ import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.outbox.OutboxEventPublisher;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
+import com.yulong.chatagent.rag.parser.FileTypeDetector;
+import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
+import com.yulong.chatagent.exception.BizException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,7 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.argThat;
@@ -72,7 +76,11 @@ class KnowledgeDocumentFacadeServiceImplTest {
     @Mock
     private OutboxEventPublisher outboxEventPublisher;
 
+    @Mock
+    private KnowledgeDocumentSignalService knowledgeDocumentSignalService;
+
     private ChatAgentMqProperties mqProperties;
+    private final FileTypeDetector fileTypeDetector = new FileTypeDetector();
 
     private KnowledgeDocumentFacadeServiceImpl facadeService;
 
@@ -89,7 +97,9 @@ class KnowledgeDocumentFacadeServiceImplTest {
                 knowledgeBaseMilvusIndexer,
                 knowledgeDocumentStatusSseService,
                 resourceAccessGuard,
-                mqProperties
+                mqProperties,
+                knowledgeDocumentSignalService,
+                fileTypeDetector
         );
     }
 
@@ -179,6 +189,35 @@ class KnowledgeDocumentFacadeServiceImplTest {
     }
 
     @Test
+    void shouldRejectStandaloneImagesBeforeKnowledgeStorage() throws Exception {
+        LoginUser adminUser = LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build();
+        UserContext.set(adminUser);
+        when(adminAccessService.requireAdmin()).thenReturn(adminUser);
+        when(resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, "kb-1")).thenReturn(KnowledgeBaseDTO.builder()
+                .id("kb-1")
+                .status("ACTIVE")
+                .build());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "scan.png",
+                "image/png",
+                new byte[]{(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'}
+        );
+
+        assertThatThrownBy(() -> facadeService.uploadKnowledgeDocument("kb-1", file))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("standalone images");
+
+        verify(documentStorageService, never()).saveKnowledgeDocument(eq("kb-1"), any(), any());
+        verify(knowledgeDocumentRepository, never()).save(any());
+        verify(knowledgeDocumentIngestionService, never()).ingest(eq("kb-1"), any(KnowledgeDocumentDTO.class));
+    }
+
+    @Test
     void shouldUseDocumentVersionIdempotencyKeyWhenReplacingKnowledgeDocumentInMqMode() throws Exception {
         mqProperties.setEnabled(true);
         ReflectionTestUtils.setField(facadeService, "outboxEventPublisher", outboxEventPublisher);
@@ -256,6 +295,7 @@ class KnowledgeDocumentFacadeServiceImplTest {
         inOrder.verify(knowledgeBaseMilvusIndexer).deleteByKnowledgeDocumentId("doc-1");
         inOrder.verify(knowledgeDocumentRepository).deleteById("doc-1");
         inOrder.verify(documentStorageService).deleteFile("knowledge-bases/kb-1/doc-1/source.pdf");
+        verify(knowledgeDocumentSignalService).evictCache("doc-1");
         verify(knowledgeDocumentIngestionService, never()).ingest(eq("kb-1"), any(KnowledgeDocumentDTO.class));
     }
 }

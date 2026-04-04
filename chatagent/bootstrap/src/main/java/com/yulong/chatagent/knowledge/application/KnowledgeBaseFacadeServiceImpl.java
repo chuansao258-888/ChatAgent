@@ -17,6 +17,7 @@ import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
+import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
@@ -49,6 +50,7 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeChunkRepository knowledgeChunkRepository;
     private final KnowledgeBaseMilvusIndexer knowledgeBaseMilvusIndexer;
+    private final KnowledgeDocumentSignalService knowledgeDocumentSignalService;
     private final DocumentStorageService documentStorageService;
     private final KnowledgeBaseConverter knowledgeBaseConverter;
     private final ResourceAccessGuard resourceAccessGuard;
@@ -132,10 +134,14 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
         );
         List<KnowledgeDocumentDTO> documents = knowledgeDocumentRepository.findByKnowledgeBaseId(knowledgeBase.getId());
         List<String> storagePaths = new ArrayList<>();
+        List<String> documentIds = new ArrayList<>();
         for (KnowledgeDocumentDTO document : documents) {
             knowledgeChunkRepository.deleteByKnowledgeDocumentId(document.getId());
             if (!knowledgeDocumentRepository.deleteById(document.getId())) {
                 throw new BizException("Failed to delete knowledge document: " + document.getId());
+            }
+            if (StringUtils.hasText(document.getId())) {
+                documentIds.add(document.getId());
             }
             if (StringUtils.hasText(document.getStoragePath())) {
                 storagePaths.add(document.getStoragePath());
@@ -148,6 +154,7 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
         if (!knowledgeBaseRepository.deleteById(knowledgeBase.getId())) {
             throw new BizException("Failed to delete knowledge base");
         }
+        scheduleSignalCacheEvictionAfterCommit(documentIds);
         scheduleStoredFileDeletionAfterCommit(knowledgeBase.getId(), storagePaths);
     }
 
@@ -174,6 +181,22 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
         cleanupStoredFilesQuietly(knowledgeBaseId, storagePaths);
     }
 
+    private void scheduleSignalCacheEvictionAfterCommit(List<String> documentIds) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    evictSignalCachesQuietly(documentIds);
+                }
+            });
+            return;
+        }
+        evictSignalCachesQuietly(documentIds);
+    }
+
     private void cleanupStoredFilesQuietly(String knowledgeBaseId, List<String> storagePaths) {
         for (String storagePath : storagePaths) {
             if (!StringUtils.hasText(storagePath)) {
@@ -185,6 +208,15 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
                 log.warn("Failed to clean up stored knowledge-base document after delete: knowledgeBaseId={}, path={}, error={}",
                         knowledgeBaseId, storagePath, ex.getMessage());
             }
+        }
+    }
+
+    private void evictSignalCachesQuietly(List<String> documentIds) {
+        try {
+            knowledgeDocumentSignalService.evictCaches(documentIds);
+        } catch (Exception ex) {
+            log.warn("Failed to evict knowledge document signal caches after knowledge-base delete: documentCount={}, error={}",
+                    documentIds == null ? 0 : documentIds.size(), ex.getMessage());
         }
     }
 }

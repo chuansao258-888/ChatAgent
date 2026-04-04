@@ -18,7 +18,17 @@ public enum ParserType {
     /**
      * Specialized parser for markdown sources.
      */
-    MARKDOWN("Markdown");
+    MARKDOWN("Markdown"),
+
+    /**
+     * Specialized parser for standalone image sources.
+     */
+    IMAGE("Image"),
+
+    /**
+     * Specialized parser for PDF sources.
+     */
+    PDFBOX("PDFBox");
 
     /**
      * Stable parser type name used by the selector.

@@ -89,13 +89,23 @@ public class LlmRetrievalReranker implements RetrievalReranker {
      * Builds a compact rerank prompt so the model sees only the discriminative parts of each
      * candidate rather than the full chunk body.
      */
-    private String buildUserPrompt(String queryText, List<MilvusSearchHit> candidates) {
+    String buildUserPrompt(String queryText, List<MilvusSearchHit> candidates) {
         StringBuilder builder = new StringBuilder();
         builder.append("Query:\n").append(queryText).append("\n\nCandidates:\n");
         for (MilvusSearchHit candidate : candidates) {
             builder.append("- chunkId: ").append(candidate.chunkId()).append("\n");
             builder.append("  documentName: ").append(nullToEmpty(candidate.documentName())).append("\n");
             builder.append("  chunkIndex: ").append(candidate.chunkIndex()).append("\n");
+            if (!candidate.documentKeywords().isEmpty()) {
+                builder.append("  documentKeywords: ")
+                        .append(toSingleLine(String.join(", ", candidate.documentKeywords())))
+                        .append("\n");
+            }
+            if (!candidate.documentQuestions().isEmpty()) {
+                builder.append("  documentQuestions: ")
+                        .append(toSingleLine(String.join(" | ", candidate.documentQuestions())))
+                        .append("\n");
+            }
             if (StringUtils.hasText(candidate.contextText())) {
                 builder.append("  context: ").append(toSingleLine(truncate(candidate.contextText()))).append("\n");
             }

@@ -6,7 +6,9 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -27,7 +29,28 @@ public class MarkdownDocumentParser implements DocumentParser {
         }
 
         String text = new String(content, StandardCharsets.UTF_8);
-        return ParseResult.ofText(text);
+        return ParseResult.builder()
+                .segments(List.of(new ParseSegment(text, 0, SegmentType.FULL, Map.of())))
+                .parserType(ParserType.MARKDOWN.getType())
+                .build();
+    }
+
+    @Override
+    public ParseResult parse(Supplier<InputStream> streamSupplier, String mimeType, Map<String, Object> options) {
+        try (InputStream stream = streamSupplier.get()) {
+            if (stream == null) {
+                return ParseResult.ofText("");
+            }
+            String text = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))
+                    .lines()
+                    .collect(Collectors.joining("\n"));
+            return ParseResult.builder()
+                    .segments(List.of(new ParseSegment(text, 0, SegmentType.FULL, Map.of())))
+                    .parserType(ParserType.MARKDOWN.getType())
+                    .build();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse markdown stream", e);
+        }
     }
 
     @Override
@@ -40,11 +63,7 @@ public class MarkdownDocumentParser implements DocumentParser {
     }
 
     @Override
-    public boolean supports(String mimeType) {
-        return mimeType != null && (
-                mimeType.equals("text/markdown")
-                        || mimeType.equals("text/x-markdown")
-                        || mimeType.equals("text/plain")
-        );
+    public boolean supports(DetectedFileType type) {
+        return type != null && type.isMarkdown();
     }
 }

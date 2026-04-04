@@ -1,6 +1,6 @@
 package com.yulong.chatagent.rag.ingestion;
 
-import com.yulong.chatagent.rag.ingestion.model.FileIngestionContext;
+import com.yulong.chatagent.rag.ingestion.model.BaseIngestionContext;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeChunkDraft;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +13,7 @@ import java.util.List;
 public class NoopChunkEnricher implements ChunkEnricher {
 
     @Override
-    public List<KnowledgeChunkDraft> enrich(FileIngestionContext context, List<KnowledgeChunkDraft> drafts) {
+    public List<KnowledgeChunkDraft> enrich(BaseIngestionContext context, List<KnowledgeChunkDraft> drafts) {
         return drafts;
     }
 }

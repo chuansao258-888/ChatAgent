@@ -41,7 +41,12 @@ interface KnowledgeBaseFormValues {
   description?: string;
 }
 
-const TERMINAL_DOCUMENT_STATUSES = new Set(["COMPLETED", "FAILED", "SKIPPED"]);
+const TERMINAL_DOCUMENT_STATUSES = new Set([
+  "COMPLETED",
+  "FAILED",
+  "SKIPPED",
+  "REJECTED",
+]);
 const DOCUMENT_STATUS_POLL_INTERVAL_MS = 3000;
 
 export default function KnowledgeBaseDetailPage() {

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.KnowledgeDocumentEnhancementMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.KnowledgeDocumentEnhancement">
+        <id property="knowledgeDocumentId" column="knowledge_document_id" jdbcType="VARCHAR"/>
+        <result property="enhancerCacheKey" column="enhancer_cache_key" jdbcType="VARCHAR"/>
+        <result property="keywords" column="keywords" jdbcType="VARCHAR"/>
+        <result property="questions" column="questions" jdbcType="VARCHAR"/>
+        <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <select id="selectByKnowledgeDocumentId" resultMap="BaseResultMap">
+        SELECT knowledge_document_id,
+               enhancer_cache_key,
+               keywords::text AS keywords,
+               questions::text AS questions,
+               metadata::text AS metadata,
+               created_at,
+               updated_at
+        FROM knowledge_document_enhancement
+        WHERE knowledge_document_id = CAST(#{knowledgeDocumentId} AS uuid)
+    </select>
+
+    <select id="selectByKnowledgeDocumentIds" resultMap="BaseResultMap">
+        SELECT knowledge_document_id,
+               enhancer_cache_key,
+               keywords::text AS keywords,
+               questions::text AS questions,
+               metadata::text AS metadata,
+               created_at,
+               updated_at
+        FROM knowledge_document_enhancement
+        WHERE knowledge_document_id IN
+        <foreach collection="knowledgeDocumentIds" item="knowledgeDocumentId" open="(" separator="," close=")">
+            CAST(#{knowledgeDocumentId} AS uuid)
+        </foreach>
+    </select>
+
+    <insert id="upsert" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeDocumentEnhancement">
+        INSERT INTO knowledge_document_enhancement
+        (knowledge_document_id,
+         enhancer_cache_key,
+         keywords,
+         questions,
+         metadata,
+         created_at,
+         updated_at)
+        VALUES (CAST(#{knowledgeDocumentId} AS uuid),
+                #{enhancerCacheKey},
+                CAST(#{keywords} AS jsonb),
+                CAST(#{questions} AS jsonb),
+                CAST(#{metadata} AS jsonb),
+                #{createdAt},
+                #{updatedAt})
+        ON CONFLICT (knowledge_document_id) DO UPDATE
+        SET enhancer_cache_key = EXCLUDED.enhancer_cache_key,
+            keywords = EXCLUDED.keywords,
+            questions = EXCLUDED.questions,
+            metadata = EXCLUDED.metadata,
+            updated_at = EXCLUDED.updated_at
+    </insert>
+
+    <delete id="deleteByKnowledgeDocumentId">
+        DELETE FROM knowledge_document_enhancement
+        WHERE knowledge_document_id = CAST(#{knowledgeDocumentId} AS uuid)
+    </delete>
+</mapper>

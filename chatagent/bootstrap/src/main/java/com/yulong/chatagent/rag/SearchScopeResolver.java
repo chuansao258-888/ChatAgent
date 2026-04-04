@@ -9,6 +9,7 @@ import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.rag.model.RagSourceType;
 import com.yulong.chatagent.rag.model.RetrievalHit;
+import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.retrieve.KnowledgeBaseSimilaritySearcher;
 import com.yulong.chatagent.rag.retrieve.RetrievalReranker;
 import com.yulong.chatagent.rag.retrieve.SessionFileSimilaritySearcher;
@@ -37,6 +38,7 @@ public class SearchScopeResolver {
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final SessionFileSimilaritySearcher sessionFileSimilaritySearcher;
     private final KnowledgeBaseSimilaritySearcher knowledgeBaseSimilaritySearcher;
+    private final KnowledgeDocumentSignalService knowledgeDocumentSignalService;
     private final RetrievalReranker retrievalReranker;
     private final int topK;
     private final int rrfK;
@@ -47,6 +49,7 @@ public class SearchScopeResolver {
                                KnowledgeBaseRepository knowledgeBaseRepository,
                                SessionFileSimilaritySearcher sessionFileSimilaritySearcher,
                                KnowledgeBaseSimilaritySearcher knowledgeBaseSimilaritySearcher,
+                               KnowledgeDocumentSignalService knowledgeDocumentSignalService,
                                RetrievalReranker retrievalReranker,
                                @Value("${rag.retrieval.top-k:3}") int topK,
                                @Value("${rag.retrieval.rrf-k:60}") int rrfK) {
@@ -56,6 +59,7 @@ public class SearchScopeResolver {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.sessionFileSimilaritySearcher = sessionFileSimilaritySearcher;
         this.knowledgeBaseSimilaritySearcher = knowledgeBaseSimilaritySearcher;
+        this.knowledgeDocumentSignalService = knowledgeDocumentSignalService;
         this.retrievalReranker = retrievalReranker;
         this.topK = topK;
         this.rrfK = rrfK;
@@ -146,7 +150,11 @@ public class SearchScopeResolver {
         List<MilvusSearchHit> rerankCandidates = fusedHits.stream()
                 .map(this::toRerankHit)
                 .toList();
-        List<MilvusSearchHit> reranked = retrievalReranker.rerank(queryText, rerankCandidates);
+        rerankCandidates = attachKnowledgeSignalsForKnowledgeBaseHits(fusedHits, rerankCandidates);
+        List<MilvusSearchHit> reranked = retrievalReranker.rerank(
+                queryText,
+                rerankCandidates
+        );
 
         Map<String, ScopedHit> bySyntheticChunkId = new LinkedHashMap<>();
         for (ScopedHit hit : fusedHits) {
@@ -164,6 +172,39 @@ public class SearchScopeResolver {
             }
         }
         return ordered;
+    }
+
+    private List<MilvusSearchHit> attachKnowledgeSignalsForKnowledgeBaseHits(List<ScopedHit> fusedHits,
+                                                                             List<MilvusSearchHit> rerankCandidates) {
+        List<MilvusSearchHit> knowledgeBaseCandidates = new ArrayList<>();
+        for (int i = 0; i < fusedHits.size(); i++) {
+            ScopedHit scopedHit = fusedHits.get(i);
+            if (scopedHit.sourceType() == RagSourceType.KNOWLEDGE_BASE) {
+                knowledgeBaseCandidates.add(rerankCandidates.get(i));
+            }
+        }
+        if (knowledgeBaseCandidates.isEmpty()) {
+            return rerankCandidates;
+        }
+
+        List<MilvusSearchHit> enrichedKnowledgeHits = knowledgeDocumentSignalService.attachSignals(knowledgeBaseCandidates);
+        if (enrichedKnowledgeHits.isEmpty()) {
+            return rerankCandidates;
+        }
+
+        Map<String, MilvusSearchHit> enrichedByChunkId = new LinkedHashMap<>();
+        for (MilvusSearchHit hit : enrichedKnowledgeHits) {
+            if (StringUtils.hasText(hit.chunkId())) {
+                enrichedByChunkId.put(hit.chunkId(), hit);
+            }
+        }
+
+        List<MilvusSearchHit> mergedCandidates = new ArrayList<>(rerankCandidates.size());
+        for (MilvusSearchHit candidate : rerankCandidates) {
+            MilvusSearchHit enriched = enrichedByChunkId.get(candidate.chunkId());
+            mergedCandidates.add(enriched == null ? candidate : enriched);
+        }
+        return mergedCandidates;
     }
 
     private void addHitsByRrf(Map<String, RankedHit> fused, RagSourceType sourceType, List<MilvusSearchHit> hits) {
@@ -204,6 +245,8 @@ public class SearchScopeResolver {
                 hit.content(),
                 hit.contextText(),
                 hit.retrievalText(),
+                hit.documentKeywords(),
+                hit.documentQuestions(),
                 scopedHit.fusedScore()
         );
     }

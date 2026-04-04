@@ -1,6 +1,6 @@
 package com.yulong.chatagent.rag.ingestion;
 
-import com.yulong.chatagent.rag.ingestion.model.FileIngestionContext;
+import com.yulong.chatagent.rag.ingestion.model.BaseIngestionContext;
 
 /**
  * Optional document-level text post-processor executed between parsing and chunking.
@@ -8,7 +8,8 @@ import com.yulong.chatagent.rag.ingestion.model.FileIngestionContext;
 public interface DocumentEnhancer {
 
     /**
-     * Returns the text that should be used as the chunking source.
+     * Returns transient enhancement output that should be unpacked into the ingestion context
+     * before chunking.
      */
-    String enhance(FileIngestionContext context, String rawText);
+    DocumentEnhancementResult enhance(BaseIngestionContext context);
 }

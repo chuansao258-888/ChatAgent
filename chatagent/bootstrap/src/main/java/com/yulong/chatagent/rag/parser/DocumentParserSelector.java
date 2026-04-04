@@ -15,15 +15,19 @@ public class DocumentParserSelector {
 
     private final List<DocumentParser> strategies;
     private final Map<String, DocumentParser> strategyMap;
+    private final DocumentParser fallbackParser;
+    private final FileTypeDetector fileTypeDetector;
 
-    public DocumentParserSelector(List<DocumentParser> parsers) {
+    public DocumentParserSelector(List<DocumentParser> parsers, FileTypeDetector fileTypeDetector) {
         this.strategies = parsers;
+        this.fileTypeDetector = fileTypeDetector;
         this.strategyMap = parsers.stream()
                 .collect(Collectors.toMap(
                         DocumentParser::getParserType,
                         Function.identity(),
                         (existing, replacement) -> existing
                 ));
+        this.fallbackParser = strategyMap.get(ParserType.TIKA.getType());
     }
 
     /**
@@ -33,15 +37,23 @@ public class DocumentParserSelector {
         return strategyMap.get(parserType);
     }
 
-    /**
-     * Resolves the first parser that claims support for the given MIME type, falling back to
-     * Tika when no specialized parser matches.
-     */
-    public DocumentParser selectByMimeType(String mimeType) {
+    public DocumentParser selectParser(byte[] prefix, String originalFilename, String mimeType) {
+        return selectParser(prefix, originalFilename, mimeType, PipelineSource.KNOWLEDGE);
+    }
+
+    public DocumentParser selectParser(byte[] prefix,
+                                       String originalFilename,
+                                       String mimeType,
+                                       PipelineSource pipelineSource) {
+        DetectedFileType detectedFileType = fileTypeDetector.detect(prefix, originalFilename, mimeType, pipelineSource);
+        if (detectedFileType.rejected()) {
+            throw new FileRejectedException(detectedFileType.rejectionReason());
+        }
         return strategies.stream()
-                .filter(parser -> parser.supports(mimeType))
+                .filter(parser -> parser.supports(detectedFileType))
+                .sorted(java.util.Comparator.comparingInt(DocumentParser::getSelectionPriority))
                 .findFirst()
-                .orElseGet(() -> select(ParserType.TIKA.getType()));
+                .orElse(fallbackParser);
     }
 
     /**

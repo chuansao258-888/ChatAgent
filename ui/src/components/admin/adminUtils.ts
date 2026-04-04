@@ -37,10 +37,12 @@ export function statusTone(
     case "COMPLETED":
       return "green";
     case "PENDING":
+    case "PARSING_OCR_PENDING":
       return "blue";
     case "ARCHIVED":
       return "orange";
     case "FAILED":
+    case "REJECTED":
       return "red";
     default:
       return "default";

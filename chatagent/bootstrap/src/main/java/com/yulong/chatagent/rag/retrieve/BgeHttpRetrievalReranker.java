@@ -373,13 +373,26 @@ public class BgeHttpRetrievalReranker implements RetrievalReranker {
         headers.add("X-Trace-Id", TraceContext.getTraceId());
     }
 
-    private String buildDocument(MilvusSearchHit hit) {
+    String buildDocument(MilvusSearchHit hit) {
         String content = StringUtils.hasText(hit.content()) ? hit.content() : hit.retrievalText();
         content = content == null ? "" : content;
-        if (!StringUtils.hasText(hit.contextText())) {
-            return truncate(content);
+        StringBuilder builder = new StringBuilder();
+        if (!hit.documentKeywords().isEmpty()) {
+            builder.append("Document Keywords: ")
+                    .append(String.join(", ", hit.documentKeywords()))
+                    .append("\n");
         }
-        return truncate("Context: " + hit.contextText() + "\n\nContent: " + content);
+        if (!hit.documentQuestions().isEmpty()) {
+            builder.append("Document Questions: ")
+                    .append(String.join(" | ", hit.documentQuestions()))
+                    .append("\n");
+        }
+        if (!StringUtils.hasText(hit.contextText())) {
+            builder.append(content);
+            return truncate(builder.toString());
+        }
+        builder.append("Context: ").append(hit.contextText()).append("\n\nContent: ").append(content);
+        return truncate(builder.toString());
     }
 
     private String truncate(String text) {

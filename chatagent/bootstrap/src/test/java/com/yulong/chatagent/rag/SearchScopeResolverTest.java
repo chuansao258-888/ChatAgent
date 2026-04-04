@@ -9,6 +9,7 @@ import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.rag.model.RagSourceType;
 import com.yulong.chatagent.rag.model.RetrievalHit;
+import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.retrieve.KnowledgeBaseSimilaritySearcher;
 import com.yulong.chatagent.rag.retrieve.RetrievalReranker;
 import com.yulong.chatagent.rag.retrieve.SessionFileSimilaritySearcher;
@@ -26,6 +27,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +54,9 @@ class SearchScopeResolverTest {
     private KnowledgeBaseSimilaritySearcher knowledgeBaseSimilaritySearcher;
 
     @Mock
+    private KnowledgeDocumentSignalService knowledgeDocumentSignalService;
+
+    @Mock
     private RetrievalReranker retrievalReranker;
 
     private SearchScopeResolver searchScopeResolver;
@@ -64,10 +70,12 @@ class SearchScopeResolverTest {
                 knowledgeBaseRepository,
                 sessionFileSimilaritySearcher,
                 knowledgeBaseSimilaritySearcher,
+                knowledgeDocumentSignalService,
                 retrievalReranker,
                 3,
                 60
         );
+        lenient().when(knowledgeDocumentSignalService.attachSignals(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -88,9 +96,26 @@ class SearchScopeResolverTest {
         when(sessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(List.of("file-1"), "leave policy")).thenReturn(List.of(
                 candidateHit("file-chunk-1", "file-1", "file-1", "upload.md", 0, null, "leave request form", "leave request form", 0.88f)
         ));
+        when(knowledgeDocumentSignalService.attachSignals(anyList())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<MilvusSearchHit> candidates = (List<MilvusSearchHit>) invocation.getArgument(0);
+            assertThat(candidates).extracting(MilvusSearchHit::documentId)
+                    .containsExactly("doc-1", "doc-2");
+            return candidates.stream()
+                    .map(hit -> "doc-1".equals(hit.documentId())
+                            ? hit.withDocumentKeywords(List.of("leave policy"))
+                            .withDocumentQuestions(List.of("How many leave days can be carried over?"))
+                            : hit)
+                    .toList();
+        });
         when(retrievalReranker.rerank(eq("leave policy"), anyList())).thenAnswer(invocation -> {
             @SuppressWarnings("unchecked")
             List<MilvusSearchHit> candidates = (List<MilvusSearchHit>) invocation.getArgument(1);
+            assertThat(candidates.stream()
+                    .filter(hit -> "doc-1".equals(hit.documentId()))
+                    .findFirst()
+                    .orElseThrow()
+                    .documentKeywords()).containsExactly("leave policy");
             return List.of(
                     candidates.get(1).withScore(0.95d).withScoreType("reranker"),
                     candidates.get(0).withScore(0.85d).withScoreType("reranker"),
@@ -112,6 +137,7 @@ class SearchScopeResolverTest {
                 .containsExactly("file-1", "doc-1", "doc-2");
         verify(sessionFileSimilaritySearcher).searchCandidateHitsBySessionFileIds(List.of("file-1"), "leave policy");
         verify(knowledgeBaseSimilaritySearcher).searchCandidateHitsByKnowledgeBaseIds(List.of("kb-1"), "leave policy");
+        verify(knowledgeDocumentSignalService).attachSignals(anyList());
         verify(retrievalReranker).rerank(eq("leave policy"), anyList());
     }
 
@@ -181,6 +207,7 @@ class SearchScopeResolverTest {
             assertThat(hit.scoreType()).isEqualTo("fallback");
             assertThat(hit.isFallback()).isTrue();
         });
+        verify(knowledgeDocumentSignalService, never()).attachSignals(anyList());
     }
 
     @Test
@@ -215,6 +242,7 @@ class SearchScopeResolverTest {
             assertThat(hit.scoreType()).isEqualTo("filtered");
             assertThat(hit.isFallback()).isFalse();
         });
+        verify(knowledgeDocumentSignalService, never()).attachSignals(anyList());
     }
 
     private MilvusSearchHit candidateHit(String chunkId,

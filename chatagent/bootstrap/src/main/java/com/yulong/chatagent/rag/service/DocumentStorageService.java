@@ -3,6 +3,7 @@ package com.yulong.chatagent.rag.service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 
 /**
@@ -50,6 +51,21 @@ public interface DocumentStorageService {
      * @return absolute file path
      */
     Path getFilePath(String filePath);
+
+    /**
+     * Returns the stored file size without materializing the whole file in memory.
+     */
+    long getFileSize(String filePath) throws IOException;
+
+    /**
+     * Reads only the leading bytes used by type detection.
+     */
+    byte[] readPrefix(String filePath, int maxBytes) throws IOException;
+
+    /**
+     * Opens a fresh stream for the stored file.
+     */
+    InputStream openInputStream(String filePath) throws IOException;
 
     /**
      * Checks whether a stored file currently exists.

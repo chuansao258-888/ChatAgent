@@ -1,23 +1,73 @@
 package com.yulong.chatagent.rag.parser;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
- * Normalized parser output containing extracted text plus optional metadata.
+ * Normalized parser output for the segment-native parser pipeline.
  */
-public record ParseResult(String text, Map<String, Object> metadata) {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ParseResult {
 
-    /**
-     * Creates a text-only parse result.
-     */
+    @Builder.Default
+    private List<ParseSegment> segments = List.of();
+
+    private String parserType;
+    private String extractionMode;
+    private QualityLevel qualityLevel;
+
+    @Builder.Default
+    private Map<String, Object> diagnostics = new HashMap<>();
+
+    @Builder.Default
+    private List<String> warnings = new ArrayList<>();
+
+    @Builder.Default
+    private Map<String, Object> metadata = new HashMap<>();
+
     public static ParseResult ofText(String text) {
-        return new ParseResult(text, Map.of());
+        String normalized = text == null ? "" : text;
+        return ParseResult.builder()
+                .segments(List.of(new ParseSegment(normalized, 0, SegmentType.FULL, Map.of())))
+                .build();
     }
 
-    /**
-     * Creates a parse result with text and metadata.
-     */
     public static ParseResult of(String text, Map<String, Object> metadata) {
-        return new ParseResult(text, metadata != null ? metadata : Map.of());
+        ParseResult result = ofText(text);
+        result.setMetadata(metadata != null ? new HashMap<>(metadata) : new HashMap<>());
+        return result;
+    }
+
+    public String getFullText() {
+        if (segments == null || segments.isEmpty()) {
+            return "";
+        }
+        return segments.stream()
+                .map(ParseSegment::text)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    public int totalChars() {
+        if (segments != null && !segments.isEmpty()) {
+            return segments.stream().mapToInt(ParseSegment::charCount).sum();
+        }
+        return 0;
+    }
+
+    public boolean isMultiSegment() {
+        return segments != null && segments.size() > 1;
     }
 }

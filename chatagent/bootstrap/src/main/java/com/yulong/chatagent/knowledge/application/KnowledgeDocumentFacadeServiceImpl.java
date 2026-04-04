@@ -16,6 +16,10 @@ import com.yulong.chatagent.mq.outbox.OutboxEventPublisher;
 import com.yulong.chatagent.mq.outbox.event.KnowledgeIngestTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
+import com.yulong.chatagent.rag.parser.DetectedFileType;
+import com.yulong.chatagent.rag.parser.FileTypeDetector;
+import com.yulong.chatagent.rag.parser.PipelineSource;
+import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
@@ -31,6 +35,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
@@ -47,6 +52,8 @@ import java.util.UUID;
 @Slf4j
 public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFacadeService {
 
+    private static final int DETECTION_PREFIX_BYTES = 8192;
+
     private final AdminAccessService adminAccessService;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeChunkRepository knowledgeChunkRepository;
@@ -57,6 +64,8 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
     private final KnowledgeDocumentStatusSseService knowledgeDocumentStatusSseService;
     private final ResourceAccessGuard resourceAccessGuard;
     private final ChatAgentMqProperties mqProperties;
+    private final KnowledgeDocumentSignalService knowledgeDocumentSignalService;
+    private final FileTypeDetector fileTypeDetector;
 
     // Absent when chatagent.mq.enabled=false; present when true.
     @Autowired(required = false)
@@ -112,6 +121,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         if (!knowledgeDocumentRepository.deleteById(documentId)) {
             throw new BizException("Failed to delete knowledge document");
         }
+        scheduleSignalCacheEvictionAfterCommit(documentId);
         scheduleStoredFileDeletionAfterCommit(documentId, document.getStoragePath());
     }
 
@@ -154,6 +164,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         if (file == null || file.isEmpty()) {
             throw new BizException("Uploaded file is empty");
         }
+        validateKnowledgeUpload(file);
 
         String documentId = existingDocument == null ? UUID.randomUUID().toString() : existingDocument.getId();
         LocalDateTime now = LocalDateTime.now();
@@ -310,9 +321,35 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
     private String sha256(MultipartFile file) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(file.getBytes()));
+            try (InputStream inputStream = file.getInputStream()) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = inputStream.read(buffer)) != -1) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            return HexFormat.of().formatHex(digest.digest());
         } catch (Exception e) {
             throw new ServiceException("Failed to calculate knowledge document hash");
+        }
+    }
+
+    private void validateKnowledgeUpload(MultipartFile file) {
+        try (InputStream inputStream = file.getInputStream()) {
+            byte[] prefix = inputStream.readNBytes(DETECTION_PREFIX_BYTES);
+            DetectedFileType detectedFileType = fileTypeDetector.detect(
+                    prefix,
+                    file.getOriginalFilename(),
+                    file.getContentType(),
+                    PipelineSource.KNOWLEDGE
+            );
+            if (detectedFileType.rejected()) {
+                throw new BizException(detectedFileType.rejectionReason());
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new ServiceException("Failed to inspect uploaded knowledge document");
         }
     }
 
@@ -342,6 +379,22 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             return;
         }
         cleanupStoredFileQuietly(documentId, storagePath, "delete");
+    }
+
+    private void scheduleSignalCacheEvictionAfterCommit(String documentId) {
+        if (!StringUtils.hasText(documentId)) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    knowledgeDocumentSignalService.evictCache(documentId);
+                }
+            });
+            return;
+        }
+        knowledgeDocumentSignalService.evictCache(documentId);
     }
 
     private KnowledgeDocumentDTO toDto(KnowledgeDocument entity) {
