@@ -301,22 +301,3 @@ auth:
 logging:
   level:
     com.yulong.chatagent.user: INFO
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      probes:
-        enabled: true
-      group:
-        routing:
-          include: chatRouting
-  metrics:
-    tags:
-      application: ${spring.application.name}
-    distribution:
-      percentiles-histogram:
-        chatagent.llm.routing.latency: true

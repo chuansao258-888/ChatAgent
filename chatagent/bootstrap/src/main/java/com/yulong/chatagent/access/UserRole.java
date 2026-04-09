@@ -31,6 +31,18 @@ public enum UserRole {
         return name().equalsIgnoreCase(rawRole) || persistedValue.equalsIgnoreCase(rawRole);
     }
 
+    public static String normalizePersistedValue(String rawRole) {
+        if (!StringUtils.hasText(rawRole)) {
+            throw new IllegalArgumentException("Role must not be blank");
+        }
+        for (UserRole role : values()) {
+            if (role.matches(rawRole)) {
+                return role.persistedValue();
+            }
+        }
+        throw new IllegalArgumentException("Unsupported role: " + rawRole);
+    }
+
     public static boolean matchesAny(String rawRole, UserRole[] allowedRoles) {
         if (allowedRoles == null || allowedRoles.length == 0) {
             return true;

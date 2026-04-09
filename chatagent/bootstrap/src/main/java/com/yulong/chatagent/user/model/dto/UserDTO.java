@@ -29,6 +29,10 @@ public class UserDTO {
 
     private String avatar;
 
+    private String status;
+
+    private Boolean deleted;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

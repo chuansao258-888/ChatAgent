@@ -1,7 +1,7 @@
-# Ragent 风格首包探测路由引擎 — Phase 1-7 代码完成基线 + Phase 8 监控接入计划
+# Ragent 风格首包探测路由引擎 — Phase 1-7 代码完成基线
 
 ## Context
-目标是分阶段把 ragent 的“首包探测 + 路由降级”迁入 ChatAgent。当前 Phase 1-7 的项目代码已经全部落地：Phase 1 已交付模型候选配置、注册表对齐、同步降级和安全边界；Phase 2 已交付断路器防死锁/防污染基线；Phase 3-5 已交付模型选择器、响应式流原语和路由降级核心闭环；Phase 6 已交付 Agent loop seam、SSE 适配和 speculative live passthrough/rollback 闭环；Phase 7 已交付运行时路由状态观测、candidate override 管理、provider raw SSE string parser 和深度思考策略配置。Phase 8 已开始真实监控平台接入的仓库侧落地，只纳入 Prometheus/Grafana/Actuator health/runbook 资产，不纳入跨 provider 全独立 HTTP transport 或 OkHttp `Call.cancel()` 等价 hard cancel。
+目标是分阶段把 ragent 的“首包探测 + 路由降级”迁入 ChatAgent。当前 Phase 1-7 的项目代码已经全部落地：Phase 1 已交付模型候选配置、注册表对齐、同步降级和安全边界；Phase 2 已交付断路器防死锁/防污染基线；Phase 3-5 已交付模型选择器、响应式流原语和路由降级核心闭环；Phase 6 已交付 Agent loop seam、SSE 适配和 speculative live passthrough/rollback 闭环；Phase 7 已交付运行时路由状态观测、candidate override 管理、provider raw SSE string parser 和深度思考策略配置。此前拟定的 Phase 8 真实监控平台接入计划现已取消，不再纳入当前主线计划；已落地的 observability 资产仅保留为可选参考，不作为当前待执行项。
 
 **Phase 1 入口条件：**
 1. **模型注册键必须可达**：`glm-4` 候选的 `spring-client-key` 必须匹配真实 `ChatClient` bean `glm-4.6`。
@@ -41,7 +41,6 @@
 22. **基础错误事件已完成**：SSE 新增 `AI_ERROR` 事件，后端流式中断和异步失败兜底路径会显式推送错误状态，前端能显示对应 error status。
 23. **基础错误恢复 UX 已完成**：前端会把 `AI_ERROR` 保留成可见的错误条，并提供 `Retry` / `Dismiss` 基础交互；`Retry` 会直接重发当前失败回合对应的上一条 user 输入。
 24. **路由健康告警基线已完成**：新增 `chat.routing.observability` 配置和 `chatRouting` Actuator health indicator，可在无可路由候选、所有候选断路器 OPEN、OPEN 比例超过阈值、存在 orphan runtime override 时输出 DOWN / OUT_OF_SERVICE / DEGRADED 状态。
-25. **外部观测模板已完成**：新增 `docs/observability/chat-routing-alerts.prometheus.yml` 和 `docs/observability/chat-routing-grafana-dashboard.json`，覆盖 fallback failure、first-packet failure、circuit open/reopen 和 circuit skip/deny 等关键路由风险。
 26. **raw SSE 取消防污已完成**：`ProviderDirectStreamSupport` 对 DeepSeek/Zhipu raw SSE 路径返回取消感知句柄，`dispose()` 会取消上游 WebClient 订阅，并通过 guarded callback 抑制迟到的 signal/content/thinking/tool-calls/error/complete 继续污染前端或持久化状态。
 27. **raw SSE payload 规范化已完成**：`ProviderDirectStreamSupport` 在 JSON 反序列化前会统一处理纯 JSON、`[DONE]`、`data:` 前缀、多行 SSE event、空行分隔和 comment 行，降低真实网关/代理返回形态差异导致解析失败的概率。
 28. **provider 直连兼容回退已完成**：当 Spring AI provider 私有字段/方法因版本差异导致 raw SSE 直连不可用时，`ProviderDirectStreamSupport` 会返回空结果并回退 `ReactiveStreamAdapter`；真实流式运行中的模型错误仍按当前候选失败处理，不被静默吞掉。
@@ -72,7 +71,6 @@ Phase 1-7 的完成定义是：把 ChatAgent 当前架构内的 ragent 风格首
 12. **运行时运维闭环**：管理员可以在线查看 candidate 的 configured/effective 状态、断路器快照、registry 可达性，并能对 enabled/priority/thinking 相关字段做 runtime override。
 13. **错误状态闭环**：流式中断和异步失败场景除 assistant 兜底内容外，还会额外下发 `AI_ERROR` SSE 状态，前端具备单独的 error status 通道，并保留基础 retry/dismiss 错误恢复交互。
 14. **健康告警闭环**：`/actuator/health/chatRouting` 可直接反映路由可用性和断路器风险，支持通过配置调整 no-routable、all-open、open-ratio、orphan override 等告警边界。
-15. **外部观测模板闭环**：文档目录提供 Prometheus alert rules 和 Grafana dashboard JSON 模板，后续生产接入时可直接导入并调整阈值。
 
 下面保留的是后续冒烟、重型并发测试或生产运营化事项，不再视作当前项目代码缺口。
 
@@ -559,131 +557,6 @@ Phase 7 验证记录：
 
 ---
 
-## Phase 8：真实监控平台接入计划
+## Phase 8
 
-**状态：仓库侧接入资产已落地，真实平台导入待执行。**
-
-Phase 8 只做“真实监控平台接入”，目标是把 Phase 1-7 已经埋好的 Micrometer 指标、`chatRouting` Actuator health indicator、Prometheus rule 模板和 Grafana dashboard 模板接入实际运维平台，形成线上告警、排障和容量/稳定性观察闭环。
-
-Phase 8 明确不做：
-
-1. **不做跨 provider 全独立 HTTP transport**：DeepSeek/Zhipu 仍复用 Spring AI provider 的 WebClient、request 构造和鉴权配置，未知 provider 仍回退 `ChatClient.stream()`。
-2. **不做 OkHttp `Call.cancel()` 等价 hard cancel**：当前仍使用 WebClient 上游 `Disposable.dispose()`、HTTP timeout 和迟到事件抑制作为工程级兜底。
-3. **不改首包路由核心代码**：除非接入监控时发现指标缺字段或 label 不足，否则 Phase 8 不扩大业务逻辑改动面。
-
-### 8.0 仓库侧已完成资产
-
-1. **本地观测栈 compose**：新增 `docker-compose-observability.yml`，可启动 Prometheus + Grafana，用于本地验证 `/actuator/prometheus`、alert rules 和 dashboard provisioning。
-2. **Prometheus scrape 配置**：新增 `docs/observability/prometheus.local.yml`，默认 scrape `host.docker.internal:8080/actuator/prometheus`，并装载 `chat-routing-alerts.prometheus.yml`。
-3. **Grafana provisioning 配置**：新增 `docs/observability/grafana/provisioning/datasources/prometheus.yml` 和 `docs/observability/grafana/provisioning/dashboards/chatagent-routing.yml`，本地 Grafana 启动后会自动加载 Prometheus datasource 与 ChatAgent Routing dashboard。
-4. **Dashboard 可 provisioning 化**：`chat-routing-grafana-dashboard.json` 已从 `${DS_PROMETHEUS}` 占位符改为固定 `uid=prometheus` 的 datasource，并补充 `job` / `model` 变量与 routing latency P95 panel。
-5. **Alert rule 排障信息增强**：`chat-routing-alerts.prometheus.yml` 已为每条告警补充 `service=chatagent` label、runbook 路径、health endpoint 和 admin state endpoint。
-6. **应用 metrics 暴露增强**：`application.yaml` 已暴露 `health,info,metrics,prometheus`，新增 `health` routing group、`application` metrics tag，并为 `chatagent.llm.routing.latency` 开启 histogram，支撑 P95 面板。
-7. **Alertmanager 路由模板**：新增 `docs/observability/chat-routing-alertmanager-routing.example.yml`，给出 warning/critical 分流到 observer/primary receiver 的模板。
-8. **运维 runbook**：新增 `docs/observability/CHAT_ROUTING_MONITORING_RUNBOOK.md`，覆盖本地验证、平台导入、Prometheus 查询、告警 triage 和 rollback。
-9. **平台导入记录模板**：新增 `docs/observability/chat-routing-monitoring-rollout.example.md`，用于记录真实环境、dashboard URL、rule group、receiver、degraded 验证和 follow-up。
-
-### 8.1 接入目标
-
-完成后应具备以下能力：
-
-1. **实时可见**：Grafana 中能看到 LLM routing attempts、first-packet latency、first-packet failure ratio、fallback failure ratio、circuit opened/reopened、circuit skipped/denied 等趋势。
-2. **主动告警**：Prometheus/Alertmanager 能在首包失败率过高、fallback failure 过高、断路器打开、候选被断路器大量跳过时发出告警。
-3. **健康检查可用**：`/actuator/health/chatRouting` 能进入现有 health check 或 synthetic check 体系，区分 `UP`、`DEGRADED`、`OUT_OF_SERVICE`、`DOWN`。
-4. **排障入口明确**：告警内容必须指向 `/actuator/health/chatRouting` 和 `/api/admin/chat-routing/state`，便于快速判断是候选配置、注册表、断路器还是 provider 响应问题。
-5. **可调阈值**：规则中的阈值先用模板默认值上线，经过至少一段真实流量观察后再调参，避免一开始就把告警调得过紧或过松。
-
-### 8.2 前置条件
-
-1. **Actuator 暴露确认**：目标环境必须能访问 `/actuator/health` 或至少 `/actuator/health/chatRouting`；如果生产环境默认不暴露 health details，需要确认是否只暴露状态还是也允许内部网络读取 details。
-2. **Prometheus scrape 确认**：目标环境需要已经 scrape 应用的 Micrometer endpoint；如果当前未暴露 `/actuator/prometheus`，需要先接入 Spring Boot Actuator Prometheus registry 或由平台侧确认等价采集方式。
-3. **指标命名确认**：模板使用 Prometheus 风格指标名：`chatagent_llm_routing_attempts_total`、`chatagent_llm_routing_latency_*`、`chatagent_llm_circuit_decisions_total`、`chatagent_llm_circuit_events_total`。接入前需要在实际 Prometheus UI 中确认这些指标存在。
-4. **告警路由确认**：需要确定 Alertmanager 或等价平台的通知接收方，例如后端值班、模型平台值班、个人测试 channel；Phase 8 计划不默认创建生产通知路由。
-5. **环境标签确认**：如果平台使用 `env`、`cluster`、`service`、`namespace` 等标签，需要在 Prometheus rule 和 dashboard variable 中补齐，避免跨环境混合统计。
-
-### 8.3 落地步骤
-
-1. **确认应用指标暴露**
-   - 在目标环境打开 Prometheus 或等价指标查询界面。
-   - 查询 `chatagent_llm_routing_attempts_total`。
-   - 查询 `chatagent_llm_circuit_events_total`。
-   - 查询 `chatagent_llm_circuit_decisions_total`。
-   - 如果没有数据，先触发一次普通聊天请求和一次路由状态查询，再确认 scrape 间隔后是否出现。
-   - 如果仍无数据，先检查应用是否引入 Prometheus registry、Actuator endpoint 是否暴露、Prometheus scrape job 是否包含 ChatAgent 实例。
-
-2. **导入 Prometheus alert rules**
-   - 使用模板文件：`docs/observability/chat-routing-alerts.prometheus.yml`。
-   - 先导入到 staging 或低风险环境。
-   - 根据平台要求补充 `env`、`service`、`namespace`、`team` 等 labels。
-   - 在 Prometheus UI 中执行 `promtool check rules` 或平台等价规则校验。
-   - 先以 warning-only 或 muted 状态观察一段时间，再打开通知路由。
-
-3. **导入 Grafana dashboard**
-   - 使用模板文件：`docs/observability/chat-routing-grafana-dashboard.json`。
-   - 导入后确认数据源指向正确 Prometheus。
-   - 补充必要变量，例如 `env`、`service`、`instance`。
-   - 检查四类面板：routing attempts、latency、first-packet failure ratio、circuit events/decisions。
-   - 对齐面板时间窗口，建议默认 1h，排障时切换 6h/24h。
-
-4. **接入 `chatRouting` health**
-   - 在目标环境访问 `/actuator/health/chatRouting`。
-   - 确认 healthy 状态下返回 `UP`。
-   - 使用 admin override 临时制造 orphan override，确认 health 能进入 `DEGRADED`，验证后清理 override。
-   - 如果平台支持 synthetic check，可增加只读检查 `/actuator/health/chatRouting` 的 job。
-   - 如果生产环境不能暴露 details，则至少把状态码/状态名纳入检查，把 details 留给内网排障入口。
-
-5. **配置告警通知路由**
-   - `severity=critical` 的候选全跳过/大量 denied 类告警应通知主值班 channel。
-   - `severity=warning` 的 first-packet failure、fallback failure、circuit opened/reopened 可先通知模型/后端观测 channel。
-   - 告警消息里保留 runbook 链接，指向本文 Phase 8 的排障步骤。
-   - 初次上线建议开启静默观察窗口，确认没有历史噪声后再启用强通知。
-
-6. **阈值调参**
-   - 模板默认 `fallback failure ratio > 20% for 10m`。
-   - 模板默认 `first-packet failure ratio > 15% for 10m`。
-   - 模板默认 circuit opened/reopened 为立即 warning。
-   - 真实流量稳定 3-7 天后，根据正常波动区间调整阈值。
-   - 如果业务低流量导致 ratio 抖动，需要增加最小请求量门槛，例如配合 `sum(rate(...[5m])) > X`。
-
-7. **排障 runbook 固化**
-   - 告警触发后先看 Grafana dashboard 判断是全局失败还是单模型失败。
-   - 再看 `/actuator/health/chatRouting` 判断是否 no-routable、all-open、open-ratio 或 orphan override。
-   - 再看 `/api/admin/chat-routing/state` 判断 candidate effective 配置、registered 状态和断路器快照。
-   - 如果是单模型断路器打开，优先检查 provider 状态、API key、base-url、网络和近期发布。
-   - 如果是 orphan override，清理错误 override 或补齐候选配置。
-   - 如果是所有候选不可路由，优先回滚配置或临时启用 fallback 候选。
-
-### 8.4 验收标准
-
-Phase 8 只有在以下条件全部满足时才视为完成：
-
-1. Prometheus 或等价平台能查询到 `chatagent_llm_routing_attempts_total`、`chatagent_llm_circuit_events_total`、`chatagent_llm_circuit_decisions_total`。
-2. `docs/observability/chat-routing-alerts.prometheus.yml` 已导入目标环境，并通过平台规则校验。
-3. `docs/observability/chat-routing-grafana-dashboard.json` 已导入 Grafana，且核心图表有数据。
-4. `/actuator/health/chatRouting` 已纳入 health/synthetic check 或被明确记录为内部排障入口。
-5. 至少一次人工触发的低风险 degraded 场景被 dashboard/health 捕获，并能在验证后恢复。
-6. 告警通知路由已确定接收方，或明确记录为 muted/staging-only 状态。
-7. 文档中记录目标环境、导入时间、dashboard URL、告警 rule group 名称和通知 channel。
-
-当前状态说明：第 2、3、7 项已有仓库侧模板和 runbook，但尚未导入真实平台；第 1、4、5、6 项必须在目标环境执行验证后才能关闭。
-
-### 8.5 回滚方案
-
-1. **规则回滚**：如果告警噪声过大，先 mute `chatagent-routing` rule group，再回滚或提高阈值。
-2. **dashboard 回滚**：Grafana dashboard 导入不影响业务，可直接删除或恢复上一版 dashboard JSON。
-3. **health check 回滚**：如果 synthetic check 误判影响发布/值班，可先从平台侧移除该 check，不需要改业务代码。
-4. **业务代码回滚**：Phase 8 计划默认不改业务代码，因此正常情况下不需要应用回滚。
-
-### 8.6 Phase 8 暂缓项
-
-1. **生产阈值最终调优**：需要真实流量观察后完成，不在首次导入当天强行定稿。
-2. **跨团队值班路由**：如果模型平台、后端平台、基础设施平台需要不同接收方，需要在实际组织流程里确认。
-3. **SLO/错误预算**：本阶段先完成告警和看板，不直接定义正式 SLO。
-
-### 8.7 Phase 8 验证记录
-
-1. `python` JSON 解析通过：`docs/observability/chat-routing-grafana-dashboard.json` 是合法 JSON。
-2. `docker compose -f docker-compose-observability.yml config` 通过，compose/provisioning volume 结构可解析。
-3. `mvnw.cmd -o -pl bootstrap -am -DskipTests compile` 通过，`application.yaml` 的 management metrics/health 配置不影响后端编译。
-4. 本机未完成 `promtool check rules`：裸 `promtool` 不在 PATH，尝试用 `prom/prometheus:v2.55.0` Docker 镜像校验时发现 Docker daemon 未启动。该项需要在 Docker 可用或目标 Prometheus 平台中执行。
-5. 未实际启动 Prometheus/Grafana，也未导入真实平台；平台侧导入、通知路由和 degraded 场景验证仍是 Phase 8 的剩余执行项。
+已取消，相关文件与配置已从仓库移除。

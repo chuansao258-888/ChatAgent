@@ -208,3 +208,49 @@ export interface InitializeAssistantFromTemplateResponse {
   templateId: string;
   activeIntentVersion: number;
 }
+
+export type AdminUserRole = "admin" | "user";
+export type AdminUserStatus = "ACTIVE" | "DISABLED";
+
+export interface AdminUserVO {
+  id: string;
+  username: string;
+  role: AdminUserRole | string;
+  avatar?: string | null;
+  status: AdminUserStatus | string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GetAdminUsersResponse {
+  users: AdminUserVO[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface CreateAdminUserRequest {
+  username: string;
+  role: AdminUserRole | string;
+  avatar?: string;
+}
+
+export interface CreateAdminUserResponse {
+  userId: string;
+  username: string;
+  initialPassword: string;
+}
+
+export interface UpdateAdminUserRequest {
+  role?: AdminUserRole | string;
+  avatar?: string;
+}
+
+export interface UpdateAdminUserStatusRequest {
+  status: AdminUserStatus | string;
+}
+
+export interface ResetAdminUserPasswordResponse {
+  userId: string;
+  newPassword: string;
+}

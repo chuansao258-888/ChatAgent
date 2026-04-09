@@ -1,10 +1,12 @@
 import { ConfigProvider, theme } from "antd";
+import enUS from "antd/locale/en_US";
 import { Outlet } from "react-router-dom";
 import AdminSideNav from "./AdminSideNav.tsx";
 
 export default function AdminLayout() {
   return (
     <ConfigProvider
+      locale={enUS}
       theme={{
         algorithm: theme.darkAlgorithm,
         token: {

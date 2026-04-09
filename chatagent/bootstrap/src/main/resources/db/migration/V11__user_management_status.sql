@@ -1,0 +1,14 @@
+ALTER TABLE t_user
+    ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE';
+
+UPDATE t_user
+SET status = 'ACTIVE'
+WHERE status IS NULL;
+
+ALTER TABLE t_user
+    DROP CONSTRAINT IF EXISTS ck_t_user_status;
+
+ALTER TABLE t_user
+    ADD CONSTRAINT ck_t_user_status CHECK (status IN ('ACTIVE', 'DISABLED'));
+
+COMMENT ON COLUMN t_user.status IS '账户状态: ACTIVE, DISABLED';

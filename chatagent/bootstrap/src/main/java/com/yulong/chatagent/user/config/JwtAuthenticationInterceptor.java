@@ -1,9 +1,12 @@
 package com.yulong.chatagent.user.config;
 
 import com.yulong.chatagent.context.UserContext;
+import com.yulong.chatagent.user.application.AuthenticatedUserSnapshotCache;
 import com.yulong.chatagent.user.application.JwtTokenService;
 import com.yulong.chatagent.user.converter.UserConverter;
+import com.yulong.chatagent.user.model.UserStatus;
 import com.yulong.chatagent.user.model.dto.JwtClaims;
+import com.yulong.chatagent.user.model.dto.UserDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -25,11 +28,14 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
 
     private final JwtTokenService jwtTokenService;
     private final UserConverter userConverter;
+    private final AuthenticatedUserSnapshotCache authenticatedUserSnapshotCache;
 
     public JwtAuthenticationInterceptor(JwtTokenService jwtTokenService,
-                                        UserConverter userConverter) {
+                                        UserConverter userConverter,
+                                        AuthenticatedUserSnapshotCache authenticatedUserSnapshotCache) {
         this.jwtTokenService = jwtTokenService;
         this.userConverter = userConverter;
+        this.authenticatedUserSnapshotCache = authenticatedUserSnapshotCache;
     }
 
     @Override
@@ -57,14 +63,24 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
         }
 
         JwtClaims claims = jwtTokenService.parseAccessToken(accessToken);
-        // Store only the minimal authenticated user snapshot needed during the
-        // lifetime of this request.
-        UserContext.set(userConverter.toLoginUser(claims));
+        UserDTO user = authenticatedUserSnapshotCache.getByUserId(claims.getUserId());
+        if (user == null || Boolean.TRUE.equals(user.getDeleted()) || UserStatus.DISABLED.matches(user.getStatus())) {
+            log.warn("JWT auth rejected: user unavailable, method={}, uri={}, userId={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    claims.getUserId());
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User session is no longer valid");
+            return false;
+        }
+
+        // Store the latest authenticated user snapshot so authorization uses
+        // the current role from persistence instead of stale token claims.
+        UserContext.set(userConverter.toLoginUser(user));
         log.info("JWT auth accepted: method={}, uri={}, userId={}, username={}",
                 request.getMethod(),
                 request.getRequestURI(),
-                claims.getUserId(),
-                claims.getUsername());
+                user.getId(),
+                user.getUsername());
         return true;
     }
 

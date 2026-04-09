@@ -17,4 +17,6 @@ public class LoginUserVO {
     private String role;
 
     private String avatar;
+
+    private String status;
 }

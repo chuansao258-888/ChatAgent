@@ -46,11 +46,22 @@ async function handleResponse<T>(
   response: Response,
   silent = false,
 ): Promise<ApiResponse<T>> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJsonResponse = contentType.includes("application/json");
+  const data = isJsonResponse ? ((await response.json()) as ApiResponse<T>) : null;
+
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    const errorMessage = data?.message || `HTTP error! status: ${response.status}`;
+    if (!silent && data?.message) {
+      message.error(data.message);
+    }
+    throw new Error(errorMessage);
   }
 
-  const data: ApiResponse<T> = await response.json();
+  if (!data) {
+    throw new Error("Invalid server response");
+  }
+
   if (data.code !== 200) {
     if (!silent) {
       message.error(data.message || "请求失败");

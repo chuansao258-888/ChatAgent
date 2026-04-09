@@ -7,6 +7,9 @@ import com.yulong.chatagent.user.model.dto.UserDTO;
 import com.yulong.chatagent.user.port.UserRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Repository
 /**
  * MyBatis-backed {@link UserRepository} implementation.
@@ -44,6 +47,26 @@ public class MyBatisUserRepository implements UserRepository {
         return saved;
     }
 
+    @Override
+    public boolean update(UserDTO user) {
+        return userMapper.updateById(toEntity(user)) > 0;
+    }
+
+    @Override
+    public List<UserDTO> findPage(String keyword, String status, int limit, int offset) {
+        return toDTOList(userMapper.selectPage(keyword, status, limit, offset));
+    }
+
+    @Override
+    public long count(String keyword, String status) {
+        return userMapper.countPage(keyword, status);
+    }
+
+    @Override
+    public List<UserDTO> findActiveAdminsForUpdate() {
+        return toDTOList(userMapper.selectActiveAdminsForUpdate());
+    }
+
     private UserDTO toDTO(User entity) {
         if (entity == null) {
             return null;
@@ -61,5 +84,16 @@ public class MyBatisUserRepository implements UserRepository {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to convert user dto to entity", e);
         }
+    }
+
+    private List<UserDTO> toDTOList(List<User> entities) {
+        List<UserDTO> result = new ArrayList<>();
+        if (entities == null) {
+            return result;
+        }
+        for (User entity : entities) {
+            result.add(toDTO(entity));
+        }
+        return result;
     }
 }

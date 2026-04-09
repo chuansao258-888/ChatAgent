@@ -2,6 +2,7 @@ package com.yulong.chatagent.user.infrastructure.cache;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 import com.yulong.chatagent.user.port.RefreshTokenStore;
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.List;
 import java.util.HexFormat;
 import java.util.Set;
 
@@ -27,6 +29,20 @@ public class RedisRefreshTokenStore implements RefreshTokenStore {
     private static final String REFRESH_TOKEN_KEY_PREFIX = "auth:refresh:";
     private static final String USER_REFRESH_TOKENS_KEY_PREFIX = "auth:user:";
     private static final String USER_REFRESH_TOKENS_KEY_SUFFIX = ":refresh-tokens";
+    private static final DefaultRedisScript<Long> DELETE_USER_REFRESH_TOKENS_SCRIPT =
+            new DefaultRedisScript<>(
+                    """
+                            local setKey = KEYS[1]
+                            local tokenKeyPrefix = ARGV[1]
+                            local members = redis.call('SMEMBERS', setKey)
+                            for _, member in ipairs(members) do
+                                redis.call('DEL', tokenKeyPrefix .. member)
+                            end
+                            redis.call('DEL', setKey)
+                            return #members
+                            """,
+                    Long.class
+            );
 
     public RedisRefreshTokenStore(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
@@ -74,6 +90,7 @@ public class RedisRefreshTokenStore implements RefreshTokenStore {
         // for one user without scanning Redis.
         String userTokenSetKey = userTokensKey(userId);
         stringRedisTemplate.opsForSet().add(userTokenSetKey, tokenHash);
+        stringRedisTemplate.expire(userTokenSetKey, ttl);
         log.info("Refresh token saved in Redis: userId={}, ttlSeconds={}",
                 userId,
                 ttl.getSeconds());
@@ -122,21 +139,15 @@ public class RedisRefreshTokenStore implements RefreshTokenStore {
             return;
         }
 
-        // The set stores token hashes; each hash points to a separate token->user key.
         String userTokenSetKey = userTokensKey(userId);
-        Set<String> members = stringRedisTemplate.opsForSet().members(userTokenSetKey);
-
-        if (members != null) {
-            for (String member : members) {
-                String tokenKey = refreshTokenKey(member);
-                stringRedisTemplate.delete(tokenKey);
-            }
-        }
-
-        stringRedisTemplate.delete(userTokenSetKey);
+        Long deletedTokenCount = stringRedisTemplate.execute(
+                DELETE_USER_REFRESH_TOKENS_SCRIPT,
+                List.of(userTokenSetKey),
+                REFRESH_TOKEN_KEY_PREFIX
+        );
         log.info("All refresh tokens deleted for user: userId={}, tokenCount={}",
                 userId,
-                members == null ? 0 : members.size());
+                deletedTokenCount == null ? 0 : deletedTokenCount);
     }
 
 }

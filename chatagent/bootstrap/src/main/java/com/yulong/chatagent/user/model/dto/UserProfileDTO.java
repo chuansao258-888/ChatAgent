@@ -20,6 +20,8 @@ public class UserProfileDTO {
 
     private String summary;
 
+    private String status;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

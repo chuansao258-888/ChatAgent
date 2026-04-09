@@ -5,6 +5,7 @@ import {
   DatabaseOutlined,
   PartitionOutlined,
   SettingOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { Button, Typography } from "antd";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -27,6 +28,7 @@ const navItems = [
     label: "Templates",
     icon: <AppstoreOutlined />,
   },
+  { to: "/admin/users", label: "Users", icon: <TeamOutlined /> },
   { to: "/admin/assistant", label: "Assistant", icon: <SettingOutlined /> },
 ];
 

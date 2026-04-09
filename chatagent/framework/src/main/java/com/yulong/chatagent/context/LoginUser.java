@@ -21,4 +21,6 @@ public class LoginUser {
     private String role;
 
     private String avatar;
+
+    private String status;
 }

@@ -31,6 +31,8 @@ public class UserConverter {
                 .passwordHash(userDTO.getPasswordHash())
                 .role(userDTO.getRole())
                 .avatar(userDTO.getAvatar())
+                .status(userDTO.getStatus())
+                .deleted(userDTO.getDeleted())
                 .createdAt(userDTO.getCreatedAt())
                 .updatedAt(userDTO.getUpdatedAt())
                 .build();
@@ -51,6 +53,8 @@ public class UserConverter {
                 .passwordHash(user.getPasswordHash())
                 .role(user.getRole())
                 .avatar(user.getAvatar())
+                .status(user.getStatus())
+                .deleted(user.getDeleted())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();
@@ -89,6 +93,24 @@ public class UserConverter {
     }
 
     /**
+     * Builds the request-context user object from the latest persisted user snapshot.
+     *
+     * @param user application user DTO
+     * @return authenticated user snapshot for {@code UserContext}
+     */
+    public LoginUser toLoginUser(UserDTO user) {
+        Assert.notNull(user, "UserDTO cannot be null");
+
+        return LoginUser.builder()
+                .userId(user.getId())
+                .username(user.getUsername())
+                .role(user.getRole())
+                .avatar(user.getAvatar())
+                .status(user.getStatus())
+                .build();
+    }
+
+    /**
      * Converts the internal request-context user into the API view returned
      * by {@code /api/user/me}.
      *
@@ -103,6 +125,7 @@ public class UserConverter {
                 .username(loginUser.getUsername())
                 .role(loginUser.getRole())
                 .avatar(loginUser.getAvatar())
+                .status(loginUser.getStatus())
                 .build();
     }
 
@@ -126,6 +149,7 @@ public class UserConverter {
                 .username(user.getUsername())
                 .role(user.getRole())
                 .avatar(user.getAvatar())
+                .status(user.getStatus())
                 .build();
     }
 }

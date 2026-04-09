@@ -5,6 +5,7 @@ import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.user.converter.UserConverter;
+import com.yulong.chatagent.user.model.UserStatus;
 import com.yulong.chatagent.user.model.dto.UserDTO;
 import com.yulong.chatagent.user.model.request.LoginRequest;
 import com.yulong.chatagent.user.model.request.RegisterRequest;
@@ -35,6 +36,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordService passwordService;
     private final JwtTokenService jwtTokenService;
     private final RefreshTokenStore refreshTokenStore;
+    private final AuthenticatedUserSnapshotCache authenticatedUserSnapshotCache;
     private final SecureRandom secureRandom = new SecureRandom();
     private final long refreshTtlDays;
     private final UserConverter userConverter;
@@ -43,12 +45,14 @@ public class AuthServiceImpl implements AuthService {
                            PasswordService passwordService,
                            JwtTokenService jwtTokenService,
                            RefreshTokenStore refreshTokenStore,
+                           AuthenticatedUserSnapshotCache authenticatedUserSnapshotCache,
                            @Value("${auth.jwt.refresh-ttl-days}") long refreshTtlDays,
                            UserConverter userConverter) {
         this.userRepository = userRepository;
         this.passwordService = passwordService;
         this.jwtTokenService = jwtTokenService;
         this.refreshTokenStore = refreshTokenStore;
+        this.authenticatedUserSnapshotCache = authenticatedUserSnapshotCache;
         this.refreshTtlDays = refreshTtlDays;
         this.userConverter = userConverter;
     }
@@ -74,6 +78,8 @@ public class AuthServiceImpl implements AuthService {
                 .username(username)
                 .passwordHash(passwordService.hash(request.getPassword()))
                 .role(UserRole.USER.persistedValue())
+                .status(UserStatus.ACTIVE.name())
+                .deleted(Boolean.FALSE)
                 .build();
 
         boolean saved = userRepository.save(user);
@@ -101,6 +107,7 @@ public class AuthServiceImpl implements AuthService {
             log.warn("Login failed: invalid credentials, username={}", username);
             throw new BizException("Invalid username or password");
         }
+        assertUserCanAuthenticate(user, "Account is disabled");
         refreshTokenStore.deleteByUserId(user.getId());
         log.info("Login succeeded: userId={}, username={}", user.getId(), username);
         return issueLoginResponse(user);
@@ -123,8 +130,10 @@ public class AuthServiceImpl implements AuthService {
         UserDTO user = userRepository.findById(userId);
         if (user == null) {
             log.warn("Refresh failed: user not found, userId={}", userId);
+            refreshTokenStore.delete(refreshToken);
             throw new BizException("Cannot find user with id " + userId);
         }
+        assertUserCanAuthenticate(user, "Account is disabled");
         String newAccessToken = jwtTokenService.generateAccessToken(userConverter.toJwtClaims(user));
         String newRefreshToken = generateRefreshToken();
         // Rotate the refresh token on every successful refresh to reduce replay risk.
@@ -167,6 +176,7 @@ public class AuthServiceImpl implements AuthService {
         // The access token is stateless; the refresh token is the server-side
         // handle that lets the session be renewed or revoked later.
         refreshTokenStore.save(refreshToken, user.getId(), Duration.ofDays(refreshTtlDays));
+        authenticatedUserSnapshotCache.put(user);
         log.info("Issued login response: userId={}, username={}",
                 user.getId(),
                 user.getUsername());
@@ -179,6 +189,26 @@ public class AuthServiceImpl implements AuthService {
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private void assertUserCanAuthenticate(UserDTO user, String message) {
+        if (user == null) {
+            throw new BizException(message);
+        }
+        if (Boolean.TRUE.equals(user.getDeleted())) {
+            if (user.getId() != null) {
+                authenticatedUserSnapshotCache.invalidate(user.getId());
+                refreshTokenStore.deleteByUserId(user.getId());
+            }
+            throw new BizException(message);
+        }
+        if (UserStatus.DISABLED.matches(user.getStatus())) {
+            if (user.getId() != null) {
+                authenticatedUserSnapshotCache.invalidate(user.getId());
+                refreshTokenStore.deleteByUserId(user.getId());
+            }
+            throw new BizException(message);
+        }
     }
 
 

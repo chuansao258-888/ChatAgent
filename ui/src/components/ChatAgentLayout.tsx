@@ -12,6 +12,7 @@ import AssistantTemplatePage from "./admin/pages/AssistantTemplatePage.tsx";
 import IntentTreePage from "./admin/pages/IntentTreePage.tsx";
 import KnowledgeBaseDetailPage from "./admin/pages/KnowledgeBaseDetailPage.tsx";
 import KnowledgeBaseListPage from "./admin/pages/KnowledgeBaseListPage.tsx";
+import UserManagementPage from "./admin/pages/UserManagementPage.tsx";
 
 function ChatWorkspaceLayout() {
   return (
@@ -51,6 +52,7 @@ export default function ChatAgentLayout() {
         />
         <Route path="intent-tree" element={<IntentTreePage />} />
         <Route path="templates" element={<AssistantTemplatePage />} />
+        <Route path="users" element={<UserManagementPage />} />
         <Route path="assistant" element={<AssistantSettingsPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
