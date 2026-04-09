@@ -2,6 +2,7 @@ package com.yulong.chatagent.agent.tools;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.intent.application.IntentResolution;
@@ -55,6 +56,7 @@ public class SessionFileTools implements Tool {
         String turnId = CurrentTurnHolder.require();
         IntentResolution intentResolution = CurrentIntentResolutionHolder.get();
         List<RetrievalHit> results = ragService.similaritySearchBySession(chatSessionId, query, intentResolution);
+        CurrentTurnKnowledgeHitHolder.recordRetrievalResult(!results.isEmpty());
         FormattedRetrievalPrompt formatted = retrievalHitFormatter.formatWithCitations(results);
         currentTurnCitationHolder.put(chatSessionId, turnId, formatted.citations());
         return formatted.promptText();

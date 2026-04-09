@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.DashboardMapper">
+
+    <select id="countUsersBefore" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM t_user
+        WHERE deleted = FALSE
+          AND created_at &lt; #{end}
+    </select>
+
+    <select id="countActiveUsersBetween" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT cs.user_id)
+        FROM chat_message cm
+                 JOIN chat_session cs ON cm.session_id = cs.id
+                 JOIN t_user tu ON cs.user_id = tu.id
+        WHERE cm.created_at &gt;= #{start}
+          AND cm.created_at &lt; #{end}
+          AND cm.role = 'user'
+          AND tu.deleted = FALSE
+    </select>
+
+    <select id="countSessionsBefore" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM chat_session
+        WHERE created_at &lt; #{end}
+    </select>
+
+    <select id="countSessionsBetween" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM chat_session
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+    </select>
+
+    <select id="countMessagesBefore" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM chat_message
+        WHERE created_at &lt; #{end}
+          AND role IN ('user', 'assistant')
+    </select>
+
+    <select id="countMessagesBetween" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM chat_message
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+          AND role IN ('user', 'assistant')
+    </select>
+
+    <select id="selectPerformanceAggregate" resultType="map">
+        SELECT COUNT(1)                                                                AS "totalCount",
+               COUNT(1) FILTER ( WHERE status = 'SUCCESS' )                           AS "successCount",
+               COUNT(1) FILTER ( WHERE status = 'ERROR' )                             AS "errorCount",
+               COUNT(1) FILTER ( WHERE duration_ms &gt; 20000 )                        AS "slowCount",
+               COUNT(1) FILTER ( WHERE status = 'SUCCESS' AND knowledge_hit = FALSE ) AS "noKnowledgeCount",
+               AVG(duration_ms) FILTER ( WHERE status = 'SUCCESS' )                   AS "avgLatencyMs"
+        FROM t_chat_turn_metric
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+    </select>
+
+    <select id="selectSuccessfulDurations" resultType="java.lang.Long">
+        SELECT duration_ms
+        FROM t_chat_turn_metric
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+          AND status = 'SUCCESS'
+        ORDER BY duration_ms ASC
+    </select>
+
+    <select id="selectSessionTrend" resultType="map">
+        SELECT date_trunc(#{bucketUnit}, created_at) AS bucket,
+               COUNT(1)                              AS value
+        FROM chat_session
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+        GROUP BY bucket
+        ORDER BY bucket
+    </select>
+
+    <select id="selectMessageTrend" resultType="map">
+        SELECT date_trunc(#{bucketUnit}, created_at) AS bucket,
+               COUNT(1)                              AS value
+        FROM chat_message
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+          AND role IN ('user', 'assistant')
+        GROUP BY bucket
+        ORDER BY bucket
+    </select>
+
+    <select id="selectActiveUserTrend" resultType="map">
+        SELECT date_trunc(#{bucketUnit}, cm.created_at) AS bucket,
+               COUNT(DISTINCT cs.user_id)               AS value
+        FROM chat_message cm
+                 JOIN chat_session cs ON cm.session_id = cs.id
+                 JOIN t_user tu ON cs.user_id = tu.id
+        WHERE cm.created_at &gt;= #{start}
+          AND cm.created_at &lt; #{end}
+          AND cm.role = 'user'
+          AND tu.deleted = FALSE
+        GROUP BY bucket
+        ORDER BY bucket
+    </select>
+
+    <select id="selectLatencyTrend" resultType="map">
+        SELECT date_trunc(#{bucketUnit}, created_at)                       AS bucket,
+               AVG(duration_ms)                                            AS "avgLatencyMs",
+               percentile_cont(0.95) WITHIN GROUP ( ORDER BY duration_ms ) AS "p95LatencyMs"
+        FROM t_chat_turn_metric
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+          AND status = 'SUCCESS'
+        GROUP BY bucket
+        ORDER BY bucket
+    </select>
+
+    <select id="selectQualityTrend" resultType="map">
+        SELECT date_trunc(#{bucketUnit}, created_at)                                  AS bucket,
+               COUNT(1)                                                               AS "totalCount",
+               COUNT(1) FILTER ( WHERE status = 'SUCCESS' )                           AS "successCount",
+               COUNT(1) FILTER ( WHERE status = 'ERROR' )                             AS "errorCount",
+               COUNT(1) FILTER ( WHERE status = 'SUCCESS' AND knowledge_hit = FALSE ) AS "noKnowledgeCount"
+        FROM t_chat_turn_metric
+        WHERE created_at &gt;= #{start}
+          AND created_at &lt; #{end}
+        GROUP BY bucket
+        ORDER BY bucket
+    </select>
+</mapper>

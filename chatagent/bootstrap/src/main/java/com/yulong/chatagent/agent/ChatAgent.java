@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
@@ -149,7 +150,7 @@ public class ChatAgent {
     /**
      * Runs the agent until it finishes, errors, or reaches the configured step cap.
      */
-    public void run() {
+    public AgentRunResult run() {
         if (agentState != AgentState.IDLE) {
             throw new IllegalStateException("Agent is not idle");
         }
@@ -160,6 +161,7 @@ public class ChatAgent {
                 TraceContext.getTraceId(), agentId, chatSessionId);
 
         try {
+            CurrentTurnKnowledgeHitHolder.reset();
             CurrentChatSessionHolder.set(this.chatSessionId);
             CurrentTurnHolder.set(this.turnId);
             for (int i = 0; i < MAX_STEPS && agentState != AgentState.FINISHED; i++) {
@@ -175,13 +177,19 @@ public class ChatAgent {
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
             log.info("Agent run finished: traceId={}, agentId={}, sessionId={}, steps={}, durationMs={}",
                     TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs);
+            return AgentRunResult.success(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit());
         } catch (Exception e) {
             agentState = AgentState.ERROR;
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
             log.error("Error running agent: traceId={}, agentId={}, sessionId={}, steps={}, durationMs={}",
                     TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs, e);
-            throw new RuntimeException("Error running agent", e);
+            throw new AgentRunException(
+                    "Error running agent",
+                    e,
+                    AgentRunResult.failure(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), e)
+            );
         } finally {
+            CurrentTurnKnowledgeHitHolder.clear();
             CurrentTurnHolder.clear();
             CurrentChatSessionHolder.clear();
         }

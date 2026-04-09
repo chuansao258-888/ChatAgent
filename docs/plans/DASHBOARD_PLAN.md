@@ -190,11 +190,11 @@ GROUP BY d
 
 ### 5.2 时间分桶聚合
 
-使用 PostgreSQL 的 `to_char` 做时间分桶（与 ragent 完全一致）：
-- 按天：`to_char(created_at, 'YYYY-MM-DD')`
-- 按小时：`to_char(created_at, 'YYYY-MM-DD HH24:00:00')`
+使用 PostgreSQL 的 `date_trunc` 做时间分桶（ragent 用 `to_char`，本项目改用 `date_trunc` 直接返回 Timestamp，省去字符串解析）：
+- 按天：`date_trunc('day', created_at)`
+- 按小时：`date_trunc('hour', created_at)`
 
-返回结果为 `List<Map<String, Object>>`，在 Java 层转换为 `Map<LocalDate, Long>` 或 `Map<LocalDateTime, Long>`，然后用循环填充零值点（保证折线图连续）。
+返回结果为 `List<Map<String, Object>>`，`bucket` 列为 `Timestamp`，在 Java 层转换为 `Map<LocalDateTime, Double>`，然后用 cursor 循环填充零值点（保证折线图连续）。
 
 ### 5.3 性能指标查询（基于 t_chat_turn_metric）
 

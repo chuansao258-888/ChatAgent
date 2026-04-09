@@ -1,5 +1,7 @@
 package com.yulong.chatagent.conversation.event;
 
+import com.yulong.chatagent.agent.AgentRunException;
+import com.yulong.chatagent.agent.AgentRunResult;
 import com.yulong.chatagent.agent.ChatAgent;
 import com.yulong.chatagent.agent.ChatAgentFactory;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
@@ -7,6 +9,7 @@ import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.chat.ChatModelAvailability;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
+import com.yulong.chatagent.conversation.metrics.ChatTurnMetricRecorder;
 import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
@@ -58,6 +61,9 @@ class ChatEventProcessorTest {
     private CurrentTurnCitationHolder currentTurnCitationHolder;
 
     @Mock
+    private ChatTurnMetricRecorder chatTurnMetricRecorder;
+
+    @Mock
     private ChatAgent chatAgent;
 
     @AfterEach
@@ -79,9 +85,10 @@ class ChatEventProcessorTest {
         ArgumentCaptor<ChatMessageDTO> messageCaptor = ArgumentCaptor.forClass(ChatMessageDTO.class);
         verify(chatMessageFacadeService).createChatMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getContent()).contains("ChatAgent is running without a configured chat model");
-        verify(sseService).publish(anyString(), any(SseMessage.class));
+        verify(sseService, times(3)).publish(anyString(), any(SseMessage.class));
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
         verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString());
+        verify(chatTurnMetricRecorder).record(any(ChatEvent.class), any(AgentRunResult.class));
         verify(currentTurnCitationHolder).clear("session-1", "turn-1");
     }
 
@@ -96,24 +103,35 @@ class ChatEventProcessorTest {
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("assistant-1").build());
         when(chatMessageConverter.toVO(any(ChatMessageDTO.class)))
                 .thenReturn(ChatMessageVO.builder().id("assistant-1").sessionId("session-1").turnId("turn-1").build());
-        doThrow(new RuntimeException("boom")).when(chatAgent).run();
+        AgentRunException runException = new AgentRunException(
+                "boom",
+                new RuntimeException("boom"),
+                AgentRunResult.failure(123L, false, new RuntimeException("boom"))
+        );
+        doThrow(runException).when(chatAgent).run();
 
-        assertThatThrownBy(() -> processor.process(event)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> processor.process(event)).isInstanceOf(AgentRunException.class);
 
         assertThat(CurrentIntentResolutionHolder.get()).isNull();
         verify(currentTurnCitationHolder).clear("session-1", "turn-1");
 
-        processor.publishFailure(event, new RuntimeException("boom"));
+        processor.publishFailure(event, runException);
 
         verify(chatMessageFacadeService).deleteAssistantAndToolMessagesForTurn("session-1", "turn-1");
         ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
-        verify(sseService, times(2)).publish(anyString(), sseCaptor.capture());
+        verify(sseService, times(4)).publish(anyString(), sseCaptor.capture());
         assertThat(sseCaptor.getAllValues())
                 .extracting(SseMessage::getType)
-                .containsExactly(SseMessage.Type.TURN_ROLLBACK, SseMessage.Type.AI_GENERATED_CONTENT);
+                .containsExactly(
+                        SseMessage.Type.TURN_ROLLBACK,
+                        SseMessage.Type.AI_GENERATED_CONTENT,
+                        SseMessage.Type.AI_ERROR,
+                        SseMessage.Type.AI_DONE
+                );
         InOrder inOrder = inOrder(sseService, conversationTurnCompletionPublisher);
-        inOrder.verify(sseService, times(2)).publish(anyString(), any(SseMessage.class));
+        inOrder.verify(sseService, times(4)).publish(anyString(), any(SseMessage.class));
         inOrder.verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
+        verify(chatTurnMetricRecorder).record(event, runException.getResult());
     }
 
     @Test
@@ -137,7 +155,8 @@ class ChatEventProcessorTest {
                 chatMessageConverter,
                 conversationTurnCompletionPublisher,
                 sseService,
-                currentTurnCitationHolder
+                currentTurnCitationHolder,
+                chatTurnMetricRecorder
         );
     }
 

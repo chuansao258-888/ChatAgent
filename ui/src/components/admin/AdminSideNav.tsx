@@ -12,7 +12,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth.ts";
 
 const navItems = [
-  { to: "/admin", label: "Overview", icon: <ApartmentOutlined /> },
+  { to: "/admin", label: "Dashboard", icon: <ApartmentOutlined /> },
   {
     to: "/admin/knowledge-bases",
     label: "Knowledge Bases",
@@ -52,11 +52,11 @@ export default function AdminSideNav() {
           Admin
         </div>
         <div className="mt-3 text-2xl font-semibold tracking-tight">
-          Knowledge console
+          Operations deck
         </div>
         <Typography.Text className="mt-3 block text-sm leading-6 !text-white/60">
-          Curate enterprise knowledge, document ingestion, and the internal
-          assistant binding from one place.
+          Track platform health, usage, and knowledge quality while keeping
+          admin configuration within reach.
         </Typography.Text>
       </div>
 

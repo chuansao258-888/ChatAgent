@@ -254,3 +254,59 @@ export interface ResetAdminUserPasswordResponse {
   userId: string;
   newPassword: string;
 }
+
+export type DashboardWindow = "24h" | "7d" | "30d";
+export type DashboardTrendMetric =
+  | "sessions"
+  | "messages"
+  | "activeUsers"
+  | "avgLatency"
+  | "quality";
+export type DashboardGranularity = "hour" | "day";
+
+export interface DashboardOverviewKpiVO {
+  value: number;
+  delta: number;
+  deltaPct?: number | null;
+}
+
+export interface DashboardOverviewVO {
+  window: DashboardWindow | string;
+  compareWindow: string;
+  updatedAt: number;
+  kpis: {
+    totalUsers: DashboardOverviewKpiVO;
+    activeUsers: DashboardOverviewKpiVO;
+    totalSessions: DashboardOverviewKpiVO;
+    sessions24h: DashboardOverviewKpiVO;
+    totalMessages: DashboardOverviewKpiVO;
+    messages24h: DashboardOverviewKpiVO;
+  };
+}
+
+export interface DashboardPerformanceVO {
+  window: DashboardWindow | string;
+  avgLatencyMs: number;
+  p95LatencyMs: number;
+  successRate: number;
+  errorRate: number;
+  noDocRate: number;
+  slowRate: number;
+}
+
+export interface DashboardTrendPointVO {
+  ts: number;
+  value: number;
+}
+
+export interface DashboardTrendSeriesVO {
+  name: string;
+  data: DashboardTrendPointVO[];
+}
+
+export interface DashboardTrendsVO {
+  metric: DashboardTrendMetric | string;
+  window: DashboardWindow | string;
+  granularity: DashboardGranularity | string;
+  series: DashboardTrendSeriesVO[];
+}

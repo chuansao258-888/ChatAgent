@@ -6,6 +6,12 @@ import type {
   CreateIntentNodeResponse,
   CreateKnowledgeBaseRequest,
   CreateKnowledgeBaseResponse,
+  DashboardGranularity,
+  DashboardOverviewVO,
+  DashboardPerformanceVO,
+  DashboardTrendMetric,
+  DashboardTrendsVO,
+  DashboardWindow,
   GetAdminUsersResponse,
   GetAssistantKnowledgeBasesResponse,
   GetAssistantTemplateResponse,
@@ -219,4 +225,24 @@ export async function getIntentVersions(): Promise<GetIntentVersionsResponse> {
 
 export async function switchActiveIntentVersion(version: number): Promise<void> {
   return put<void>(`/admin/assistant/intent-tree/versions/${version}/activate`);
+}
+
+export async function getDashboardOverview(
+  window: DashboardWindow = "24h",
+): Promise<DashboardOverviewVO> {
+  return get<DashboardOverviewVO>("/admin/dashboard/overview", { window });
+}
+
+export async function getDashboardPerformance(
+  window: DashboardWindow = "24h",
+): Promise<DashboardPerformanceVO> {
+  return get<DashboardPerformanceVO>("/admin/dashboard/performance", { window });
+}
+
+export async function getDashboardTrends(params: {
+  metric: DashboardTrendMetric;
+  window?: DashboardWindow;
+  granularity?: DashboardGranularity;
+}): Promise<DashboardTrendsVO> {
+  return get<DashboardTrendsVO>("/admin/dashboard/trends", params);
 }

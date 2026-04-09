@@ -1,5 +1,7 @@
 package com.yulong.chatagent.conversation.event;
 
+import com.yulong.chatagent.agent.AgentRunException;
+import com.yulong.chatagent.agent.AgentRunResult;
 import com.yulong.chatagent.agent.ChatAgent;
 import com.yulong.chatagent.agent.ChatAgentFactory;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
@@ -7,6 +9,7 @@ import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.chat.ChatModelAvailability;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
+import com.yulong.chatagent.conversation.metrics.ChatTurnMetricRecorder;
 import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
@@ -32,6 +35,7 @@ public class ChatEventProcessor {
     private final ConversationTurnCompletionPublisher conversationTurnCompletionPublisher;
     private final SseService sseService;
     private final CurrentTurnCitationHolder currentTurnCitationHolder;
+    private final ChatTurnMetricRecorder chatTurnMetricRecorder;
 
     public void process(ChatEvent event) {
         try {
@@ -51,6 +55,10 @@ public class ChatEventProcessor {
                                 To enable real AI responses, set either CHATAGENT_DEEPSEEK_API_KEY or CHATAGENT_ZHIPUAI_API_KEY and restart the backend.
                                 """.formatted(event.getUserInput())
                 );
+                recordMetricQuietly(
+                        event,
+                        new AgentRunResult(AgentRunResult.Status.ERROR, 0L, "MODEL_NOT_CONFIGURED", true)
+                );
                 conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
                 return;
             }
@@ -63,7 +71,8 @@ public class ChatEventProcessor {
                     event.getIntentResolution(),
                     event.getRewrittenInput()
             );
-            chatAgent.run();
+            AgentRunResult runResult = chatAgent.run();
+            recordMetricQuietly(event, runResult);
             conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
         } finally {
             currentTurnCitationHolder.clear(event.getSessionId(), event.getTurnId());
@@ -93,6 +102,8 @@ public class ChatEventProcessor {
      */
     public void publishFailure(ChatEvent event, Exception ex) {
         try {
+            recordMetricQuietly(event, resolveFailureMetric(ex));
+
             // Ensure any partial output from the failed attempt is cleared before showing the error
             rollbackTurn(event.getSessionId(), event.getTurnId());
 
@@ -143,5 +154,23 @@ public class ChatEventProcessor {
                         .chatMessageId(chatMessageDTO.getId())
                         .build())
                 .build());
+    }
+
+    private AgentRunResult resolveFailureMetric(Exception ex) {
+        if (ex instanceof AgentRunException agentRunException && agentRunException.getResult() != null) {
+            return agentRunException.getResult();
+        }
+        return AgentRunResult.failure(0L, true, ex);
+    }
+
+    private void recordMetricQuietly(ChatEvent event, AgentRunResult runResult) {
+        try {
+            chatTurnMetricRecorder.record(event, runResult);
+        } catch (RuntimeException metricException) {
+            log.warn("Failed to record chat turn metric: sessionId={}, turnId={}, error={}",
+                    event == null ? null : event.getSessionId(),
+                    event == null ? null : event.getTurnId(),
+                    metricException.getMessage());
+        }
     }
 }
