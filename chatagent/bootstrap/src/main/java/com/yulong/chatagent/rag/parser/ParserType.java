@@ -34,4 +34,16 @@ public enum ParserType {
      * Stable parser type name used by the selector.
      */
     private final String type;
+
+    public static ParserType fromType(String type) {
+        if (type == null || type.isBlank()) {
+            return null;
+        }
+        for (ParserType parserType : values()) {
+            if (parserType.type.equalsIgnoreCase(type.trim())) {
+                return parserType;
+            }
+        }
+        return null;
+    }
 }

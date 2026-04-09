@@ -2,6 +2,7 @@ package com.yulong.chatagent.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
+import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.model.SseMessage;
@@ -44,7 +45,8 @@ class AgentMessageBridgeImplTest {
                 sseService,
                 new ChatMessageConverter(new ObjectMapper()),
                 chatMessageFacadeService,
-                currentTurnCitationHolder
+                currentTurnCitationHolder,
+                new ChatRoutingProperties()
         );
         when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("msg-1").build());

@@ -96,14 +96,38 @@ vi.mock("./agentChatView/AgentChatHistory.tsx", () => ({
     displayAgentStatus,
     agentStatusText,
     messages,
+    persistentErrorText,
+    onRetryLastMessage,
+    onDismissError,
   }: {
     displayAgentStatus?: boolean;
     agentStatusText?: string;
     messages: Array<{ id: string; role: string; content: string }>;
+    persistentErrorText?: string;
+    onRetryLastMessage?: () => void;
+    onDismissError?: () => void;
   }) => (
     <div>
       <div data-testid="history-status">{displayAgentStatus ? agentStatusText : "idle"}</div>
       <div data-testid="history-count">{messages.length}</div>
+      <div data-testid="history-messages">
+        {messages.map((message) => `${message.id}:${message.content}`).join("|")}
+      </div>
+      {persistentErrorText ? (
+        <div data-testid="persistent-error">
+          <span>{persistentErrorText}</span>
+          {onRetryLastMessage ? (
+            <button type="button" onClick={onRetryLastMessage}>
+              Retry
+            </button>
+          ) : null}
+          {onDismissError ? (
+            <button type="button" onClick={onDismissError}>
+              Dismiss
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   ),
 }));
@@ -248,5 +272,202 @@ describe("AgentChatView", () => {
 
     expect(screen.getByTestId("history-status").textContent).toBe("idle");
     expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBeNull();
+  });
+
+  it("updates an existing streamed assistant message by id", async () => {
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    const eventSource = MockEventSource.instances[0];
+    expect(eventSource).toBeDefined();
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_GENERATED_CONTENT",
+        payload: {
+          message: {
+            id: "assistant-stream-1",
+            sessionId: "session-1",
+            turnId: "turn-server",
+            role: "assistant",
+            content: "Hel",
+          },
+        },
+        metadata: {
+          chatMessageId: "assistant-stream-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-messages").textContent).toBe(
+      "assistant-stream-1:Hel",
+    );
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_GENERATED_CONTENT",
+        payload: {
+          message: {
+            id: "assistant-stream-1",
+            sessionId: "session-1",
+            turnId: "turn-server",
+            role: "assistant",
+            content: "Hello from stream",
+          },
+        },
+        metadata: {
+          chatMessageId: "assistant-stream-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-count").textContent).toBe("1");
+    expect(screen.getByTestId("history-messages").textContent).toBe(
+      "assistant-stream-1:Hello from stream",
+    );
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_GENERATED_CONTENT",
+        payload: {
+          message: {
+            id: "assistant-stream-1",
+            sessionId: "session-1",
+            turnId: "turn-server",
+            role: "assistant",
+            content: "Hello",
+          },
+        },
+        metadata: {
+          chatMessageId: "assistant-stream-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-count").textContent).toBe("1");
+    expect(screen.getByTestId("history-messages").textContent).toBe(
+      "assistant-stream-1:Hello from stream",
+    );
+  });
+
+  it("shows AI_ERROR as a persistent retryable error and can dismiss it", async () => {
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    const eventSource = MockEventSource.instances[0];
+    expect(eventSource).toBeDefined();
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_ERROR",
+        payload: {
+          statusText: "Model stream interrupted",
+        },
+        metadata: {
+          chatMessageId: "assistant-error-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe(
+      "Model stream interrupted",
+    );
+    expect(screen.getByTestId("persistent-error").textContent).toContain(
+      "Model stream interrupted",
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await flushMicrotasks();
+    });
+
+    expect(createChatMessage).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      turnId: "turn-client",
+      role: "user",
+      content: "hello",
+    });
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_ERROR",
+        payload: {
+          statusText: "Model stream interrupted again",
+        },
+        metadata: {
+          chatMessageId: "assistant-error-2",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("persistent-error").textContent).toContain(
+      "Model stream interrupted again",
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    });
+
+    expect(screen.queryByTestId("persistent-error")).toBeNull();
+  });
+
+  it("rolls back provisional assistant messages for a tool-call turn", async () => {
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    const eventSource = MockEventSource.instances[0];
+    expect(eventSource).toBeDefined();
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_GENERATED_CONTENT",
+        payload: {
+          message: {
+            id: "assistant-provisional-1",
+            sessionId: "session-1",
+            turnId: "turn-with-tool",
+            role: "assistant",
+            content: "I will call a tool",
+          },
+        },
+        metadata: {
+          chatMessageId: "assistant-provisional-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-messages").textContent).toContain(
+      "assistant-provisional-1:I will call a tool",
+    );
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "TURN_ROLLBACK",
+        payload: {
+          turnId: "turn-with-tool",
+        },
+        metadata: {
+          chatMessageId: "assistant-provisional-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-messages").textContent).not.toContain(
+      "assistant-provisional-1",
+    );
   });
 });

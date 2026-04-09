@@ -1,0 +1,21 @@
+{
+  "documentId": "table-01",
+  "expectedSegmentCount": 1,
+  "expectedExtractionMode": "PDF_VISUAL_ROUTED",
+  "segments": [
+    {
+      "pageIndex": 0,
+      "expectedRoute": "VISUAL_TRACK",
+      "mustContain": [
+        "Name",
+        "Department",
+        "Alice",
+        "Finance"
+      ],
+      "mustNotContain": [
+        "[图像解析失败]"
+      ],
+      "expectedVisualType": "IMAGE"
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 package com.yulong.chatagent.rag.parser;
 
 import com.yulong.chatagent.exception.BizException;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
@@ -21,6 +23,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Writer;
@@ -58,7 +61,7 @@ public class PdfDocumentParser implements DocumentParser {
     private static final Pattern DIGIT_PATTERN = Pattern.compile("\\d");
     private static final double HEADING_FONT_DELTA_PT = 1.5d;
 
-    private final VdpEngine vdpEngine;
+    private final VdpEngineRouter engineRouter;
     private final VdpPageCacheService vdpPageCacheService;
     private final Executor vdpPageDispatchExecutor;
     private final Executor vdpBatchExecutor;
@@ -69,9 +72,10 @@ public class PdfDocumentParser implements DocumentParser {
     private final long pageDispatchTimeoutMs;
     private final long knowledgeDocumentTimeoutMs;
     private final float renderDpi;
+    private final MeterRegistry meterRegistry;
 
     @Autowired
-    public PdfDocumentParser(VdpEngine vdpEngine,
+    public PdfDocumentParser(VdpEngineRouter engineRouter,
                              ObjectProvider<VdpPageCacheService> vdpPageCacheServiceProvider,
                              @Qualifier("vdpPageDispatchExecutor") ObjectProvider<Executor> vdpPageDispatchExecutorProvider,
                              @Qualifier("vdpBatchExecutor") ObjectProvider<Executor> vdpBatchExecutorProvider,
@@ -80,10 +84,11 @@ public class PdfDocumentParser implements DocumentParser {
                              @Value("${chatagent.rag.vdp.whitespace-alignment-line-threshold:2}") int whitespaceAlignedLineThreshold,
                              @Value("${chatagent.rag.vdp.pdf-page-max-in-flight:2}") int pageMaxInFlight,
                              @Value("${chatagent.rag.vdp.pdf-page-timeout-ms:5000}") long pageDispatchTimeoutMs,
-                             @Value("${chatagent.rag.vdp.knowledge-document-timeout-ms:120000}") long knowledgeDocumentTimeoutMs,
-                             @Value("${chatagent.rag.vdp.pdf-render-dpi:120}") float renderDpi) {
+                             @Value("${chatagent.rag.vdp.knowledge-document-timeout-ms:300000}") long knowledgeDocumentTimeoutMs,
+                             @Value("${chatagent.rag.vdp.pdf-render-dpi:120}") float renderDpi,
+                             ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this(
-                vdpEngine,
+                engineRouter,
                 vdpPageCacheServiceProvider.getIfAvailable(),
                 vdpPageDispatchExecutorProvider.getIfAvailable(() -> Runnable::run),
                 vdpBatchExecutorProvider.getIfAvailable(() -> Runnable::run),
@@ -93,12 +98,13 @@ public class PdfDocumentParser implements DocumentParser {
                 pageMaxInFlight,
                 pageDispatchTimeoutMs,
                 knowledgeDocumentTimeoutMs,
-                renderDpi
+                renderDpi,
+                meterRegistryProvider.getIfAvailable()
         );
     }
 
     PdfDocumentParser() {
-        this(new NoopVdpEngine(), null, Runnable::run, Runnable::run, 150, 80, 2, 2, 5000L, 120000L, 120f);
+        this(VdpEngineRouter.forTesting(new NoopVdpEngine()), null, Runnable::run, Runnable::run, 150, 80, 2, 2, 5000L, 300000L, 120f, null);
     }
 
     PdfDocumentParser(VdpEngine vdpEngine,
@@ -111,7 +117,7 @@ public class PdfDocumentParser implements DocumentParser {
                       long knowledgeDocumentTimeoutMs,
                       float renderDpi) {
         this(
-                vdpEngine,
+                VdpEngineRouter.forTesting(vdpEngine),
                 null,
                 vdpPageDispatchExecutor,
                 vdpPageDispatchExecutor,
@@ -121,7 +127,33 @@ public class PdfDocumentParser implements DocumentParser {
                 pageMaxInFlight,
                 pageDispatchTimeoutMs,
                 knowledgeDocumentTimeoutMs,
-                renderDpi
+                renderDpi,
+                null
+        );
+    }
+
+    PdfDocumentParser(VdpEngineRouter engineRouter,
+                      Executor vdpPageDispatchExecutor,
+                      int charDensityThreshold,
+                      int shortTextFastTrackThreshold,
+                      int whitespaceAlignedLineThreshold,
+                      int pageMaxInFlight,
+                      long pageDispatchTimeoutMs,
+                      long knowledgeDocumentTimeoutMs,
+                      float renderDpi) {
+        this(
+                engineRouter,
+                null,
+                vdpPageDispatchExecutor,
+                vdpPageDispatchExecutor,
+                charDensityThreshold,
+                shortTextFastTrackThreshold,
+                whitespaceAlignedLineThreshold,
+                pageMaxInFlight,
+                pageDispatchTimeoutMs,
+                knowledgeDocumentTimeoutMs,
+                renderDpi,
+                null
         );
     }
 
@@ -136,7 +168,90 @@ public class PdfDocumentParser implements DocumentParser {
                       long pageDispatchTimeoutMs,
                       long knowledgeDocumentTimeoutMs,
                       float renderDpi) {
-        this.vdpEngine = vdpEngine;
+        this(
+                VdpEngineRouter.forTesting(vdpEngine),
+                vdpPageCacheService,
+                vdpPageDispatchExecutor,
+                vdpBatchExecutor,
+                charDensityThreshold,
+                shortTextFastTrackThreshold,
+                whitespaceAlignedLineThreshold,
+                pageMaxInFlight,
+                pageDispatchTimeoutMs,
+                knowledgeDocumentTimeoutMs,
+                renderDpi,
+                null
+        );
+    }
+
+    PdfDocumentParser(VdpEngine vdpEngine,
+                      VdpPageCacheService vdpPageCacheService,
+                      Executor vdpPageDispatchExecutor,
+                      Executor vdpBatchExecutor,
+                      int charDensityThreshold,
+                      int shortTextFastTrackThreshold,
+                      int whitespaceAlignedLineThreshold,
+                      int pageMaxInFlight,
+                      long pageDispatchTimeoutMs,
+                      long knowledgeDocumentTimeoutMs,
+                      float renderDpi,
+                      MeterRegistry meterRegistry) {
+        this(
+                VdpEngineRouter.forTesting(vdpEngine),
+                vdpPageCacheService,
+                vdpPageDispatchExecutor,
+                vdpBatchExecutor,
+                charDensityThreshold,
+                shortTextFastTrackThreshold,
+                whitespaceAlignedLineThreshold,
+                pageMaxInFlight,
+                pageDispatchTimeoutMs,
+                knowledgeDocumentTimeoutMs,
+                renderDpi,
+                meterRegistry
+        );
+    }
+
+    PdfDocumentParser(VdpEngineRouter engineRouter,
+                      VdpPageCacheService vdpPageCacheService,
+                      Executor vdpPageDispatchExecutor,
+                      Executor vdpBatchExecutor,
+                      int charDensityThreshold,
+                      int shortTextFastTrackThreshold,
+                      int whitespaceAlignedLineThreshold,
+                      int pageMaxInFlight,
+                      long pageDispatchTimeoutMs,
+                      long knowledgeDocumentTimeoutMs,
+                      float renderDpi) {
+        this(
+                engineRouter,
+                vdpPageCacheService,
+                vdpPageDispatchExecutor,
+                vdpBatchExecutor,
+                charDensityThreshold,
+                shortTextFastTrackThreshold,
+                whitespaceAlignedLineThreshold,
+                pageMaxInFlight,
+                pageDispatchTimeoutMs,
+                knowledgeDocumentTimeoutMs,
+                renderDpi,
+                null
+        );
+    }
+
+    PdfDocumentParser(VdpEngineRouter engineRouter,
+                      VdpPageCacheService vdpPageCacheService,
+                      Executor vdpPageDispatchExecutor,
+                      Executor vdpBatchExecutor,
+                      int charDensityThreshold,
+                      int shortTextFastTrackThreshold,
+                      int whitespaceAlignedLineThreshold,
+                      int pageMaxInFlight,
+                      long pageDispatchTimeoutMs,
+                      long knowledgeDocumentTimeoutMs,
+                      float renderDpi,
+                      MeterRegistry meterRegistry) {
+        this.engineRouter = engineRouter == null ? VdpEngineRouter.forTesting(new NoopVdpEngine()) : engineRouter;
         this.vdpPageCacheService = vdpPageCacheService;
         this.vdpPageDispatchExecutor = vdpPageDispatchExecutor == null ? Runnable::run : vdpPageDispatchExecutor;
         this.vdpBatchExecutor = vdpBatchExecutor == null ? Runnable::run : vdpBatchExecutor;
@@ -147,6 +262,7 @@ public class PdfDocumentParser implements DocumentParser {
         this.pageDispatchTimeoutMs = Math.max(1000L, pageDispatchTimeoutMs);
         this.knowledgeDocumentTimeoutMs = Math.max(this.pageDispatchTimeoutMs, knowledgeDocumentTimeoutMs);
         this.renderDpi = Math.max(72f, renderDpi);
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -163,12 +279,7 @@ public class PdfDocumentParser implements DocumentParser {
                     .build();
         }
         if (content.length > MAX_FILE_BYTES) {
-            return ParseResult.builder()
-                    .segments(List.of())
-                    .parserType(ParserType.PDFBOX.getType())
-                    .qualityLevel(QualityLevel.REJECTED)
-                    .warnings(List.of("File exceeds 30MB limit"))
-                    .build();
+            return oversizedFileResult();
         }
 
         // TODO Phase 5b: retire byte[] entry point once all callers are stream-native.
@@ -188,17 +299,23 @@ public class PdfDocumentParser implements DocumentParser {
             }
             long fileSizeBytes = resolveFileSizeBytes(options);
             if (fileSizeBytes > MAX_FILE_BYTES) {
-                return ParseResult.builder()
-                        .segments(List.of())
-                        .parserType(ParserType.PDFBOX.getType())
-                        .qualityLevel(QualityLevel.REJECTED)
-                        .warnings(List.of("File exceeds 30MB limit"))
-                        .build();
+                return oversizedFileResult();
             }
-            try (RandomAccessReadBuffer readBuffer = new RandomAccessReadBuffer(stream);
+            InputStream guardedStream = fileSizeBytes > 0
+                    ? stream
+                    : new SizeLimitedInputStream(stream, MAX_FILE_BYTES);
+            try (guardedStream;
+                 RandomAccessReadBuffer readBuffer = new RandomAccessReadBuffer(guardedStream);
                  PDDocument document = Loader.loadPDF(readBuffer)) {
-                return extractPages(document, fileSizeBytes, options, streamSupplier);
+                long resolvedFileSizeBytes = fileSizeBytes > 0
+                        ? fileSizeBytes
+                        : guardedStream instanceof SizeLimitedInputStream sizeLimitedInputStream
+                        ? sizeLimitedInputStream.observedBytes()
+                        : 0L;
+                return extractPages(document, resolvedFileSizeBytes, options, streamSupplier);
             }
+        } catch (FileSizeLimitExceededException e) {
+            return oversizedFileResult();
         } catch (Exception e) {
             throw new BizException("PDF parsing failed: " + e.getMessage());
         }
@@ -208,107 +325,143 @@ public class PdfDocumentParser implements DocumentParser {
                                      long fileSizeBytes,
                                      Map<String, Object> options,
                                      Supplier<InputStream> pdfStreamSupplier) throws Exception {
-        int pageCount = document.getNumberOfPages();
-        List<PageExtractionSnapshot> pageSnapshots = alignPageSnapshots(extractPageSnapshots(document), pageCount);
-        List<String> cleanedPageTexts = pageSnapshots.stream()
-                .map(PageExtractionSnapshot::text)
-                .map(TextCleanupUtil::cleanup)
-                .toList();
-        List<PageRoutingDecision> routingDecisions = cleanedPageTexts.stream()
-                .map(this::decideRoute)
-                .toList();
-        VdpOptions vdpOptions = buildVdpOptions(options);
         PipelineSource pipelineSource = resolvePipelineSource(options);
-        Map<Integer, VdpPageResult> visualResults = dispatchVisualTrackPages(
-                document,
-                routingDecisions,
-                options,
-                vdpOptions,
-                pipelineSource,
-                pdfStreamSupplier
-        );
-        List<ParseSegment> segments = new ArrayList<>(cleanedPageTexts.size());
-        int totalChars = 0;
-        int visualTrackPageCount = 0;
-        int visualSuccessPageCount = 0;
-        int visualDegradedPageCount = 0;
-        int visualFailedPageCount = 0;
+        Timer.Sample sample = VdpMetricsSupport.start(meterRegistry);
+        String extractionMode = "ERROR";
+        try {
+            int pageCount = document.getNumberOfPages();
+            List<PageExtractionSnapshot> pageSnapshots = alignPageSnapshots(extractPageSnapshots(document), pageCount);
+            List<String> cleanedPageTexts = pageSnapshots.stream()
+                    .map(PageExtractionSnapshot::text)
+                    .map(TextCleanupUtil::cleanup)
+                    .toList();
+            List<PageRoutingDecision> routingDecisions = cleanedPageTexts.stream()
+                    .map(this::decideRoute)
+                    .toList();
+            List<String> visualTrackPages = summarizeVisualTrackPages(routingDecisions);
+            VdpOptions vdpOptions = buildVdpOptions(options);
+            Map<Integer, VdpPageResult> visualResults = dispatchVisualTrackPages(
+                    document,
+                    routingDecisions,
+                    options,
+                    vdpOptions,
+                    pipelineSource,
+                    pdfStreamSupplier
+            );
+            List<ParseSegment> segments = new ArrayList<>(cleanedPageTexts.size());
+            int totalChars = 0;
+            int visualTrackPageCount = 0;
+            int visualSuccessPageCount = 0;
+            int visualDegradedPageCount = 0;
+            int visualFailedPageCount = 0;
 
-        for (int page = 1; page <= cleanedPageTexts.size(); page++) {
-            String pageText = cleanedPageTexts.get(page - 1);
-            PageExtractionSnapshot pageSnapshot = pageSnapshots.get(page - 1);
-            PageFontProfile pageFontProfile = pageSnapshot.fontProfile();
-            PageStructuredText structuredPageText = restoreStructuredNativeMarkdown(pageSnapshot, pageText);
-            PageRoutingDecision routingDecision = routingDecisions.get(page - 1);
-            ParseSegment segment;
-            if (routingDecision.isVisualTrack()) {
-                visualTrackPageCount++;
-                VdpPageResult visualResult = visualResults.getOrDefault(
-                        page - 1,
-                        failedPageResult(page - 1, "Visual page result missing after dispatch")
-                );
-                if (visualResult.status() == VdpPageStatus.SUCCESS) {
-                    visualSuccessPageCount++;
-                } else if (visualResult.status() == VdpPageStatus.FAILED) {
-                    visualFailedPageCount++;
+            for (int page = 1; page <= cleanedPageTexts.size(); page++) {
+                String pageText = cleanedPageTexts.get(page - 1);
+                PageExtractionSnapshot pageSnapshot = pageSnapshots.get(page - 1);
+                PageFontProfile pageFontProfile = pageSnapshot.fontProfile();
+                PageStructuredText structuredPageText = restoreStructuredNativeMarkdown(pageSnapshot, pageText);
+                PageRoutingDecision routingDecision = routingDecisions.get(page - 1);
+                ParseSegment segment;
+                if (routingDecision.isVisualTrack()) {
+                    visualTrackPageCount++;
+                    VdpPageResult visualResult = visualResults.getOrDefault(
+                            page - 1,
+                            failedPageResult(page - 1, "Visual page result missing after dispatch")
+                    );
+                    if (visualResult.status() == VdpPageStatus.SUCCESS) {
+                        visualSuccessPageCount++;
+                    } else if (visualResult.status() == VdpPageStatus.FAILED) {
+                        visualFailedPageCount++;
+                    } else {
+                        visualDegradedPageCount++;
+                    }
+                    segment = buildVisualSegment(page - 1, pageText, structuredPageText, pageFontProfile, routingDecision, visualResult);
                 } else {
-                    visualDegradedPageCount++;
+                    segment = buildNativePageSegment(page - 1, pageText, structuredPageText, pageFontProfile, routingDecision);
                 }
-                segment = buildVisualSegment(page - 1, pageText, structuredPageText, pageFontProfile, routingDecision, visualResult);
-            } else {
-                segment = buildNativePageSegment(page - 1, pageText, structuredPageText, pageFontProfile, routingDecision);
+                totalChars += segment.charCount();
+                segments.add(segment);
             }
-            totalChars += segment.charCount();
-            segments.add(segment);
-        }
 
-        double charsPerPage = pageCount > 0 ? (double) totalChars / pageCount : 0;
-        boolean visualTrackUnrecoverable = visualTrackPageCount > 0
-                && visualSuccessPageCount == 0
-                && totalChars < Math.max(200, charDensityThreshold);
-        boolean ocrCandidate = totalChars == 0
-                || (charsPerPage < 50 && pageCount >= 2 && visualTrackPageCount == 0)
-                || visualTrackUnrecoverable;
-        QualityLevel qualityLevel = assessQuality(totalChars, charsPerPage, fileSizeBytes);
-        String extractionMode = qualityLevel == QualityLevel.LOW && ocrCandidate
-                ? "OCR_REQUIRED"
-                : (visualTrackPageCount > 0 ? "PDF_VISUAL_ROUTED" : "NATIVE_TEXT");
+            double charsPerPage = pageCount > 0 ? (double) totalChars / pageCount : 0;
+            boolean visualTrackUnrecoverable = visualTrackPageCount > 0
+                    && visualSuccessPageCount == 0
+                    && totalChars < Math.max(200, charDensityThreshold);
+            boolean ocrCandidate = totalChars == 0
+                    || (charsPerPage < 50 && pageCount >= 2 && visualTrackPageCount == 0)
+                    || visualTrackUnrecoverable;
+            QualityLevel qualityLevel = assessQuality(totalChars, charsPerPage, fileSizeBytes);
+            extractionMode = qualityLevel == QualityLevel.LOW && ocrCandidate
+                    ? "OCR_REQUIRED"
+                    : (visualTrackPageCount > 0 ? "PDF_VISUAL_ROUTED" : "NATIVE_TEXT");
 
-        Map<String, Object> diagnostics = new LinkedHashMap<>();
-        diagnostics.put("totalChars", totalChars);
-        diagnostics.put("pageCount", pageCount);
-        diagnostics.put("charsPerPage", charsPerPage);
-        diagnostics.put("ocrCandidate", ocrCandidate);
-        diagnostics.put("visualTrackPageCount", visualTrackPageCount);
-        diagnostics.put("fastTrackPageCount", Math.max(0, pageCount - visualTrackPageCount));
-        diagnostics.put("visualSuccessPageCount", visualSuccessPageCount);
-        diagnostics.put("visualDegradedPageCount", visualDegradedPageCount);
-        diagnostics.put("visualFailedPageCount", visualFailedPageCount);
-        diagnostics.put("visualTrackUnrecoverable", visualTrackUnrecoverable);
+            if ("OCR_REQUIRED".equals(extractionMode)) {
+                VdpMetricsSupport.increment(
+                        meterRegistry,
+                        "vdp.document.ocr_required",
+                        "pipelineSource",
+                        VdpMetricsSupport.pipelineSourceTag(pipelineSource)
+                );
+            }
 
-        List<String> warnings = new ArrayList<>();
-        if (qualityLevel == QualityLevel.LOW) {
-            warnings.add(ocrCandidate ? "Low extraction quality; OCR required" : "Low extraction quality");
-        }
-        if (visualDegradedPageCount > 0) {
-            warnings.add("Visual-track degraded on %d page(s)".formatted(visualDegradedPageCount));
-        }
-        if (visualFailedPageCount > 0) {
-            warnings.add("Visual-track failed on %d page(s)".formatted(visualFailedPageCount));
-        }
+            Map<String, Object> diagnostics = new LinkedHashMap<>();
+            diagnostics.put("totalChars", totalChars);
+            diagnostics.put("pageCount", pageCount);
+            diagnostics.put("charsPerPage", charsPerPage);
+            diagnostics.put("ocrCandidate", ocrCandidate);
+            diagnostics.put("visualTrackPageCount", visualTrackPageCount);
+            diagnostics.put("fastTrackPageCount", Math.max(0, pageCount - visualTrackPageCount));
+            diagnostics.put("visualTrackPages", visualTrackPages);
+            diagnostics.put("visualSuccessPageCount", visualSuccessPageCount);
+            diagnostics.put("visualDegradedPageCount", visualDegradedPageCount);
+            diagnostics.put("visualFailedPageCount", visualFailedPageCount);
+            diagnostics.put("visualTrackUnrecoverable", visualTrackUnrecoverable);
 
-        return ParseResult.builder()
-                .segments(segments)
-                .parserType(ParserType.PDFBOX.getType())
-                .extractionMode(extractionMode)
-                .qualityLevel(qualityLevel)
-                .diagnostics(diagnostics)
-                .warnings(warnings)
-                .metadata(Map.of(
-                        "pageCount", pageCount,
-                        "visualTrackPageCount", visualTrackPageCount
-                ))
-                .build();
+            log.info("PDF parse completed: pipelineSource={}, extractionMode={}, qualityLevel={}, pageCount={}, visualTrackPageCount={}, visualTrackPages={}, visualSuccessPageCount={}, visualDegradedPageCount={}, visualFailedPageCount={}",
+                    pipelineSource,
+                    extractionMode,
+                    qualityLevel,
+                    pageCount,
+                    visualTrackPageCount,
+                    visualTrackPages,
+                    visualSuccessPageCount,
+                    visualDegradedPageCount,
+                    visualFailedPageCount);
+
+            List<String> warnings = new ArrayList<>();
+            if (qualityLevel == QualityLevel.LOW) {
+                warnings.add(ocrCandidate ? "Low extraction quality; OCR required" : "Low extraction quality");
+            }
+            if (visualDegradedPageCount > 0) {
+                warnings.add("Visual-track degraded on %d page(s)".formatted(visualDegradedPageCount));
+            }
+            if (visualFailedPageCount > 0) {
+                warnings.add("Visual-track failed on %d page(s)".formatted(visualFailedPageCount));
+            }
+
+            return ParseResult.builder()
+                    .segments(segments)
+                    .parserType(ParserType.PDFBOX.getType())
+                    .extractionMode(extractionMode)
+                    .qualityLevel(qualityLevel)
+                    .diagnostics(diagnostics)
+                    .warnings(warnings)
+                    .metadata(Map.of(
+                            "pageCount", pageCount,
+                            "visualTrackPageCount", visualTrackPageCount
+                    ))
+                    .build();
+        } finally {
+            VdpMetricsSupport.stop(
+                    meterRegistry,
+                    sample,
+                    "vdp.document.parse.latency",
+                    "pipelineSource",
+                    VdpMetricsSupport.pipelineSourceTag(pipelineSource),
+                    "extractionMode",
+                    extractionMode
+            );
+        }
     }
 
     private Map<Integer, VdpPageResult> dispatchVisualTrackPages(PDDocument document,
@@ -317,37 +470,55 @@ public class PdfDocumentParser implements DocumentParser {
                                                                  VdpOptions options,
                                                                  PipelineSource pipelineSource,
                                                                  Supplier<InputStream> pdfStreamSupplier) {
-        List<Integer> remainingVisualPageIndices = new ArrayList<>();
-        Map<Integer, VdpPageResult> results = new HashMap<>();
-        PageCacheContext pageCacheContext = buildPageCacheContext(rawOptions, pipelineSource, options);
-        for (int pageIndex = 0; pageIndex < routingDecisions.size(); pageIndex++) {
-            if (routingDecisions.get(pageIndex).isVisualTrack()) {
-                VdpPageResult cached = getCachedPageResult(pageCacheContext, pageIndex);
-                if (cached != null) {
-                    results.put(pageIndex, cached);
-                } else {
-                    remainingVisualPageIndices.add(pageIndex);
-                }
+        List<String> visualTrackPages = summarizeVisualTrackPages(routingDecisions);
+        VdpEngine batchEngine = engineRouter.resolveForBatch(pipelineSource);
+        if (batchEngine != null) {
+            log.info("PDF visual-track dispatch selected batch engine: pipelineSource={}, engineId={}, visualTrackPages={}, mineruReceivesWholePdf=true",
+                    pipelineSource,
+                    batchEngine.engineId(),
+                    visualTrackPages);
+            PageCacheContext batchCacheContext = buildPageCacheContext(rawOptions, pipelineSource, options, batchEngine);
+            VisualDispatchPlan cachedBatchPlan = planVisualDispatch(routingDecisions, batchCacheContext);
+            if (cachedBatchPlan.remainingVisualPageIndices().isEmpty()) {
+                return cachedBatchPlan.cachedResults();
             }
-        }
-        if (remainingVisualPageIndices.isEmpty()) {
-            return results;
-        }
-        if (supportsBatchPdfDispatch()) {
-            results.putAll(dispatchBatchVisualTrackPages(pdfStreamSupplier, remainingVisualPageIndices, options, pageCacheContext));
+            Map<Integer, VdpPageResult> results = new HashMap<>(cachedBatchPlan.cachedResults());
+            results.putAll(dispatchBatchVisualTrackPages(
+                    batchEngine,
+                    pdfStreamSupplier,
+                    cachedBatchPlan.remainingVisualPageIndices(),
+                    options,
+                    batchCacheContext
+            ));
             return results;
         }
 
-        long documentDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(resolveDocumentTimeoutMs(pipelineSource));
+        VdpEngine pageImageEngine = engineRouter.resolveForPageImage(pipelineSource);
+        if (!visualTrackPages.isEmpty()) {
+            log.info("PDF visual-track dispatch selected page-image engine: pipelineSource={}, engineId={}, visualTrackPages={}",
+                    pipelineSource,
+                    pageImageEngine.engineId(),
+                    visualTrackPages);
+        }
+        PageCacheContext pageCacheContext = buildPageCacheContext(rawOptions, pipelineSource, options, pageImageEngine);
+        VisualDispatchPlan visualDispatchPlan = planVisualDispatch(routingDecisions, pageCacheContext);
+        if (visualDispatchPlan.remainingVisualPageIndices().isEmpty()) {
+            return visualDispatchPlan.cachedResults();
+        }
+
+        long documentTimeoutMs = resolveDocumentTimeoutMs(pipelineSource, pageImageEngine);
+        long documentDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(documentTimeoutMs);
         int maxInFlight = Math.max(1, pageMaxInFlight);
         long perPageTimeoutMs = resolvePerPageTimeoutMs(pipelineSource);
         PDFRenderer pdfRenderer = new PDFRenderer(document);
         List<VisualPageDispatch> inFlight = new ArrayList<>(maxInFlight);
         int nextPageCursor = 0;
+        List<Integer> remainingVisualPageIndices = visualDispatchPlan.remainingVisualPageIndices();
+        Map<Integer, VdpPageResult> results = new HashMap<>(visualDispatchPlan.cachedResults());
         while (nextPageCursor < remainingVisualPageIndices.size() || !inFlight.isEmpty()) {
             if (Thread.currentThread().isInterrupted()) {
                 cancelInFlightVisualPages(inFlight, results, pageCacheContext, "Visual page dispatch interrupted");
-                markRemainingPagesAsFailed(results, remainingVisualPageIndices, nextPageCursor, "Visual page dispatch interrupted");
+                markRemainingPagesAsFailed(results, remainingVisualPageIndices, nextPageCursor, pageCacheContext.engineId(), "Visual page dispatch interrupted");
                 break;
             }
             if (collectCompletedVisualPages(inFlight, results, pageCacheContext)) {
@@ -358,7 +529,7 @@ public class PdfDocumentParser implements DocumentParser {
             }
             if (remainingBudgetMs(documentDeadlineNanos) <= 0) {
                 cancelInFlightVisualPages(inFlight, results, pageCacheContext, "Visual-track document budget exhausted");
-                markRemainingPagesAsFailed(results, remainingVisualPageIndices, nextPageCursor, "Visual-track document budget exhausted");
+                markRemainingPagesAsFailed(results, remainingVisualPageIndices, nextPageCursor, pageCacheContext.engineId(), "Visual-track document budget exhausted");
                 break;
             }
             while (nextPageCursor < remainingVisualPageIndices.size() && inFlight.size() < maxInFlight) {
@@ -369,7 +540,7 @@ public class PdfDocumentParser implements DocumentParser {
                 long dispatchStartedAtNanos = System.nanoTime();
                 try {
                     RenderedPageImage renderedPageImage = renderPageAsPng(pdfRenderer, pageIndex);
-                    inFlight.add(submitVisualPage(pageIndex, renderedPageImage, options, dispatchStartedAtNanos));
+                    inFlight.add(submitVisualPage(pageImageEngine, pageIndex, renderedPageImage, options, dispatchStartedAtNanos));
                 } catch (OutOfMemoryError error) {
                     log.error("PDF visual-track page rendering ran out of memory: pageNumber={}", pageIndex + 1, error);
                     results.put(pageIndex, failedPageResult(pageIndex, "Page rendering exceeded memory budget"));
@@ -387,7 +558,7 @@ public class PdfDocumentParser implements DocumentParser {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 cancelInFlightVisualPages(inFlight, results, pageCacheContext, "Visual page dispatch interrupted");
-                markRemainingPagesAsFailed(results, remainingVisualPageIndices, nextPageCursor, "Visual page dispatch interrupted");
+                markRemainingPagesAsFailed(results, remainingVisualPageIndices, nextPageCursor, pageCacheContext.engineId(), "Visual page dispatch interrupted");
                 break;
             }
             collectCompletedVisualPages(inFlight, results, pageCacheContext);
@@ -396,29 +567,46 @@ public class PdfDocumentParser implements DocumentParser {
         return results;
     }
 
-    private Map<Integer, VdpPageResult> dispatchBatchVisualTrackPages(Supplier<InputStream> pdfStreamSupplier,
+    private VisualDispatchPlan planVisualDispatch(List<PageRoutingDecision> routingDecisions,
+                                                  PageCacheContext pageCacheContext) {
+        List<Integer> remainingVisualPageIndices = new ArrayList<>();
+        Map<Integer, VdpPageResult> cachedResults = new HashMap<>();
+        for (int pageIndex = 0; pageIndex < routingDecisions.size(); pageIndex++) {
+            if (!routingDecisions.get(pageIndex).isVisualTrack()) {
+                continue;
+            }
+            VdpPageResult cached = getCachedPageResult(pageCacheContext, pageIndex);
+            if (cached != null) {
+                cachedResults.put(pageIndex, cached);
+            } else {
+                remainingVisualPageIndices.add(pageIndex);
+            }
+        }
+        return new VisualDispatchPlan(remainingVisualPageIndices, cachedResults);
+    }
+
+    private Map<Integer, VdpPageResult> dispatchBatchVisualTrackPages(VdpEngine batchEngine,
+                                                                      Supplier<InputStream> pdfStreamSupplier,
                                                                       List<Integer> visualPageIndices,
                                                                       VdpOptions options,
                                                                       PageCacheContext pageCacheContext) {
         CompletableFuture<List<VdpPageResult>> future;
         try {
-            future = CompletableFuture.supplyAsync(
-                    () -> vdpEngine.parsePages(pdfStreamSupplier, visualPageIndices, options),
-                    vdpBatchExecutor
-            );
+            future = batchEngine.parsePagesAsync(pdfStreamSupplier, visualPageIndices, options, vdpBatchExecutor);
         } catch (RejectedExecutionException e) {
             return markAllBatchPagesFailed(visualPageIndices, pageCacheContext, "VDP batch dispatcher is saturated");
         }
 
         try {
-            List<VdpPageResult> pageResults = future.get(resolveDocumentTimeoutMs(pageCacheContext.pipelineSource()), TimeUnit.MILLISECONDS);
+            long timeoutMs = resolveDocumentTimeoutMs(pageCacheContext.pipelineSource(), batchEngine);
+            List<VdpPageResult> pageResults = future.get(timeoutMs, TimeUnit.MILLISECONDS);
             return normalizeBatchVisualResults(visualPageIndices, pageResults, pageCacheContext);
         } catch (TimeoutException e) {
             future.cancel(true);
-            return markAllBatchPagesFailed(
+            return markAllBatchPagesTimedOut(
                     visualPageIndices,
                     pageCacheContext,
-                    "Visual-track batch timed out after " + resolveDocumentTimeoutMs(pageCacheContext.pipelineSource()) + " ms"
+                    "Visual-track batch timed out after " + resolveDocumentTimeoutMs(pageCacheContext.pipelineSource(), batchEngine) + " ms"
             );
         } catch (ExecutionException e) {
             future.cancel(true);
@@ -431,13 +619,14 @@ public class PdfDocumentParser implements DocumentParser {
         }
     }
 
-    private VisualPageDispatch submitVisualPage(int pageIndex,
+    private VisualPageDispatch submitVisualPage(VdpEngine pageImageEngine,
+                                                int pageIndex,
                                                 RenderedPageImage renderedPageImage,
                                                 VdpOptions options,
                                                 long dispatchStartedAtNanos) {
         try {
             CompletableFuture<VdpPageResult> future = CompletableFuture.supplyAsync(
-                    () -> parseVisualPage(pageIndex, renderedPageImage, options),
+                    () -> parseVisualPage(pageImageEngine, pageIndex, renderedPageImage, options),
                     vdpPageDispatchExecutor
             );
             return new VisualPageDispatch(pageIndex, dispatchStartedAtNanos, future);
@@ -468,21 +657,22 @@ public class PdfDocumentParser implements DocumentParser {
         }
     }
 
-    private long resolveDocumentTimeoutMs(PipelineSource pipelineSource) {
-        return pipelineSource == PipelineSource.KNOWLEDGE ? knowledgeDocumentTimeoutMs : pageDispatchTimeoutMs;
-    }
-
-    private boolean supportsBatchPdfDispatch() {
-        return vdpEngine.supportedModes().contains(VdpMode.PDF_PAGE_BATCH);
+    private long resolveDocumentTimeoutMs(PipelineSource pipelineSource, VdpEngine engine) {
+        long configuredTimeoutMs = pipelineSource == PipelineSource.KNOWLEDGE ? knowledgeDocumentTimeoutMs : pageDispatchTimeoutMs;
+        long suggestedTimeoutMs = engine == null ? 0L : engine.suggestedDocumentTimeoutMs(pipelineSource);
+        return Math.max(configuredTimeoutMs, suggestedTimeoutMs);
     }
 
     private PageCacheContext buildPageCacheContext(Map<String, Object> rawOptions,
                                                    PipelineSource pipelineSource,
-                                                   VdpOptions options) {
+                                                   VdpOptions options,
+                                                   VdpEngine resolvedEngine) {
         return new PageCacheContext(
                 pipelineSource,
                 stringOption(rawOptions, "sessionId"),
                 stringOption(rawOptions, "documentCacheKey"),
+                resolvedEngine == null ? "unknown" : resolvedEngine.engineId(),
+                resolvedEngine == null ? "default" : resolvedEngine.promptVersion(),
                 options == null ? null : options.languageHint(),
                 options != null && options.recognizeFormulas()
         );
@@ -494,8 +684,8 @@ public class PdfDocumentParser implements DocumentParser {
         }
         return vdpPageCacheService.get(
                 pageCacheContext.pipelineSource(),
-                vdpEngine.engineId(),
-                vdpEngine.promptVersion(),
+                pageCacheContext.engineId(),
+                pageCacheContext.promptVersion(),
                 buildPageCacheDigest(pageCacheContext, pageIndex),
                 pageCacheContext.sessionId()
         );
@@ -507,11 +697,29 @@ public class PdfDocumentParser implements DocumentParser {
         }
         vdpPageCacheService.put(
                 pageCacheContext.pipelineSource(),
-                vdpEngine.engineId(),
-                vdpEngine.promptVersion(),
+                pageCacheContext.engineId(),
+                pageCacheContext.promptVersion(),
                 buildPageCacheDigest(pageCacheContext, pageIndex),
                 pageCacheContext.sessionId(),
                 result
+        );
+    }
+
+    private void cachePageResults(PageCacheContext pageCacheContext, Map<Integer, VdpPageResult> pageResults) {
+        if (vdpPageCacheService == null
+                || pageResults == null
+                || pageResults.isEmpty()
+                || !StringUtils.hasText(pageCacheContext.documentCacheKey())) {
+            return;
+        }
+        Map<String, VdpPageResult> entriesByDigest = new LinkedHashMap<>();
+        pageResults.forEach((pageIndex, result) -> entriesByDigest.put(buildPageCacheDigest(pageCacheContext, pageIndex), result));
+        vdpPageCacheService.putAll(
+                pageCacheContext.pipelineSource(),
+                pageCacheContext.engineId(),
+                pageCacheContext.promptVersion(),
+                entriesByDigest,
+                pageCacheContext.sessionId()
         );
     }
 
@@ -533,6 +741,32 @@ public class PdfDocumentParser implements DocumentParser {
             return "default";
         }
         return value.trim().toLowerCase();
+    }
+
+    private void recordPageTimeout(String engineId) {
+        VdpMetricsSupport.increment(
+                meterRegistry,
+                "vdp.page.timeout",
+                "engineId",
+                VdpMetricsSupport.tagValue(engineId, "unknown")
+        );
+    }
+
+    private void recordResolvedVisualPage(String engineId, VdpPageResult result) {
+        if (result == null || result.status() == null) {
+            return;
+        }
+        String metricName = switch (result.status()) {
+            case SUCCESS -> "vdp.page.success";
+            case DEGRADED -> "vdp.page.degraded";
+            case FAILED -> "vdp.page.failed";
+        };
+        VdpMetricsSupport.increment(
+                meterRegistry,
+                metricName,
+                "engineId",
+                VdpMetricsSupport.tagValue(engineId, "unknown")
+        );
     }
 
     private long resolvePerPageTimeoutMs(PipelineSource pipelineSource) {
@@ -583,6 +817,7 @@ public class PdfDocumentParser implements DocumentParser {
                     timedOutResult
             );
             cachePageResult(pageCacheContext, dispatch.pageIndex(), timedOutResult);
+            recordPageTimeout(pageCacheContext.engineId());
             iterator.remove();
             expired = true;
         }
@@ -601,6 +836,7 @@ public class PdfDocumentParser implements DocumentParser {
             VdpPageResult resolved = resolveCompletedVisualPage(dispatch);
             results.putIfAbsent(dispatch.pageIndex(), resolved);
             cachePageResult(pageCacheContext, dispatch.pageIndex(), resolved);
+            recordResolvedVisualPage(pageCacheContext.engineId(), resolved);
             iterator.remove();
             collected = true;
         }
@@ -630,8 +866,11 @@ public class PdfDocumentParser implements DocumentParser {
             VisualPageDispatch dispatch = iterator.next();
             dispatch.future().cancel(true);
             VdpPageResult failedResult = failedPageResult(dispatch.pageIndex(), reason);
-            results.putIfAbsent(dispatch.pageIndex(), failedResult);
-            cachePageResult(pageCacheContext, dispatch.pageIndex(), failedResult);
+            VdpPageResult existing = results.putIfAbsent(dispatch.pageIndex(), failedResult);
+            if (existing == null) {
+                cachePageResult(pageCacheContext, dispatch.pageIndex(), failedResult);
+                recordResolvedVisualPage(pageCacheContext.engineId(), failedResult);
+            }
             iterator.remove();
         }
     }
@@ -639,10 +878,15 @@ public class PdfDocumentParser implements DocumentParser {
     private void markRemainingPagesAsFailed(Map<Integer, VdpPageResult> results,
                                             List<Integer> visualPageIndices,
                                             int startCursor,
+                                            String engineId,
                                             String reason) {
         for (int cursor = startCursor; cursor < visualPageIndices.size(); cursor++) {
             int pageIndex = visualPageIndices.get(cursor);
-            results.putIfAbsent(pageIndex, failedPageResult(pageIndex, reason));
+            VdpPageResult failedResult = failedPageResult(pageIndex, reason);
+            VdpPageResult existing = results.putIfAbsent(pageIndex, failedResult);
+            if (existing == null) {
+                recordResolvedVisualPage(engineId, failedResult);
+            }
         }
     }
 
@@ -651,21 +895,38 @@ public class PdfDocumentParser implements DocumentParser {
                                                                     PageCacheContext pageCacheContext) {
         Map<Integer, VdpPageResult> results = new HashMap<>();
         Set<Integer> visualPageIndexSet = new HashSet<>(visualPageIndices);
+        Map<Integer, VdpPageResult> allPageResults = new LinkedHashMap<>();
         if (pageResults != null) {
             for (VdpPageResult pageResult : pageResults) {
-                if (pageResult == null || !visualPageIndexSet.contains(pageResult.pageIndex())) {
+                if (pageResult == null) {
                     continue;
                 }
-                results.put(pageResult.pageIndex(), pageResult);
-                cachePageResult(pageCacheContext, pageResult.pageIndex(), pageResult);
+                allPageResults.put(pageResult.pageIndex(), pageResult);
+                if (visualPageIndexSet.contains(pageResult.pageIndex())) {
+                    results.put(pageResult.pageIndex(), pageResult);
+                    recordResolvedVisualPage(pageCacheContext.engineId(), pageResult);
+                }
             }
         }
+        cachePageResults(pageCacheContext, allPageResults);
         for (Integer pageIndex : visualPageIndices) {
             VdpPageResult missingResult = failedPageResult(pageIndex, "Visual-track batch did not return a result");
-            results.putIfAbsent(pageIndex, missingResult);
-            cachePageResult(pageCacheContext, pageIndex, missingResult);
+            VdpPageResult existing = results.putIfAbsent(pageIndex, missingResult);
+            if (existing == null) {
+                cachePageResult(pageCacheContext, pageIndex, missingResult);
+                recordResolvedVisualPage(pageCacheContext.engineId(), missingResult);
+            }
         }
         return results;
+    }
+
+    private ParseResult oversizedFileResult() {
+        return ParseResult.builder()
+                .segments(List.of())
+                .parserType(ParserType.PDFBOX.getType())
+                .qualityLevel(QualityLevel.REJECTED)
+                .warnings(List.of("File exceeds 30MB limit"))
+                .build();
     }
 
     private Map<Integer, VdpPageResult> markAllBatchPagesFailed(List<Integer> visualPageIndices,
@@ -676,6 +937,20 @@ public class PdfDocumentParser implements DocumentParser {
             VdpPageResult failedResult = failedPageResult(pageIndex, reason);
             results.put(pageIndex, failedResult);
             cachePageResult(pageCacheContext, pageIndex, failedResult);
+            recordResolvedVisualPage(pageCacheContext.engineId(), failedResult);
+        }
+        return results;
+    }
+
+    private Map<Integer, VdpPageResult> markAllBatchPagesTimedOut(List<Integer> visualPageIndices,
+                                                                  PageCacheContext pageCacheContext,
+                                                                  String reason) {
+        Map<Integer, VdpPageResult> results = new HashMap<>();
+        for (Integer pageIndex : visualPageIndices) {
+            VdpPageResult timedOutResult = failedPageResult(pageIndex, reason);
+            results.put(pageIndex, timedOutResult);
+            cachePageResult(pageCacheContext, pageIndex, timedOutResult);
+            recordPageTimeout(pageCacheContext.engineId());
         }
         return results;
     }
@@ -755,13 +1030,16 @@ public class PdfDocumentParser implements DocumentParser {
         }
     }
 
-    private VdpPageResult parseVisualPage(int pageIndex, RenderedPageImage renderedPageImage, VdpOptions options) {
-        if (!vdpEngine.supportedModes().contains(VdpMode.PAGE_IMAGE)) {
+    private VdpPageResult parseVisualPage(VdpEngine pageImageEngine,
+                                          int pageIndex,
+                                          RenderedPageImage renderedPageImage,
+                                          VdpOptions options) {
+        if (pageImageEngine == null || !pageImageEngine.supportedModes().contains(VdpMode.PAGE_IMAGE)) {
             renderedPageImage.clear();
             return failedPageResult(pageIndex, "VDP engine does not support page-image mode");
         }
         try {
-            VdpPageResult result = vdpEngine.parsePage(
+            VdpPageResult result = pageImageEngine.parsePage(
                     () -> new ByteArrayInputStream(renderedPageImage.bytes(), 0, renderedPageImage.length()),
                     "png",
                     options
@@ -841,6 +1119,21 @@ public class PdfDocumentParser implements DocumentParser {
     private String stringOption(Map<String, Object> options, String key) {
         Object value = options == null ? null : options.get(key);
         return value == null ? null : value.toString();
+    }
+
+    private List<String> summarizeVisualTrackPages(List<PageRoutingDecision> routingDecisions) {
+        if (routingDecisions == null || routingDecisions.isEmpty()) {
+            return List.of();
+        }
+        List<String> visualTrackPages = new ArrayList<>();
+        for (int pageIndex = 0; pageIndex < routingDecisions.size(); pageIndex++) {
+            PageRoutingDecision decision = routingDecisions.get(pageIndex);
+            if (decision == null || !decision.isVisualTrack()) {
+                continue;
+            }
+            visualTrackPages.add((pageIndex + 1) + ":" + decision.reason());
+        }
+        return visualTrackPages;
     }
 
     private PageRoutingDecision decideRoute(String nativeText) {
@@ -1067,6 +1360,53 @@ public class PdfDocumentParser implements DocumentParser {
         VISUAL_TRACK
     }
 
+    private static final class FileSizeLimitExceededException extends IOException {
+
+        private FileSizeLimitExceededException(String message) {
+            super(message);
+        }
+    }
+
+    private static final class SizeLimitedInputStream extends FilterInputStream {
+
+        private final long maxBytes;
+        private long observedBytes;
+
+        private SizeLimitedInputStream(InputStream inputStream, long maxBytes) {
+            super(inputStream);
+            this.maxBytes = Math.max(1L, maxBytes);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = super.read();
+            if (value >= 0) {
+                recordBytes(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int read = super.read(b, off, len);
+            if (read > 0) {
+                recordBytes(read);
+            }
+            return read;
+        }
+
+        private void recordBytes(int bytesRead) throws FileSizeLimitExceededException {
+            observedBytes += bytesRead;
+            if (observedBytes > maxBytes) {
+                throw new FileSizeLimitExceededException("PDF exceeds " + maxBytes + " bytes");
+            }
+        }
+
+        private long observedBytes() {
+            return observedBytes;
+        }
+    }
+
     private record PageRoutingDecision(PageRoute route, String reason, int alignedWhitespaceLines) {
 
         private boolean isVisualTrack() {
@@ -1193,9 +1533,15 @@ public class PdfDocumentParser implements DocumentParser {
     private record VisualPageDispatch(int pageIndex, long submittedAtNanos, CompletableFuture<VdpPageResult> future) {
     }
 
+    private record VisualDispatchPlan(List<Integer> remainingVisualPageIndices,
+                                      Map<Integer, VdpPageResult> cachedResults) {
+    }
+
     private record PageCacheContext(PipelineSource pipelineSource,
                                     String sessionId,
                                     String documentCacheKey,
+                                    String engineId,
+                                    String promptVersion,
                                     String languageHint,
                                     boolean recognizeFormulas) {
     }

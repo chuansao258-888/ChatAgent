@@ -1,7 +1,5 @@
 package com.yulong.chatagent.rag.parser;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -13,8 +11,6 @@ import java.util.function.Supplier;
  * Fallback VDP engine used when the real VLM-backed engine is disabled.
  */
 @Component
-@Primary
-@ConditionalOnMissingBean(VdpEngine.class)
 public class NoopVdpEngine implements VdpEngine {
 
     @Override

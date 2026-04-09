@@ -9,8 +9,12 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.resolution.StaticToolCallbackResolver;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -24,11 +28,15 @@ class AgentToolExecutionEngine {
     private final String turnId;
     private final AgentMessageBridge messageBridge;
 
-    AgentToolExecutionEngine(ToolCallingManager toolCallingManager,
+    AgentToolExecutionEngine(List<ToolCallback> availableTools,
                              ChatOptions chatOptions,
                              String turnId,
                              AgentMessageBridge messageBridge) {
-        this.toolCallingManager = toolCallingManager;
+        this.toolCallingManager = ToolCallingManager.builder()
+                .toolCallbackResolver(new StaticToolCallbackResolver(
+                        sanitizeToolCallbacks(availableTools)
+                ))
+                .build();
         this.chatOptions = chatOptions;
         this.turnId = turnId;
         this.messageBridge = messageBridge;
@@ -81,5 +89,16 @@ class AgentToolExecutionEngine {
         return toolResponseMessage.getResponses()
                 .stream()
                 .anyMatch(resp -> resp.name().equals("terminate"));
+    }
+
+    private List<ToolCallback> sanitizeToolCallbacks(List<ToolCallback> availableTools) {
+        if (availableTools == null || availableTools.isEmpty()) {
+            return List.of();
+        }
+        return availableTools.stream()
+                .filter(callback -> callback != null
+                        && callback.getToolDefinition() != null
+                        && StringUtils.hasText(callback.getToolDefinition().name()))
+                .toList();
     }
 }

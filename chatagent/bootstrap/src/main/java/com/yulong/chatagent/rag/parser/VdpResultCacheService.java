@@ -2,8 +2,10 @@ package com.yulong.chatagent.rag.parser;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -23,10 +25,26 @@ public class VdpResultCacheService {
     private final StringRedisTemplate stringRedisTemplate;
     private final VdpCacheProperties properties;
     private final SessionScopedVdpCacheStore sessionCacheStore;
+    private final MeterRegistry meterRegistry;
 
+    @Autowired
     public VdpResultCacheService(ObjectMapper objectMapper,
                                  ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider,
-                                 VdpCacheProperties properties) {
+                                 VdpCacheProperties properties,
+                                 ObjectProvider<MeterRegistry> meterRegistryProvider) {
+        this(objectMapper, stringRedisTemplateProvider, properties, meterRegistryProvider.getIfAvailable());
+    }
+
+    VdpResultCacheService(ObjectMapper objectMapper,
+                          ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider,
+                          VdpCacheProperties properties) {
+        this(objectMapper, stringRedisTemplateProvider, properties, (MeterRegistry) null);
+    }
+
+    VdpResultCacheService(ObjectMapper objectMapper,
+                          ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider,
+                          VdpCacheProperties properties,
+                          MeterRegistry meterRegistry) {
         this.objectMapper = objectMapper;
         this.stringRedisTemplate = stringRedisTemplateProvider.getIfAvailable();
         this.properties = properties;
@@ -34,6 +52,7 @@ public class VdpResultCacheService {
                 properties.getSessionMaxSize(),
                 properties.getSessionTtlMinutes()
         );
+        this.meterRegistry = meterRegistry;
     }
 
     public VdpPageResult get(PipelineSource pipelineSource,
@@ -45,20 +64,27 @@ public class VdpResultCacheService {
             return null;
         }
         if (pipelineSource == PipelineSource.SESSION) {
-            return sessionCacheStore.get(sessionId, keySuffix(engineId, promptVersion, contentDigest));
+            VdpPageResult cached = sessionCacheStore.get(sessionId, keySuffix(engineId, promptVersion, contentDigest));
+            recordCacheLookup("image", cached != null);
+            return cached;
         }
         String cacheKey = knowledgeCacheKey(engineId, promptVersion, contentDigest);
         if (stringRedisTemplate == null) {
+            recordCacheLookup("image", false);
             return null;
         }
         String cached = null;
         try {
             cached = stringRedisTemplate.opsForValue().get(cacheKey);
             if (!StringUtils.hasText(cached)) {
+                recordCacheLookup("image", false);
                 return null;
             }
-            return objectMapper.readValue(cached, VdpPageResult.class);
+            VdpPageResult result = objectMapper.readValue(cached, VdpPageResult.class);
+            recordCacheLookup("image", true);
+            return result;
         } catch (Exception e) {
+            recordCacheLookup("image", false);
             log.warn("Failed to load VDP knowledge cache entry: key={}, preview={}, error={}",
                     cacheKey, abbreviatePreview(cached), e.getMessage());
             try {
@@ -127,5 +153,14 @@ public class VdpResultCacheService {
         }
         String normalized = cached.replaceAll("\\s+", " ").trim();
         return normalized.length() <= 200 ? normalized : normalized.substring(0, 200) + "...";
+    }
+
+    private void recordCacheLookup(String layer, boolean hit) {
+        VdpMetricsSupport.increment(
+                meterRegistry,
+                hit ? "vdp.cache.hit" : "vdp.cache.miss",
+                "layer",
+                VdpMetricsSupport.tagValue(layer, "unknown")
+        );
     }
 }

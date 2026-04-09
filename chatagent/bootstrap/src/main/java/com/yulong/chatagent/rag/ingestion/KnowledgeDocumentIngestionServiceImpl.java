@@ -11,6 +11,7 @@ import com.yulong.chatagent.rag.parser.FileRejectedException;
 import com.yulong.chatagent.rag.parser.ParseResult;
 import com.yulong.chatagent.rag.parser.PipelineSource;
 import com.yulong.chatagent.rag.parser.QualityLevel;
+import com.yulong.chatagent.rag.parser.TextCleanupUtil;
 import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
@@ -83,6 +84,14 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
         try {
             LoadedDocumentSource loadedSource = loadSource(knowledgeDocument);
             ParseResult parseResult = parseDocument(loadedSource, knowledgeDocument);
+            log.info("Knowledge document parse result: knowledgeBaseId={}, documentId={}, parserType={}, extractionMode={}, qualityLevel={}, diagnostics={}, warnings={}",
+                    knowledgeBaseId,
+                    documentId,
+                    parseResult.getParserType(),
+                    parseResult.getExtractionMode(),
+                    parseResult.getQualityLevel(),
+                    parseResult.getDiagnostics(),
+                    parseResult.getWarnings());
             if ("OCR_REQUIRED".equalsIgnoreCase(parseResult.getExtractionMode())) {
                 clearIndexedContent(documentId);
                 purgeDocumentSignalsQuietly(documentId, "ocr_pending");
@@ -108,11 +117,19 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
             List<KnowledgeChunkDraft> enrichedDrafts = chunkEnricher.enrich(context, context.getChunkDrafts());
             List<KnowledgeChunkDTO> chunks = buildKnowledgeChunks(documentId, enrichedDrafts);
 
+            log.info("Knowledge document Milvus refresh started: knowledgeBaseId={}, documentId={}, chunkCount={}, action=delete-then-upsert",
+                    knowledgeBaseId,
+                    documentId,
+                    chunks.size());
             knowledgeChunkRepository.deleteByKnowledgeDocumentId(documentId);
             knowledgeChunkRepository.saveAll(chunks);
             knowledgeBaseMilvusIndexer.deleteByKnowledgeDocumentId(documentId);
             knowledgeBaseMilvusIndexer.upsert(knowledgeBaseId, knowledgeDocument, chunks);
             knowledgeDocumentSignalService.saveOrUpdate(documentId, enhancement);
+            log.info("Knowledge document Milvus refresh completed: knowledgeBaseId={}, documentId={}, chunkCount={}",
+                    knowledgeBaseId,
+                    documentId,
+                    chunks.size());
 
             markCompleted(knowledgeDocument);
             log.info("Knowledge document ingestion finished: knowledgeBaseId={}, documentId={}, chunkCount={}, totalDurationMs={}",
@@ -194,9 +211,9 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
                     .id(UUID.randomUUID().toString())
                     .knowledgeDocumentId(documentId)
                     .chunkIndex(i)
-                    .content(draft.content())
+                    .content(TextCleanupUtil.stripNullCharacters(draft.content()))
                     .tokenCount(null)
-                    .metadata(draft.metadata())
+                    .metadata(TextCleanupUtil.stripNullCharacters(draft.metadata()))
                     .enabled(true)
                     .createdAt(now)
                     .updatedAt(now)

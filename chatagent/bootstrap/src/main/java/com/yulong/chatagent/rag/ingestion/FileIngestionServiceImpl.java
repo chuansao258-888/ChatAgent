@@ -11,6 +11,7 @@ import com.yulong.chatagent.rag.parser.ParseResult;
 import com.yulong.chatagent.rag.parser.ParserType;
 import com.yulong.chatagent.rag.parser.PipelineSource;
 import com.yulong.chatagent.rag.parser.QualityLevel;
+import com.yulong.chatagent.rag.parser.TextCleanupUtil;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.SessionFileMilvusIndexer;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
@@ -216,9 +217,9 @@ public class FileIngestionServiceImpl implements FileIngestionService {
                     .id(UUID.randomUUID().toString())
                     .sessionFileId(context.getSessionFile().getId())
                     .chunkIndex(i)
-                    .content(draft.content())
+                    .content(TextCleanupUtil.stripNullCharacters(draft.content()))
                     .tokenCount(null)
-                    .metadata(draft.metadata())
+                    .metadata(TextCleanupUtil.stripNullCharacters(draft.metadata()))
                     .enabled(true)
                     .createdAt(now)
                     .updatedAt(now)

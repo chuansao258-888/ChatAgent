@@ -1,0 +1,21 @@
+{
+  "documentId": "_example",
+  "expectedSegmentCount": 2,
+  "expectedExtractionMode": "NATIVE_TEXT",
+  "segments": [
+    {
+      "pageIndex": 0,
+      "expectedRoute": "FAST_TRACK",
+      "mustContain": ["Introduction", "overview"],
+      "mustNotContain": ["[Image parsing failed]"],
+      "expectedVisualType": null
+    },
+    {
+      "pageIndex": 1,
+      "expectedRoute": "FAST_TRACK",
+      "mustContain": ["conclusion"],
+      "mustNotContain": [],
+      "expectedVisualType": null
+    }
+  ]
+}

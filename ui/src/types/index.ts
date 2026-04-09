@@ -47,6 +47,7 @@ export type SseMessageType =
   | "AI_PLANNING"
   | "AI_THINKING"
   | "AI_EXECUTING"
+  | "AI_ERROR"
   | "AI_DONE"
   | "TURN_ROLLBACK";
 

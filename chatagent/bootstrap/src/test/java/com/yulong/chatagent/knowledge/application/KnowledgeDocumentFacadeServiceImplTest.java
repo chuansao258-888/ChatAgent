@@ -268,6 +268,52 @@ class KnowledgeDocumentFacadeServiceImplTest {
     }
 
     @Test
+    void shouldSkipReplacingCompletedKnowledgeDocumentWhenContentIsIdentical() throws Exception {
+        mqProperties.setEnabled(true);
+        ReflectionTestUtils.setField(facadeService, "outboxEventPublisher", outboxEventPublisher);
+
+        LoginUser adminUser = LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build();
+        UserContext.set(adminUser);
+        when(adminAccessService.requireAdmin()).thenReturn(adminUser);
+        when(resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, "kb-1")).thenReturn(KnowledgeBaseDTO.builder()
+                .id("kb-1")
+                .status("ACTIVE")
+                .build());
+
+        byte[] content = "same knowledge content".getBytes();
+        String existingHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+        when(knowledgeDocumentRepository.findById("doc-1")).thenReturn(KnowledgeDocumentDTO.builder()
+                .id("doc-1")
+                .knowledgeBaseId("kb-1")
+                .storagePath("knowledge-bases/kb-1/doc-1/source.pdf")
+                .parseStatus("COMPLETED")
+                .contentHash(existingHash)
+                .indexedAt(LocalDateTime.now().minusMinutes(1))
+                .createdAt(LocalDateTime.now().minusDays(1))
+                .updatedAt(LocalDateTime.now().minusMinutes(1))
+                .build());
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "source.pdf",
+                "application/pdf",
+                content
+        );
+
+        facadeService.replaceKnowledgeDocument("kb-1", "doc-1", file);
+
+        verify(documentStorageService, never()).saveKnowledgeDocument(eq("kb-1"), eq("doc-1"), any());
+        verify(knowledgeDocumentRepository, never()).update(any());
+        verify(outboxEventPublisher, never()).publish(any(), any(), any(), any(), any());
+        verify(knowledgeDocumentIngestionService, never()).ingest(eq("kb-1"), any(KnowledgeDocumentDTO.class));
+        verify(knowledgeChunkRepository, never()).deleteByKnowledgeDocumentId("doc-1");
+        verify(knowledgeBaseMilvusIndexer, never()).deleteByKnowledgeDocumentId("doc-1");
+    }
+
+    @Test
     void shouldDeleteDocumentMetadataIndexedContentAndStoredFile() throws Exception {
         LoginUser adminUser = LoginUser.builder()
                 .userId("admin-1")

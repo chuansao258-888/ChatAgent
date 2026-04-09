@@ -165,6 +165,17 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             throw new BizException("Uploaded file is empty");
         }
         validateKnowledgeUpload(file);
+        String incomingContentHash = sha256(file);
+        if (shouldSkipReplacement(existingDocument, incomingContentHash)) {
+            log.info("Knowledge document replacement skipped as no-op: knowledgeBaseId={}, documentId={}, filename={}, reason=same-content-already-indexed",
+                    knowledgeBase.getId(),
+                    existingDocument.getId(),
+                    existingDocument.getOriginalFilename());
+            return UploadKnowledgeDocumentResponse.builder()
+                    .knowledgeBaseId(knowledgeBase.getId())
+                    .documentId(existingDocument.getId())
+                    .build();
+        }
 
         String documentId = existingDocument == null ? UUID.randomUUID().toString() : existingDocument.getId();
         LocalDateTime now = LocalDateTime.now();
@@ -186,7 +197,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             document.setSizeBytes(file.getSize());
             document.setStoragePath(storedPath);
             document.setParseStatus("PENDING");
-            document.setContentHash(sha256(file));
+            document.setContentHash(incomingContentHash);
             document.setFailedReason(null);
             document.setIndexedAt(null);
             document.setRetryCount(0);
@@ -216,6 +227,19 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             cleanupStoredFileQuietly(documentId, storedPath, "rollback");
             throw e;
         }
+    }
+
+    private boolean shouldSkipReplacement(KnowledgeDocumentDTO existingDocument, String incomingContentHash) {
+        if (existingDocument == null) {
+            return false;
+        }
+        if (!StringUtils.hasText(incomingContentHash) || !StringUtils.hasText(existingDocument.getContentHash())) {
+            return false;
+        }
+        if (!incomingContentHash.equals(existingDocument.getContentHash().trim())) {
+            return false;
+        }
+        return "COMPLETED".equalsIgnoreCase(existingDocument.getParseStatus());
     }
 
     private void scheduleIngestionAfterCommit(String knowledgeBaseId,

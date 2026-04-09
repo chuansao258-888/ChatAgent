@@ -125,5 +125,23 @@ public class ChatEventProcessor {
                         .build())
                 .build();
         sseService.publish(event.getSessionId(), sseMessage);
+        sseService.publish(event.getSessionId(), SseMessage.builder()
+                .type(SseMessage.Type.AI_ERROR)
+                .payload(SseMessage.Payload.builder()
+                        .statusText("Agent failed to process this request. Please try again.")
+                        .build())
+                .metadata(SseMessage.Metadata.builder()
+                        .chatMessageId(chatMessageDTO.getId())
+                        .build())
+                .build());
+        sseService.publish(event.getSessionId(), SseMessage.builder()
+                .type(SseMessage.Type.AI_DONE)
+                .payload(SseMessage.Payload.builder()
+                        .done(true)
+                        .build())
+                .metadata(SseMessage.Metadata.builder()
+                        .chatMessageId(chatMessageDTO.getId())
+                        .build())
+                .build());
     }
 }

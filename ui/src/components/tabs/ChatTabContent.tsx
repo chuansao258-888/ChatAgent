@@ -42,7 +42,7 @@ const ChatTabContent: React.FC = () => {
       <button
         type="button"
         onClick={handleCreateNewChat}
-        className="mb-4 flex items-center gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left text-white transition hover:border-white/10 hover:bg-white/[0.06]"
+        className="mb-4 flex items-center gap-3 rounded-input border border-white/12 bg-white/[0.07] px-4 py-3 text-left text-white/90 transition hover:border-white/18 hover:bg-white/[0.10]"
       >
         <PlusOutlined />
         <span className="font-medium">New chat</span>
@@ -54,7 +54,7 @@ const ChatTabContent: React.FC = () => {
             <p className="text-sm">Loading chats...</p>
           </div>
         ) : chatSessions.length === 0 ? (
-          <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-[24px] border border-dashed border-white/8 bg-black/10 px-6 text-center text-white/40">
+          <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-section border border-dashed border-white/8 bg-black/10 px-6 text-center text-white/40">
             <MessageOutlined className="mb-4 text-4xl" />
             <p className="text-sm font-medium text-white/68">No chats yet</p>
             <p className="mt-2 text-xs leading-6 text-white/36">
@@ -70,14 +70,14 @@ const ChatTabContent: React.FC = () => {
                 <div
                   key={session.id}
                   onClick={() => handleSelectChatSession(session.id)}
-                  className={`group relative w-full cursor-pointer rounded-2xl border px-4 py-3 transition ${
+                  className={`group relative w-full cursor-pointer rounded-input border px-4 py-3 transition ${
                     isActive
                       ? "border-white/14 bg-white/[0.085]"
                       : "border-transparent bg-white/[0.035] hover:border-white/8 hover:bg-white/[0.06]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-base text-white/76">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-tab bg-white/[0.08] text-base text-white/70">
                       <MessageOutlined />
                     </div>
 

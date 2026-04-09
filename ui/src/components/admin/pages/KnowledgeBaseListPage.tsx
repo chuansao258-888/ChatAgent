@@ -162,7 +162,7 @@ export default function KnowledgeBaseListPage() {
 
       <Card className="shadow-admin-card">
         <div className="mb-5 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.06] text-white/60">
+          <div className="flex h-11 w-11 items-center justify-center rounded-input bg-white/[0.08] text-white/60">
             <PlusOutlined />
           </div>
           <div>

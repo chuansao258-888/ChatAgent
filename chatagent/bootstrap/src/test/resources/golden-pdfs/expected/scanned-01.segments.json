@@ -1,0 +1,16 @@
+{
+  "documentId": "scanned-01",
+  "expectedSegmentCount": 1,
+  "expectedExtractionMode": "OCR_REQUIRED",
+  "segments": [
+    {
+      "pageIndex": 0,
+      "expectedRoute": "VISUAL_TRACK",
+      "mustNotContain": [
+        "Leave Policy Overview",
+        "Region"
+      ],
+      "expectedVisualType": "IMAGE"
+    }
+  ]
+}

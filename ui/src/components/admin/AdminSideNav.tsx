@@ -32,10 +32,10 @@ const navItems = [
 
 function navClassName(isActive: boolean): string {
   return [
-    "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition",
+    "flex items-center gap-3 rounded-input px-4 py-3 text-sm font-medium transition",
     isActive
-      ? "bg-white/[0.08] text-white shadow-admin-nav"
-      : "text-white/60 hover:bg-white/[0.06] hover:text-white",
+      ? "bg-white/[0.08] text-white/95 shadow-admin-nav"
+      : "text-white/60 hover:bg-white/[0.06] hover:text-white/90",
   ].join(" ");
 }
 
@@ -85,7 +85,7 @@ export default function AdminSideNav() {
         <Button
           type="default"
           icon={<ArrowLeftOutlined />}
-          className="!mt-4 !h-11 !w-full !border-white/10 !bg-white/[0.06] !text-white hover:!bg-white/10"
+          className="!mt-4 !h-11 !w-full !rounded-input !border-white/14 !bg-transparent !text-white/80 hover:!border-white/22 hover:!bg-white/[0.06]"
           onClick={() => {
             navigate("/chat");
           }}

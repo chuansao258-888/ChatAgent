@@ -137,7 +137,7 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
             </Button>
             <Button
               size="large"
-              className="!rounded-full !border-white/12 !bg-white/4 !px-5 !text-white hover:!border-white/20 hover:!bg-white/8"
+              className="!rounded-full !border-white/16 !bg-white/[0.08] !px-5 !text-white/90 hover:!border-white/24 hover:!bg-white/[0.12]"
               onClick={() => {
                 openAuthDialog("register");
               }}

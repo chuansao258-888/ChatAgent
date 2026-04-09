@@ -23,6 +23,9 @@ interface AgentChatHistoryProps {
   displayAgentStatus?: boolean;
   agentStatusText?: string;
   agentStatusType?: SseMessageType;
+  persistentErrorText?: string;
+  onRetryLastMessage?: (() => void) | undefined;
+  onDismissError?: (() => void) | undefined;
 }
 
 type MarkdownComponentProps = React.HTMLAttributes<HTMLElement> & {
@@ -246,7 +249,7 @@ const ToolResponseDisplay: React.FC<{ toolResponse: ToolResponse }> = ({
         <span className="truncate text-slate-400">{dataPreview}</span>
       </div>
       {expanded ? (
-        <div className="ml-5 mt-2 rounded-2xl border border-white/8 bg-[#262626] p-3">
+        <div className="ml-5 mt-2 rounded-inset border border-white/8 bg-[#262626] p-3">
           <div className={`${isJson ? "" : "text-sm"} text-slate-200`}>
             <MarkdownContent content={renderContent} />
           </div>
@@ -261,6 +264,9 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   displayAgentStatus = false,
   agentStatusText = "",
   agentStatusType,
+  persistentErrorText = "",
+  onRetryLastMessage,
+  onDismissError,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -332,6 +338,8 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
         return "Thinking";
       case "AI_EXECUTING":
         return "Working";
+      case "AI_ERROR":
+        return "Error";
       default:
         return "Processing";
     }
@@ -422,6 +430,34 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
               </span>
               <span className="text-slate-500">·</span>
               <span className="ml-2 text-slate-300">{agentStatusText}</span>
+            </div>
+          </div>
+        ) : null}
+
+        {persistentErrorText ? (
+          <div className="flex justify-start">
+            <div className="flex max-w-3xl items-center gap-3 rounded-inset border border-rose-400/20 bg-rose-400/[0.05] px-4 py-3 text-sm text-slate-200 shadow-chat-bubble">
+              <span className="font-semibold text-rose-300">Error</span>
+              <span className="text-slate-500">·</span>
+              <span className="flex-1 text-slate-300">{persistentErrorText}</span>
+              {onRetryLastMessage ? (
+                <button
+                  type="button"
+                  onClick={onRetryLastMessage}
+                  className="rounded-full border border-rose-300/20 px-3 py-1 text-xs font-medium text-rose-200 transition hover:border-rose-200/40 hover:bg-rose-200/10"
+                >
+                  Retry
+                </button>
+              ) : null}
+              {onDismissError ? (
+                <button
+                  type="button"
+                  onClick={onDismissError}
+                  className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:bg-white/8 hover:text-white"
+                >
+                  Dismiss
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}

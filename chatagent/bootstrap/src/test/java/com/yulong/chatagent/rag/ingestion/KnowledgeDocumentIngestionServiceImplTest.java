@@ -14,6 +14,7 @@ import com.yulong.chatagent.rag.parser.SegmentType;
 import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
 import com.yulong.chatagent.rag.service.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
+import com.yulong.chatagent.support.dto.KnowledgeChunkDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -147,6 +148,57 @@ class KnowledgeDocumentIngestionServiceImplTest {
         verify(knowledgeDocumentSignalService).saveOrUpdate("doc-1", enhancementResult);
         verify(knowledgeChunkRepository).saveAll(anyList());
         verify(knowledgeBaseMilvusIndexer).upsert(eq("kb-1"), eq(document), anyList());
+    }
+
+    @Test
+    void shouldStripNullCharactersBeforePersistingKnowledgeChunks() throws Exception {
+        Path storedFile = tempDir.resolve("doc-null.pdf");
+        Files.writeString(storedFile, "pdf payload");
+
+        KnowledgeDocumentDTO document = KnowledgeDocumentDTO.builder()
+                .id("doc-null")
+                .knowledgeBaseId("kb-1")
+                .storagePath("knowledge/doc-null")
+                .originalFilename("doc.pdf")
+                .mimeType("application/pdf")
+                .retryCount(0)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        ParseResult parseResult = ParseResult.builder()
+                .segments(List.of(new ParseSegment("parsed\u0000content", 0, SegmentType.PAGE, Map.of("pageNumber", 1))))
+                .qualityLevel(QualityLevel.HIGH)
+                .extractionMode("NATIVE_TEXT")
+                .build();
+        List<KnowledgeChunkDraft> drafts = List.of(new KnowledgeChunkDraft(
+                "chunk\u0000-body",
+                "{\"raw\":\"meta\u0000data\"}",
+                "chunk body"
+        ));
+
+        when(documentStorageService.fileExists("knowledge/doc-null")).thenReturn(true);
+        when(documentStorageService.getFileSize("knowledge/doc-null")).thenReturn((long) Files.size(storedFile));
+        when(documentStorageService.readPrefix(eq("knowledge/doc-null"), anyInt())).thenReturn("pdf".getBytes());
+        when(documentStorageService.openInputStream("knowledge/doc-null")).thenAnswer(invocation -> Files.newInputStream(storedFile));
+        when(documentParserSelector.selectParser(any(), eq("doc.pdf"), eq("application/pdf"), eq(PipelineSource.KNOWLEDGE)))
+                .thenReturn(documentParser);
+        when(documentParser.parse(org.mockito.ArgumentMatchers.<java.util.function.Supplier<InputStream>>any(),
+                eq("application/pdf"),
+                any())).thenReturn(parseResult);
+        when(documentEnhancer.enhance(any())).thenReturn(DocumentEnhancementResult.empty());
+        when(documentChunker.chunk(any())).thenReturn(drafts);
+        when(chunkEnricher.enrich(any(), eq(drafts))).thenReturn(drafts);
+        when(knowledgeDocumentRepository.update(any())).thenReturn(true);
+
+        ingestionService.ingestSync("kb-1", document);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<KnowledgeChunkDTO>> chunkCaptor = ArgumentCaptor.forClass(List.class);
+        verify(knowledgeChunkRepository).saveAll(chunkCaptor.capture());
+        assertThat(chunkCaptor.getValue()).singleElement().satisfies(chunk -> {
+            assertThat(chunk.getContent()).isEqualTo("chunk-body").doesNotContain("\u0000");
+            assertThat(chunk.getMetadata()).isEqualTo("{\"raw\":\"metadata\"}").doesNotContain("\u0000");
+        });
     }
 
     @Test

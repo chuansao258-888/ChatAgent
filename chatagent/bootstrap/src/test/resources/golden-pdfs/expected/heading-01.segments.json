@@ -1,0 +1,19 @@
+{
+  "documentId": "heading-01",
+  "expectedSegmentCount": 1,
+  "expectedExtractionMode": "NATIVE_TEXT",
+  "segments": [
+    {
+      "pageIndex": 0,
+      "expectedRoute": "FAST_TRACK",
+      "mustContain": [
+        "## Leave Policy Overview",
+        "carry-over rules",
+        "annual leave"
+      ],
+      "mustNotContain": [
+        "[图像解析失败]"
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import com.yulong.chatagent.model.common.ApiResponse;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -40,6 +41,23 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handle404(NoResourceFoundException e) {
         return ResponseEntity.status(BaseErrorCode.NOT_FOUND.httpStatus())
                 .body(ApiResponse.error(BaseErrorCode.NOT_FOUND, "Resource not found"));
+    }
+
+    /**
+     * Returns a client-facing validation error when multipart requests exceed the configured upload limit.
+     *
+     * @param e multipart size exception thrown before controller invocation
+     * @return normalized client error response with guidance about the configured limit
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e) {
+        log.warn("Upload rejected because request exceeded multipart size limit, traceId={}",
+                TraceContext.getTraceId(), e);
+        return ResponseEntity.status(BaseErrorCode.CLIENT_ERROR.httpStatus())
+                .body(ApiResponse.error(
+                        BaseErrorCode.CLIENT_ERROR,
+                        "Uploaded file exceeds the configured size limit"
+                ));
     }
 
     /**

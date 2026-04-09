@@ -47,6 +47,10 @@ public class KnowledgeBaseMilvusIndexer {
             return;
         }
 
+        log.info("Knowledge-base Milvus indexing started: knowledgeBaseId={}, documentId={}, chunkCount={}",
+                knowledgeBaseId,
+                knowledgeDocument == null ? null : knowledgeDocument.getId(),
+                chunks.size());
         List<IndexedChunkDocument> indexedChunks = indexedChunkAssembler.assemble(knowledgeBaseId, knowledgeDocument, chunks);
         List<KnowledgeBaseMilvusChunkDocument> documents = new ArrayList<>(indexedChunks.size());
         for (IndexedChunkDocument indexedChunk : indexedChunks) {
@@ -66,15 +70,25 @@ public class KnowledgeBaseMilvusIndexer {
 
     public void deleteByKnowledgeDocumentId(String knowledgeDocumentId) {
         KnowledgeBaseMilvusIndexService indexService = knowledgeBaseMilvusIndexServiceProvider.getIfAvailable();
-        if (indexService != null) {
-            indexService.deleteByKnowledgeDocumentId(knowledgeDocumentId);
+        if (indexService == null) {
+            log.info("Knowledge-base Milvus delete skipped: knowledgeDocumentId={}, reason=milvus-disabled",
+                    knowledgeDocumentId);
+            return;
         }
+        log.info("Knowledge-base Milvus delete started: knowledgeDocumentId={}", knowledgeDocumentId);
+        indexService.deleteByKnowledgeDocumentId(knowledgeDocumentId);
+        log.info("Knowledge-base Milvus delete completed: knowledgeDocumentId={}", knowledgeDocumentId);
     }
 
     public void deleteByKnowledgeBaseId(String knowledgeBaseId) {
         KnowledgeBaseMilvusIndexService indexService = knowledgeBaseMilvusIndexServiceProvider.getIfAvailable();
-        if (indexService != null) {
-            indexService.deleteByKnowledgeBaseId(knowledgeBaseId);
+        if (indexService == null) {
+            log.info("Knowledge-base Milvus delete skipped: knowledgeBaseId={}, reason=milvus-disabled",
+                    knowledgeBaseId);
+            return;
         }
+        log.info("Knowledge-base Milvus delete started: knowledgeBaseId={}", knowledgeBaseId);
+        indexService.deleteByKnowledgeBaseId(knowledgeBaseId);
+        log.info("Knowledge-base Milvus delete completed: knowledgeBaseId={}", knowledgeBaseId);
     }
 }

@@ -12,6 +12,8 @@ import java.time.Duration;
  */
 final class SessionScopedVdpCacheStore {
 
+    private static final long MAX_ACTIVE_SESSION_BUCKETS = 1_000L;
+
     private final long perSessionMaxSize;
     private final long ttlMinutes;
     private final Cache<String, Cache<String, VdpPageResult>> sessionBuckets;
@@ -24,6 +26,7 @@ final class SessionScopedVdpCacheStore {
         this.perSessionMaxSize = Math.max(32L, perSessionMaxSize);
         this.ttlMinutes = Math.max(1L, ttlMinutes);
         this.sessionBuckets = Caffeine.newBuilder()
+                .maximumSize(MAX_ACTIVE_SESSION_BUCKETS)
                 .expireAfterAccess(Duration.ofMinutes(Math.max(2L, this.ttlMinutes * 2L)))
                 .ticker(ticker == null ? Ticker.systemTicker() : ticker)
                 .build();

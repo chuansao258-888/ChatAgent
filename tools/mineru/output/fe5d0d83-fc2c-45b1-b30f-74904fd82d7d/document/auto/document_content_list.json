@@ -1,0 +1,35 @@
+[
+    {
+        "type": "text",
+        "text": "Name Department Score",
+        "bbox": [
+            111,
+            75,
+            359,
+            94
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Alice Sales 98",
+        "bbox": [
+            111,
+            98,
+            269,
+            117
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Bob Finance 91",
+        "bbox": [
+            111,
+            121,
+            279,
+            140
+        ],
+        "page_idx": 0
+    }
+]

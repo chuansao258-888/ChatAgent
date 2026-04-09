@@ -31,7 +31,9 @@ Backend prerequisites:
 - PostgreSQL（Flyway 会自动执行 `chatagent/bootstrap/src/main/resources/db/migration/` 下的迁移脚本）
 - Redis
 - Milvus 2.6
-- Ollama（bge-m3 + bge-reranker-v2-m3）
+- Ollama（embedding: `bge-m3`）
+- 本地 reranker 服务（`tools/bge-reranker-server`）
+- 可选：本地 MinerU（knowledge PDF batch VDP）
 
 环境变量配置参考 `chatagent/bootstrap/src/main/resources/application.yaml`。
 
@@ -41,6 +43,14 @@ Backend prerequisites:
 cd chatagent
 mvn spring-boot:run
 ```
+
+如果你要把主系统切到本地 GPU 服务栈（Ollama + reranker + MinerU），优先用：
+
+```powershell
+.\start-local-gpu-backend.ps1
+```
+
+对应运行说明见 [docs/LOCAL_GPU_RUNTIME.md](docs/LOCAL_GPU_RUNTIME.md)。
 
 启动前端：
 

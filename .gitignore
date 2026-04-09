@@ -1,6 +1,7 @@
 .idea/
 *.iml
 out/
+.claude/
 
 .DS_Store
 Thumbs.db

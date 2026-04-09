@@ -1,15 +1,19 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
+import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -27,7 +31,7 @@ import java.util.stream.IntStream;
  */
 class AgentThinkingEngine {
 
-    private final ChatClient chatClient;
+    private final LLMService llmService;
     private final ChatOptions chatOptions;
     private final List<ToolCallback> availableTools;
     private final String sessionFileSummary;
@@ -35,14 +39,14 @@ class AgentThinkingEngine {
     private final String turnId;
     private final AgentMessageBridge messageBridge;
 
-    AgentThinkingEngine(ChatClient chatClient,
+    AgentThinkingEngine(LLMService llmService,
                         ChatOptions chatOptions,
                         List<ToolCallback> availableTools,
                         String sessionFileSummary,
                         String userProfileSummary,
                         String turnId,
                         AgentMessageBridge messageBridge) {
-        this.chatClient = chatClient;
+        this.llmService = llmService;
         this.chatOptions = chatOptions;
         this.availableTools = availableTools;
         this.sessionFileSummary = sessionFileSummary;
@@ -60,7 +64,7 @@ class AgentThinkingEngine {
      */
     ChatResponse think(ChatMemory chatMemory, String chatSessionId) {
         long startTime = System.nanoTime();
-        String thinkPrompt = """
+        String decisionPrompt = """
                 You are the agent decision module.
                 Decide the next action from the current conversation context.
 
@@ -72,25 +76,40 @@ class AgentThinkingEngine {
                 """.formatted(this.sessionFileSummary, this.userProfileSummary);
 
         List<Message> promptMessages = sanitizePromptMessages(chatMemory.get(chatSessionId));
-        Prompt prompt = Prompt.builder()
-                .chatOptions(this.chatOptions)
-                .messages(promptMessages)
-                .build();
+        Prompt prompt = buildPrompt(promptMessages, this.chatOptions);
 
-        ChatResponse chatResponse = this.chatClient
-                .prompt(prompt)
-                .system(thinkPrompt)
-                .toolCallbacks(this.availableTools.toArray(new ToolCallback[0]))
-                .call()
-                .chatClientResponse()
-                .chatResponse();
+        if (this.availableTools.isEmpty()) {
+            log.info("No tools available for this turn. Streaming final response directly.");
+            ChatResponse finalResponse = streamFinalAnswer(chatSessionId, buildFinalAnswerPrompt(promptMessages));
+            long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+            log.info("Agent think completed: traceId={}, sessionId={}, toolCalls=0, durationMs={}",
+                    TraceContext.getTraceId(),
+                    chatSessionId,
+                    durationMs);
+            return finalResponse;
+        }
+
+        BufferedStreamingResponse decision = this.messageBridge.streamDecisionResponse(
+                chatSessionId,
+                turnId,
+                prompt,
+                decisionPrompt,
+                this.availableTools,
+                this.llmService);
+        ChatResponse chatResponse = decision.response();
 
         Assert.notNull(chatResponse, "Last chat client response cannot be null");
 
         AssistantMessage output = chatResponse.getResult().getOutput();
         List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
-        this.messageBridge.persistAndPublish(chatSessionId, turnId, output);
-        logToolCalls(toolCalls);
+
+        if (toolCalls != null && !toolCalls.isEmpty()) {
+            this.messageBridge.persistAndPublish(chatSessionId, turnId, output);
+            logToolCalls(toolCalls);
+        } else {
+            log.info("Agent decided final answer in a single routed stream. Live passthrough finalized without a second model call.");
+        }
+
         long durationMs = (System.nanoTime() - startTime) / 1_000_000;
         log.info("Agent think completed: traceId={}, sessionId={}, toolCalls={}, durationMs={}",
                 TraceContext.getTraceId(),
@@ -98,6 +117,44 @@ class AgentThinkingEngine {
                 toolCalls == null ? 0 : toolCalls.size(),
                 durationMs);
         return chatResponse;
+    }
+
+    private ChatResponse streamFinalAnswer(String chatSessionId, Prompt prompt) {
+        // This is the final-answer stream seam for Phase 6. ChatAgent.step()
+        // only observes whether the returned ChatResponse has tool calls, so
+        // the streaming pass must live inside think() after the tool decision
+        // branch instead of being bolted onto the orchestrator later.
+        String finalContent = this.messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, this.llmService);
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(finalContent))));
+    }
+
+    private Prompt buildFinalAnswerPrompt(List<Message> promptMessages) {
+        ChatOptions streamOptions = this.chatOptions.copy();
+        if (streamOptions instanceof ToolCallingChatOptions toolOptions) {
+            toolOptions.setToolCallbacks(List.of());
+        }
+
+        List<Message> finalPromptMessages = new ArrayList<>(promptMessages.size() + 1);
+        finalPromptMessages.add(new SystemMessage("""
+                You are the final answer module.
+                Write the user-facing answer from the current conversation context.
+                Do not emit tool-call JSON or internal planning text.
+
+                Additional context:
+                - Attached session files: %s
+                - Persistent user profile: %s
+                - If context is unavailable, be explicit about the limitation instead of inventing details.
+                - When the user profile contains stable preferences, keep responses consistent with it.
+                """.formatted(this.sessionFileSummary, this.userProfileSummary)));
+        finalPromptMessages.addAll(promptMessages);
+        return buildPrompt(finalPromptMessages, streamOptions);
+    }
+
+    private Prompt buildPrompt(List<Message> promptMessages, ChatOptions options) {
+        return Prompt.builder()
+                .chatOptions(options)
+                .messages(promptMessages)
+                .build();
     }
 
     private List<Message> sanitizePromptMessages(List<Message> messages) {

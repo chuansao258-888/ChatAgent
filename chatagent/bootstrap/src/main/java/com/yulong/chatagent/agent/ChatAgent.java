@@ -2,9 +2,9 @@ package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
+import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.Message;
@@ -12,7 +12,6 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
-import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -35,14 +34,13 @@ public class ChatAgent {
     private String name;
     private String description;
     private String systemPrompt;
-    private ChatClient chatClient;
+    private LLMService llmService;
     private AgentState agentState;
     private List<ToolCallback> availableTools;
     private String sessionFileSummary;
     private String sessionSummary;
     private String userProfileSummary;
     private String turnId;
-    private ToolCallingManager toolCallingManager;
     private ChatMemory chatMemory;
     private String chatSessionId;
     private ChatOptions chatOptions;
@@ -58,7 +56,7 @@ public class ChatAgent {
                      String name,
                      String description,
                      String systemPrompt,
-                     ChatClient chatClient,
+                     LLMService llmService,
                      Integer maxMessages,
                      List<Message> memory,
                      List<ToolCallback> availableTools,
@@ -72,7 +70,7 @@ public class ChatAgent {
         this.name = name;
         this.description = description;
         this.systemPrompt = systemPrompt;
-        this.chatClient = chatClient;
+        this.llmService = llmService;
         this.availableTools = availableTools == null ? List.of() : List.copyOf(availableTools);
         this.sessionFileSummary = StringUtils.hasText(sessionFileSummary)
                 ? sessionFileSummary
@@ -104,9 +102,8 @@ public class ChatAgent {
         this.chatOptions = DefaultToolCallingChatOptions.builder()
                 .internalToolExecutionEnabled(false)
                 .build();
-        this.toolCallingManager = ToolCallingManager.builder().build();
         this.thinkingEngine = new AgentThinkingEngine(
-                this.chatClient,
+                this.llmService,
                 this.chatOptions,
                 this.availableTools,
                 this.sessionFileSummary,
@@ -115,7 +112,7 @@ public class ChatAgent {
                 this.messageBridge
         );
         this.toolExecutionEngine = new AgentToolExecutionEngine(
-                this.toolCallingManager,
+                this.availableTools,
                 this.chatOptions,
                 this.turnId,
                 this.messageBridge

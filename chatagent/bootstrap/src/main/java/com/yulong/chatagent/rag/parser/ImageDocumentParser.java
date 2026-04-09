@@ -1,5 +1,6 @@
 package com.yulong.chatagent.rag.parser;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -17,10 +18,15 @@ import java.util.function.Supplier;
 @Component
 public class ImageDocumentParser implements DocumentParser {
 
-    private final VdpEngine vdpEngine;
+    private final VdpEngineRouter engineRouter;
 
-    public ImageDocumentParser(VdpEngine vdpEngine) {
-        this.vdpEngine = vdpEngine;
+    @Autowired
+    public ImageDocumentParser(VdpEngineRouter engineRouter) {
+        this.engineRouter = engineRouter;
+    }
+
+    ImageDocumentParser(VdpEngine vdpEngine) {
+        this(VdpEngineRouter.forTesting(vdpEngine));
     }
 
     @Override
@@ -37,8 +43,8 @@ public class ImageDocumentParser implements DocumentParser {
     @Override
     public ParseResult parse(Supplier<InputStream> streamSupplier, String mimeType, Map<String, Object> options) {
         Map<String, Object> extra = new LinkedHashMap<>();
-        Object pipelineSource = options == null ? null : options.get("pipelineSource");
-        if (pipelineSource instanceof PipelineSource source) {
+        Object pipelineSourceValue = options == null ? null : options.get("pipelineSource");
+        if (pipelineSourceValue instanceof PipelineSource source) {
             extra.put("pipelineSource", source);
         }
         String sessionId = stringOption(options, "sessionId");
@@ -50,7 +56,19 @@ public class ImageDocumentParser implements DocumentParser {
                 stringOption(options, "languageHint"),
                 extra
         );
-        VdpPageResult pageResult = vdpEngine.parsePage(streamSupplier, imageFormatOf(mimeType), vdpOptions);
+        PipelineSource pipelineSource = pipelineSourceValue instanceof PipelineSource source
+                ? source
+                : PipelineSource.KNOWLEDGE;
+        VdpEngine engine = engineRouter.resolveForPageImage(pipelineSource);
+        VdpPageResult pageResult;
+        try {
+            pageResult = engine.parsePage(streamSupplier, imageFormatOf(mimeType), vdpOptions);
+            if (pageResult == null) {
+                pageResult = degradedPageResult(engine, "VDP engine returned null");
+            }
+        } catch (Exception e) {
+            pageResult = degradedPageResult(engine, e.getMessage());
+        }
 
         Map<String, Object> metadata = new LinkedHashMap<>(pageResult.metadata());
         metadata.putIfAbsent("contentOrigin", "VDP_TRANSCRIBED");
@@ -95,6 +113,24 @@ public class ImageDocumentParser implements DocumentParser {
         if (!StringUtils.hasText(mimeType) || !mimeType.contains("/")) {
             return "png";
         }
-        return mimeType.substring(mimeType.indexOf('/') + 1).trim().toLowerCase();
+        String subtype = mimeType.substring(mimeType.indexOf('/') + 1);
+        return subtype.split("[+;]", 2)[0].trim().toLowerCase();
+    }
+
+    private VdpPageResult degradedPageResult(VdpEngine engine, String reason) {
+        String normalizedReason = StringUtils.hasText(reason) ? reason.trim() : "Unknown image parsing failure";
+        return new VdpPageResult(
+                0,
+                "",
+                VdpPageStatus.DEGRADED,
+                Map.of(
+                        "contentOrigin", "VDP_TRANSCRIBED",
+                        "visualType", "IMAGE",
+                        "degraded", true,
+                        "engineId", engine == null ? "unknown" : engine.engineId(),
+                        "promptVersion", engine == null ? "default" : engine.promptVersion(),
+                        "interpretiveNote", "[图像解析失败]: " + normalizedReason
+                )
+        );
     }
 }

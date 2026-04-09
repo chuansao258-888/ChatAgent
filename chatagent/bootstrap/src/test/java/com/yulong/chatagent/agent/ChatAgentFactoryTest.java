@@ -1,8 +1,7 @@
 package com.yulong.chatagent.agent;
 
-import com.yulong.chatagent.chat.ChatModelRouter;
+import com.yulong.chatagent.chat.routing.LLMService;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -17,10 +16,9 @@ class ChatAgentFactoryTest {
 
     @Test
     void shouldCreateAgentUsingRuntimeContext() {
-        ChatModelRouter chatModelRouter = mock(ChatModelRouter.class);
+        LLMService llmService = mock(LLMService.class);
         AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
         AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
-        ChatClient chatClient = mock(ChatClient.class);
         Message message = mock(Message.class);
         ToolCallback toolCallback = mock(ToolCallback.class);
 
@@ -39,15 +37,14 @@ class ChatAgentFactoryTest {
         );
 
         when(contextLoader.load("agent-1", "session-1", null, null)).thenReturn(context);
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
 
-        ChatAgentFactory factory = new ChatAgentFactory(chatModelRouter, contextLoader, messageBridge);
+        ChatAgentFactory factory = new ChatAgentFactory(llmService, contextLoader, messageBridge);
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
 
         assertThat(ReflectionTestUtils.getField(chatAgent, "agentId")).isEqualTo("agent-1");
         assertThat(ReflectionTestUtils.getField(chatAgent, "name")).isEqualTo("Support");
-        assertThat(ReflectionTestUtils.getField(chatAgent, "chatClient")).isSameAs(chatClient);
+        assertThat(ReflectionTestUtils.getField(chatAgent, "llmService")).isSameAs(llmService);
         assertThat(ReflectionTestUtils.getField(chatAgent, "sessionFileSummary")).isEqualTo("session file summary");
         assertThat(ReflectionTestUtils.getField(chatAgent, "userProfileSummary")).isEqualTo("user profile summary");
         assertThat(ReflectionTestUtils.getField(chatAgent, "messageBridge")).isSameAs(messageBridge);

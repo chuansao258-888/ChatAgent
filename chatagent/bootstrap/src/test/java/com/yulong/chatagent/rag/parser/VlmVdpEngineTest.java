@@ -2,6 +2,7 @@ package com.yulong.chatagent.rag.parser;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -92,6 +93,36 @@ class VlmVdpEngineTest {
         assertThat(result.markdown()).contains("| A | B |");
         assertThat(result.metadata()).containsEntry("visualType", "TABLE");
         assertThat(result.metadata()).containsEntry("interpretiveNote", "Simple table");
+    }
+
+    @Test
+    void shouldRecordParsePageLatencyMetric() {
+        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("""
+                {
+                  "markdown":"| A | B |\\n|---|---|\\n| 1 | 2 |",
+                  "visualType":"TABLE"
+                }
+                """);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+        VlmVdpEngine engine = new VlmVdpEngine(
+                chatModelRouter,
+                new ObjectMapper(),
+                properties,
+                cacheServiceWithoutRedis(),
+                executor,
+                meterRegistry
+        );
+
+        engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "zh", null));
+
+        assertThat(meterRegistry.get("vdp.engine.parsePage.latency")
+                .tags("engineId", "vlm", "status", "SUCCESS")
+                .timer()
+                .count()).isEqualTo(1L);
     }
 
     @Test

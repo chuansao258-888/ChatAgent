@@ -1,0 +1,27 @@
+spring:
+  config:
+    activate:
+      on-profile: local-gpu
+
+rag:
+  embedding:
+    base-url: ${CHATAGENT_RAG_EMBEDDING_BASE_URL:http://127.0.0.1:11434}
+    model: ${CHATAGENT_RAG_EMBEDDING_MODEL:bge-m3}
+  retrieval:
+    reranker:
+      provider: ${CHATAGENT_RAG_RERANKER_PROVIDER:bge-http}
+      model-id: ${CHATAGENT_RAG_RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
+      base-url: ${CHATAGENT_RAG_RERANKER_BASE_URL:http://127.0.0.1:7997}
+      path: ${CHATAGENT_RAG_RERANKER_PATH:/rerank}
+      ready-path: ${CHATAGENT_RAG_RERANKER_READY_PATH:/ready}
+
+chatagent:
+  rag:
+    vdp:
+      routing:
+        knowledge-batch-preferred: ${CHATAGENT_RAG_VDP_KNOWLEDGE_BATCH_PREFERRED:true}
+        preferred-batch-engine: ${CHATAGENT_RAG_VDP_PREFERRED_BATCH_ENGINE:mineru}
+      mineru:
+        enabled: ${CHATAGENT_RAG_VDP_MINERU_ENABLED:true}
+        base-url: ${CHATAGENT_RAG_VDP_MINERU_BASE_URL:http://127.0.0.1:8000}
+        bearer-token: ${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:}

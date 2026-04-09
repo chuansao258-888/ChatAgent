@@ -120,7 +120,7 @@ export default function AuthCard({
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-[32px] border border-white/8 bg-[#202020] text-white shadow-chat-overlay ${
+      className={`relative w-full overflow-hidden rounded-card border border-white/8 bg-[#202020] text-white shadow-chat-overlay ${
         compact ? "p-8" : "p-10"
       }`}
     >
@@ -243,7 +243,7 @@ export default function AuthCard({
 
         {feedback ? (
           <div
-            className={`mb-4 rounded-2xl px-4 py-3 text-sm ${
+            className={`mb-4 rounded-inset px-4 py-3 text-sm ${
               feedback.type === "info"
                 ? "border border-sky-400/18 bg-sky-400/10 text-sky-100"
                 : "border border-red-500/20 bg-red-500/9 text-red-200"

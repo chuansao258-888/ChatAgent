@@ -1,0 +1,55 @@
+[
+    [
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Name Department Score"
+                    }
+                ]
+            },
+            "bbox": [
+                111,
+                75,
+                359,
+                94
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Alice Sales 98"
+                    }
+                ]
+            },
+            "bbox": [
+                111,
+                98,
+                269,
+                117
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "Bob Finance 91"
+                    }
+                ]
+            },
+            "bbox": [
+                111,
+                121,
+                279,
+                140
+            ]
+        }
+    ]
+]

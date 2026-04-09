@@ -1,0 +1,32 @@
+{
+  "documentId": "mixed-01",
+  "expectedSegmentCount": 2,
+  "expectedExtractionMode": "PDF_VISUAL_ROUTED",
+  "segments": [
+    {
+      "pageIndex": 0,
+      "expectedRoute": "FAST_TRACK",
+      "mustContain": [
+        "Quarterly summary",
+        "staffing plans"
+      ],
+      "mustNotContain": [
+        "[图像解析失败]"
+      ]
+    },
+    {
+      "pageIndex": 1,
+      "expectedRoute": "VISUAL_TRACK",
+      "mustContain": [
+        "Region",
+        "OpenRoles",
+        "APAC",
+        "Omar"
+      ],
+      "mustNotContain": [
+        "[图像解析失败]"
+      ],
+      "expectedVisualType": "IMAGE"
+    }
+  ]
+}

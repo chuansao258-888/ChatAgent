@@ -37,6 +37,25 @@ function isMissingChatSessionError(error: unknown): boolean {
   );
 }
 
+function mergeChatMessage(
+  current: ChatMessageVO,
+  incoming: ChatMessageVO,
+): ChatMessageVO {
+  const currentContent = current.content ?? "";
+  const incomingContent = incoming.content ?? "";
+  const content =
+    incomingContent.length >= currentContent.length
+      ? incoming.content
+      : current.content;
+
+  return {
+    ...current,
+    ...incoming,
+    content,
+    metadata: incoming.metadata ?? current.metadata,
+  };
+}
+
 const AgentChatView: React.FC = () => {
   const { chatSessionId } = useParams<{ chatSessionId: string }>();
   const navigate = useNavigate();
@@ -53,6 +72,8 @@ const AgentChatView: React.FC = () => {
   const [agentStatusType, setAgentStatusType] = useState<
     SseMessageType | undefined
   >(undefined);
+  const [persistentErrorText, setPersistentErrorText] = useState("");
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [activePendingTurnId, setActivePendingTurnId] = useState<string | null>(
     null,
   );
@@ -67,6 +88,11 @@ const AgentChatView: React.FC = () => {
   useEffect(() => {
     activePendingTurnIdRef.current = activePendingTurnId;
   }, [activePendingTurnId]);
+
+  const messagesRef = useRef<ChatMessageVO[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const observedTurnMessageCountRef = useRef(0);
   const safetyUnlockTimerRef = useRef<any>(null);
@@ -108,6 +134,27 @@ const AgentChatView: React.FC = () => {
     [chatSessionId],
   );
 
+  const clearPersistentError = useCallback(() => {
+    setPersistentErrorText("");
+    setRetryMessage(null);
+  }, []);
+
+  const resolveRetryMessage = useCallback((turnId?: string | null) => {
+    const snapshot = messagesRef.current;
+    const fromTurn = turnId
+      ? [...snapshot]
+          .reverse()
+          .find((message) => message.turnId === turnId && message.role === "user")
+      : undefined;
+    if (fromTurn?.content?.trim()) {
+      return fromTurn.content.trim();
+    }
+    const latestUser = [...snapshot]
+      .reverse()
+      .find((message) => message.role === "user" && message.content?.trim());
+    return latestUser?.content?.trim() ?? null;
+  }, []);
+
   const startSafetyTimer = useCallback(() => {
     clearSafetyTimer();
     safetyHintTimerRef.current = setTimeout(() => {
@@ -148,10 +195,20 @@ const AgentChatView: React.FC = () => {
           return false;
         },
       );
-      const filteredReal = realMessages.filter(
-        (rm) => !localRealTimeMessages.some((am) => am.id === rm.id),
+      const byId = new Map<string, ChatMessageVO>(
+        realMessages.map((message) => [message.id, message] as const),
       );
-      return [...filteredReal, ...localRealTimeMessages].sort(
+      for (const localMessage of localRealTimeMessages) {
+        const persistedMessage = byId.get(localMessage.id);
+        byId.set(
+          localMessage.id,
+          persistedMessage
+            ? mergeChatMessage(localMessage, persistedMessage)
+            : localMessage,
+        );
+      }
+
+      return Array.from(byId.values()).sort(
         (a, b) => (a.seqNo || 0) - (b.seqNo || 0),
       );
     });
@@ -183,10 +240,16 @@ const AgentChatView: React.FC = () => {
 
   const addMessage = (message: ChatMessageVO) => {
     setMessages((prevMessages) => {
-      if (prevMessages.some((m) => m.id === message.id)) {
-        return prevMessages;
+      const existingIndex = prevMessages.findIndex((m) => m.id === message.id);
+      if (existingIndex === -1) {
+        return [...prevMessages, message];
       }
-      return [...prevMessages, message];
+
+      return prevMessages.map((existingMessage, index) =>
+        index === existingIndex
+          ? mergeChatMessage(existingMessage, message)
+          : existingMessage,
+      );
     });
   };
 
@@ -299,6 +362,7 @@ const AgentChatView: React.FC = () => {
     }
 
     const activeChatSessionId = chatSessionId;
+    clearPersistentError();
 
     if (!isAuthenticated) {
       openAuthDialog("login");
@@ -484,6 +548,12 @@ const AgentChatView: React.FC = () => {
         setDisplayAgentStatus(true);
         setAgentStatusText(message.payload.statusText);
         setAgentStatusType("AI_EXECUTING");
+      } else if (message.type === "AI_ERROR") {
+        setDisplayAgentStatus(true);
+        setAgentStatusText(message.payload.statusText);
+        setAgentStatusType("AI_ERROR");
+        setPersistentErrorText(message.payload.statusText);
+        setRetryMessage(resolveRetryMessage(activePendingTurnIdRef.current));
       } else if (message.type === "AI_DONE") {
         clearPendingState(chatSessionId);
       } else if (message.type === "TURN_ROLLBACK") {
@@ -505,6 +575,15 @@ const AgentChatView: React.FC = () => {
     };
   }, [chatSessionId, clearPendingState, initializing, isAuthenticated, markPendingActivity]);
 
+  const handleRetryLastMessage = useCallback(() => {
+    if (!retryMessage) {
+      return;
+    }
+    void handleSendMessage(retryMessage).catch((error) => {
+      console.error("Retry failed:", error);
+    });
+  }, [retryMessage]);
+
   if (!chatSessionId) {
     return <EmptyAgentChatView loading={loading} />;
   }
@@ -516,6 +595,9 @@ const AgentChatView: React.FC = () => {
         displayAgentStatus={displayAgentStatus}
         agentStatusText={agentStatusText}
         agentStatusType={agentStatusType}
+        persistentErrorText={persistentErrorText}
+        onRetryLastMessage={retryMessage ? handleRetryLastMessage : undefined}
+        onDismissError={persistentErrorText ? clearPersistentError : undefined}
       />
       <div className="bg-[#212121] px-5 pb-6 pt-2 md:px-8">
         <AgentChatInput

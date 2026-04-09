@@ -176,10 +176,15 @@ public class DefaultKnowledgeBaseMilvusIndexService implements KnowledgeBaseMilv
     @Override
     public void upsertChunks(List<KnowledgeBaseMilvusChunkDocument> chunks) {
         if (chunks == null || chunks.isEmpty()) {
+            log.info("Knowledge-base Milvus chunk upsert skipped: collection={}, reason=no-chunks",
+                    knowledgeBaseProperties.getCollection());
             return;
         }
 
         ensureCollection();
+        log.info("Knowledge-base Milvus chunk upsert started: collection={}, rowCount={}",
+                knowledgeBaseProperties.getCollection(),
+                chunks.size());
         List<JsonObject> rows = new ArrayList<>(chunks.size());
         for (KnowledgeBaseMilvusChunkDocument chunk : chunks) {
             rows.add(toRow(chunk));
@@ -197,27 +202,43 @@ public class DefaultKnowledgeBaseMilvusIndexService implements KnowledgeBaseMilv
     @Override
     public void deleteByKnowledgeDocumentId(String knowledgeDocumentId) {
         if (knowledgeDocumentId == null || knowledgeDocumentId.isBlank()) {
+            log.info("Knowledge-base Milvus delete skipped: collection={}, reason=blank-document-id",
+                    knowledgeBaseProperties.getCollection());
             return;
         }
 
         ensureCollection();
+        log.info("Knowledge-base Milvus delete request started: collection={}, knowledgeDocumentId={}",
+                knowledgeBaseProperties.getCollection(),
+                knowledgeDocumentId);
         milvusClient.delete(DeleteReq.builder()
                 .collectionName(knowledgeBaseProperties.getCollection())
                 .filter(KnowledgeBaseMilvusCollectionFields.DOCUMENT_ID + " == \"" + escapeFilterValue(knowledgeDocumentId) + "\"")
                 .build());
+        log.info("Knowledge-base Milvus delete request completed: collection={}, knowledgeDocumentId={}",
+                knowledgeBaseProperties.getCollection(),
+                knowledgeDocumentId);
     }
 
     @Override
     public void deleteByKnowledgeBaseId(String knowledgeBaseId) {
         if (knowledgeBaseId == null || knowledgeBaseId.isBlank()) {
+            log.info("Knowledge-base Milvus delete skipped: collection={}, reason=blank-knowledge-base-id",
+                    knowledgeBaseProperties.getCollection());
             return;
         }
 
         ensureCollection();
+        log.info("Knowledge-base Milvus delete request started: collection={}, knowledgeBaseId={}",
+                knowledgeBaseProperties.getCollection(),
+                knowledgeBaseId);
         milvusClient.delete(DeleteReq.builder()
                 .collectionName(knowledgeBaseProperties.getCollection())
                 .filter(KnowledgeBaseMilvusCollectionFields.KNOWLEDGE_BASE_ID + " == \"" + escapeFilterValue(knowledgeBaseId) + "\"")
                 .build());
+        log.info("Knowledge-base Milvus delete request completed: collection={}, knowledgeBaseId={}",
+                knowledgeBaseProperties.getCollection(),
+                knowledgeBaseId);
     }
 
     @Override

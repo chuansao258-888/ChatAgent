@@ -8,13 +8,13 @@
 
 - Phase 5a：Knowledge 图片前置拦截、Image Parser、`VdpEngine` 抽象、`FIGURE` 段、Segment-Aware Chunker
 - Phase 5b：PDF 逐页启发式路由、Visual-Track、超时与防反压、页级降级、视觉结果缝合
-- Phase 5c：PDF 页缓存与图像去重缓存、字体感知结构恢复、Batch 模式基础设施、配置与测试补齐
+- Phase 5c：PDF 页缓存与图像去重缓存、字体感知结构恢复、Batch 模式基础设施、真实 MinerU 本地接入、配置与测试补齐
 
 当前代码尚未完成：
 
-- 尚未接入真实的本地 Batch Engine（如 MinerU / Marker）的生产实现
-- `VlmVdpEngine` 仍受 Spring AI `Media` 接口限制，单图上传链路内部仍会 materialize 为 `byte[]`
-- `DocumentParser.parse(Supplier<InputStream>)` 的 default byte[] bridge 仍保留，属于兼容过渡层
+- `Marker` 等第二批本地 Batch Engine 尚未接入
+- `VlmVdpEngine` 仍受 Spring AI `Media` / VLM API 载荷约束，单图链路内部仍会 materialize 为 `byte[]`
+- MinerU 参数调优、更多 golden 样本与端到端主链验收仍未收口
 
 ---
 
@@ -62,7 +62,7 @@
 当前状态：
 
 - `parsePage(...)` 已在会话图片与 PDF Visual-Track 中投入使用
-- `parsePages(...)` 基础设施已就绪，但真实本地引擎尚未接入
+- `parsePages(...)` 已用于本地 `MinerU` knowledge batch 路径，真实本地 smoke 已通过
 
 ### 3.2 MUST 2：Markdown-First
 
@@ -333,11 +333,13 @@ PDF 页缓存上下文并不再依赖 `VdpOptions.extra()` 透传整份 ingestio
 5. Session 分桶缓存与空闲 bucket 回收
 6. 字体元数据采样与标题结构恢复
 7. Knowledge 缺失 `contentHash` 时的内容摘要回退
+8. `MinerUVdpEngine` 本地生产实现 + 本地 GPU / smoke 打通
 
 未完成：
 
-1. 真实 MinerU / Marker 生产实现
+1. `Marker` 等第二本地 batch engine 适配
 2. 多商业 API 适配器
+3. MinerU 参数调优与更多 golden 验收
 
 ---
 
@@ -355,6 +357,8 @@ PDF 页缓存上下文并不再依赖 `VdpOptions.extra()` 透传整份 ingestio
 - `chatagent.rag.vdp.pdf-page-dispatch-*`
 - `chatagent.rag.vdp.pdf-batch-*`
 - `chatagent.rag.vdp.pdf-render-dpi`
+- `chatagent.rag.vdp.routing.*`
+- `chatagent.rag.vdp.mineru.*`
 - `chatagent.rag.vdp.vlm.*`
 
 默认关键值：
@@ -362,7 +366,9 @@ PDF 页缓存上下文并不再依赖 `VdpOptions.extra()` 透传整份 ingestio
 - `pdf-render-dpi = 120`
 - `pdf-page-max-in-flight = 2`
 - `pdf-page-timeout-ms = 5000`
-- `knowledge-document-timeout-ms = 120000`
+- `knowledge-document-timeout-ms = 300000`
+- `pdf-batch-max-pool-size = 2`
+- `pdf-batch-queue-capacity = 30`
 - `vlm.timeout-ms = 5000`
 
 ---
@@ -383,41 +389,39 @@ PDF 页缓存上下文并不再依赖 `VdpOptions.extra()` 透传整份 ingestio
 - `pdf-render-dpi = 120` 控制单页图片尺寸（120 DPI A4 页约 700KB PNG）
 - 仅当 VLM API 未来支持 chunked upload 或 presigned URL 引用时，此约束才可消除
 
-#### 遗留 2: DocumentParser default stream bridge — 可删除
+#### 遗留 2: DocumentParser default stream bridge — 已完成
 
-**现状**：`DocumentParser.parse(Supplier<InputStream>, ...)` 的 default 实现内部调 `readAllBytes()` 再委托给 `parse(byte[], ...)`。
+**当前状态（2026-04-05）**：已完成消解。
 
-**实际情况**：此 default bridge 已是死代码：
-- 4 个生产 parser 全部 override 了 `parse(Supplier<InputStream>, ...)`：
-  - `MarkdownDocumentParser` — stream → BufferedReader 逐行读取
-  - `TikaDocumentParser` — stream → `Tika.parseToString(stream)`
-  - `PdfDocumentParser` — stream → `RandomAccessReadBuffer(stream)`
-  - `ImageDocumentParser` — stream → 委托 VdpEngine.parsePage()
-- 两个 ingestion service 调用方均使用 stream 版本
+**已落地结果**：
+- `DocumentParser.parse(Supplier<InputStream>, ...)` 已去掉 default body，变为强制实现的抽象方法
+- `DocumentParser.parse(byte[], ...)` 已标注 `@Deprecated(forRemoval = true)`，保留为兼容入口
+- 4 个生产 parser 均保持 stream-native 实现
+- 两条 ingestion service 调用链均继续使用 stream 版本
 
-**消解方案**：
+**结果**：stream-only 契约现在由编译期保证，后续新增 parser 若未实现 stream 版本会直接编译失败，而不是运行时回落到 `readAllBytes()` bridge。
 
-> **⚠️ 注意**：不可简单"反转 default"（让 `parse(byte[])` default 调 stream 版本，同时 stream 版本 default 调 `parse(byte[])`），否则只实现其中一个方法的子类会触发 **mutual-default StackOverflow**。
+#### 遗留 3: MinerU 已接入，但参数联调与主链验收未完成
 
-| 文件 | 改动 |
-|---|---|
-| `DocumentParser.java` | (1) 将 `parse(byte[], ...)` 标注 `@Deprecated(forRemoval = true)`，保留其现有 default body（`throw UnsupportedOperationException`），不做反转；(2) 删除 `parse(Supplier<InputStream>, ...)` 的 default body，改为无 default 的抽象接口方法，强制所有实现类提供 stream-native 实现 |
-| `MarkdownDocumentParser.java` | 已有 stream override，无需改动；可选删除 `parse(byte[], ...)` override |
-| `TikaDocumentParser.java` | 同上 |
+**当前状态（2026-04-05）**：
+- `VdpEngineRouter` / `VdpEngineRoutingProperties` 已接入
+- `PdfDocumentParser` / `ImageDocumentParser` 已改为先 resolve engine，再按 resolved engine 构造 cache context
+- `MinerUVdpEngine` + `MinerUProperties` 已完成本地官方 MinerU API 适配
+- `VdpPageCacheService.putAll(...)` + Redis pipelining 已落地，batch 路径会缓存全量页结果并仅返回请求子集
+- 本地 `MinerU` 服务已部署在 `http://127.0.0.1:8000`
+- `MinerUVdpEngineSmoke` 已在本地真实服务下通过
 
-**安全保证**：`parse(Supplier<InputStream>)` 变为无 default 后，任何只实现了 `parse(byte[])` 的子类会 **编译失败**（而非运行时 StackOverflow），这是更安全的失败模式。全局搜索确认无遗漏后再动手。
-
-#### 遗留 3: 真实 Batch Engine 未接入 — 由 Phase 5d Step 2 覆盖
-
-当前 `PdfDocumentParser` 的 batch 路径（`dispatchBatchVisualTrackPages` + `vdpBatchExecutor`）已就绪，`VdpEngine.parsePages(...)` 缺少真实生产实现。详见 11.2 Step 2。
+**剩余工作**：MinerU batch 参数调优、golden 切换到 `mineru` 引擎的质量验收，以及 retrieval/rerank 主链的端到端验证。详见 11.2 Step 3 与 13.3。
 
 ---
 
-### 11.2 Phase 5d — 生产引擎接入与可观测性
+### 11.2 Phase 5d — 剩余生产化工作
 
 > 目标：将 Phase 5c 的接口底座升级为可用的生产能力。
 
 #### Step 1: 收集金标验收样本（前置，不依赖代码）
+
+**当前状态（2026-04-06）：已完成。基础设施 + 首批 4 份样本 + 4 份 snapshot + golden 验收全绿。**
 
 在动手写 adapter 之前，先准备 4 类真实 PDF，每类 2-3 份。样本用于 adapter 开发期间反复对照调参（DPI、超时、batch size），避免仅靠 mock 上线后才发现格式不符。
 
@@ -428,10 +432,20 @@ PDF 页缓存上下文并不再依赖 `VdpOptions.extra()` 透传整份 ingestio
 ```
 golden-pdfs/
 +-- scanned/           # 扫描件
+|   +-- scanned-01.pdf
 +-- tables/            # 表格型
+|   +-- table-01.pdf
 +-- headings/          # 标题层级
+|   +-- heading-01.pdf
 +-- mixed/             # 混合文本+图片
+|   +-- mixed-01.pdf
 +-- expected/          # 期望输出快照 (*.segments.json)
+|   +-- scanned-01.segments.json
+|   +-- table-01.segments.json
+|   +-- heading-01.segments.json
+|   +-- mixed-01.segments.json
+|   +-- _example.segments.json
++-- README.md          # 样本要求、命名规范、JSON schema 说明
 ```
 
 **验收重点**：
@@ -455,33 +469,104 @@ golden-pdfs/
       "pageIndex": 0,
       "expectedRoute": "FAST_TRACK",
       "mustContain": ["Introduction"],
-      "mustNotContain": ["[图像解析失败]"]
+      "mustNotContain": ["[图像解析失败]"],
+      "expectedVisualType": null
     },
     {
       "pageIndex": 1,
       "expectedRoute": "VISUAL_TRACK",
       "mustContain": ["|", "---"],
+      "mustNotContain": [],
       "expectedVisualType": "TABLE"
     }
   ]
 }
 ```
 
-**验收测试类**：
+**JSON schema 字段说明**：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `documentId` | 是 | 与 PDF 文件名（去扩展名）一致 |
+| `expectedSegmentCount` | 否 | 若设置则断言精确 segment 数量 |
+| `expectedExtractionMode` | 否 | `NATIVE_TEXT` / `PDF_VISUAL_ROUTED` / `OCR_REQUIRED` |
+| `segments[].pageIndex` | 是 | 0-based 页索引 |
+| `segments[].expectedRoute` | 否 | `FAST_TRACK` 或 `VISUAL_TRACK` |
+| `segments[].mustContain` | 否 | 页 segment 文本中必须出现的子串列表（忽略大小写） |
+| `segments[].mustNotContain` | 否 | 页 segment 文本中不得出现的子串列表（忽略大小写） |
+| `segments[].expectedVisualType` | 否 | `TABLE` / `CHART` / `FORMULA` / `IMAGE`（仅 visual-track 页） |
+
+##### Step 1 已完成的代码落地
+
+**1. 验收测试类**：`chatagent/bootstrap/src/test/java/com/yulong/chatagent/rag/parser/GoldenPdfValidationTest.java`
 
 ```java
 @Tag("golden")
 class GoldenPdfValidationTest {
-    // @ParameterizedTest + @MethodSource 遍历 golden-pdfs/ 下所有 PDF
-    // 解析 -> 比对 expected/ 快照
-    // CI 中默认跳过 (@Tag("golden") 不在 surefire 默认 include)
-    // 手动验收时: mvn test -pl bootstrap -am -Dgroups=golden
+    // @ParameterizedTest(name = "[{0}]") + @MethodSource("goldenPdfCases")
+    // 自动发现 scanned/ tables/ headings/ mixed/ 下所有 *.pdf
+    // 读取 expected/<basename>.segments.json 快照
+    // 用 PdfDocumentParser(NoopVdpEngine) 解析 PDF
+    // assertSoftly 做文档级 + 页级断言
+    // 无样本时抛 IllegalStateException 提示添加
 }
 ```
+
+**测试断言覆盖**：
+
+| 断言层级 | 断言内容 |
+|---|---|
+| 文档级 | `expectedSegmentCount`（精确 segment 数）、`expectedExtractionMode`（提取模式）、`parserType == "pdfbox"` |
+| 页级 | `pageRoute` 匹配 `expectedRoute`、`mustContain` 子串存在（忽略大小写）、`mustNotContain` 子串不存在、`visualType` 匹配 |
+
+**2. Surefire 排除配置**：`chatagent/bootstrap/pom.xml`
+
+```xml
+<!-- bootstrap/pom.xml -->
+<properties>
+    <surefire.excludedGroups>golden</surefire.excludedGroups>
+</properties>
+
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-surefire-plugin</artifactId>
+    <configuration>
+        <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+    </configuration>
+</plugin>
+```
+
+用 Maven property 间接引用，允许命令行 `-Dsurefire.excludedGroups=` 覆盖为空串来解除排除。
+
+- 常规 `mvn test` 跳过 `@Tag("golden")`（已验证 232 tests pass，0 failure）
+- 手动验收：`mvn test -pl bootstrap -am -Dsurefire.failIfNoSpecifiedTests=false -Dsurefire.excludedGroups= -Dgroups=golden -Dtest=GoldenPdfValidationTest`
+
+**3. 存储策略**：方案 C（压缩子集 < 5MB，直接入仓），单文件上限 5MB，目录总量控制在 20MB 以内。
+
+##### Step 1 待收口
+
+| 待办 | 说明 | 负责方 |
+|---|---|---|
+| **填充真实 PDF 样本** | 已完成首批 4 份：`scanned-01`、`table-01`、`heading-01`、`mixed-01`；下一步扩到每类 2-3 份 | 已完成首批 |
+| **编写对应 .segments.json** | 已完成首批 4 份 snapshot，对应 `expected/*.segments.json` | 已完成首批 |
+| **首次 golden 验收通过** | 已完成首轮校验；执行命令见下方 | 已完成 |
+
+**样本命名规范**：`<category>-<nn>.pdf` → `expected/<category>-<nn>.segments.json`，例如 `table-01.pdf` → `expected/table-01.segments.json`。
 
 ---
 
 #### Step 2: VdpEngineRouter + MinerU Adapter 同步设计实现
+
+**当前落地状态（2026-04-05）**：
+
+- 已完成 `VdpEngineRouter` 与 `VdpEngineRoutingProperties`
+- 已去掉 `VlmVdpEngine.@Primary` 与 `NoopVdpEngine.@ConditionalOnMissingBean`
+- 已将 `PdfDocumentParser` / `ImageDocumentParser` 改为基于 router 选择引擎
+- 已实现 `MinerUVdpEngine` + `MinerUProperties` 的 HTTP 提交 / 轮询 / cancel 骨架
+- 已实现 batch 路径的“先 resolve engine，再构造 cache context”
+- 已实现 `VdpPageCacheService.putAll(...)`，Knowledge 侧走 Redis pipelining
+
+**本节剩余任务**：MinerU 参数联调、golden 验收与主链端到端验证，不再是适配协议本身。
 
 **关键约束**：当前 `PdfDocumentParser` 只注入一个 `VdpEngine`（`@Primary` 为 `VlmVdpEngine`）。若先写 MinerU adapter 再加路由，`@Primary` 冲突无处注入。因此 **router 和 adapter 必须同步设计**。
 
@@ -823,6 +908,7 @@ chatagent:
       mineru:
         enabled: ${CHATAGENT_RAG_VDP_MINERU_ENABLED:false}
         base-url: ${CHATAGENT_RAG_VDP_MINERU_BASE_URL:http://localhost:8765}
+        bearer-token: ${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:}
         version: ${CHATAGENT_RAG_VDP_MINERU_VERSION:v1}
         max-pdf-size-mb: ${CHATAGENT_RAG_VDP_MINERU_MAX_PDF_SIZE_MB:50}
         poll-interval-ms: ${CHATAGENT_RAG_VDP_MINERU_POLL_INTERVAL_MS:2000}
@@ -931,10 +1017,10 @@ void putAll(List<VdpPageResult> results, PageCacheContext ctx) {
 
 ```bash
 # 跑全部金标样本
-mvn test -pl bootstrap -am -Dgroups=golden
+mvn test -pl bootstrap -am -Dsurefire.failIfNoSpecifiedTests=false -Dsurefire.excludedGroups= -Dgroups=golden -Dtest=GoldenPdfValidationTest
 
 # 跑单类
-mvn test -pl bootstrap -am -Dgroups=golden -Dtest=GoldenPdfValidationTest#scannedPdf
+mvn test -pl bootstrap -am -Dsurefire.failIfNoSpecifiedTests=false -Dsurefire.excludedGroups= -Dgroups=golden -Dtest=GoldenPdfValidationTest
 ```
 
 **调参项及初始值**：
@@ -961,9 +1047,11 @@ mvn test -pl bootstrap -am -Dgroups=golden -Dtest=GoldenPdfValidationTest#scanne
 
 #### Step 4: Micrometer 可观测性埋点
 
-**前置**：`spring-boot-starter-actuator` 已在 pom.xml 中，Spring Boot AutoConfig 自动注册 `MeterRegistry`。
+**当前状态（2026-04-05）**：本节已完成基础落地。当前代码已在 `VdpEngineRouter`、`VdpPageCacheService`、`VdpResultCacheService`、`PdfDocumentParser`、`VlmVdpEngine`、`MinerUVdpEngine` 接入 `MeterRegistry`，并补齐了对应单测。
 
-**埋点位置**：指标桩点在 **router 层**（跨 engine 对比）和 **cache 层**。
+**前置**：`spring-boot-starter-actuator` 与 `micrometer-registry-prometheus` 已在 pom.xml 中，Spring Boot AutoConfig 自动注册 `MeterRegistry` 并暴露 `/actuator/prometheus`。
+
+**埋点位置**：指标桩点已覆盖 **router 层**（跨 engine 对比）、**cache 层**、**PDF 文档级调度层** 与 **engine 内部耗时**。
 
 **VdpEngineRouter**（核心指标入口）：
 
@@ -1019,11 +1107,12 @@ private ParseResult extractPages(...) {
 | `vdp.engine.parsePages.latency` | Timer | engineId, status | 同上 |
 | `vdp.cache.hit` | Counter | layer (page / image) | VdpPageCacheService / VdpResultCacheService |
 | `vdp.cache.miss` | Counter | layer | 同上 |
+| `vdp.page.success` | Counter | engineId | PdfDocumentParser.collectCompletedVisualPages / batch normalize |
 | `vdp.page.timeout` | Counter | engineId | PdfDocumentParser.expireTimedOutVisualPages |
 | `vdp.page.degraded` | Counter | engineId | PdfDocumentParser.collectCompletedVisualPages |
 | `vdp.page.failed` | Counter | engineId | 同上 |
 | `vdp.document.parse.latency` | Timer | pipelineSource, extractionMode | PdfDocumentParser.extractPages |
-| `vdp.document.ocr_required` | Counter | -- | PdfDocumentParser.extractPages |
+| `vdp.document.ocr_required` | Counter | pipelineSource | PdfDocumentParser.extractPages |
 
 **暴露方式**（application.yaml 追加）：
 
@@ -1041,21 +1130,17 @@ management:
 
 #### 开放决策项
 
-以下两项需在 Phase 5d 实施前做出明确决策：
+**1. Golden PDF 样本存储策略 — 已决策：方案 C**
 
-**1. Golden PDF 样本存储策略**
+`src/test/resources/golden-pdfs/` 存放真实 PDF 样本，采用 **方案 C（压缩子集入仓）**：
 
-`src/test/resources/golden-pdfs/` 存放真实 PDF 样本可操作，但如果样本接近几十 MB，会导致仓库体积膨胀和 CI 拉取变慢。
+- 用 `pdftk` 抽取关键页，单文件 < 5MB，目录总量 < 20MB
+- 直接 `git add` 入仓，无需 Git LFS
+- CI 默认 `<excludedGroups>golden</excludedGroups>` 跳过，不影响日常构建速度
 
-| 方案 | 适用场景 | 操作 |
-|---|---|---|
-| **A: Git LFS** | 样本总量 < 200MB，CI 有 LFS 支持 | `git lfs track "*.pdf"`，`.gitattributes` 提交 |
-| **B: 本地验收包** | 样本极大或含敏感内容 | 不入仓，README 说明下载地址，CI golden tag 默认 skip |
-| **C: 压缩子集** | 每类只需 1-2 页即可覆盖路由 | 用 `pdftk` 抽取关键页，控制在 5MB 以内直接入仓 |
+如果后续样本规模超过 20MB，可追加 Git LFS（方案 A）作为补充。
 
-**推荐**：C（轻量子集入仓）+ A（完整样本 LFS）兼顾 CI 速度和完整验收。
-
-**2. DocumentParser.parse(byte[]) 废弃的 SPI 兼容影响**
+**2. DocumentParser.parse(byte[]) 废弃的 SPI 兼容影响 — 待执行**
 
 删除 `parse(Supplier<InputStream>)` 的 default body 使其成为抽象方法，是一个 **SPI breaking change**——仓外如果有第三方扩展只实现了 `parse(byte[])` 而未实现 stream 版本，升级后会编译失败。
 
@@ -1080,21 +1165,158 @@ management:
 - PDF Batch dispatch 基础设施：
   - `shouldPreferBatchPdfDispatchWhenEngineSupportsPageBatchMode`
   - `shouldIsolateBatchDispatchFromSaturatedPageExecutor`
+  - `shouldQueueSecondBatchDispatchInsteadOfRejectingWhenBatchExecutorHasCapacity`
 - PDF 页缓存命中
 - 字体感知结构恢复
 - Knowledge `documentCacheKey` 内容摘要回退
 - Session bucket 过期回收
-
-Phase 5d 计划新增测试（尚未实现）：
-
 - VdpEngineRouter 路由逻辑（preferred 引擎命中、knowledgeBatchPreferred=false 强制逐页、disabled fallback）
-- MinerU 异步提交+轮询（taskId 返回、状态转移、轮询超时降级 + cancelTaskQuietly、FAILED 处理）
+- MinerU 异步提交+轮询（taskId 返回、状态转移、FAILED 处理、executor 参与调度）
 - MinerU page_no 归一化（1-based → 0-based pageIndex）
 - MinerU 全量派发 + pageIndices 子集过滤
 - Cache key 时序验证（resolved engine 的 engineId 绑定到 PageCacheContext）
 - 文档级缓存拦截（全部/部分命中场景）
 - VdpPageCacheService 批量写入（`putAll` + Redis pipelining，200 页 1 次 RTT）
-- Batch executor 满载排队（queue-capacity > 0 时不 reject，而是排队等待）
-- Micrometer 指标注册验证
+- Micrometer 指标注册验证（router / cache / engine / document）
+
+已通过的验收类测试：
+
+- `@Tag(“golden”)` 的 Golden PDF 样本验收集 — **首轮验收通过**（4 份 PDF + 4 份 snapshot + 4 golden tests green），可按需扩充更多边界样本
+
+当前已补齐的联调类测试：
+
+- 真实本地 MinerU 服务 smoke 验证结果
+  - `MinerUVdpEngineSmoke.java` 已在 `http://127.0.0.1:8000` 本地服务下通过
+  - 当前仍保持 opt-in，不进入默认 CI
+
+当前仍待补的验收类测试：
+
+- MinerU 打开后的 golden 全量验收结果
+- 本地 GPU 服务栈下的 retrieval → rerank → answer 端到端验收
 
 文档应以本文件为准，不再以早期”纯规划态”表述推断当前代码行为。
+
+---
+
+## 13. Phase 5d 总体进度与收口清单
+
+> 截至 2026-04-06 的完整进度快照。
+
+### 13.1 已完成
+
+| 序号 | 工作项 | 落地状态 | 关键文件 |
+|---|---|---|---|
+| S11-1 | `DocumentParser` stream contract + `ParserType` enum | 已完成 | `DocumentParser.java`, `ParserType.java` |
+| S11-2 | `VdpEngineRouter` + `VdpEngineRoutingProperties` | 已完成（5 轮对抗审查通过） | `VdpEngineRouter.java`, `VdpEngineRoutingProperties.java` |
+| S11-3 | `MinerUVdpEngine` + `MinerUProperties` HTTP 提交/轮询/cancel | 已完成（reactive Mono 链，无 Thread.sleep） | `MinerUVdpEngine.java`, `MinerUProperties.java` |
+| S11-4 | `VdpPageCacheService` 页缓存 + Redis pipelining batch write | 已完成 | `VdpPageCacheService.java` |
+| S11-5 | `VdpResultCacheService` 图像去重缓存 | 已完成 | `VdpResultCacheService.java` |
+| S11-6 | `SessionScopedVdpCacheStore` Caffeine per-session bucket | 已完成（MAX_ACTIVE_SESSION_BUCKETS=1000） | `SessionScopedVdpCacheStore.java` |
+| S11-7 | `PdfDocumentParser` 重构：router 注入、batch async、SizeLimitedInputStream、cache overwrite fix | 已完成 | `PdfDocumentParser.java` |
+| S11-8 | `ImageDocumentParser` MIME subtype cleanup | 已完成 | `ImageDocumentParser.java` |
+| S11-9 | Micrometer 可观测性埋点（Step 4） | 已完成（11 指标 + VdpMetricsSupport fail-open helper） | `VdpMetricsSupport.java`, 各 engine/cache/parser |
+| S11-10 | Golden PDF 验证基础设施 + 首批 4 份样本（Step 1 完整收口） | 已完成（4 golden tests green） | `GoldenPdfValidationTest.java`, `golden-pdfs/`, 4 PDF + 4 `.segments.json` |
+| S11-11 | Surefire golden 执行入口修正 | 已完成 | `pom.xml`（`${surefire.excludedGroups}` property 间接引用）、`README.md`、`GoldenPdfValidationTest.java` javadoc |
+| S11-12 | 回归测试覆盖 | 232 unit tests + 4 golden tests pass, 0 failure | 所有 `*Test.java` |
+| S11-13 | MinerU 真实服务 smoke | 已完成（opt-in，本地 `127.0.0.1:8000` 已通过） | `MinerUVdpEngineSmoke.java`, `MinerUProperties.java`, `MinerUVdpEngine.java` |
+| S11-14 | ChatAgent 本地 GPU Spring profile + 后端启动入口 | 已完成 | `application-local-gpu.yaml`, `start-local-gpu-backend.ps1` |
+| S11-15 | 本地 GPU 运行文档 | 已完成 | `docs/LOCAL_GPU_RUNTIME.md`, `tools/bge-reranker-server/README.md`, `tools/mineru/README.md`, `README.md` |
+
+### 13.2 对抗审查修复追踪
+
+> Section 11 代码经过 5 轮对抗性审查，共发现 22 个问题，全部已修复或确认为已知边界。
+
+| 轮次 | 发现数 | P0 | P1 | P2 | 全部已修复 |
+|---|---|---|---|---|---|
+| Round 1（Section 11 初版） | 12 | 3 | 5 | 4 | 是 |
+| Round 2（Round 1 修复验证） | 4 | 0 | 3 | 1 | 是（P1-B 确认为已知边界） |
+| Round 3（Round 2 修复验证） | 0 | 0 | 0 | 0 | — |
+| Round 4（Step 4 Metrics） | 4 | 0 | 2 | 2 | 是 |
+| Round 5（Round 4 修复验证） | 0 | 0 | 0 | 0 | — |
+
+**P0 修复项**：MinerU InputStream race → ByteArrayResource、Thread.sleep blocking → reactive Mono.delay、Cache overwrite SUCCESS→FAILED → putIfAbsent guard
+
+**P1 修复项**：Map.copyOf loses order → unmodifiableMap(LinkedHashMap)、Set.of() immutable → new HashSet<>()、Stream no size limit → SizeLimitedInputStream、No taskId validation → TASK_ID_PATTERN、MIME subtype dirty → split(“[+;]”)、int overflow readPdfBytes → long arithmetic、executor ignored by MinerU → Schedulers.fromExecutor、Batch still calling sync → parsePagesAsync、Metrics exception covers business → try-catch fail-open、Timer.Sample includes queue time → Mono.defer
+
+**P2 修复项**：ocr_required missing pipelineSource tag → added、No SUCCESS counter → added vdp.page.success
+
+### 13.3 接下来要做的工作
+
+按优先级顺序：
+
+#### 近期（Step 3 参数调优 + 样本扩充）
+
+> Step 1 已完整收口（2026-04-06）。N-1 ~ N-3 全部完成。
+
+| 序号 | 工作项 | 状态 | 说明 |
+|---|---|---|---|
+| ~~N-1~~ | 填充 golden PDF 样本 | **已完成** | 首批 4 份：`scanned-01`、`table-01`、`heading-01`、`mixed-01` |
+| ~~N-2~~ | 编写对应 `.segments.json` | **已完成** | 4 份 snapshot 已就位 |
+| ~~N-3~~ | 首次 golden 验收全绿 | **已完成** | 4 golden tests green |
+| **N-4** | Step 3 参数调优 | 待执行 | 调整 `char-density-threshold`、`pdf-render-dpi`、`short-text-fast-track-threshold` 等参数使 4 类样本全部达到验收标准 |
+| **N-5** | 样本扩充至每类 2-3 份 | 可选 | 在 MinerU 联调前扩充更多边界样本（大表格、多列布局、中英混排等） |
+
+**golden 执行命令**（surefire `excludedGroups` 需显式清空才能激活 golden tag）：
+
+```bash
+mvn test -pl bootstrap -am -Dsurefire.failIfNoSpecifiedTests=false \
+    -Dsurefire.excludedGroups= -Dgroups=golden -Dtest=GoldenPdfValidationTest
+```
+
+**样本扩充指南**（N-5 用）：
+
+```bash
+# 用 pdftk 抽取关键页（示例：抽第 1,3,5 页）
+pdftk original.pdf cat 1 3 5 output golden-pdfs/tables/table-02.pdf
+
+# 检查文件大小（应 < 5MB）
+ls -lh golden-pdfs/tables/table-02.pdf
+
+# 获取 baseline 输出后编写 expected/table-02.segments.json
+```
+
+#### 中期（MinerU 参数联调与主链验收）
+
+| 序号 | 工作项 | 前置条件 | 预期产出 |
+|---|---|---|---|
+| ~~M-1~~ | 本地 MinerU 部署与健康检查 | **已完成** | `http://127.0.0.1:8000/health` / `/docs` 可用 |
+| ~~M-2~~ | 协议字段校准 + 本地 smoke | **已完成** | `MinerUVdpEngine` 已对齐真实本地 API，`MinerUVdpEngineSmoke` 通过 |
+| **M-3** | 超时参数调优 | N-3 | 用 golden 样本跑 `mineru.enabled=true`，调整 `poll-interval-ms`、`max-poll-attempts`、`submit-timeout-ms` |
+| **M-4** | Batch executor 参数确认 | M-3 | 根据 MinerU 并发能力决定 `pdf-batch-queue-capacity`（建议 30）和 `pdf-batch-max-pool-size`（建议 2） |
+| **M-5** | MinerU golden 验收 | M-3, N-3 | 在 golden 测试中切换 engine 到 mineru，验证表格保真度、扫描件 OCR 质量 |
+| **M-6** | 本地 GPU 主链端到端验收 | M-3 | 跑通 retrieval → rerank → answer，确认 embedding / reranker / mineru 均走本地 GPU 服务 |
+
+**MinerU smoke 执行命令**（本地真实服务已验证通过）：
+
+```bash
+CHATAGENT_RAG_VDP_MINERU_SMOKE=true \
+CHATAGENT_RAG_VDP_MINERU_BASE_URL=http://127.0.0.1:8000 \
+mvn test -pl bootstrap -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=MinerUVdpEngineSmoke test
+```
+
+#### 远期（SPI 清理）
+
+| 序号 | 工作项 | 前置条件 | 预期产出 |
+|---|---|---|---|
+| **F-1** | `DocumentParser.parse(byte[])` 废弃清理 | 所有调用方已迁移到 stream 版本 | 单独 `[BREAKING]` PR：删除 `@Deprecated` default 方法体，`parse(Supplier<InputStream>)` 成为唯一抽象方法 |
+| **F-2** | 全局编译清单确认 | F-1 PR 前 | `grep -r “implements DocumentParser” --include=”*.java”` + `grep -r “extends.*DocumentParser”` 确保无仓外扩展遗漏 |
+
+### 13.4 关键文件索引
+
+| 文件 | 用途 |
+|---|---|
+| `bootstrap/src/test/java/.../rag/parser/GoldenPdfValidationTest.java` | Golden PDF 参数化验收测试（`@Tag(“golden”)`） |
+| `bootstrap/src/test/resources/golden-pdfs/README.md` | 样本要求、命名规范、JSON schema 说明 |
+| `bootstrap/src/test/resources/golden-pdfs/expected/_example.segments.json` | JSON schema 示例文件 |
+| `bootstrap/src/test/resources/golden-pdfs/expected/{scanned,table,heading,mixed}-01.segments.json` | 首批 4 份期望输出快照 |
+| `bootstrap/src/test/resources/golden-pdfs/{scanned,tables,headings,mixed}/*-01.pdf` | 首批 4 份 golden PDF 样本 |
+| `bootstrap/pom.xml` | surefire `${surefire.excludedGroups}` property 间接排除 golden tag |
+| `bootstrap/src/main/java/.../rag/parser/VdpMetricsSupport.java` | Micrometer 共享 helper（fail-open） |
+| `bootstrap/src/main/java/.../rag/parser/MinerUVdpEngine.java` | MinerU batch engine（reactive async polling） |
+| `bootstrap/src/test/java/.../rag/parser/MinerUVdpEngineSmoke.java` | 真实 MinerU 环境 opt-in smoke test |
+| `bootstrap/src/main/java/.../rag/parser/VdpEngineRouter.java` | 引擎选择路由器 |
+| `bootstrap/src/main/java/.../rag/parser/PdfDocumentParser.java` | PDF 核心解析器（~1500 行） |
+| `bootstrap/src/main/resources/application-local-gpu.yaml` | ChatAgent 本地 GPU profile（embedding / reranker / mineru） |
+| `start-local-gpu-backend.ps1` | 一键以 `local-gpu` profile 启动后端 |
+| `docs/LOCAL_GPU_RUNTIME.md` | 本地 GPU 服务栈运行手册 |
+| `tools/bge-reranker-server/README.md` | 本地 reranker 服务启动与验证说明 |

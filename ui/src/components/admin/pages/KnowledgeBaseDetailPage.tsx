@@ -393,7 +393,7 @@ export default function KnowledgeBaseDetailPage() {
               htmlType="submit"
               type="primary"
               loading={saving}
-              className="admin-primary-button"
+              className=""
             >
               Save changes
             </Button>

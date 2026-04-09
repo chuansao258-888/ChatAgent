@@ -3,14 +3,17 @@ package com.yulong.chatagent.rag.parser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.Media;
 import org.springframework.ai.zhipuai.ZhiPuAiChatOptions;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
@@ -36,7 +39,6 @@ import java.util.function.Supplier;
  * Single-image VLM engine used by session uploads during the first multimodal rollout phase.
  */
 @Component
-@Primary
 @ConditionalOnProperty(prefix = "chatagent.rag.vdp.vlm", name = "enabled", havingValue = "true", matchIfMissing = true)
 @Slf4j
 public class VlmVdpEngine implements VdpEngine {
@@ -46,31 +48,57 @@ public class VlmVdpEngine implements VdpEngine {
     private final VlmVdpProperties properties;
     private final VdpResultCacheService vdpResultCacheService;
     private final Executor vdpExecutor;
+    private final MeterRegistry meterRegistry;
 
+    @Autowired
     public VlmVdpEngine(ChatModelRouter chatModelRouter,
                         ObjectMapper objectMapper,
                         VlmVdpProperties properties,
                         VdpResultCacheService vdpResultCacheService,
-                        @Qualifier("vdpExecutor") Executor vdpExecutor) {
+                        @Qualifier("vdpExecutor") Executor vdpExecutor,
+                        ObjectProvider<MeterRegistry> meterRegistryProvider) {
+        this(chatModelRouter, objectMapper, properties, vdpResultCacheService, vdpExecutor, meterRegistryProvider.getIfAvailable());
+    }
+
+    VlmVdpEngine(ChatModelRouter chatModelRouter,
+                 ObjectMapper objectMapper,
+                 VlmVdpProperties properties,
+                 VdpResultCacheService vdpResultCacheService,
+                 Executor vdpExecutor) {
+        this(chatModelRouter, objectMapper, properties, vdpResultCacheService, vdpExecutor, (MeterRegistry) null);
+    }
+
+    VlmVdpEngine(ChatModelRouter chatModelRouter,
+                 ObjectMapper objectMapper,
+                 VlmVdpProperties properties,
+                 VdpResultCacheService vdpResultCacheService,
+                 Executor vdpExecutor,
+                 MeterRegistry meterRegistry) {
         this.chatModelRouter = chatModelRouter;
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.vdpResultCacheService = vdpResultCacheService;
         this.vdpExecutor = vdpExecutor;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
     public VdpPageResult parsePage(Supplier<InputStream> imageStream, String imageFormat, VdpOptions options) {
-        if (!properties.isEnabled()) {
-            return degradedResult("VLM visual parsing is disabled");
-        }
-
+        Timer.Sample sample = VdpMetricsSupport.start(meterRegistry);
+        String statusTag = "FAILED";
         byte[] imageBytes = null;
         boolean bytesOwnedByWorker = false;
         try {
+            if (!properties.isEnabled()) {
+                VdpPageResult result = degradedResult("VLM visual parsing is disabled");
+                statusTag = VdpMetricsSupport.pageStatusTag(result);
+                return result;
+            }
             try (InputStream stream = imageStream.get()) {
                 if (stream == null) {
-                    return degradedResult("imageStream supplier returned null");
+                    VdpPageResult result = degradedResult("imageStream supplier returned null");
+                    statusTag = VdpMetricsSupport.pageStatusTag(result);
+                    return result;
                 }
                 // TODO Phase 5b: Spring AI Media 1.1.0 still materializes Resource payloads into byte[],
                 // so move this path to provider-safe base64/remote media instead of heap materialization.
@@ -86,6 +114,7 @@ public class VlmVdpEngine implements VdpEngine {
             );
             if (cached != null) {
                 wipeBytes(imageBytes);
+                statusTag = VdpMetricsSupport.pageStatusTag(cached);
                 return cached;
             }
 
@@ -100,40 +129,64 @@ public class VlmVdpEngine implements VdpEngine {
                     future.cancel(true);
                 }
                 log.warn("VDP model call timed out after {} ms", properties.getTimeoutMs());
-                return cacheAndReturn(
+                VdpPageResult result = cacheAndReturn(
                         cacheLookupContext,
                         degradedResult("VLM timed out after " + properties.getTimeoutMs() + " ms")
                 );
+                statusTag = VdpMetricsSupport.pageStatusTag(result);
+                return result;
             } catch (RejectedExecutionException e) {
                 wipeBytes(imageBytes);
                 imageBytes = null;
                 log.warn("VDP executor rejected task: {}", e.getMessage());
-                return cacheAndReturn(cacheLookupContext, degradedResult("VDP executor is saturated"));
+                VdpPageResult result = cacheAndReturn(cacheLookupContext, degradedResult("VDP executor is saturated"));
+                statusTag = VdpMetricsSupport.pageStatusTag(result);
+                return result;
             } catch (ExecutionException e) {
                 if (future != null) {
                     future.cancel(true);
                 }
                 Throwable cause = e.getCause() == null ? e : e.getCause();
                 log.warn("VDP model call failed: {}", cause.getMessage());
-                return cacheAndReturn(cacheLookupContext, degradedResult("VLM request failed: " + cause.getMessage()));
+                VdpPageResult result = cacheAndReturn(cacheLookupContext, degradedResult("VLM request failed: " + cause.getMessage()));
+                statusTag = VdpMetricsSupport.pageStatusTag(result);
+                return result;
             } catch (InterruptedException e) {
                 if (future != null) {
                     future.cancel(true);
                 }
                 Thread.currentThread().interrupt();
-                return cacheAndReturn(cacheLookupContext, degradedResult("VDP call interrupted"));
+                VdpPageResult result = cacheAndReturn(cacheLookupContext, degradedResult("VDP call interrupted"));
+                statusTag = VdpMetricsSupport.pageStatusTag(result);
+                return result;
             }
 
             if (!StringUtils.hasText(response)) {
-                return cacheAndReturn(cacheLookupContext, degradedResult("VLM visual parser returned blank content"));
+                VdpPageResult result = cacheAndReturn(cacheLookupContext, degradedResult("VLM visual parser returned blank content"));
+                statusTag = VdpMetricsSupport.pageStatusTag(result);
+                return result;
             }
 
-            return cacheAndReturn(cacheLookupContext, mapResponse(response.trim()));
+            VdpPageResult result = cacheAndReturn(cacheLookupContext, mapResponse(response.trim()));
+            statusTag = VdpMetricsSupport.pageStatusTag(result);
+            return result;
         } catch (Exception e) {
             if (!bytesOwnedByWorker) {
                 wipeBytes(imageBytes);
             }
-            return degradedResult("Failed to read image stream: " + e.getMessage());
+            VdpPageResult result = degradedResult("Failed to read image stream: " + e.getMessage());
+            statusTag = VdpMetricsSupport.pageStatusTag(result);
+            return result;
+        } finally {
+            VdpMetricsSupport.stop(
+                    meterRegistry,
+                    sample,
+                    "vdp.engine.parsePage.latency",
+                    "engineId",
+                    engineId(),
+                    "status",
+                    statusTag
+            );
         }
     }
 

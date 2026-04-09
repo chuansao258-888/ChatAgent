@@ -19,7 +19,7 @@ const CHAT_TAB_KEY = "chat";
 function SideMenuHeader() {
   return (
     <div className="flex items-center gap-3 px-1 pb-5 pt-1">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white shadow-chat-panel">
+      <div className="flex h-11 w-11 items-center justify-center rounded-input border border-white/10 bg-white/[0.04] text-white shadow-chat-panel">
         <MessageOutlined className="text-lg" />
       </div>
       <div>
@@ -46,7 +46,7 @@ function GuestSideMenu() {
           onClick={() => {
             navigate("/chat");
           }}
-          className="flex w-full items-center gap-3 rounded-2xl border border-white/6 bg-white/[0.03] px-4 py-3 text-left text-white transition hover:border-white/10 hover:bg-white/[0.06]"
+          className="flex w-full items-center gap-3 rounded-input border border-white/12 bg-white/[0.07] px-4 py-3 text-left text-white/90 transition hover:border-white/18 hover:bg-white/[0.10]"
         >
           <EditOutlined />
           <span className="font-medium">New chat</span>
@@ -56,7 +56,7 @@ function GuestSideMenu() {
           onClick={() => {
             openAuthDialog("login");
           }}
-          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/72 transition hover:bg-white/[0.05] hover:text-white"
+          className="flex w-full items-center gap-3 rounded-input border border-transparent px-4 py-3 text-left text-white/65 transition hover:border-white/8 hover:bg-white/[0.05] hover:text-white/90"
         >
           <SearchOutlined />
           <span className="font-medium">Search chats</span>
@@ -143,7 +143,7 @@ function AuthenticatedSideMenu() {
           onClick={() => {
             navigate("/admin");
           }}
-          className="mt-3 flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-left text-white/60 transition hover:border-white/12 hover:bg-white/[0.07] hover:text-white"
+          className="mt-3 flex items-center gap-3 rounded-input border border-white/12 bg-transparent px-4 py-3 text-left text-white/65 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white/90"
         >
           <ControlOutlined />
           <span className="font-medium">Admin console</span>
@@ -152,7 +152,7 @@ function AuthenticatedSideMenu() {
 
       <div className="mt-4 rounded-section border border-white/8 bg-white/[0.045] px-4 py-4 shadow-chat-panel">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#0f172a] text-white shadow-chat-bubble">
+          <div className="flex h-11 w-11 items-center justify-center rounded-input bg-[#0f172a] text-white shadow-chat-bubble">
             <UserOutlined />
           </div>
           <div className="min-w-0 flex-1">

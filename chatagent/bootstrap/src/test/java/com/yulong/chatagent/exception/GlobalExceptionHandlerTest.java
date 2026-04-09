@@ -5,6 +5,7 @@ import com.yulong.chatagent.model.common.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,5 +23,17 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getCode()).isEqualTo(BaseErrorCode.CONFLICT.code());
         assertThat(response.getBody().getMessage()).contains("already starting a turn");
+    }
+
+    @Test
+    void handleMaxUploadSizeExceededShouldMapToClientError() {
+        ResponseEntity<ApiResponse<Void>> response = subject.handleMaxUploadSizeExceeded(
+                new MaxUploadSizeExceededException(1024 * 1024)
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo(BaseErrorCode.CLIENT_ERROR.code());
+        assertThat(response.getBody().getMessage()).contains("size limit");
     }
 }

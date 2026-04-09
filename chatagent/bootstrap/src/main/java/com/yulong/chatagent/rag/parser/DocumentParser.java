@@ -17,6 +17,7 @@ public interface DocumentParser {
     /**
      * Parses raw document bytes.
      */
+    @Deprecated(forRemoval = true)
     default ParseResult parse(byte[] content, String mimeType, Map<String, Object> options) {
         throw new UnsupportedOperationException("parse(byte[], String, Map) not implemented");
     }
@@ -24,28 +25,21 @@ public interface DocumentParser {
     /**
      * Parses a stream-supplier source. The supplier must return a fresh readable stream each time.
      */
-    default ParseResult parse(Supplier<InputStream> streamSupplier, String mimeType, Map<String, Object> options) {
-        try (InputStream stream = streamSupplier.get()) {
-            if (stream == null) {
-                throw new IllegalArgumentException("streamSupplier returned null");
-            }
-            // TODO Phase 5b: remove byte[] bridge once every parser implements stream-native parsing.
-            return parse(stream.readAllBytes(), mimeType, options);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to parse stream-based document source", e);
-        }
-    }
+    ParseResult parse(Supplier<InputStream> streamSupplier, String mimeType, Map<String, Object> options);
 
     /**
      * Lower values win when multiple parsers support the same detected file type.
      */
     default int getSelectionPriority() {
-        return switch (getParserType()) {
-            case "Markdown" -> 10;
-            case "PDFBox" -> 20;
-            case "Image" -> 30;
-            case "Tika" -> 1000;
-            default -> 500;
+        ParserType parserType = ParserType.fromType(getParserType());
+        if (parserType == null) {
+            return 500;
+        }
+        return switch (parserType) {
+            case MARKDOWN -> 10;
+            case PDFBOX -> 20;
+            case IMAGE -> 30;
+            case TIKA -> 1000;
         };
     }
 

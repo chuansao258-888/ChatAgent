@@ -16,7 +16,7 @@ public final class TextCleanupUtil {
             return "";
         }
 
-        return text
+        return stripNullCharacters(text)
                 // Remove BOM markers emitted by some office/PDF parsers.
                 .replace("\uFEFF", "")
                 // Remove trailing spaces before newline boundaries.
@@ -38,7 +38,7 @@ public final class TextCleanupUtil {
             return "";
         }
 
-        String result = text;
+        String result = stripNullCharacters(text);
 
         if (removeBOM) {
             result = result.replace("\uFEFF", "");
@@ -55,5 +55,16 @@ public final class TextCleanupUtil {
         }
 
         return result.trim();
+    }
+
+    /**
+     * PostgreSQL text/jsonb cannot store NUL characters; strip them defensively once parser
+     * output crosses the JVM/String boundary.
+     */
+    public static String stripNullCharacters(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        return text.indexOf('\u0000') < 0 ? text : text.replace("\u0000", "");
     }
 }
