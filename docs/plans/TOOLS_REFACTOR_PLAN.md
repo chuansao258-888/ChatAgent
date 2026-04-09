@@ -35,6 +35,16 @@
 * **重构逻辑**：改造 `ToolFacadeServiceImpl`。不仅依赖 Spring Beans，还要注入动态加载逻辑，从 DB 查出启用的 MCP 工具并封装为 `McpToolWrapper`（实现 `Tool` 接口，标记为 `OPTIONAL`）。
 * **结果**：MCP 工具将自动出现在 Intent Tree 的 `allowedTools` 勾选框中，与本地工具在治理逻辑上完全对等。
 
+### 3.3 ToolContext 的生产与透传 (核心补丁)
+目前 `AgentToolExecutionEngine` 触发工具执行时并未携带上下文。
+*   **改造点**：修改 `AgentToolExecutionEngine.execute()`。在构建 `Prompt` 时，通过 `ChatOptions.builder().toolContext(...)` 注入包含 `userId` 和 `sessionId` 的 `ToolContext`。
+*   **作用**：这确保了上下文能一路流转到 `McpToolCallbackAdapter.call()` 方法中，供远端 RPC 调用时进行身份识别或鉴权。
+
+### 3.4 传输层决策 (Transport Decision)
+为了保持项目轻量级并避免引入不成熟的第三方 SDK，V1 决定采用 **“自研轻量级 JSON-RPC over HTTP/SSE 客户端”**。
+*   利用 Spring 自带的 `WebClient` 或 `RestTemplate` 实现标准的 MCP `tools/list` 和 `tools/call` 协议。
+*   封装基础的 MCP 消息报文对象（Request/Response/Notification）。
+
 ---
 
 ## 4. 运行时适配层 (The Adapter Contract)
@@ -44,10 +54,12 @@
 ```java
 public class McpToolCallbackAdapter implements ToolCallback {
     private final String mcpServerId;
-    private final ToolDefinition schema; // 持有覆写后的全局唯一 name
+    private final String remoteOriginalName; // 远端真实的函数名
+    private final ToolDefinition schema;     // 持有覆写后的全局唯一名
 
-    public McpToolCallbackAdapter(String mcpServerId, ToolDefinition schema) {
+    public McpToolCallbackAdapter(String mcpServerId, String remoteOriginalName, ToolDefinition schema) {
         this.mcpServerId = mcpServerId;
+        this.remoteOriginalName = remoteOriginalName;
         this.schema = schema;
     }
 
@@ -55,17 +67,11 @@ public class McpToolCallbackAdapter implements ToolCallback {
     public ToolDefinition getToolDefinition() { return this.schema; }
 
     @Override
-    public String call(String jsonArguments) {
-        return call(jsonArguments, null);
-    }
-
-    @Override
     public String call(String jsonArguments, ToolContext context) {
-        // 1. 发起远程 HTTP/SSE JSON-RPC 调用 (tools/call)
-        // 2. 将 context (如 userId, sessionId) 序列化并透传
-        // 3. 解析并返回结果给模型；内部消化网络异常，返回格式化错误 JSON
-        return executeRemoteCall(schema.name(), jsonArguments, context);
+        // 使用 remoteOriginalName 发起 RPC，确保远端 Server 认得这个函数
+        return executeRemoteCall(this.remoteOriginalName, jsonArguments, context);
     }
+    // ...
 }
 ```
 
@@ -84,14 +90,16 @@ public class McpToolCallbackAdapter implements ToolCallback {
 
 ## 6. 实施分期 (Phases)
 
-**Phase 1: 管理面升级与元数据存储**
+**Phase 1: 管理面升级与上下文生产端改造**
 - 数据库建表，改造 `ToolFacadeService` 聚合动态工具。
+- 修改 `AgentToolExecutionEngine`，实现 `ToolContext` 的创建与注入（生产端落地）。
 - 实现 `/api/admin/mcp-servers` 同步与全局唯一名生成逻辑。
 
 **Phase 2: ToolCallback 适配器与上下文透传**
 - 编写符合契约的 `McpToolCallbackAdapter`。
 - 修改 `AgentToolCallbackFactory`，确保能正确加载并注入动态生成的适配器。
 
-**Phase 3: 容错调用与联调**
-- 实现基于 JSON-RPC 的工具调用链路。
+**Phase 3: 客户端传输层实现与熔断容错**
+- 基于 `WebClient` 实现轻量级 JSON-RPC over HTTP/SSE 传输层（Transport）。
+- 实现基于 `remoteOriginalName` 的远程工具调用。
 - 引入断路器与超时保护，验证远程工具失败时的局部降级行为。
