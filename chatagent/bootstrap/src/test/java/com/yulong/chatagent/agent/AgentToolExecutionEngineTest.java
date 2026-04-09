@@ -8,11 +8,15 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -72,11 +76,87 @@ class AgentToolExecutionEngineTest {
         });
     }
 
+    @Test
+    void shouldPropagateToolContextIntoRuntimeCallbackExecution() {
+        ChatMemory chatMemory = mock(ChatMemory.class);
+        AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
+        when(chatMemory.get("session-1")).thenReturn(List.of(new UserMessage("check status")));
+
+        AtomicReference<ToolContext> seenContext = new AtomicReference<>();
+        ToolCallback toolCallback = new CapturingToolCallback(seenContext);
+
+        AgentToolExecutionEngine executionEngine = new AgentToolExecutionEngine(
+                List.of(toolCallback),
+                DefaultToolCallingChatOptions.builder()
+                        .internalToolExecutionEnabled(false)
+                        .toolContext(Map.of(
+                                "userId", "user-1",
+                                "sessionId", "session-1",
+                                "turnId", "turn-1"
+                        ))
+                        .build(),
+                "turn-1",
+                messageBridge
+        );
+
+        ChatResponse chatResponse = new ChatResponse(List.of(new Generation(
+                AssistantMessage.builder()
+                        .content("")
+                        .toolCalls(List.of(new AssistantMessage.ToolCall(
+                                "call-1",
+                                "function",
+                                "mcp_google_search",
+                                "{\"query\":\"status\"}"
+                        )))
+                        .build()
+        )));
+
+        executionEngine.execute(chatMemory, "session-1", chatResponse);
+
+        assertThat(seenContext.get()).isNotNull();
+        assertThat(seenContext.get().getContext())
+                .containsEntry("userId", "user-1")
+                .containsEntry("sessionId", "session-1")
+                .containsEntry("turnId", "turn-1");
+    }
+
     static final class TestDateTool {
 
         @org.springframework.ai.tool.annotation.Tool(name = "getDate", description = "Return the current date.")
         public String getDate() {
             return "2026-04-09";
+        }
+    }
+
+    private static final class CapturingToolCallback implements ToolCallback {
+
+        private final AtomicReference<ToolContext> seenContext;
+        private final ToolDefinition toolDefinition = ToolDefinition.builder()
+                .name("mcp_google_search")
+                .description("Search through MCP")
+                .inputSchema("""
+                        {"type":"object","properties":{"query":{"type":"string"}}}
+                        """)
+                .build();
+
+        private CapturingToolCallback(AtomicReference<ToolContext> seenContext) {
+            this.seenContext = seenContext;
+        }
+
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return toolDefinition;
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return call(toolInput, null);
+        }
+
+        @Override
+        public String call(String toolInput, ToolContext toolContext) {
+            seenContext.set(toolContext);
+            return "{\"status\":\"ok\"}";
         }
     }
 }

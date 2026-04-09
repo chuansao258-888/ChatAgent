@@ -1,12 +1,15 @@
 import { del, get, patch, post, put } from "./http.ts";
 import type {
+  CreateMcpServerRequest,
   CreateAdminUserRequest,
   CreateAdminUserResponse,
   CreateIntentNodeRequest,
   CreateIntentNodeResponse,
   CreateKnowledgeBaseRequest,
   CreateKnowledgeBaseResponse,
+  DeleteMcpServerResponse,
   DashboardGranularity,
+  DashboardMcpAlertsVO,
   DashboardOverviewVO,
   DashboardPerformanceVO,
   DashboardTrendMetric,
@@ -21,13 +24,17 @@ import type {
   GetKnowledgeBaseResponse,
   GetKnowledgeBasesResponse,
   GetKnowledgeDocumentsResponse,
+  GetMcpServersResponse,
   InitializeAssistantFromTemplateRequest,
   InitializeAssistantFromTemplateResponse,
   GetOptionalToolsResponse,
   PublishIntentTreeResponse,
   ResetAdminUserPasswordResponse,
+  SyncMcpToolCatalogResponse,
+  TestMcpServerResponse,
   SetAssistantKnowledgeBasesRequest,
   SetIntentNodeKnowledgeBasesRequest,
+  UpdateMcpServerRequest,
   UpdateAdminUserRequest,
   UpdateAdminUserStatusRequest,
   UpdateIntentNodeRequest,
@@ -245,4 +252,46 @@ export async function getDashboardTrends(params: {
   granularity?: DashboardGranularity;
 }): Promise<DashboardTrendsVO> {
   return get<DashboardTrendsVO>("/admin/dashboard/trends", params);
+}
+
+export async function getDashboardMcpAlerts(
+  limit = 8,
+): Promise<DashboardMcpAlertsVO> {
+  return get<DashboardMcpAlertsVO>("/admin/dashboard/mcp-alerts", { limit });
+}
+
+export async function getMcpServers(): Promise<GetMcpServersResponse> {
+  return get<GetMcpServersResponse>("/admin/mcp-servers");
+}
+
+export async function createMcpServer(
+  request: CreateMcpServerRequest,
+): Promise<string> {
+  return post<string>("/admin/mcp-servers", request);
+}
+
+export async function updateMcpServer(
+  serverId: string,
+  request: UpdateMcpServerRequest,
+): Promise<void> {
+  return patch<void>(`/admin/mcp-servers/${serverId}`, request);
+}
+
+export async function deleteMcpServer(
+  serverId: string,
+  force = false,
+): Promise<DeleteMcpServerResponse> {
+  return del<DeleteMcpServerResponse>(`/admin/mcp-servers/${serverId}`, { force });
+}
+
+export async function testMcpServer(
+  serverId: string,
+): Promise<TestMcpServerResponse> {
+  return post<TestMcpServerResponse>(`/admin/mcp-servers/${serverId}/test`);
+}
+
+export async function syncMcpServer(
+  serverId: string,
+): Promise<SyncMcpToolCatalogResponse> {
+  return post<SyncMcpToolCatalogResponse>(`/admin/mcp-servers/${serverId}/sync`);
 }

@@ -12,6 +12,7 @@ import AssistantTemplatePage from "./admin/pages/AssistantTemplatePage.tsx";
 import IntentTreePage from "./admin/pages/IntentTreePage.tsx";
 import KnowledgeBaseDetailPage from "./admin/pages/KnowledgeBaseDetailPage.tsx";
 import KnowledgeBaseListPage from "./admin/pages/KnowledgeBaseListPage.tsx";
+import McpOperationsPage from "./admin/pages/McpOperationsPage.tsx";
 import UserManagementPage from "./admin/pages/UserManagementPage.tsx";
 
 function ChatWorkspaceLayout() {
@@ -45,6 +46,7 @@ export default function ChatAgentLayout() {
         }
       >
         <Route index element={<AdminOverviewPage />} />
+        <Route path="mcp" element={<McpOperationsPage />} />
         <Route path="knowledge-bases" element={<KnowledgeBaseListPage />} />
         <Route
           path="knowledge-bases/:kbId"

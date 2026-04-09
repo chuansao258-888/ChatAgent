@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.McpAlertEventMapper">
+
+    <resultMap id="McpAlertEventMap" type="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
+        <id property="id" column="id"/>
+        <result property="serverId" column="server_id"/>
+        <result property="serverSlug" column="server_slug"/>
+        <result property="toolName" column="tool_name"/>
+        <result property="alertType" column="alert_type"/>
+        <result property="severity" column="severity"/>
+        <result property="status" column="status"/>
+        <result property="summary" column="summary"/>
+        <result property="detailsJson" column="details_json"/>
+        <result property="resolvedAt" column="resolved_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
+        INSERT INTO t_mcp_alert_event (
+            id,
+            server_id,
+            server_slug,
+            tool_name,
+            alert_type,
+            severity,
+            status,
+            summary,
+            details_json,
+            resolved_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            #{id},
+            #{serverId},
+            #{serverSlug},
+            #{toolName},
+            #{alertType},
+            #{severity},
+            #{status},
+            #{summary},
+            #{detailsJson},
+            #{resolvedAt},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
+        UPDATE t_mcp_alert_event
+        SET server_id = #{serverId},
+            server_slug = #{serverSlug},
+            tool_name = #{toolName},
+            alert_type = #{alertType},
+            severity = #{severity},
+            status = #{status},
+            summary = #{summary},
+            details_json = #{detailsJson},
+            resolved_at = #{resolvedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectOpenByServerAndType" resultMap="McpAlertEventMap">
+        SELECT *
+        FROM t_mcp_alert_event
+        WHERE server_id = #{serverId}
+          AND alert_type = #{alertType}
+          AND status = 'OPEN'
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectRecentOpen" resultMap="McpAlertEventMap">
+        SELECT *
+        FROM t_mcp_alert_event
+        WHERE status = 'OPEN'
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countOpen" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM t_mcp_alert_event
+        WHERE status = 'OPEN'
+    </select>
+
+    <update id="resolveOpenByServerAndType">
+        UPDATE t_mcp_alert_event
+        SET status = 'RESOLVED',
+            resolved_at = #{resolvedAt},
+            updated_at = #{updatedAt}
+        WHERE server_id = #{serverId}
+          AND alert_type = #{alertType}
+          AND status = 'OPEN'
+    </update>
+</mapper>

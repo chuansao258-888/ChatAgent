@@ -10,6 +10,7 @@ import com.yulong.chatagent.chat.ChatModelAvailability;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.metrics.ChatTurnMetricRecorder;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
@@ -17,6 +18,7 @@ import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPubli
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +66,9 @@ class ChatEventProcessorTest {
     private ChatTurnMetricRecorder chatTurnMetricRecorder;
 
     @Mock
+    private ChatSessionRepository chatSessionRepository;
+
+    @Mock
     private ChatAgent chatAgent;
 
     @AfterEach
@@ -87,7 +92,7 @@ class ChatEventProcessorTest {
         assertThat(messageCaptor.getValue().getContent()).contains("ChatAgent is running without a configured chat model");
         verify(sseService, times(3)).publish(anyString(), any(SseMessage.class));
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
-        verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString());
+        verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString(), anyString());
         verify(chatTurnMetricRecorder).record(any(ChatEvent.class), any(AgentRunResult.class));
         verify(currentTurnCitationHolder).clear("session-1", "turn-1");
     }
@@ -95,9 +100,10 @@ class ChatEventProcessorTest {
     @Test
     void shouldClearContextWhenAgentProcessingFailsAndStillAllowFallbackPublishing() {
         ChatEventProcessor processor = newProcessor();
-        ChatEvent event = sampleEvent();
+        ChatEvent event = new ChatEvent("agent-1", "session-1", "turn-1", "msg-1", "hello", 3, null, "rewritten", null);
         when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
-        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten"))
+        when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder().id("session-1").userId("user-1").build());
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1"))
                 .thenReturn(chatAgent);
         when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("assistant-1").build());
@@ -156,12 +162,13 @@ class ChatEventProcessorTest {
                 conversationTurnCompletionPublisher,
                 sseService,
                 currentTurnCitationHolder,
-                chatTurnMetricRecorder
+                chatTurnMetricRecorder,
+                chatSessionRepository
         );
     }
 
     private ChatEvent sampleEvent() {
         IntentResolution resolution = new IntentResolution(null, null, null, null, null, null);
-        return new ChatEvent("agent-1", "session-1", "turn-1", "msg-1", "hello", 3, resolution, "rewritten");
+        return new ChatEvent("agent-1", "session-1", "turn-1", "msg-1", "hello", 3, resolution, "rewritten", "user-1");
     }
 }

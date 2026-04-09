@@ -30,7 +30,7 @@ public class ChatAgentFactory {
      * @return ready-to-run chat agent
      */
     public ChatAgent create(String agentId, String chatSessionId) {
-        return create(agentId, chatSessionId, null, null, null);
+        return create(agentId, chatSessionId, null, null, null, null);
     }
 
     public ChatAgent create(String agentId,
@@ -38,6 +38,15 @@ public class ChatAgentFactory {
                             String turnId,
                             IntentResolution intentResolution,
                             String rewrittenInput) {
+        return create(agentId, chatSessionId, turnId, intentResolution, rewrittenInput, null);
+    }
+
+    public ChatAgent create(String agentId,
+                            String chatSessionId,
+                            String turnId,
+                            IntentResolution intentResolution,
+                            String rewrittenInput,
+                            String userId) {
         AgentRuntimeContext context = agentRuntimeContextLoader.load(agentId, chatSessionId, intentResolution, rewrittenInput);
 
         return new ChatAgent(
@@ -52,6 +61,7 @@ public class ChatAgentFactory {
                 context.sessionFileSummary(),
                 context.sessionSummary(),
                 context.userProfileSummary(),
+                userId,
                 turnId,
                 chatSessionId,
                 agentMessageBridge

@@ -285,6 +285,7 @@ class AgentRunTaskListenerTest {
                 3,
                 null,
                 "rewritten",
+                "user-1",
                 forceRollback
         );
         MqMessageIdentity identity = new MqMessageIdentity(

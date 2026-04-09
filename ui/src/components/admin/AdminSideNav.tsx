@@ -1,5 +1,6 @@
 import {
   ApartmentOutlined,
+  ApiOutlined,
   AppstoreOutlined,
   ArrowLeftOutlined,
   DatabaseOutlined,
@@ -13,6 +14,7 @@ import { useAuth } from "../../hooks/useAuth.ts";
 
 const navItems = [
   { to: "/admin", label: "Dashboard", icon: <ApartmentOutlined /> },
+  { to: "/admin/mcp", label: "MCP Ops", icon: <ApiOutlined /> },
   {
     to: "/admin/knowledge-bases",
     label: "Knowledge Bases",

@@ -2,6 +2,7 @@ package com.yulong.chatagent.admin.controller;
 
 import com.yulong.chatagent.access.RequireRoleInterceptor;
 import com.yulong.chatagent.admin.application.DashboardFacadeService;
+import com.yulong.chatagent.admin.model.vo.DashboardMcpAlertsVO;
 import com.yulong.chatagent.admin.model.vo.DashboardOverviewVO;
 import com.yulong.chatagent.admin.model.vo.DashboardPerformanceVO;
 import com.yulong.chatagent.admin.model.vo.DashboardTrendsVO;
@@ -144,6 +145,23 @@ class DashboardControllerTest {
         assertThat(metricCaptor.getValue()).isEqualTo("quality");
         assertThat(windowCaptor.getValue()).isEqualTo("7d");
         assertThat(granularityCaptor.getValue()).isEqualTo("day");
+    }
+
+    @Test
+    void shouldReturnMcpAlertsForAdminUser() throws Exception {
+        UserContext.set(adminUser());
+        when(dashboardFacadeService.getMcpAlerts(5)).thenReturn(
+                DashboardMcpAlertsVO.builder()
+                        .openAlertCount(1L)
+                        .alerts(List.of())
+                        .build()
+        );
+
+        mockMvc.perform(get("/api/admin/dashboard/mcp-alerts").param("limit", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.openAlertCount").value(1));
+
+        verify(dashboardFacadeService).getMcpAlerts(5);
     }
 
     @Test

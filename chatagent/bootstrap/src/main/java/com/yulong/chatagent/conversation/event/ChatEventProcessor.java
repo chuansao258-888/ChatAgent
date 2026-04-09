@@ -8,6 +8,7 @@ import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.chat.ChatModelAvailability;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.metrics.ChatTurnMetricRecorder;
 import com.yulong.chatagent.conversation.model.SseMessage;
@@ -16,6 +17,7 @@ import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPublisher;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,6 +38,7 @@ public class ChatEventProcessor {
     private final SseService sseService;
     private final CurrentTurnCitationHolder currentTurnCitationHolder;
     private final ChatTurnMetricRecorder chatTurnMetricRecorder;
+    private final ChatSessionRepository chatSessionRepository;
 
     public void process(ChatEvent event) {
         try {
@@ -69,7 +72,8 @@ public class ChatEventProcessor {
                     event.getSessionId(),
                     event.getTurnId(),
                     event.getIntentResolution(),
-                    event.getRewrittenInput()
+                    event.getRewrittenInput(),
+                    resolveUserId(event)
             );
             AgentRunResult runResult = chatAgent.run();
             recordMetricQuietly(event, runResult);
@@ -172,5 +176,16 @@ public class ChatEventProcessor {
                     event == null ? null : event.getTurnId(),
                     metricException.getMessage());
         }
+    }
+
+    private String resolveUserId(ChatEvent event) {
+        if (event != null && org.springframework.util.StringUtils.hasText(event.getUserId())) {
+            return event.getUserId();
+        }
+        if (event == null || !org.springframework.util.StringUtils.hasText(event.getSessionId())) {
+            return null;
+        }
+        ChatSessionDTO chatSession = chatSessionRepository.findById(event.getSessionId());
+        return chatSession == null ? null : chatSession.getUserId();
     }
 }

@@ -2,9 +2,11 @@ package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
+import com.yulong.chatagent.mcp.runtime.McpRuntimeToolRegistry;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -15,15 +17,20 @@ import java.util.List;
 public class ToolFacadeServiceImpl implements ToolFacadeService {
 
     private final List<Tool> tools;
+    private final McpRuntimeToolRegistry mcpRuntimeToolRegistry;
 
     @Override
     public List<Tool> getAllTools() {
-        return tools;
+        List<Tool> allTools = new ArrayList<>(tools);
+        allTools.addAll(mcpRuntimeToolRegistry.getOptionalTools());
+        return List.copyOf(allTools);
     }
 
     @Override
     public List<Tool> getOptionalTools() {
-        return getToolsByType(ToolType.OPTIONAL);
+        List<Tool> optionalTools = new ArrayList<>(getToolsByType(ToolType.OPTIONAL));
+        optionalTools.addAll(mcpRuntimeToolRegistry.getOptionalTools());
+        return List.copyOf(optionalTools);
     }
 
     @Override

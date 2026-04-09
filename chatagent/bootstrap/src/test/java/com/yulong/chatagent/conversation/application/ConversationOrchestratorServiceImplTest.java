@@ -1,6 +1,7 @@
 package com.yulong.chatagent.conversation.application;
 
 import com.yulong.chatagent.conversation.event.ChatEventDispatcher;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPublisher;
 import com.yulong.chatagent.exception.BizException;
@@ -16,6 +17,7 @@ class ConversationOrchestratorServiceImplTest {
 
     private final ConversationOrchestratorServiceImpl subject = new ConversationOrchestratorServiceImpl(
             mock(ChatSessionFacadeService.class),
+            mock(ChatSessionRepository.class),
             mock(ChatMessageFacadeService.class),
             mock(ConversationTurnPreparationService.class),
             mock(ChatEventDispatcher.class),

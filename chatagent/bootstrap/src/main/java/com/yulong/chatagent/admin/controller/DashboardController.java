@@ -3,6 +3,7 @@ package com.yulong.chatagent.admin.controller;
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.admin.application.DashboardFacadeService;
+import com.yulong.chatagent.admin.model.vo.DashboardMcpAlertsVO;
 import com.yulong.chatagent.admin.model.vo.DashboardOverviewVO;
 import com.yulong.chatagent.admin.model.vo.DashboardPerformanceVO;
 import com.yulong.chatagent.admin.model.vo.DashboardTrendsVO;
@@ -42,5 +43,11 @@ public class DashboardController {
             @RequestParam(defaultValue = "7d") String window,
             @RequestParam(required = false) String granularity) {
         return ApiResponse.success(dashboardFacadeService.getTrends(metric, window, granularity));
+    }
+
+    @GetMapping("/mcp-alerts")
+    public ApiResponse<DashboardMcpAlertsVO> getMcpAlerts(
+            @RequestParam(defaultValue = "20") int limit) {
+        return ApiResponse.success(dashboardFacadeService.getMcpAlerts(limit));
     }
 }

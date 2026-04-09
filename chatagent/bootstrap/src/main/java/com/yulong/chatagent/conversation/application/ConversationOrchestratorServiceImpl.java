@@ -14,6 +14,7 @@ import com.yulong.chatagent.intent.application.ConversationTurnPreparationServic
 import com.yulong.chatagent.intent.application.TurnPreparationResult;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
     );
 
     private final ChatSessionFacadeService chatSessionFacadeService;
+    private final com.yulong.chatagent.conversation.port.ChatSessionRepository chatSessionRepository;
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ConversationTurnPreparationService conversationTurnPreparationService;
     private final ChatEventDispatcher chatEventDispatcher;
@@ -43,12 +45,14 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
     private final SseService sseService;
 
     public ConversationOrchestratorServiceImpl(ChatSessionFacadeService chatSessionFacadeService,
+                                               com.yulong.chatagent.conversation.port.ChatSessionRepository chatSessionRepository,
                                                ChatMessageFacadeService chatMessageFacadeService,
                                                ConversationTurnPreparationService conversationTurnPreparationService,
                                                ChatEventDispatcher chatEventDispatcher,
                                                ConversationTurnCompletionPublisher conversationTurnCompletionPublisher,
                                                SseService sseService) {
         this.chatSessionFacadeService = chatSessionFacadeService;
+        this.chatSessionRepository = chatSessionRepository;
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.conversationTurnPreparationService = conversationTurnPreparationService;
         this.chatEventDispatcher = chatEventDispatcher;
@@ -141,7 +145,8 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
                         turnContext.request().getContent(),
                         turnContext.historySize(),
                         preparationResult.intentResolution(),
-                        preparationResult.rewrittenInput()
+                        preparationResult.rewrittenInput(),
+                        resolveSessionUserId(turnContext.request().getSessionId())
                 )
         );
     }
@@ -210,5 +215,13 @@ public class ConversationOrchestratorServiceImpl implements ConversationOrchestr
             throw new BizException("Chat session is missing its internal assistant binding: " + sessionId);
         }
         return agentId;
+    }
+
+    private String resolveSessionUserId(String sessionId) {
+        ChatSessionDTO chatSession = chatSessionRepository.findById(sessionId);
+        if (chatSession == null || !StringUtils.hasText(chatSession.getUserId())) {
+            throw new BizException("Chat session is missing its owner binding: " + sessionId);
+        }
+        return chatSession.getUserId();
     }
 }

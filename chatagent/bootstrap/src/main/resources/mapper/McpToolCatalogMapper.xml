@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.McpToolCatalogMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.McpToolCatalog">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="serverId" column="server_id" jdbcType="VARCHAR"/>
+        <result property="remoteOriginalName" column="remote_original_name" jdbcType="VARCHAR"/>
+        <result property="toolDescription" column="tool_description" jdbcType="VARCHAR"/>
+        <result property="exposedModelName" column="exposed_model_name" jdbcType="VARCHAR"/>
+        <result property="schemaJson" column="schema_json" jdbcType="VARCHAR"/>
+        <result property="schemaHash" column="schema_hash" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="deletedAt" column="deleted_at" jdbcType="TIMESTAMP"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+        <result property="lastSyncedAt" column="last_synced_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="BaseSelectColumns">
+        id::text AS id,
+        server_id::text AS server_id,
+        remote_original_name,
+        tool_description,
+        exposed_model_name,
+        schema_json,
+        schema_hash,
+        status,
+        deleted_at,
+        created_at,
+        updated_at,
+        last_synced_at
+    </sql>
+
+    <select id="selectByServerId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="BaseSelectColumns"/>
+        FROM t_mcp_tool_catalog
+        WHERE server_id = CAST(#{serverId} AS uuid)
+          AND deleted_at IS NULL
+        ORDER BY exposed_model_name ASC
+    </select>
+
+    <insert id="upsert" parameterType="com.yulong.chatagent.support.persistence.entity.McpToolCatalog">
+        INSERT INTO t_mcp_tool_catalog (
+            id,
+            server_id,
+            remote_original_name,
+            tool_description,
+            exposed_model_name,
+            schema_json,
+            schema_hash,
+            status,
+            deleted_at,
+            created_at,
+            updated_at,
+            last_synced_at
+        ) VALUES (
+            CAST(#{id} AS uuid),
+            CAST(#{serverId} AS uuid),
+            #{remoteOriginalName},
+            #{toolDescription},
+            #{exposedModelName},
+            #{schemaJson},
+            #{schemaHash},
+            #{status},
+            #{deletedAt},
+            #{createdAt},
+            #{updatedAt},
+            #{lastSyncedAt}
+        )
+        ON CONFLICT (server_id, remote_original_name) DO UPDATE
+        SET tool_description = EXCLUDED.tool_description,
+            exposed_model_name = EXCLUDED.exposed_model_name,
+            schema_json = EXCLUDED.schema_json,
+            schema_hash = EXCLUDED.schema_hash,
+            status = EXCLUDED.status,
+            deleted_at = NULL,
+            updated_at = EXCLUDED.updated_at,
+            last_synced_at = EXCLUDED.last_synced_at
+    </insert>
+
+    <update id="markMissingAsStale">
+        UPDATE t_mcp_tool_catalog
+        SET status = 'STALE',
+            updated_at = #{updatedAt},
+            last_synced_at = #{lastSyncedAt}
+        WHERE server_id = CAST(#{serverId} AS uuid)
+          AND deleted_at IS NULL
+        <if test="activeRemoteOriginalNames != null and activeRemoteOriginalNames.size() > 0">
+          AND remote_original_name NOT IN
+          <foreach collection="activeRemoteOriginalNames" item="name" open="(" separator="," close=")">
+              #{name}
+          </foreach>
+        </if>
+    </update>
+
+    <update id="softDeleteByServerId">
+        UPDATE t_mcp_tool_catalog
+        SET deleted_at = #{deletedAt},
+            updated_at = #{updatedAt}
+        WHERE server_id = CAST(#{serverId} AS uuid)
+          AND deleted_at IS NULL
+    </update>
+</mapper>

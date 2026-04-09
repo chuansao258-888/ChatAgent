@@ -4,6 +4,8 @@ import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.admin.application.ToolFacadeService;
+import com.yulong.chatagent.mcp.runtime.McpRolloutPolicy;
+import com.yulong.chatagent.mcp.runtime.McpToolWrapper;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -29,9 +31,12 @@ import java.util.stream.Collectors;
 public class AgentToolCallbackFactory {
 
     private final ToolFacadeService toolFacadeService;
+    private final McpRolloutPolicy rolloutPolicy;
 
-    public AgentToolCallbackFactory(ToolFacadeService toolFacadeService) {
+    public AgentToolCallbackFactory(ToolFacadeService toolFacadeService,
+                                    McpRolloutPolicy rolloutPolicy) {
         this.toolFacadeService = toolFacadeService;
+        this.rolloutPolicy = rolloutPolicy;
     }
 
     /**
@@ -48,6 +53,12 @@ public class AgentToolCallbackFactory {
         List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, intentResolution);
         Map<String, ToolCallback> callbacksByName = new LinkedHashMap<>();
         for (Tool tool : runtimeTools) {
+            if (tool instanceof DirectToolCallbackSource directToolCallbackSource) {
+                for (ToolCallback toolCallback : directToolCallbackSource.getToolCallbacks()) {
+                    registerCallback(callbacksByName, toolCallback);
+                }
+                continue;
+            }
             Object target = resolveToolTarget(tool);
             ToolCallback[] toolCallbacks = MethodToolCallbackProvider.builder()
                     .toolObjects(target)
@@ -94,11 +105,18 @@ public class AgentToolCallbackFactory {
 
         for (String toolName : allowedToolNames) {
             Tool tool = optionalToolMap.get(toolName);
-            if (tool != null) {
+            if (tool != null && isRuntimeAllowed(tool, agentConfig)) {
                 runtimeTools.add(tool);
             }
         }
         return runtimeTools;
+    }
+
+    private boolean isRuntimeAllowed(Tool tool, AgentDTO agentConfig) {
+        if (!(tool instanceof McpToolWrapper) && (tool == null || tool.getName() == null || !tool.getName().startsWith("mcp_"))) {
+            return true;
+        }
+        return rolloutPolicy.isAgentAllowed(agentConfig == null ? null : agentConfig.getId());
     }
 
     private List<String> intersectAllowedTools(List<String> agentAllowedTools, List<String> intentAllowedTools) {

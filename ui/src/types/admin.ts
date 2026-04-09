@@ -292,6 +292,7 @@ export interface DashboardPerformanceVO {
   errorRate: number;
   noDocRate: number;
   slowRate: number;
+  mcp?: DashboardMcpPerformanceVO;
 }
 
 export interface DashboardTrendPointVO {
@@ -309,4 +310,157 @@ export interface DashboardTrendsVO {
   window: DashboardWindow | string;
   granularity: DashboardGranularity | string;
   series: DashboardTrendSeriesVO[];
+}
+
+export type McpServerStatus = "ACTIVE" | "DISABLED" | "FAILED" | "STALE";
+export type McpProtocol = "HTTP" | "SSE";
+export type McpAuthType = "NONE" | "API_KEY" | "BEARER_TOKEN" | "OAUTH2_CLIENT";
+export type McpAlertSeverity = "WARNING" | "ERROR";
+export type McpAlertType = "SERVER_FAILED" | "SCHEMA_DRIFT" | "UNRESOLVED_REFERENCE";
+
+export interface DashboardMcpServerMetricVO {
+  serverId: string;
+  serverSlug: string;
+  serverName: string;
+  status: McpServerStatus | string;
+  unresolvedReferenceCount?: number | null;
+  totalCalls: number;
+  successCount: number;
+  failureCount: number;
+  rateLimitedCount: number;
+  avgLatencyMs: number;
+  qps: number;
+  errorRate: number;
+  circuitState: number;
+  lastErrorCode?: string | null;
+  lastTestedAt?: string | null;
+  lastSyncAt?: string | null;
+}
+
+export interface DashboardMcpPerformanceVO {
+  enabled: boolean;
+  rolloutMode: string;
+  allowedAgentCount: number;
+  openAlertCount: number;
+  serverCount: number;
+  servers: DashboardMcpServerMetricVO[];
+}
+
+export interface DashboardMcpAlertVO {
+  id: string;
+  serverId?: string | null;
+  serverSlug?: string | null;
+  toolName?: string | null;
+  alertType: McpAlertType | string;
+  severity: McpAlertSeverity | string;
+  summary: string;
+  detailsJson?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface DashboardMcpAlertsVO {
+  openAlertCount: number;
+  alerts: DashboardMcpAlertVO[];
+}
+
+export interface McpDiscoveredToolVO {
+  remoteOriginalName: string;
+  exposedModelName: string;
+  toolDescription?: string | null;
+  schemaHash?: string | null;
+}
+
+export interface McpServerVO {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  protocol: McpProtocol | string;
+  authType: McpAuthType | string;
+  endpointUrl: string;
+  status: McpServerStatus | string;
+  consecutiveFailures?: number | null;
+  lastTestedAt?: string | null;
+  lastInitializedAt?: string | null;
+  lastSyncAt?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  unresolvedReferenceCount?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface GetMcpServersResponse {
+  servers: McpServerVO[];
+}
+
+export interface CreateMcpServerRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  protocol: McpProtocol | string;
+  authType?: McpAuthType | string;
+  endpointUrl: string;
+  credentials?: string;
+}
+
+export interface UpdateMcpServerRequest {
+  slug?: string;
+  name?: string;
+  description?: string;
+  protocol?: McpProtocol | string;
+  authType?: McpAuthType | string;
+  endpointUrl?: string;
+  credentials?: string;
+}
+
+export type McpReferenceType =
+  | "AGENT"
+  | "INTENT_NODE"
+  | "ASSISTANT_TEMPLATE"
+  | "ASSISTANT_TEMPLATE_INTENT_NODE";
+
+export interface McpToolReferenceVO {
+  referenceType: McpReferenceType | string;
+  referenceId: string;
+  referenceName: string;
+  referencePath: string;
+}
+
+export interface TestMcpServerResponse {
+  success: boolean;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  negotiatedProtocolVersion?: string | null;
+  remoteServerName?: string | null;
+  remoteServerVersion?: string | null;
+  discoveredToolCount: number;
+  discoveredTools: McpDiscoveredToolVO[];
+  testedAt?: string | null;
+  server: McpServerVO;
+}
+
+export interface SyncMcpToolCatalogResponse {
+  success: boolean;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  negotiatedProtocolVersion?: string | null;
+  remoteServerName?: string | null;
+  remoteServerVersion?: string | null;
+  createdCount: number;
+  updatedCount: number;
+  staleCount: number;
+  activeToolCount: number;
+  activeTools: McpDiscoveredToolVO[];
+  syncedAt?: string | null;
+  server: McpServerVO;
+}
+
+export interface DeleteMcpServerResponse {
+  deleted: boolean;
+  softDeleted: boolean;
+  activeReferenceCount: number;
+  unresolvedReferenceCount: number;
+  references: McpToolReferenceVO[];
 }

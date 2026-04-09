@@ -23,4 +23,6 @@ public class DashboardPerformanceVO {
     private Double noDocRate;
 
     private Double slowRate;
+
+    private DashboardMcpPerformanceVO mcp;
 }

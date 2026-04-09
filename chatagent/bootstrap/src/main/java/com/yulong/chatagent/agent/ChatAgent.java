@@ -13,11 +13,14 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 /**
@@ -64,6 +67,7 @@ public class ChatAgent {
                      String sessionFileSummary,
                      String sessionSummary,
                      String userProfileSummary,
+                     String userId,
                      String turnId,
                      String chatSessionId,
                      AgentMessageBridge messageBridge) {
@@ -100,9 +104,11 @@ public class ChatAgent {
             this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
         }
 
-        this.chatOptions = DefaultToolCallingChatOptions.builder()
+        ToolCallingChatOptions toolCallingChatOptions = DefaultToolCallingChatOptions.builder()
                 .internalToolExecutionEnabled(false)
+                .toolContext(buildToolContext(userId, chatSessionId, turnId))
                 .build();
+        this.chatOptions = toolCallingChatOptions;
         this.thinkingEngine = new AgentThinkingEngine(
                 this.llmService,
                 this.chatOptions,
@@ -118,6 +124,20 @@ public class ChatAgent {
                 this.turnId,
                 this.messageBridge
         );
+    }
+
+    private Map<String, Object> buildToolContext(String userId, String chatSessionId, String turnId) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        if (StringUtils.hasText(userId)) {
+            context.put("userId", userId);
+        }
+        if (StringUtils.hasText(chatSessionId)) {
+            context.put("sessionId", chatSessionId);
+        }
+        if (StringUtils.hasText(turnId)) {
+            context.put("turnId", turnId);
+        }
+        return context;
     }
 
     /**

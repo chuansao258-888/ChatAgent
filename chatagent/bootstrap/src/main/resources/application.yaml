@@ -290,6 +290,45 @@ chatagent:
     enabled: ${CHATAGENT_SESSION_GUARD_ENABLED:true}
     ttl-ms: ${CHATAGENT_SESSION_GUARD_TTL_MS:120000}
     fail-open: ${CHATAGENT_SESSION_GUARD_FAIL_OPEN:true}
+  mcp:
+    enabled: ${CHATAGENT_MCP_ENABLED:true}
+    crypto:
+      key: ${CHATAGENT_MCP_CIPHER_KEY:}
+      key-version: ${CHATAGENT_MCP_CIPHER_KEY_VERSION:v1}
+    transport:
+      client-name: ${CHATAGENT_MCP_CLIENT_NAME:ChatAgent}
+      client-version: ${CHATAGENT_MCP_CLIENT_VERSION:phase-1b}
+      preferred-http-protocol-version: ${CHATAGENT_MCP_HTTP_PROTOCOL_VERSION:2025-06-18}
+      preferred-sse-protocol-version: ${CHATAGENT_MCP_SSE_PROTOCOL_VERSION:2024-11-05}
+      connect-timeout-ms: ${CHATAGENT_MCP_CONNECT_TIMEOUT_MS:2000}
+      response-timeout-ms: ${CHATAGENT_MCP_RESPONSE_TIMEOUT_MS:10000}
+      read-timeout-ms: ${CHATAGENT_MCP_READ_TIMEOUT_MS:10000}
+      write-timeout-ms: ${CHATAGENT_MCP_WRITE_TIMEOUT_MS:10000}
+      request-timeout-ms: ${CHATAGENT_MCP_REQUEST_TIMEOUT_MS:15000}
+      max-in-memory-size-bytes: ${CHATAGENT_MCP_MAX_IN_MEMORY_BYTES:131072}
+      sse-connect-timeout-ms: ${CHATAGENT_MCP_SSE_CONNECT_TIMEOUT_MS:5000}
+      sse-max-reconnects: ${CHATAGENT_MCP_SSE_MAX_RECONNECTS:5}
+      sse-initial-backoff-ms: ${CHATAGENT_MCP_SSE_INITIAL_BACKOFF_MS:1000}
+      sse-max-backoff-ms: ${CHATAGENT_MCP_SSE_MAX_BACKOFF_MS:30000}
+    runtime:
+      rate-limit-enabled: ${CHATAGENT_MCP_RATE_LIMIT_ENABLED:true}
+      rate-limit-requests-per-second: ${CHATAGENT_MCP_RATE_LIMIT_RPS:10}
+      rate-limit-burst-capacity: ${CHATAGENT_MCP_RATE_LIMIT_BURST:10}
+      circuit-breaker-enabled: ${CHATAGENT_MCP_CIRCUIT_BREAKER_ENABLED:true}
+      circuit-breaker-sliding-window-size: ${CHATAGENT_MCP_CB_WINDOW_SIZE:10}
+      circuit-breaker-failure-threshold: ${CHATAGENT_MCP_CB_FAILURE_THRESHOLD:5}
+      circuit-breaker-failure-rate-threshold-percent: ${CHATAGENT_MCP_CB_FAILURE_RATE_PERCENT:50}
+      circuit-breaker-minimum-request-volume: ${CHATAGENT_MCP_CB_MIN_REQUEST_VOLUME:10}
+      circuit-breaker-open-state-ms: ${CHATAGENT_MCP_CB_OPEN_STATE_MS:30000}
+      circuit-breaker-half-open-probe-count: ${CHATAGENT_MCP_CB_HALF_OPEN_PROBES:3}
+      circuit-breaker-slow-call-duration-ms: ${CHATAGENT_MCP_CB_SLOW_CALL_MS:10000}
+      circuit-breaker-slow-call-rate-threshold-percent: ${CHATAGENT_MCP_CB_SLOW_CALL_RATE_PERCENT:80}
+    schema-drift:
+      enabled: ${CHATAGENT_MCP_SCHEMA_DRIFT_ENABLED:true}
+      fixed-delay-ms: ${CHATAGENT_MCP_SCHEMA_DRIFT_FIXED_DELAY_MS:600000}
+    rollout:
+      mode: ${CHATAGENT_MCP_ROLLOUT_MODE:ALL}
+      allowed-agent-ids: ${CHATAGENT_MCP_ROLLOUT_ALLOWED_AGENT_IDS:[]}
 
 auth:
   jwt:
