@@ -1,7 +1,7 @@
-package com.yulong.chatagent.user.infrastructure.persistence.adapter;
+package com.yulong.chatagent.support.persistence.adapter.user;
 
-import com.yulong.chatagent.user.infrastructure.persistence.entity.UserProfile;
-import com.yulong.chatagent.user.infrastructure.persistence.mapper.UserProfileMapper;
+import com.yulong.chatagent.support.persistence.entity.UserProfile;
+import com.yulong.chatagent.support.persistence.mapper.UserProfileMapper;
 import com.yulong.chatagent.user.model.dto.UserProfileDTO;
 import com.yulong.chatagent.user.port.UserProfileRepository;
 import org.springframework.stereotype.Repository;

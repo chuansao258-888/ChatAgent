@@ -1,6 +1,6 @@
-package com.yulong.chatagent.user.infrastructure.persistence.mapper;
+package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.user.infrastructure.persistence.entity.User;
+import com.yulong.chatagent.support.persistence.entity.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

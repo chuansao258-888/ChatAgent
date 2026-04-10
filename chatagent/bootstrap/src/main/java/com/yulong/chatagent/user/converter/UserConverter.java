@@ -1,7 +1,7 @@
 package com.yulong.chatagent.user.converter;
 
 import com.yulong.chatagent.context.LoginUser;
-import com.yulong.chatagent.user.infrastructure.persistence.entity.User;
+import com.yulong.chatagent.support.persistence.entity.User;
 import com.yulong.chatagent.user.model.dto.JwtClaims;
 import com.yulong.chatagent.user.model.dto.UserDTO;
 import com.yulong.chatagent.user.model.response.LoginResponse;

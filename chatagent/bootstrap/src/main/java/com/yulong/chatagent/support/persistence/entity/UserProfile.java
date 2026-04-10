@@ -1,4 +1,4 @@
-package com.yulong.chatagent.user.infrastructure.persistence.entity;
+package com.yulong.chatagent.support.persistence.entity;
 
 import lombok.Builder;
 import lombok.Data;
