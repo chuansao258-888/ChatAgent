@@ -32,6 +32,9 @@ ui/.chrome-profile/
 
 data/milvus/
 
+# MinerU model weights (2GB+, download separately)
+tools/mineru/models/
+
 output.txt
 
 postman/*local*.json
