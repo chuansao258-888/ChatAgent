@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.chat.routing.LLMService;
@@ -98,11 +99,10 @@ public class ChatAgent {
         this.chatMemory = MessageWindowChatMemory.builder()
                 .maxMessages(Math.max(configuredMaxMessages, requiredCapacity))
                 .build();
-        this.chatMemory.add(chatSessionId, initialMemory);
-
         if (StringUtils.hasLength(systemPrompt)) {
             this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
         }
+        this.chatMemory.add(chatSessionId, initialMemory);
 
         ToolCallingChatOptions toolCallingChatOptions = DefaultToolCallingChatOptions.builder()
                 .internalToolExecutionEnabled(false)
@@ -210,6 +210,7 @@ public class ChatAgent {
             );
         } finally {
             CurrentTurnKnowledgeHitHolder.clear();
+            CurrentIntentResolutionHolder.clear();
             CurrentTurnHolder.clear();
             CurrentChatSessionHolder.clear();
         }

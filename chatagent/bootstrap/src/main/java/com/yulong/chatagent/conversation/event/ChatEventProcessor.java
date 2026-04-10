@@ -80,6 +80,7 @@ public class ChatEventProcessor {
             conversationTurnCompletionPublisher.publishCompletedTurn(event.getSessionId(), event.getTurnId());
         } finally {
             currentTurnCitationHolder.clear(event.getSessionId(), event.getTurnId());
+            currentTurnCitationHolder.clearBySession(event.getSessionId());
             CurrentIntentResolutionHolder.clear();
         }
     }

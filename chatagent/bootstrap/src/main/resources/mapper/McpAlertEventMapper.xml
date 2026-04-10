@@ -35,7 +35,7 @@
             updated_at
         ) VALUES (
             #{id},
-            #{serverId},
+            CAST(#{serverId} AS uuid),
             #{serverSlug},
             #{toolName},
             #{alertType},
@@ -51,7 +51,7 @@
 
     <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
         UPDATE t_mcp_alert_event
-        SET server_id = #{serverId},
+        SET server_id = CAST(#{serverId} AS uuid),
             server_slug = #{serverSlug},
             tool_name = #{toolName},
             alert_type = #{alertType},
@@ -67,7 +67,7 @@
     <select id="selectOpenByServerAndType" resultMap="McpAlertEventMap">
         SELECT *
         FROM t_mcp_alert_event
-        WHERE server_id = #{serverId}
+        WHERE server_id = CAST(#{serverId} AS uuid)
           AND alert_type = #{alertType}
           AND status = 'OPEN'
         ORDER BY created_at DESC
@@ -93,7 +93,7 @@
         SET status = 'RESOLVED',
             resolved_at = #{resolvedAt},
             updated_at = #{updatedAt}
-        WHERE server_id = #{serverId}
+        WHERE server_id = CAST(#{serverId} AS uuid)
           AND alert_type = #{alertType}
           AND status = 'OPEN'
     </update>

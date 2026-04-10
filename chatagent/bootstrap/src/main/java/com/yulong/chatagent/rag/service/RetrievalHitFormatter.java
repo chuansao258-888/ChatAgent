@@ -46,7 +46,7 @@ public class RetrievalHitFormatter {
         if (sections.isEmpty()) {
             return new FormattedRetrievalPrompt(
                     "No relevant attached session-file content found.",
-                    List.copyOf(citations)
+                    List.of()
             );
         }
         String prompt = """

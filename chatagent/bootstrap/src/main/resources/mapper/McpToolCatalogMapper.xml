@@ -71,7 +71,7 @@
             #{updatedAt},
             #{lastSyncedAt}
         )
-        ON CONFLICT (server_id, remote_original_name) DO UPDATE
+        ON CONFLICT (server_id, remote_original_name) WHERE deleted_at IS NULL DO UPDATE
         SET tool_description = EXCLUDED.tool_description,
             exposed_model_name = EXCLUDED.exposed_model_name,
             schema_json = EXCLUDED.schema_json,
@@ -98,9 +98,7 @@
     </update>
 
     <update id="softDeleteByServerId">
-        UPDATE t_mcp_tool_catalog
-        SET deleted_at = #{deletedAt},
-            updated_at = #{updatedAt}
+        DELETE FROM t_mcp_tool_catalog
         WHERE server_id = CAST(#{serverId} AS uuid)
           AND deleted_at IS NULL
     </update>

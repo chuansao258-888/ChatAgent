@@ -298,6 +298,14 @@ const AgentChatView: React.FC = () => {
     refreshChatSessions,
   ]);
 
+  // Clear stale messages whenever the session changes to prevent cross-session pollution
+  useEffect(() => {
+    setMessages([]);
+    setSessionFiles([]);
+    setPersistentErrorText("");
+    setRetryMessage(null);
+  }, [chatSessionId]);
+
   useEffect(() => {
     if (!chatSessionId || initializing) {
       return;

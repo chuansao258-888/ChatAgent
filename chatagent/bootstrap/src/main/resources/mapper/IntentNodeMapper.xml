@@ -66,7 +66,7 @@
         ) VALUES (
             CAST(#{id} AS uuid),
             CAST(#{agentId} AS uuid),
-            CASE WHEN #{parentId} IS NULL OR #{parentId} = '' THEN NULL ELSE CAST(#{parentId} AS uuid) END,
+            CAST(NULLIF(#{parentId}, '') AS uuid),
             #{version},
             #{status},
             #{nodeLevel},
@@ -108,7 +108,7 @@
             (
                 CAST(#{item.id} AS uuid),
                 CAST(#{item.agentId} AS uuid),
-                CASE WHEN #{item.parentId} IS NULL OR #{item.parentId} = '' THEN NULL ELSE CAST(#{item.parentId} AS uuid) END,
+                CAST(NULLIF(#{item.parentId}, '') AS uuid),
                 #{item.version},
                 #{item.status},
                 #{item.nodeLevel},
@@ -145,7 +145,7 @@
 
     <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.IntentNode">
         UPDATE intent_node
-        SET parent_id = CASE WHEN #{parentId} IS NULL OR #{parentId} = '' THEN NULL ELSE CAST(#{parentId} AS uuid) END,
+        SET parent_id = CAST(NULLIF(#{parentId}, '') AS uuid),
             version = #{version},
             status = #{status},
             node_level = #{nodeLevel},

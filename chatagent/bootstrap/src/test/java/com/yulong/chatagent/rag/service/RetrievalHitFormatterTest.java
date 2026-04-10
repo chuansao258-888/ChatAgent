@@ -68,7 +68,7 @@ class RetrievalHitFormatterTest {
     }
 
     @Test
-    void shouldHideFilteredHitsFromPromptButKeepCitationMetadata() {
+    void shouldClearCitationsWhenEveryHitIsFilteredOut() {
         List<RetrievalHit> hits = List.of(
                 new RetrievalHit(RagSourceType.KNOWLEDGE_BASE, "kb-1", "doc-1", "Doc A", 1, "A", "Filtered evidence", null, null, "filtered", false)
         );
@@ -76,10 +76,7 @@ class RetrievalHitFormatterTest {
         FormattedRetrievalPrompt rendered = formatter.formatWithCitations(hits);
 
         assertThat(rendered.promptText()).isEqualTo("No relevant attached session-file content found.");
-        assertThat(rendered.citations()).hasSize(1);
-        assertThat(rendered.citations().get(0).scoreType()).isEqualTo("filtered");
-        assertThat(rendered.citations().get(0).score()).isNull();
-        assertThat(rendered.citations().get(0).snippet()).contains("Filtered evidence");
+        assertThat(rendered.citations()).isEmpty();
     }
 
     @Test

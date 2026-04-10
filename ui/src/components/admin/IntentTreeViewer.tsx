@@ -38,19 +38,19 @@ function buildTreeData(nodes: IntentNodeVO[]): IntentTreeDataNode[] {
       key: node.id,
       meta: node,
       title: (
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-semibold text-white">
-              {node.name}
-            </span>
-            <Tag color={intentLevelTone(node.nodeLevel)}>{node.nodeLevel}</Tag>
-            {node.intentKind ? (
-              <Tag color={intentKindTone(node.intentKind)}>{node.intentKind}</Tag>
-            ) : null}
-            {!node.enabled ? <Tag color="default">DISABLED</Tag> : null}
+        <div className="intent-tree-node" data-level={node.nodeLevel}>
+          <div className="intent-tree-node__headline">
+            <span className="intent-tree-node__name">{node.name}</span>
+            <div className="intent-tree-node__badges">
+              <Tag color={intentLevelTone(node.nodeLevel)}>{node.nodeLevel}</Tag>
+              {node.intentKind ? (
+                <Tag color={intentKindTone(node.intentKind)}>{node.intentKind}</Tag>
+              ) : null}
+              {!node.enabled ? <Tag color="default">DISABLED</Tag> : null}
+            </div>
           </div>
           {node.description ? (
-            <Typography.Text className="block text-xs leading-5 !text-white/40">
+            <Typography.Text className="intent-tree-node__description">
               {node.description}
             </Typography.Text>
           ) : null}
@@ -91,7 +91,7 @@ export default function IntentTreeViewer({
           onSelect(nextSelected);
         }
       }}
-      className="rounded-section bg-white/[0.04] px-3 py-3"
+      className="intent-tree-viewer rounded-section bg-white/[0.03] px-3 py-3"
     />
   );
 }

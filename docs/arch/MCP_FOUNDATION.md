@@ -1,15 +1,48 @@
-# MCP Foundation
+# MCP Foundation 混合工具架构实现文档
 
-## Goal
+> 对应计划：`docs/plans/TOOLS_REFACTOR_PLAN.md`
+> 最后更新：2026-04-11
 
-This document records the concrete MCP code structure that now exists in the repo, so later work can extend the implementation without rediscovering the wiring.
+## 1. 概述
 
-The document covers:
+### 1.1 目标与范围
 
-1. Phase 1a: management, persistence, security, delete-time governance.
-2. Phase 1b: transport discovery, admin `/test` and `/sync`, handshake protection, catalog persistence flow.
-3. Phase 2: runtime tool exposure, `ToolContext` propagation, MCP adapter execution, prompt hardening.
-4. Phase 3: runtime resilience, Micrometer metrics, persisted alerts, dashboard observability, staged rollout, and failure-injection coverage.
+通过引入 MCP (Model Context Protocol) 协议，使 ChatAgent 安全、动态地接入外部第三方工具。覆盖四个阶段：管理/持久化/安全、Transport 发现、运行时工具暴露、弹性与可观测性。
+
+### 1.2 核心设计决策
+
+1. **基座不动**：不替换现有 Spring AI `ToolCallback` 工具链。
+2. **治理统一**：MCP 工具必须进入现有 `/api/tools`、Agent `allowedTools`、Intent Tree 的治理面。
+3. **安全优先**：外部 MCP Server 默认不可信；身份、会话、凭证隔离。
+4. **可回滚可观测**：单个 MCP 工具失败只局部降级，可定位、可限流、可熔断。
+
+## 2. Runtime Tool Exposure Modes
+
+MCP tool exposure now has two runtime modes controlled by `chatagent.intent.tool-scope-mode` in `application.yaml`.
+
+1. `STRICT_TOOL_ONLY`
+   Preserves the previous behavior:
+   - no intent: Agent default optional tools remain visible
+   - resolved non-`TOOL` intent: optional tools are hidden
+   - resolved `TOOL` intent: intent `allowedTools` can grant visibility, including the previous legacy edge case when the Agent default pool is empty
+2. `AGENT_DEFAULT_WITH_INTENT_NARROWING`
+   New inheritance mode:
+   - Agent `allowedTools` acts as the default optional tool pool
+   - resolved `TOOL` intent narrows that pool by intersection only
+   - intent cannot grant tools outside the Agent default pool
+   - `SessionFileSearchTool` remains special-cased and is still only exposed for `KB` intents
+
+Related runtime files:
+
+1. `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/runtime/AgentToolCallbackFactory.java`
+2. `chatagent/bootstrap/src/main/java/com/yulong/chatagent/intent/model/IntentToolScopeMode.java`
+3. `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/DefaultAgentRuntimeContextLoader.java`
+
+The prompt layer was updated together with runtime exposure:
+
+1. explicit tool-boundary copy appears only when an intent actually narrows tools
+2. KB-only scope now uses KB-specific wording instead of a generic "do not call tools outside the intent boundary" warning
+3. debug logs can print the final resolved system prompt branch for local verification
 
 ## What Exists In Code
 
@@ -111,6 +144,42 @@ Frontend admin integration under `ui/src`:
    Adds `createMcpServer`, `updateMcpServer`, `getDashboardMcpAlerts`, `getMcpServers`, `testMcpServer`, and `syncMcpServer`.
 6. `types/admin.ts`
    Adds MCP-specific dashboard, alert, and server view models for the frontend.
+7. `components/admin/IntentNodeEditDrawer.tsx`
+   Uses a multiline `Examples` textarea (`one line = one example`) so intent-routing samples can be entered reliably without tag-input quirks.
+
+### Local smoke-test MCP workspace
+
+Files under the repository root `MCP/`:
+
+1. `MCP/README.md`
+   Explains the purpose of the local MCP sandbox and the shortest smoke-test path.
+2. `MCP/weather-server/README.md`
+   Documents how to run `mcp_weather_server` locally and how to fill ChatAgent's `/admin/mcp` form.
+3. `MCP/weather-server/install.ps1`
+   Creates `MCP/.venv` and installs `mcp_weather_server`, `starlette`, and `uvicorn`.
+4. `MCP/weather-server/start-http.ps1`
+   Starts a streamable HTTP MCP endpoint for ChatAgent at `http://localhost:8090/mcp` by default.
+5. `MCP/weather-server/start-sse.ps1`
+   Starts the same server in SSE mode for validating the SSE client path.
+6. `MCP/weather-server/requirements.txt`
+   Pins the Python-side package list used by the local smoke-test server.
+7. `MCP/weather-server/smoke-test-http.ps1`
+   Performs an `initialize` + `tools/list` round-trip against the local streamable HTTP endpoint before ChatAgent is involved.
+
+Recommended smoke-test sequence:
+
+1. Run `.\MCP\weather-server\install.ps1`
+2. Run `.\MCP\weather-server\start-http.ps1`
+3. Optionally run `.\MCP\weather-server\smoke-test-http.ps1`
+4. In `/admin/mcp`, create one server with:
+   - `slug`: `weather`
+   - `name`: `Local Weather MCP`
+   - `protocol`: `HTTP`
+   - `authType`: `NONE`
+   - `endpointUrl`: `http://localhost:8090/mcp`
+5. Click `Test`
+6. Click `Sync`
+7. Bind the discovered optional weather tools to an agent or intent and perform a chat-side smoke test
 
 Admin response and VO models added for MCP:
 
@@ -644,6 +713,13 @@ Frontend verification:
    `npm run build`
 2. `ui`
    `npm test`
+
+Operational behavior notes:
+
+1. creating or renaming an MCP server to a duplicate `slug` now resolves to a normalized `409 CONFLICT` business error instead of bubbling a raw PostgreSQL unique-constraint failure
+2. the `/admin/mcp` create/edit drawer runs these requests in silent mode and surfaces the backend conflict message directly so duplicate-slug failures stay actionable for operators
+3. MCP delete now physically removes catalog rows before removing the parent server row, so the delete path no longer depends on soft-delete retention
+4. active-only unique indexes backstop historical soft-deleted rows, so previously deleted servers and catalog entries no longer block reusing the same `slug` or `mcp_{slug}_*` tool names
 
 Current verification command:
 

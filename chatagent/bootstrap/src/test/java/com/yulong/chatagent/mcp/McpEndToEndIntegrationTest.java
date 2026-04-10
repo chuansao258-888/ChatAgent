@@ -14,6 +14,7 @@ import com.yulong.chatagent.admin.application.ToolFacadeServiceImpl;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.intent.model.IntentToolScopeMode;
 import com.yulong.chatagent.mcp.application.McpCatalogSyncService;
 import com.yulong.chatagent.mcp.application.McpServerTestService;
 import com.yulong.chatagent.mcp.metrics.McpMetricsRecorder;
@@ -138,7 +139,11 @@ class McpEndToEndIntegrationTest {
         McpRolloutProperties rolloutProperties = new McpRolloutProperties();
         rolloutProperties.setMode("AGENT_ALLOWLIST");
         rolloutProperties.setAllowedAgentIds(List.of("assistant-1"));
-        AgentToolCallbackFactory callbackFactory = new AgentToolCallbackFactory(toolFacadeService, new McpRolloutPolicy(rolloutProperties));
+        AgentToolCallbackFactory callbackFactory = new AgentToolCallbackFactory(
+                toolFacadeService,
+                new McpRolloutPolicy(rolloutProperties),
+                IntentToolScopeMode.STRICT_TOOL_ONLY
+        );
 
         List<ToolCallback> callbacks = callbackFactory.create(AgentDTO.builder()
                 .id("assistant-1")

@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -110,6 +111,7 @@ class WebClientMcpTransportClientTest {
     private static final class StubMcpHttpHandler implements HttpHandler {
 
         private final ObjectMapper objectMapper = new ObjectMapper();
+        private final String expectedSessionId = UUID.randomUUID().toString();
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -118,6 +120,7 @@ class WebClientMcpTransportClientTest {
                 body = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
             }
             if (body.contains("\"method\":\"initialize\"")) {
+                exchange.getResponseHeaders().add("Mcp-Session-Id", expectedSessionId);
                 writeJson(exchange, Map.of(
                         "jsonrpc", "2.0",
                         "id", "ignored",
@@ -133,11 +136,21 @@ class WebClientMcpTransportClientTest {
                 return;
             }
             if (body.contains("\"method\":\"notifications/initialized\"")) {
+                if (!expectedSessionId.equals(exchange.getRequestHeaders().getFirst("Mcp-Session-Id"))) {
+                    exchange.sendResponseHeaders(400, -1);
+                    exchange.close();
+                    return;
+                }
                 exchange.sendResponseHeaders(202, -1);
                 exchange.close();
                 return;
             }
             if (body.contains("\"method\":\"tools/list\"")) {
+                if (!expectedSessionId.equals(exchange.getRequestHeaders().getFirst("Mcp-Session-Id"))) {
+                    exchange.sendResponseHeaders(400, -1);
+                    exchange.close();
+                    return;
+                }
                 writeJson(exchange, Map.of(
                         "jsonrpc", "2.0",
                         "id", "ignored",
@@ -159,6 +172,11 @@ class WebClientMcpTransportClientTest {
                 return;
             }
             if (body.contains("\"method\":\"tools/call\"")) {
+                if (!expectedSessionId.equals(exchange.getRequestHeaders().getFirst("Mcp-Session-Id"))) {
+                    exchange.sendResponseHeaders(400, -1);
+                    exchange.close();
+                    return;
+                }
                 writeJson(exchange, Map.of(
                         "jsonrpc", "2.0",
                         "id", "ignored",

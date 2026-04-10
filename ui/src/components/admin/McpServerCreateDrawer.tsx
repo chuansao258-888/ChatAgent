@@ -112,7 +112,13 @@ export default function McpServerCreateDrawer({
       form.resetFields();
     } catch (error) {
       console.error(`Failed to ${isEditMode ? "update" : "create"} MCP server:`, error);
-      message.error(isEditMode ? "Unable to update the MCP server." : "Unable to create the MCP server.");
+      const errorMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : isEditMode
+            ? "Unable to update the MCP server."
+            : "Unable to create the MCP server.";
+      message.error(errorMessage);
     } finally {
       setSubmitting(false);
     }

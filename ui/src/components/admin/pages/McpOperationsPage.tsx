@@ -135,10 +135,12 @@ export default function McpOperationsPage() {
     async (serverId: string, action: ServerAction) => {
       setPendingActions((current) => ({ ...current, [serverId]: action }));
       try {
+        let completed = false;
         if (action === "test") {
           const result = await testMcpServer(serverId);
           if (result.success) {
             message.success(`Probe succeeded. ${result.discoveredToolCount} tool(s) discovered.`);
+            completed = true;
           } else {
             message.warning(result.errorMessage || result.errorCode || "Probe completed with warnings.");
           }
@@ -148,11 +150,21 @@ export default function McpOperationsPage() {
             message.success(
               `Catalog synced. ${result.activeToolCount} active, ${result.createdCount} new, ${result.updatedCount} updated.`,
             );
+            completed = true;
           } else {
             message.warning(result.errorMessage || result.errorCode || "Sync completed with warnings.");
           }
         }
-        await loadPage(window);
+        try {
+          await loadPage(window);
+        } catch (refreshError) {
+          console.error(`Action ${action} succeeded but MCP page refresh failed:`, refreshError);
+          if (completed) {
+            message.warning("The action completed, but the page refresh did not finish cleanly.");
+          } else {
+            throw refreshError;
+          }
+        }
       } catch (error) {
         console.error(`Failed to ${action} MCP server ${serverId}:`, error);
         message.error(action === "test" ? "Probe failed." : "Catalog sync failed.");
@@ -169,10 +181,16 @@ export default function McpOperationsPage() {
       try {
         const result = await deleteMcpServer(server.id, force);
         if (result.deleted) {
+          const cleanedReferenceCount =
+            Math.max(result.activeReferenceCount - result.unresolvedReferenceCount, 0);
           message.success(
-            force
-              ? `MCP server deleted with ${result.unresolvedReferenceCount} unresolved reference(s) flagged.`
-              : "MCP server deleted.",
+            !force
+              ? "MCP server deleted."
+              : result.unresolvedReferenceCount > 0
+                ? `MCP server deleted. ${cleanedReferenceCount} reference(s) cleaned automatically and ${result.unresolvedReferenceCount} unresolved reference(s) flagged.`
+                : cleanedReferenceCount > 0
+                  ? `MCP server deleted. ${cleanedReferenceCount} dependent reference(s) were cleaned automatically.`
+                  : "MCP server deleted.",
           );
           setDeletePreview(null);
           await loadPage(window);
@@ -238,8 +256,8 @@ export default function McpOperationsPage() {
           <div className="space-y-4">
             <p className="text-sm leading-6 text-white/70">
               This MCP server still has {deletePreview.response.activeReferenceCount} active reference(s).
-              A force delete will remove the server and catalog rows, then leave those references flagged
-              as unresolved for later cleanup.
+              A force delete will remove the server and catalog rows, clean dependent intent-tree bindings
+              where possible, and flag any remaining references as unresolved for later cleanup.
             </p>
             <div className="space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
               {deletePreview.response.references.map((reference) => (

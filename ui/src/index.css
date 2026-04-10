@@ -656,3 +656,148 @@
 .chat-markdown .katex-display {
   margin: 1rem 0 !important;
 }
+
+/* ── Intent Tree Viewer (admin) ── */
+.intent-tree-viewer.ant-tree {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  padding: 0.25rem;
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-treenode {
+  padding: 0.25rem 0;
+  align-items: stretch;
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-indent-unit {
+  width: 20px;
+  position: relative;
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-indent-unit::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-indent-unit-end::before {
+  display: none;
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-switcher {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-switcher-line-icon {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-node-content-wrapper {
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+  transition: none;
+  border-radius: var(--radius-input);
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-node-content-wrapper:hover {
+  background: transparent !important;
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: transparent !important;
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-title {
+  display: block;
+  width: 100%;
+}
+
+.intent-tree-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.55rem 0.75rem 0.55rem 0.85rem;
+  border-radius: var(--radius-input);
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.intent-tree-node::before {
+  content: "";
+  position: absolute;
+  top: 0.65rem;
+  bottom: 0.65rem;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background-color 120ms ease;
+}
+
+.intent-tree-node[data-level="DOMAIN"]::before {
+  background: rgba(99, 179, 237, 0.55);
+}
+
+.intent-tree-node[data-level="CATEGORY"]::before {
+  background: rgba(156, 163, 255, 0.45);
+}
+
+.intent-tree-node[data-level="TOPIC"]::before {
+  background: rgba(180, 180, 180, 0.30);
+}
+
+.intent-tree-node:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.intent-tree-viewer.ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected .intent-tree-node {
+  background: rgba(99, 179, 237, 0.10);
+  border-color: rgba(99, 179, 237, 0.35);
+}
+
+.intent-tree-node__headline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.intent-tree-node__name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.intent-tree-node__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.intent-tree-node__badges .ant-tag {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.1;
+  padding: 0.05rem 0.42rem;
+  border-radius: var(--radius-tag) !important;
+}
+
+.intent-tree-node__description {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.42);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

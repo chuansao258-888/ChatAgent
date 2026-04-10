@@ -53,6 +53,19 @@ public class CurrentTurnCitationHolder {
         citationsByTurn.remove(key(sessionId, turnId));
     }
 
+    /**
+     * Removes all citation entries for the given session.
+     * Use as a safety net to prevent stale citations from accumulating
+     * when individual turn cleanup is missed (e.g. agent run failures).
+     */
+    public void clearBySession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return;
+        }
+        String prefix = sessionId.trim() + "::";
+        citationsByTurn.keySet().removeIf(k -> k.startsWith(prefix));
+    }
+
     public void merge(String sessionId, String turnId, List<CitationMetadata> citations) {
         if (!hasValidKey(sessionId, turnId)) {
             return;

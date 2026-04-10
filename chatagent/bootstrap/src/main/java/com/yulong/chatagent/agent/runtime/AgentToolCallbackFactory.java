@@ -3,21 +3,20 @@ package com.yulong.chatagent.agent.runtime;
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
+import com.yulong.chatagent.intent.model.IntentToolScopeMode;
 import com.yulong.chatagent.admin.application.ToolFacadeService;
 import com.yulong.chatagent.mcp.runtime.McpRolloutPolicy;
 import com.yulong.chatagent.mcp.runtime.McpToolWrapper;
 import com.yulong.chatagent.support.dto.AgentDTO;
-import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.definition.ToolDefinition;
-import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +31,15 @@ public class AgentToolCallbackFactory {
 
     private final ToolFacadeService toolFacadeService;
     private final McpRolloutPolicy rolloutPolicy;
+    private final IntentToolScopeMode toolScopeMode;
 
     public AgentToolCallbackFactory(ToolFacadeService toolFacadeService,
-                                    McpRolloutPolicy rolloutPolicy) {
+                                    McpRolloutPolicy rolloutPolicy,
+                                    @Value("${chatagent.intent.tool-scope-mode:STRICT_TOOL_ONLY}")
+                                    IntentToolScopeMode toolScopeMode) {
         this.toolFacadeService = toolFacadeService;
         this.rolloutPolicy = rolloutPolicy;
+        this.toolScopeMode = toolScopeMode;
     }
 
     /**
@@ -83,25 +86,58 @@ public class AgentToolCallbackFactory {
 
     private List<Tool> resolveRuntimeTools(AgentDTO agentConfig, IntentResolution intentResolution) {
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
-        runtimeTools.removeIf(tool -> intentResolution != null
-                && intentResolution.kind() != IntentKind.KB
-                && "SessionFileSearchTool".equals(tool.getName()));
+        List<String> allowedToolNames = agentConfig == null ? List.of() : agentConfig.getAllowedTools();
+        List<Tool> optionalTools = toolFacadeService.getOptionalTools();
+        runtimeTools.removeIf(tool -> shouldHideFixedTool(tool, intentResolution, allowedToolNames, optionalTools, agentConfig));
+        if (toolScopeMode == IntentToolScopeMode.STRICT_TOOL_ONLY) {
+            return resolveRuntimeToolsStrict(runtimeTools, allowedToolNames, optionalTools, intentResolution, agentConfig);
+        }
+        return resolveRuntimeToolsWithIntentNarrowing(runtimeTools, allowedToolNames, optionalTools, intentResolution, agentConfig);
+    }
 
-        List<String> allowedToolNames = agentConfig.getAllowedTools();
+    private List<Tool> resolveRuntimeToolsStrict(List<Tool> runtimeTools,
+                                                 List<String> allowedToolNames,
+                                                 List<Tool> optionalTools,
+                                                 IntentResolution intentResolution,
+                                                 AgentDTO agentConfig) {
         if (intentResolution != null) {
             if (intentResolution.kind() != IntentKind.TOOL) {
                 return runtimeTools;
             }
-            allowedToolNames = intersectAllowedTools(agentConfig.getAllowedTools(), intentResolution.allowedTools());
+            allowedToolNames = legacyIntersectAllowedTools(allowedToolNames, intentResolution.allowedTools());
         }
 
-        if (allowedToolNames == null || allowedToolNames.isEmpty()) {
-            return runtimeTools;
+        appendOptionalTools(runtimeTools, allowedToolNames, optionalTools, agentConfig);
+        return runtimeTools;
+    }
+
+    private List<Tool> resolveRuntimeToolsWithIntentNarrowing(List<Tool> runtimeTools,
+                                                              List<String> allowedToolNames,
+                                                              List<Tool> optionalTools,
+                                                              IntentResolution intentResolution,
+                                                              AgentDTO agentConfig) {
+        if (intentResolution != null
+                && intentResolution.kind() == IntentKind.TOOL
+                && intentResolution.allowedTools() != null
+                && !intentResolution.allowedTools().isEmpty()) {
+            allowedToolNames = intersectAllowedTools(allowedToolNames, intentResolution.allowedTools());
         }
 
-        Map<String, Tool> optionalToolMap = toolFacadeService.getOptionalTools()
+        appendOptionalTools(runtimeTools, allowedToolNames, optionalTools, agentConfig);
+        return runtimeTools;
+    }
+
+    private void appendOptionalTools(List<Tool> runtimeTools,
+                                     List<String> allowedToolNames,
+                                     List<Tool> optionalTools,
+                                     AgentDTO agentConfig) {
+        Map<String, Tool> optionalToolMap = optionalTools
                 .stream()
                 .collect(Collectors.toMap(Tool::getName, Function.identity()));
+
+        if (allowedToolNames == null || allowedToolNames.isEmpty()) {
+            return;
+        }
 
         for (String toolName : allowedToolNames) {
             Tool tool = optionalToolMap.get(toolName);
@@ -109,7 +145,39 @@ public class AgentToolCallbackFactory {
                 runtimeTools.add(tool);
             }
         }
-        return runtimeTools;
+    }
+
+    private boolean shouldHideFixedTool(Tool tool,
+                                        IntentResolution intentResolution,
+                                        List<String> allowedToolNames,
+                                        List<Tool> optionalTools,
+                                        AgentDTO agentConfig) {
+        if (tool == null || !"SessionFileSearchTool".equals(tool.getName())) {
+            return false;
+        }
+        if (intentResolution != null) {
+            return intentResolution.kind() != IntentKind.KB;
+        }
+        return toolScopeMode == IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING
+                && hasRuntimeOptionalTools(optionalTools, allowedToolNames, agentConfig);
+    }
+
+    private boolean hasRuntimeOptionalTools(List<Tool> optionalTools,
+                                            List<String> allowedToolNames,
+                                            AgentDTO agentConfig) {
+        if (optionalTools == null || optionalTools.isEmpty()
+                || allowedToolNames == null || allowedToolNames.isEmpty()) {
+            return false;
+        }
+        Map<String, Tool> optionalToolMap = optionalTools.stream()
+                .collect(Collectors.toMap(Tool::getName, Function.identity()));
+        for (String toolName : allowedToolNames) {
+            Tool tool = optionalToolMap.get(toolName);
+            if (tool != null && isRuntimeAllowed(tool, agentConfig)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isRuntimeAllowed(Tool tool, AgentDTO agentConfig) {
@@ -120,6 +188,18 @@ public class AgentToolCallbackFactory {
     }
 
     private List<String> intersectAllowedTools(List<String> agentAllowedTools, List<String> intentAllowedTools) {
+        if (intentAllowedTools == null || intentAllowedTools.isEmpty()) {
+            return List.of();
+        }
+        if (agentAllowedTools == null || agentAllowedTools.isEmpty()) {
+            return List.of();
+        }
+        return agentAllowedTools.stream()
+                .filter(intentAllowedTools::contains)
+                .toList();
+    }
+
+    private List<String> legacyIntersectAllowedTools(List<String> agentAllowedTools, List<String> intentAllowedTools) {
         if (intentAllowedTools == null || intentAllowedTools.isEmpty()) {
             return List.of();
         }
@@ -149,45 +229,5 @@ public class AgentToolCallbackFactory {
         }
 
         callbacksByName.putIfAbsent(name, callback);
-        if (name.endsWith("Tool")) {
-            String alias = name + "Tool";
-            callbacksByName.putIfAbsent(alias, new AliasToolCallback(callback, alias));
-        }
-    }
-
-    private static final class AliasToolCallback implements ToolCallback {
-
-        private final ToolCallback delegate;
-        private final ToolDefinition aliasDefinition;
-
-        private AliasToolCallback(ToolCallback delegate, String aliasName) {
-            this.delegate = delegate;
-            ToolDefinition definition = delegate.getToolDefinition();
-            this.aliasDefinition = ToolDefinition.builder()
-                    .name(aliasName)
-                    .description(definition.description())
-                    .inputSchema(definition.inputSchema())
-                    .build();
-        }
-
-        @Override
-        public ToolDefinition getToolDefinition() {
-            return aliasDefinition;
-        }
-
-        @Override
-        public ToolMetadata getToolMetadata() {
-            return delegate.getToolMetadata();
-        }
-
-        @Override
-        public String call(String toolInput) {
-            return delegate.call(toolInput);
-        }
-
-        @Override
-        public String call(String toolInput, ToolContext toolContext) {
-            return delegate.call(toolInput, toolContext);
-        }
     }
 }

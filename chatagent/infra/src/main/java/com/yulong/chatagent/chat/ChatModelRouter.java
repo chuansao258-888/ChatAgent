@@ -21,7 +21,7 @@ public class ChatModelRouter {
     private final String defaultModel;
 
     public ChatModelRouter(ChatClientRegistry chatClientRegistry,
-                           @Value("${chat.routing.default-model:deepseek-chat}") String defaultModel) {
+                           @Value("${chat.routing.default-model:glm-5.1}") String defaultModel) {
         this.chatClientRegistry = chatClientRegistry;
         this.defaultModel = defaultModel;
     }

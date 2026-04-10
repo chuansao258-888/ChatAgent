@@ -32,7 +32,7 @@ interface IntentNodeEditDrawerProps {
 interface IntentNodeFormValues {
   name: string;
   description?: string;
-  examples: string[];
+  examplesText?: string;
   intentKind?: IntentKind;
   scopePolicy?: ScopePolicy;
   allowedTools: string[];
@@ -68,6 +68,13 @@ function sanitizeList(values?: string[]): string[] {
     .filter(Boolean);
 }
 
+function sanitizeExamplesText(value?: string): string[] {
+  return (value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 export default function IntentNodeEditDrawer({
   open,
   mode,
@@ -98,7 +105,7 @@ export default function IntentNodeEditDrawer({
     form.setFieldsValue({
       name: node?.name ?? "",
       description: node?.description ?? "",
-      examples: node?.examples ?? [],
+      examplesText: (node?.examples ?? []).join("\n"),
       intentKind: isTopicNode ? node?.intentKind ?? "KB" : undefined,
       scopePolicy: node?.scopePolicy ?? "FALLBACK_ALLOWED",
       allowedTools: node?.allowedTools ?? [],
@@ -129,7 +136,7 @@ export default function IntentNodeEditDrawer({
             nodeLevel: currentLevel,
             name: values.name.trim(),
             description: sanitizeString(values.description),
-            examples: sanitizeList(values.examples),
+            examples: sanitizeExamplesText(values.examplesText),
             intentKind: finalIntentKind,
             scopePolicy:
               finalIntentKind === "KB"
@@ -147,7 +154,7 @@ export default function IntentNodeEditDrawer({
         : ({
             name: values.name.trim(),
             description: sanitizeNullableString(values.description),
-            examples: sanitizeList(values.examples),
+            examples: sanitizeExamplesText(values.examplesText),
             intentKind: finalIntentKind,
             scopePolicy:
               finalIntentKind === "KB"
@@ -187,7 +194,7 @@ export default function IntentNodeEditDrawer({
           </div>
           <Typography.Text className="mt-3 block text-sm leading-6 !text-white/60">
             {isTopicNode
-              ? "Topic nodes define runtime behavior. Choose whether this topic searches KBs, dispatches tools, or answers from a system template."
+              ? "Topic nodes narrow the runtime scope: pin KBs for retrieval, restrict which tools the agent may call, or answer from a system template. Leaving the scope empty inherits the agent's defaults."
               : "Non-leaf nodes are used only for hierarchical routing and classification."}
           </Typography.Text>
         </div>
@@ -216,12 +223,14 @@ export default function IntentNodeEditDrawer({
           </Form.Item>
 
           <div className="grid gap-4 md:grid-cols-[1fr_160px]">
-            <Form.Item label="Examples" name="examples">
-              <Select
-                mode="tags"
-                tokenSeparators={[","]}
-                placeholder="Add sample user queries"
-                className="w-full"
+            <Form.Item
+              label="Examples"
+              name="examplesText"
+              extra="Enter one sample user query per line."
+            >
+              <Input.TextArea
+                rows={5}
+                placeholder={"例如：\n新加坡现在天气怎么样\n东京空气质量如何"}
               />
             </Form.Item>
             <Form.Item label="Sort order" name="sortOrder">
@@ -269,11 +278,15 @@ export default function IntentNodeEditDrawer({
               ) : null}
 
               {showToolBindings ? (
-                <Form.Item label="Allowed tools" name="allowedTools">
+                <Form.Item
+                  label="Allowed tools"
+                  name="allowedTools"
+                  extra="Narrows which optional tools are exposed when this intent fires. Leave empty to inherit the agent's default tool pool."
+                >
                   <Select
                     mode="multiple"
                     allowClear
-                    placeholder="Choose optional tools for this TOOL intent"
+                    placeholder="Pick a subset to narrow, or leave empty to inherit agent defaults"
                     options={toolOptions}
                     optionFilterProp="label"
                   />

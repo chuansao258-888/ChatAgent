@@ -12,7 +12,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "chat.routing")
 public class ChatRoutingProperties {
 
-    private String defaultModel = "deepseek-chat";
+    private String defaultModel = "glm-5.1";
     private String deepThinkingModel;
     private int firstPacketTimeoutSeconds = 60;
     private int streamTotalTimeoutSeconds = 300;

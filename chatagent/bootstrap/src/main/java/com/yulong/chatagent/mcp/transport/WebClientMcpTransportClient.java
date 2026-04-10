@@ -57,6 +57,7 @@ public class WebClientMcpTransportClient implements McpTransportClient {
             new ParameterizedTypeReference<>() {
             };
     private static final String HEADER_PROTOCOL_VERSION = "MCP-Protocol-Version";
+    private static final String HEADER_SESSION_ID = "Mcp-Session-Id";
 
     private final ObjectMapper objectMapper;
     private final McpCredentialCipher credentialCipher;
@@ -93,27 +94,34 @@ public class WebClientMcpTransportClient implements McpTransportClient {
         WebClient client = buildWebClient(server);
         String preferredVersion = properties.getPreferredHttpProtocolVersion();
 
-        McpInitializeResult initializeResult = invokeHttpRequest(
+        HttpJsonRpcExchange<McpInitializeResult> initializeExchange = invokeHttpRequest(
                 client,
                 server.getEndpointUrl(),
                 null,
+                null,
                 buildRequest("initialize", buildInitializeParams(preferredVersion), false),
-                McpInitializeResult.class
+                McpInitializeResult.class,
+                null
         );
+        McpInitializeResult initializeResult = initializeExchange.result();
         String negotiatedVersion = validateNegotiatedVersion(initializeResult == null ? null : initializeResult.protocolVersion(), server.getProtocol());
         sendHttpNotification(
                 client,
                 server.getEndpointUrl(),
                 negotiatedVersion,
+                initializeExchange.sessionId(),
                 buildRequest("notifications/initialized", Map.of(), true)
         );
-        McpToolsListResult toolsListResult = invokeHttpRequest(
+        HttpJsonRpcExchange<McpToolsListResult> toolsListExchange = invokeHttpRequest(
                 client,
                 server.getEndpointUrl(),
                 negotiatedVersion,
+                initializeExchange.sessionId(),
                 buildRequest("tools/list", Map.of(), false),
-                McpToolsListResult.class
+                McpToolsListResult.class,
+                initializeExchange.sessionId()
         );
+        McpToolsListResult toolsListResult = toolsListExchange.result();
         return toDiscovery(initializeResult, negotiatedVersion, toolsListResult);
     }
 
@@ -137,16 +145,32 @@ public class WebClientMcpTransportClient implements McpTransportClient {
     private McpToolCallResult callToolOverHttp(McpServerDTO server, String remoteToolName, String jsonArguments) {
         WebClient client = buildWebClient(server);
         String preferredVersion = properties.getPreferredHttpProtocolVersion();
-        McpInitializeResult initializeResult = invokeHttpRequest(
+        HttpJsonRpcExchange<McpInitializeResult> initializeExchange = invokeHttpRequest(
                 client,
                 server.getEndpointUrl(),
                 null,
+                null,
                 buildRequest("initialize", buildInitializeParams(preferredVersion), false),
-                McpInitializeResult.class
+                McpInitializeResult.class,
+                null
         );
+        McpInitializeResult initializeResult = initializeExchange.result();
         String negotiatedVersion = validateNegotiatedVersion(initializeResult == null ? null : initializeResult.protocolVersion(), server.getProtocol());
-        sendHttpNotification(client, server.getEndpointUrl(), negotiatedVersion, buildRequest("notifications/initialized", Map.of(), true));
-        return invokeToolCallHttp(client, server.getEndpointUrl(), negotiatedVersion, remoteToolName, jsonArguments);
+        sendHttpNotification(
+                client,
+                server.getEndpointUrl(),
+                negotiatedVersion,
+                initializeExchange.sessionId(),
+                buildRequest("notifications/initialized", Map.of(), true)
+        );
+        return invokeToolCallHttp(
+                client,
+                server.getEndpointUrl(),
+                negotiatedVersion,
+                initializeExchange.sessionId(),
+                remoteToolName,
+                jsonArguments
+        );
     }
 
     private McpToolCallResult callToolOverLegacySse(McpServerDTO server, String remoteToolName, String jsonArguments) {
@@ -255,13 +279,15 @@ public class WebClientMcpTransportClient implements McpTransportClient {
         return params;
     }
 
-    private <T> T invokeHttpRequest(WebClient client,
-                                    String endpointUrl,
-                                    String protocolVersion,
-                                    Map<String, Object> request,
-                                    Class<T> resultType) {
+    private <T> HttpJsonRpcExchange<T> invokeHttpRequest(WebClient client,
+                                                         String endpointUrl,
+                                                         String protocolVersion,
+                                                         String sessionId,
+                                                         Map<String, Object> request,
+                                                         Class<T> resultType,
+                                                         String fallbackSessionId) {
         String requestId = stringifyId(objectMapper.valueToTree(request.get("id")));
-        McpJsonRpcResponse response = client.post()
+        HttpResponseEnvelope response = client.post()
                 .uri(endpointUrl)
                 .headers(headers -> {
                     headers.setContentType(MediaType.APPLICATION_JSON);
@@ -269,23 +295,31 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                     if (StringUtils.hasText(protocolVersion)) {
                         headers.set(HEADER_PROTOCOL_VERSION, protocolVersion);
                     }
+                    if (StringUtils.hasText(sessionId)) {
+                        headers.set(HEADER_SESSION_ID, sessionId);
+                    }
                 })
                 .bodyValue(request)
                 .exchangeToMono(clientResponse -> extractResponse(clientResponse, requestId))
                 .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
                 .onErrorMap(this::mapTransportError)
                 .block();
-        return convertResponse(response, resultType);
+        T result = convertResponse(response == null ? null : response.payload(), resultType);
+        String resolvedSessionId = response == null || !StringUtils.hasText(response.sessionId())
+                ? fallbackSessionId
+                : response.sessionId();
+        return new HttpJsonRpcExchange<>(result, resolvedSessionId);
     }
 
     private McpToolCallResult invokeToolCallHttp(WebClient client,
                                                  String endpointUrl,
                                                  String protocolVersion,
+                                                 String sessionId,
                                                  String remoteToolName,
                                                  String jsonArguments) {
         Map<String, Object> request = buildRequest("tools/call", buildToolCallParams(remoteToolName, jsonArguments), false);
         String requestId = stringifyId(objectMapper.valueToTree(request.get("id")));
-        McpJsonRpcResponse response = client.post()
+        HttpResponseEnvelope response = client.post()
                 .uri(endpointUrl)
                 .headers(headers -> {
                     headers.setContentType(MediaType.APPLICATION_JSON);
@@ -293,18 +327,22 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                     if (StringUtils.hasText(protocolVersion)) {
                         headers.set(HEADER_PROTOCOL_VERSION, protocolVersion);
                     }
+                    if (StringUtils.hasText(sessionId)) {
+                        headers.set(HEADER_SESSION_ID, sessionId);
+                    }
                 })
                 .bodyValue(request)
                 .exchangeToMono(clientResponse -> extractResponse(clientResponse, requestId))
                 .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
                 .onErrorMap(this::mapTransportError)
                 .block();
-        return convertToolCallResponse(response);
+        return convertToolCallResponse(response == null ? null : response.payload());
     }
 
     private void sendHttpNotification(WebClient client,
                                       String endpointUrl,
                                       String protocolVersion,
+                                      String sessionId,
                                       Map<String, Object> notification) {
         client.post()
                 .uri(endpointUrl)
@@ -314,15 +352,28 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                     if (StringUtils.hasText(protocolVersion)) {
                         headers.set(HEADER_PROTOCOL_VERSION, protocolVersion);
                     }
+                    if (StringUtils.hasText(sessionId)) {
+                        headers.set(HEADER_SESSION_ID, sessionId);
+                    }
                 })
                 .bodyValue(notification)
-                .exchangeToMono(response -> response.bodyToMono(Void.class))
+                .exchangeToMono(response -> {
+                    if (!response.statusCode().is2xxSuccessful()) {
+                        return response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(body -> Mono.error(new McpTransportException(
+                                        "MCP_HTTP_" + response.statusCode().value(),
+                                        "MCP server returned HTTP " + response.statusCode().value() + ": " + trimForError(body)
+                                )));
+                    }
+                    return response.bodyToMono(Void.class);
+                })
                 .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
                 .onErrorMap(this::mapTransportError)
                 .block();
     }
 
-    private Mono<McpJsonRpcResponse> extractResponse(ClientResponse response, String requestId) {
+    private Mono<HttpResponseEnvelope> extractResponse(ClientResponse response, String requestId) {
         if (!response.statusCode().is2xxSuccessful()) {
             return response.bodyToMono(String.class)
                     .defaultIfEmpty("")
@@ -332,9 +383,14 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                     )));
         }
         MediaType contentType = response.headers().contentType().orElse(MediaType.APPLICATION_JSON);
+        String sessionId = response.headers().header(HEADER_SESSION_ID).stream()
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse(null);
         if (contentType.isCompatibleWith(MediaType.APPLICATION_JSON)) {
             return response.bodyToMono(String.class)
                     .map(this::parseJsonRpcResponse)
+                    .map(payload -> new HttpResponseEnvelope(payload, sessionId))
                     .switchIfEmpty(Mono.error(new McpTransportException("MCP_EMPTY_RESPONSE", "MCP server returned an empty JSON-RPC response")));
         }
         if (contentType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM)) {
@@ -343,6 +399,7 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                     .filter(StringUtils::hasText)
                     .map(this::parseJsonRpcResponse)
                     .filter(jsonRpcResponse -> requestId.equals(stringifyId(jsonRpcResponse.id())))
+                    .map(payload -> new HttpResponseEnvelope(payload, sessionId))
                     .next()
                     .switchIfEmpty(Mono.error(new McpTransportException("MCP_EMPTY_SSE_RESPONSE", "MCP server closed the SSE response before replying")));
         }
@@ -627,6 +684,18 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                 pendingResponses.remove(requestId);
             }
         }
+    }
+
+    private record HttpResponseEnvelope(
+            McpJsonRpcResponse payload,
+            String sessionId
+    ) {
+    }
+
+    private record HttpJsonRpcExchange<T>(
+            T result,
+            String sessionId
+    ) {
     }
 
     private void handleSseEvent(McpServerDTO server,

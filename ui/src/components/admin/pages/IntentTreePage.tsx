@@ -622,16 +622,21 @@ export default function IntentTreePage() {
                     </div>
                     {selectedNode.allowedTools.length === 0 ? (
                       <Typography.Text className="text-sm !text-white/60">
-                        No optional tools selected.
+                        Inherits the agent's default tool pool (no narrowing).
                       </Typography.Text>
                     ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedNode.allowedTools.map((toolName) => (
-                          <Tag key={toolName} color="gold">
-                            {toolName}
-                          </Tag>
-                        ))}
-                      </div>
+                      <>
+                        <Typography.Text className="mb-2 block text-xs !text-white/50">
+                          Narrows the agent default pool to the intersection below.
+                        </Typography.Text>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedNode.allowedTools.map((toolName) => (
+                            <Tag key={toolName} color="gold">
+                              {toolName}
+                            </Tag>
+                          ))}
+                        </div>
+                      </>
                     )}
                   </div>
                 ) : null}

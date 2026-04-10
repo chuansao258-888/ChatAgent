@@ -18,11 +18,14 @@
             name AS reference_name,
             '/allowedTools' AS reference_path
         FROM agent
-        WHERE COALESCE(allowed_tools, '[]'::jsonb) ?| ARRAY[
-            <foreach collection="toolNames" item="toolName" separator=",">
-                #{toolName}
-            </foreach>
-        ]
+        WHERE jsonb_exists_any(
+            COALESCE(allowed_tools, '[]'::jsonb),
+            ARRAY[
+                <foreach collection="toolNames" item="toolName" separator=",">
+                    #{toolName}
+                </foreach>
+            ]::text[]
+        )
     </select>
 
     <select id="selectIntentNodeReferences" resultMap="ReferenceResultMap">
@@ -32,11 +35,14 @@
             name AS reference_name,
             '/allowedTools' AS reference_path
         FROM intent_node
-        WHERE COALESCE(allowed_tools, '[]'::jsonb) ?| ARRAY[
-            <foreach collection="toolNames" item="toolName" separator=",">
-                #{toolName}
-            </foreach>
-        ]
+        WHERE jsonb_exists_any(
+            COALESCE(allowed_tools, '[]'::jsonb),
+            ARRAY[
+                <foreach collection="toolNames" item="toolName" separator=",">
+                    #{toolName}
+                </foreach>
+            ]::text[]
+        )
     </select>
 
     <select id="selectAssistantTemplateReferences" resultMap="ReferenceResultMap">
@@ -46,11 +52,14 @@
             name AS reference_name,
             '/allowedTools' AS reference_path
         FROM agent_template
-        WHERE COALESCE(allowed_tools, '[]'::jsonb) ?| ARRAY[
-            <foreach collection="toolNames" item="toolName" separator=",">
-                #{toolName}
-            </foreach>
-        ]
+        WHERE jsonb_exists_any(
+            COALESCE(allowed_tools, '[]'::jsonb),
+            ARRAY[
+                <foreach collection="toolNames" item="toolName" separator=",">
+                    #{toolName}
+                </foreach>
+            ]::text[]
+        )
     </select>
 
     <select id="selectAssistantTemplateIntentTreeReferences" resultMap="ReferenceResultMap">
@@ -61,10 +70,13 @@
             '/intentTree/' || (node.ordinality - 1) || '/allowedTools' AS reference_path
         FROM agent_template at
         CROSS JOIN LATERAL jsonb_array_elements(at.intent_tree) WITH ORDINALITY AS node(node, ordinality)
-        WHERE COALESCE(node.node -> 'allowedTools', '[]'::jsonb) ?| ARRAY[
-            <foreach collection="toolNames" item="toolName" separator=",">
-                #{toolName}
-            </foreach>
-        ]
+        WHERE jsonb_exists_any(
+            COALESCE(node.node -> 'allowedTools', '[]'::jsonb),
+            ARRAY[
+                <foreach collection="toolNames" item="toolName" separator=",">
+                    #{toolName}
+                </foreach>
+            ]::text[]
+        )
     </select>
 </mapper>

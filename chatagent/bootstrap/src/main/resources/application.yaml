@@ -126,8 +126,8 @@ milvus:
 
 chat:
   routing:
-    default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:deepseek-chat}
-    deep-thinking-model: ${CHATAGENT_DEEP_THINKING_MODEL:glm-4}
+    default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:glm-5.1}
+    deep-thinking-model: ${CHATAGENT_DEEP_THINKING_MODEL:glm-5.1}
     first-packet-timeout-seconds: 60
     stream-total-timeout-seconds: 300
     http-connect-timeout-seconds: 10
@@ -142,20 +142,21 @@ chat:
       out-of-service-when-all-routable-candidates-open: true
       warn-on-orphan-overrides: true
     candidates:
-      - id: deepseek-chat
-        spring-client-key: deepseek-chat
-        priority: 10
-        enabled: true
-        supports-thinking: false
-      - id: glm-4
-        spring-client-key: glm-4.6
-        priority: 20
+      - id: glm-5.1
+        spring-client-key: glm-5.1
+        priority: 5
         enabled: true
         supports-thinking: true
         thinking-strategy: ZHIPU_THINKING_FLAG
+      - id: deepseek-reasoner
+        spring-client-key: deepseek-reasoner
+        priority: 10
+        enabled: true
+        supports-thinking: false
 
 chatagent:
   intent:
+    tool-scope-mode: ${CHATAGENT_INTENT_TOOL_SCOPE_MODE:AGENT_DEFAULT_WITH_INTENT_NARROWING}
     minimum-score: 0.45
     ambiguity-gap: 0.2
     clarification-candidates: 2

@@ -30,7 +30,7 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
   const pendingSessionIdRef = useRef<string | null>(null);
 
   const navigate = useNavigate();
-  const { refreshChatSessions } = useChatSessions();
+  const { chatSessions, refreshChatSessions } = useChatSessions();
   const { isAuthenticated, openAuthDialog } = useAuth();
 
   const ensureSessionForNewChat = async (titleSeed: string) => {
@@ -39,9 +39,16 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
       return null;
     }
 
-    // P1 Fix: Reuse the session if we already created one in a previous failed attempt
+    // Reuse the session if we already created one and it still exists in the list
     if (pendingSessionIdRef.current) {
-      return { chatSessionId: pendingSessionIdRef.current };
+      const stillExists = chatSessions.some(
+        (session) => session.chatSessionId === pendingSessionIdRef.current,
+      );
+      if (stillExists) {
+        return { chatSessionId: pendingSessionIdRef.current };
+      }
+      // Session was deleted — clear the stale ref
+      pendingSessionIdRef.current = null;
     }
 
     const response = await createChatSession({

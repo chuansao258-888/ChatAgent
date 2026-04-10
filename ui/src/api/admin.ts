@@ -267,14 +267,14 @@ export async function getMcpServers(): Promise<GetMcpServersResponse> {
 export async function createMcpServer(
   request: CreateMcpServerRequest,
 ): Promise<string> {
-  return post<string>("/admin/mcp-servers", request);
+  return post<string>("/admin/mcp-servers", request, { silent: true });
 }
 
 export async function updateMcpServer(
   serverId: string,
   request: UpdateMcpServerRequest,
 ): Promise<void> {
-  return patch<void>(`/admin/mcp-servers/${serverId}`, request);
+  return patch<void>(`/admin/mcp-servers/${serverId}`, request, { silent: true });
 }
 
 export async function deleteMcpServer(
