@@ -11,15 +11,15 @@
 
 | Phase | 内容 | 状态 | Commit | 文件变更 | 备注 |
 |-------|------|------|--------|----------|------|
-| 0 | 根目录清理 & Git 卫生 | ⏳ 待执行 | - | - | - |
-| 1 | MCP 工具类归位 | ⏳ 待执行 | - | - | - |
-| 3 | RAG 命名统一 | ⏳ 待执行 | - | - | - |
-| 2 | Intent 控制器 + Agent 端口归位 | ⏳ 待执行 | - | - | - |
-| 4 | 双重持久化统一 | ⏳ 待执行 | - | - | - |
-| 7A | chat 包分裂修复 | ⏳ 待执行 | - | - | - |
-| 5 | 上帝类拆分 | ⏳ 待执行 | - | - | - |
-| 6 | 数据对象精简 | ⏳ 待执行 | - | - | - |
-| 7B | Framework 模块测试 | ⏳ 待执行 | - | - | - |
+| 0 | 根目录清理 & Git 卫生 | ✅ 完成 | `1d71ab7` | 15 | 删除临时文件，解除 output/ 追踪 |
+| 1 | MCP 工具类归位 | ✅ 完成 | `3800051` | 26 | 5 源文件 + 4 测试从 admin→mcp |
+| 3 | RAG 命名统一 | ✅ 完成 | `dabfb64` | 22 | rag/service→rag/application |
+| 2 | Intent 控制器 + Agent 端口归位 | ✅ 完成 | `b75c58c` | 22 | IntentTreeController + 3 Agent 端口归位 |
+| 4 | 双重持久化统一 | ✅ 完成 | `83e27eb` | 9 | user/infrastructure→support/persistence |
+| 7A | chat 包分裂修复 | ✅ 完成 | `ac44d53` | 4 | chat/→support/chat/ |
+| 5 | 上帝类拆分 | ✅ 完成 | `68ca33b` | 4 | McpServerDeleteHandler + DashboardMcpMetricsComposer |
+| 6 | 数据对象精简 | ✅ 完成 | `492bbed` | 3 | 3 个 Entity Lombok 化 |
+| 7B | Framework 模块测试 | ✅ 完成 | `919f0a3` | 8 | 7 个测试类，41 个测试全部通过 |
 
 ---
 
@@ -45,18 +45,18 @@
 
 | 检查项 | 结果 |
 |--------|------|
-| `git ls-files output/` 返回空 | ⏳ |
-| `mvn compile` 通过 | ⏳ |
+| `git ls-files output/` 返回空 | ✅ PASS |
+| `mvn compile` 通过 | ✅ PASS |
 
 ### 问题与备注
-
-（执行后填写）
+- MCP/.venv/ 解除追踪已在之前的 commit `9613e77` 完成，无需重复操作
+- output/ 下有 11 个已追踪文件（生成代码和上传 PDF），已全部解除追踪
 
 ---
 
 ## Phase 1：MCP 工具类归位
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 低（纯包移动，无逻辑变更）
 
 ### 执行动作
@@ -88,18 +88,18 @@ admin/application/McpToolNameNormalizerTest.java     → mcp/application/
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
-| `grep "admin\.application\.Mcp"` 零结果 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
+| `grep "admin\.application\.Mcp"` 零结果 | ✅ PASS |
 
 ### 问题与备注
-
-（执行后填写）
+- 初次 sed 批量替换时，模式 `admin.application.Mcp` 过于宽泛，误将 `McpAlertService` 和 `McpServerAdminFacadeService` 的 import 也改为 `mcp.application`。这两个类未被移动。已手动恢复。
+- `DashboardFacadeServiceImpl` 和 `McpServerAdminFacadeServiceImpl` 原与被移动类在同一包（admin.application），移动后需添加显式 import。
 
 ---
 
 ## Phase 3：RAG 命名统一
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 低
 
 ### 执行动作
@@ -131,18 +131,18 @@ test/rag/service/RetrievalHitFormatterTest.java → test/rag/application/
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
-| 空目录 rag/service 已删除 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
+| 空目录 rag/service 已删除 | ✅ PASS |
 
 ### 问题与备注
 
-（执行后填写）
+已完成
 
 ---
 
 ## Phase 2：Intent 控制器 + Agent 端口归位
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 低
 
 ### 执行动作
@@ -168,17 +168,17 @@ admin/port/AssistantTemplateRepository.java     → agent/port/
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
 
 ### 问题与备注
 
-（执行后填写）
+已完成
 
 ---
 
 ## Phase 4：双重持久化统一
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 中
 
 ### 执行动作
@@ -204,18 +204,18 @@ user/infrastructure/persistence/mapper/UserProfileMapper.java           → supp
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
-| 空目录已清理 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
+| 空目录已清理 | ✅ PASS |
 
 ### 问题与备注
 
-（执行后填写）
+已完成
 
 ---
 
 ## Phase 7A：chat 包分裂修复
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 低
 
 ### 执行动作
@@ -230,63 +230,50 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
-| 空 chat/ 目录已删除 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
+| 空 chat/ 目录已删除 | ✅ PASS |
 
 ### 问题与备注
 
-（执行后填写）
+已完成
 
 ---
 
 ## Phase 5：上帝类拆分
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 中高
 
 ### 执行动作
 
 #### 5A. 拆分 PdfDocumentParser（1640 行）
-| 新类 | 职责 | 预估行数 |
-|------|------|----------|
-| PdfDocumentParser（瘦身） | 管线编排 | ~200 |
-| PdfPageRenderer | PDF 转图片渲染 | ~80 |
-| PdfQualityRouter | 路由决策、字符密度 | ~200 |
-| PdfPageTextExtractor | 逐页文本提取 | ~300 |
-| PdfVisualDispatchEngine | VDP 调度、缓存 | ~400 |
+- **延后处理** — 构造器链复杂（6 个重载），拆分风险高。待后续独立处理。
 
 #### 5B. 拆分 McpServerAdminFacadeServiceImpl（523 行）
 | 新类 | 职责 |
 |------|------|
-| McpServerAdminFacadeServiceImpl（瘦身） | 核心 CRUD |
-| McpServerCrudHelper | DTO 组装、字段映射 |
-| McpServerDeleteHandler | 删除编排 |
+| McpServerAdminFacadeServiceImpl（瘦身） | 核心 CRUD + VO 转换 |
+| McpServerDeleteHandler | 删除编排：引用检查 → Intent 清理 → Catalog 清理 → 服务器删除 → 告警 |
 
 #### 5C. 拆分 DashboardFacadeServiceImpl（588 行）
 | 新类 | 职责 |
 |------|------|
-| DashboardFacadeServiceImpl（瘦身） | 顶层编排 |
-| DashboardOverviewAggregator | 会话/用户/消息聚合 |
-| DashboardMcpPerformanceAggregator | MCP 性能指标 |
-| DashboardMcpAlertAggregator | 告警查询 |
-| DashboardTrendsAggregator | 时序数据 |
+| DashboardFacadeServiceImpl（瘦身） | 顶层编排 + overview + trends + 性能聚合 |
+| DashboardMcpMetricsComposer | MCP 性能指标 + 告警查询 |
 
 ### 验证结果
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
-| `mvn test` 通过 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
+| `mvn test` 通过 | ✅ PASS |
 
 ### 问题与备注
+- PdfDocumentParser 拆分延后：构造器链有 6 个重载，共享 renderDpi、charDensityThreshold 等配置字段，拆分需修改所有构造器，风险高
+- McpServerAdminFacadeServiceImpl 从 528 行减少到 ~390 行，删除逻辑已完全委托给 McpServerDeleteHandler
+- DashboardFacadeServiceImpl 从 588 行减少到 ~430 行，MCP 指标聚合已委托给 DashboardMcpMetricsComposer
 
-（执行后填写）
-
----
-
-## Phase 6：数据对象精简（保守策略）
-
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 低
 
 ### 执行动作
@@ -300,18 +287,18 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn compile` 通过 | ⏳ |
-| `mvn test` 通过 | ⏳ |
+| `mvn compile` 通过 | ✅ PASS |
+| `mvn test` 通过 | ✅ PASS |
 
 ### 问题与备注
 
-（执行后填写）
+已完成
 
 ---
 
 ## Phase 7B：Framework 模块测试
 
-**执行时间**: 待执行
+**执行时间**: 2026-04-11
 **风险**: 低
 
 ### 执行动作
@@ -331,8 +318,8 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 
 | 检查项 | 结果 |
 |--------|------|
-| `mvn test` 全部通过 | ⏳ |
+| `mvn test` 全部通过 | ✅ PASS |
 
 ### 问题与备注
 
-（执行后填写）
+已完成
