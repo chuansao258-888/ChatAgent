@@ -305,7 +305,7 @@ export default function KnowledgeBaseDetailPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <Link
@@ -359,7 +359,7 @@ export default function KnowledgeBaseDetailPage() {
         </Space>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
         <Card
           loading={loading}
           className="shadow-admin-card"

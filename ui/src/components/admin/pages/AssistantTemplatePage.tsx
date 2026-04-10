@@ -105,7 +105,7 @@ export default function AssistantTemplatePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-white/40">
@@ -134,7 +134,7 @@ export default function AssistantTemplatePage() {
           <Empty description="No assistant templates found." />
         </Card>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-5 xl:grid-cols-2">
           {templates.map((template) => {
             const summary = summarizeTemplate(template);
             return (

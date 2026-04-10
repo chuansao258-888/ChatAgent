@@ -38,6 +38,7 @@ import type {
   DashboardTrendsVO,
   DashboardWindow,
 } from "../../../types/admin.ts";
+import AdminPageHeader from "../AdminPageHeader.tsx";
 
 /* ─── types ─── */
 
@@ -133,32 +134,33 @@ export default function AdminOverviewPage() {
   return (
     <div className="space-y-5">
       {/* ── Header ── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-[2rem] font-bold leading-tight tracking-tight text-white">
-            Dashboard
-          </h1>
-          <div className="mt-2 flex items-center gap-2 text-sm text-white/40">
+      <AdminPageHeader
+        eyebrow="Admin / Dashboard"
+        title="Dashboard"
+        description="Monitor platform activity, delivery health, latency pressure, and knowledge performance from one admin overview."
+        meta={(
+          <div className="flex items-center gap-2 text-sm text-white/40">
             <span
               className="inline-block h-2 w-2 rounded-full"
               style={{ backgroundColor: health.dotColor }}
             />
             Updated {formatDateTime(overview.updatedAt)}
           </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <WindowPills value={window} onChange={setWindow} />
-          <button
-            type="button"
-            onClick={() => void loadDashboard(window)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white/70"
-            title="Refresh"
-          >
-            <ReloadOutlined spin={loading} />
-          </button>
-        </div>
-      </div>
+        )}
+        actions={(
+          <>
+            <WindowPills value={window} onChange={setWindow} />
+            <button
+              type="button"
+              onClick={() => void loadDashboard(window)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white/70"
+              title="Refresh"
+            >
+              <ReloadOutlined spin={loading} />
+            </button>
+          </>
+        )}
+      />
 
       {/* ── Health Status ── */}
       <DashCard className={`border ${health.border} ${health.background}`}>
@@ -717,11 +719,23 @@ function LoadingSpinner() {
 
 /* ─── tooltip renderer ─── */
 
+interface DashboardTooltipEntry {
+  name?: string | number;
+  value?: string | number | readonly (string | number)[];
+  color?: string;
+}
+
+interface DashboardTooltipProps {
+  active?: boolean;
+  payload?: readonly DashboardTooltipEntry[];
+  label?: string | number;
+}
+
 function renderTooltip({
   unit,
   formatter,
 }: { unit?: string; formatter?: (v: number) => string } = {}) {
-  return function DashboardTooltip({ active, payload, label }: any) {
+  return function DashboardTooltip({ active, payload, label }: DashboardTooltipProps) {
     if (!active || !payload?.length || label == null) return null;
 
     return (
@@ -730,7 +744,7 @@ function renderTooltip({
           {formatDateTime(Number(label))}
         </p>
         <div className="mt-2.5 space-y-1.5">
-          {payload.map((entry: any, i: number) => (
+          {payload.map((entry, i: number) => (
             <div key={`${String(entry.name)}-${i}`} className="flex items-center justify-between gap-5 text-sm">
               <div className="flex items-center gap-2 text-white/50">
                 <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />

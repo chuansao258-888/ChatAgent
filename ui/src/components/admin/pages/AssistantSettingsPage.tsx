@@ -73,7 +73,7 @@ export default function AssistantSettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-white/40">
@@ -100,7 +100,7 @@ export default function AssistantSettingsPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid gap-5 md:grid-cols-[1.15fr_0.85fr]">
         <Card className="shadow-admin-card">
           <Typography.Title level={4} className="!mt-0 !text-white">
             Active knowledge bases

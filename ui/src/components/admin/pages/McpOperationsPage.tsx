@@ -35,6 +35,7 @@ import type {
   McpToolReferenceVO,
   McpServerVO,
 } from "../../../types/admin.ts";
+import AdminPageHeader from "../AdminPageHeader.tsx";
 
 type ServerAction = "test" | "sync";
 
@@ -249,44 +250,35 @@ export default function McpOperationsPage() {
         ) : null}
       </Modal>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.24em] text-[#78d6a3]">
-            MCP control surface
-          </p>
-          <h1 className="mt-2 text-[2rem] font-bold tracking-tight text-white">
-            MCP Ops
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
-            A dedicated operations page for remote MCP servers, kept separate from the existing
-            dashboard. Use it to watch rollout state, inspect live server pressure, and run safe
-            probe or sync actions without changing the current admin overview.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setEditingServer(null);
-              setCreateOpen(true);
-            }}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#78d6a3]/30 bg-[#78d6a3]/12 px-4 text-sm font-medium text-[#9be3bb] transition hover:bg-[#78d6a3]/18"
-          >
-            <PlusOutlined />
-            <span>Add server</span>
-          </button>
-          <WindowPills value={window} onChange={setWindow} />
-          <button
-            type="button"
-            onClick={() => void loadPage(window)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-white/50 transition hover:bg-white/[0.08] hover:text-white/75"
-            title="Refresh MCP page"
-          >
-            <ReloadOutlined spin={loading} />
-          </button>
-        </div>
-      </div>
+      <AdminPageHeader
+        eyebrow="Admin / MCP Operations"
+        title="MCP Ops"
+        description="Watch rollout state, inspect live server pressure, and run safe probe or sync actions for remote MCP servers without changing the main admin overview."
+        actions={(
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingServer(null);
+                setCreateOpen(true);
+              }}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#78d6a3]/30 bg-[#78d6a3]/12 px-4 text-sm font-medium text-[#9be3bb] transition hover:bg-[#78d6a3]/18"
+            >
+              <PlusOutlined />
+              <span>Add server</span>
+            </button>
+            <WindowPills value={window} onChange={setWindow} />
+            <button
+              type="button"
+              onClick={() => void loadPage(window)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-white/50 transition hover:bg-white/[0.08] hover:text-white/75"
+              title="Refresh MCP page"
+            >
+              <ReloadOutlined spin={loading} />
+            </button>
+          </>
+        )}
+      />
 
       {!mcp.enabled && (
         <Panel className="border border-[#ff7875]/25 bg-[linear-gradient(135deg,rgba(255,120,117,0.12),transparent)]">

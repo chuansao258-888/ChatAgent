@@ -393,7 +393,7 @@ export default function UserManagementPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {messageContextHolder}
       {modalContextHolder}
 
@@ -419,61 +419,63 @@ export default function UserManagementPage() {
         </Button>
       </div>
 
-      <Card className="shadow-admin-card">
-        <div className="grid gap-4 md:grid-cols-[1fr_220px]">
-          <Input.Search
-            allowClear
-            size="large"
-            value={keywordInput}
-            placeholder="Search by username"
-            onChange={(event) => {
-              setKeywordInput(event.target.value);
-            }}
-            onSearch={() => {
-              setPage(1);
-              setKeyword(keywordInput.trim());
-            }}
-          />
-          <Select
-            allowClear
-            size="large"
-            placeholder="Filter by status"
-            value={statusFilter}
-            options={[
-              { label: "Active", value: "ACTIVE" },
-              { label: "Disabled", value: "DISABLED" },
-            ]}
-            onChange={(value) => {
-              setPage(1);
-              setStatusFilter(value);
-            }}
-          />
-        </div>
-      </Card>
-
-      <Card className="shadow-admin-card">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <Typography.Title
-              level={4}
-              className="!mb-0 !mt-0 !text-white"
-            >
-              Directory
-            </Typography.Title>
-            <Typography.Text className="!text-white/60">
-              {total} user{total === 1 ? "" : "s"} available in this workspace.
-            </Typography.Text>
+      <div className="flex flex-col gap-5">
+        <Card className="shadow-admin-card">
+          <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+            <Input.Search
+              allowClear
+              size="large"
+              value={keywordInput}
+              placeholder="Search by username"
+              onChange={(event) => {
+                setKeywordInput(event.target.value);
+              }}
+              onSearch={() => {
+                setPage(1);
+                setKeyword(keywordInput.trim());
+              }}
+            />
+            <Select
+              allowClear
+              size="large"
+              placeholder="Filter by status"
+              value={statusFilter}
+              options={[
+                { label: "Active", value: "ACTIVE" },
+                { label: "Disabled", value: "DISABLED" },
+              ]}
+              onChange={(value) => {
+                setPage(1);
+                setStatusFilter(value);
+              }}
+            />
           </div>
-        </div>
+        </Card>
 
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={users}
-          pagination={pagination}
-        />
-      </Card>
+        <Card className="shadow-admin-card">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <Typography.Title
+                level={4}
+                className="!mb-0 !mt-0 !text-white"
+              >
+                Directory
+              </Typography.Title>
+              <Typography.Text className="!text-white/60">
+                {total} user{total === 1 ? "" : "s"} available in this workspace.
+              </Typography.Text>
+            </div>
+          </div>
+
+          <Table
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={users}
+            pagination={pagination}
+          />
+        </Card>
+      </div>
 
       <Modal
         title={editingUser ? "Edit user" : "Create user"}

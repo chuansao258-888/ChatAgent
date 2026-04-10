@@ -48,7 +48,7 @@ export default function AdminLayout() {
           <AdminSideNav />
         </aside>
         <main className="min-w-0 flex-1 overflow-y-auto bg-[#212121]">
-          <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-6 py-6 md:px-10 md:py-8">
+          <div className="flex min-h-full w-full flex-col px-6 py-6 md:px-10 md:py-8">
             <Outlet />
           </div>
         </main>
