@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.application;
+package com.yulong.chatagent.mcp.application;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

@@ -1,8 +1,8 @@
 package com.yulong.chatagent.mcp.application;
 
-import com.yulong.chatagent.admin.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
 import com.yulong.chatagent.admin.application.McpAlertService;
-import com.yulong.chatagent.admin.application.McpServerStatusMachine;
+import com.yulong.chatagent.mcp.application.McpServerStatusMachine;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.mcp.model.McpDiscoveryResult;

@@ -2,7 +2,7 @@ package com.yulong.chatagent.mcp.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.admin.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
 import com.yulong.chatagent.mcp.metrics.McpMetricsRecorder;
 import com.yulong.chatagent.mcp.model.McpToolCallResult;
 import com.yulong.chatagent.mcp.transport.McpTransportClient;

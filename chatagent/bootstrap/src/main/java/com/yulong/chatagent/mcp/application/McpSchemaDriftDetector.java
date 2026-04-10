@@ -1,7 +1,7 @@
 package com.yulong.chatagent.mcp.application;
 
-import com.yulong.chatagent.admin.application.McpFeatureFlag;
-import com.yulong.chatagent.admin.application.McpToolNameNormalizer;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpToolNameNormalizer;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.mcp.metrics.McpMetricsRecorder;

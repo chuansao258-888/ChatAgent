@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.application;
+package com.yulong.chatagent.mcp.application;
 
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

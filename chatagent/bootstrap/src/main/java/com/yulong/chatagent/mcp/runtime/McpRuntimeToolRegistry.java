@@ -3,7 +3,7 @@ package com.yulong.chatagent.mcp.runtime;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.yulong.chatagent.agent.tools.Tool;
-import com.yulong.chatagent.admin.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.mcp.metrics.McpMetricsRecorder;

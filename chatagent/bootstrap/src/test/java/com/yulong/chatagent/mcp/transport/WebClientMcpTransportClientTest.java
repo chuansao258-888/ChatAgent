@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import com.yulong.chatagent.admin.application.McpCredentialCipher;
+import com.yulong.chatagent.mcp.application.McpCredentialCipher;
 import com.yulong.chatagent.mcp.model.McpDiscoveryResult;
 import com.yulong.chatagent.mcp.model.McpToolCallResult;
 import com.yulong.chatagent.support.dto.McpServerDTO;

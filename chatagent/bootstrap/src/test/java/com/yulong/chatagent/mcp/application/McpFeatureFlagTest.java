@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.application;
+package com.yulong.chatagent.mcp.application;
 
 import org.junit.jupiter.api.Test;
 

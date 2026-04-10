@@ -1,8 +1,8 @@
 package com.yulong.chatagent.mcp.application;
 
-import com.yulong.chatagent.admin.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
 import com.yulong.chatagent.admin.application.McpAlertService;
-import com.yulong.chatagent.admin.application.McpToolNameNormalizer;
+import com.yulong.chatagent.mcp.application.McpToolNameNormalizer;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.mcp.model.McpCatalogSyncOutcome;
@@ -55,7 +55,7 @@ class McpCatalogSyncServiceTest {
                 featureFlag,
                 transportClient,
                 serverRepository,
-                new com.yulong.chatagent.admin.application.McpServerStatusMachine(),
+                new com.yulong.chatagent.mcp.application.McpServerStatusMachine(),
                 alertService
         );
         syncService = new McpCatalogSyncService(

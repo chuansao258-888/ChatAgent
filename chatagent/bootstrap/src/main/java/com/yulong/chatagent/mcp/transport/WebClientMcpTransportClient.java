@@ -3,7 +3,7 @@ package com.yulong.chatagent.mcp.transport;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.admin.application.McpCredentialCipher;
+import com.yulong.chatagent.mcp.application.McpCredentialCipher;
 import com.yulong.chatagent.mcp.model.McpDiscoveryResult;
 import com.yulong.chatagent.mcp.model.McpRemoteToolDescriptor;
 import com.yulong.chatagent.mcp.model.McpToolCallResult;

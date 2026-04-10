@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.application;
+package com.yulong.chatagent.mcp.application;
 
 import com.yulong.chatagent.admin.port.McpServerReferenceQueryRepository;
 import com.yulong.chatagent.support.dto.McpToolReferenceDTO;

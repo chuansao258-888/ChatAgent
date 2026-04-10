@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.application;
+package com.yulong.chatagent.mcp.application;
 
 import com.yulong.chatagent.support.enums.McpServerStatus;
 import org.junit.jupiter.api.Test;

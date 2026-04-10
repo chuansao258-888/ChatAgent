@@ -5,6 +5,8 @@ import com.yulong.chatagent.admin.model.vo.DashboardMcpAlertsVO;
 import com.yulong.chatagent.admin.model.vo.DashboardMcpPerformanceVO;
 import com.yulong.chatagent.admin.model.vo.DashboardMcpServerMetricVO;
 import com.yulong.chatagent.admin.model.vo.DashboardOverviewVO;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpServerReferenceInspector;
 import com.yulong.chatagent.admin.model.vo.DashboardPerformanceVO;
 import com.yulong.chatagent.admin.model.vo.DashboardTrendsVO;
 import com.yulong.chatagent.exception.BizException;

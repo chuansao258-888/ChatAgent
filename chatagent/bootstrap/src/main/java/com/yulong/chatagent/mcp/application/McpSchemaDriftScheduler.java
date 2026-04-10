@@ -1,6 +1,6 @@
 package com.yulong.chatagent.mcp.application;
 
-import com.yulong.chatagent.admin.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.support.dto.McpServerDTO;
 import com.yulong.chatagent.support.enums.McpServerStatus;
