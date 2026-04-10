@@ -3,7 +3,7 @@ package com.yulong.chatagent.support.persistence.adapter.admin;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.admin.port.AssistantTemplateRepository;
+import com.yulong.chatagent.agent.port.AssistantTemplateRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.AssistantTemplateDTO;
 import com.yulong.chatagent.support.persistence.entity.AgentTemplate;

@@ -2,7 +2,7 @@ package com.yulong.chatagent.intent.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.intent.model.IntentNodeStatus;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.intent.port.IntentNodeRepository;

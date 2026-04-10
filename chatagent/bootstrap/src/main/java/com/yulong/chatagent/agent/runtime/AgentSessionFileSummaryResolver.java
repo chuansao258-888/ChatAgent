@@ -1,6 +1,6 @@
 package com.yulong.chatagent.agent.runtime;
 
-import com.yulong.chatagent.admin.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.file.port.ChatSessionFileRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;

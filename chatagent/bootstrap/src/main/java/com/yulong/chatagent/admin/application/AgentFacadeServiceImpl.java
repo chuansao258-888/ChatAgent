@@ -6,7 +6,7 @@ import com.yulong.chatagent.admin.model.request.UpdateAgentRequest;
 import com.yulong.chatagent.admin.model.response.CreateAgentResponse;
 import com.yulong.chatagent.admin.model.response.GetAgentsResponse;
 import com.yulong.chatagent.admin.model.vo.AgentVO;
-import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.admin.converter.AgentConverter;

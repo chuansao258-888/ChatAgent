@@ -1,6 +1,6 @@
 package com.yulong.chatagent.agent.runtime;
 
-import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.port.AgentRepository;
 import org.springframework.stereotype.Component;
 
 /**

@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.controller;
+package com.yulong.chatagent.intent.controller;
 
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;

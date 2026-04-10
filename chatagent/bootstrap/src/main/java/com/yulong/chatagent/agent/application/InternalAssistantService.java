@@ -1,6 +1,6 @@
 package com.yulong.chatagent.agent.application;
 
-import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import lombok.RequiredArgsConstructor;

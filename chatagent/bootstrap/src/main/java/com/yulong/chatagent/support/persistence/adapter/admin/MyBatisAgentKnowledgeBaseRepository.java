@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.adapter.admin;
 
-import com.yulong.chatagent.admin.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.support.persistence.entity.AgentKnowledgeBase;
 import com.yulong.chatagent.support.persistence.mapper.AgentKnowledgeBaseMapper;
 import org.springframework.stereotype.Repository;

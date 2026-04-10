@@ -1,6 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
-import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.agent.application.InternalAssistantService;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;

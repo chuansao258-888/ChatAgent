@@ -2,7 +2,7 @@ package com.yulong.chatagent.knowledge.application;
 
 import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.admin.application.AdminAccessService;
-import com.yulong.chatagent.admin.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
 import com.yulong.chatagent.knowledge.model.response.GetAssistantKnowledgeBasesResponse;

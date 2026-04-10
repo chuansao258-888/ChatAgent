@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.adapter.admin;
 
-import com.yulong.chatagent.admin.port.AgentRepository;
+import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.admin.converter.AgentConverter;
 import com.yulong.chatagent.support.persistence.entity.Agent;
 import com.yulong.chatagent.support.persistence.mapper.AgentMapper;

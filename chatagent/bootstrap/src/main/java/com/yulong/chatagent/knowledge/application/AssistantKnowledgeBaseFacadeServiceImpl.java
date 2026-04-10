@@ -2,7 +2,7 @@ package com.yulong.chatagent.knowledge.application;
 
 import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.admin.application.AdminAccessService;
-import com.yulong.chatagent.admin.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.agent.application.InternalAssistantService;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
