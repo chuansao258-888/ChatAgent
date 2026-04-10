@@ -16,10 +16,6 @@ import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.errorcode.BaseErrorCode;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.exception.ClientException;
-import com.yulong.chatagent.intent.application.IntentTreeCacheManager;
-import com.yulong.chatagent.intent.model.IntentKind;
-import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
-import com.yulong.chatagent.intent.port.IntentNodeRepository;
 import com.yulong.chatagent.mcp.application.McpCatalogSyncService;
 import com.yulong.chatagent.mcp.application.McpCredentialCipher;
 import com.yulong.chatagent.mcp.application.McpFeatureFlag;
@@ -31,13 +27,11 @@ import com.yulong.chatagent.mcp.model.McpCatalogSyncOutcome;
 import com.yulong.chatagent.mcp.model.McpRemoteToolDescriptor;
 import com.yulong.chatagent.mcp.model.McpServerProbeOutcome;
 import com.yulong.chatagent.mcp.runtime.McpRuntimeToolRegistry;
-import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import com.yulong.chatagent.support.dto.McpServerDTO;
 import com.yulong.chatagent.support.dto.McpToolCatalogDTO;
 import com.yulong.chatagent.support.dto.McpToolReferenceDTO;
 import com.yulong.chatagent.support.enums.McpAuthType;
 import com.yulong.chatagent.support.enums.McpProtocol;
-import com.yulong.chatagent.support.enums.McpReferenceType;
 import com.yulong.chatagent.support.enums.McpServerStatus;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.core.NestedExceptionUtils;
@@ -46,9 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -70,10 +62,7 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
     private final McpServerTestService mcpServerTestService;
     private final McpCatalogSyncService mcpCatalogSyncService;
     private final McpRuntimeToolRegistry mcpRuntimeToolRegistry;
-    private final McpAlertService mcpAlertService;
-    private final IntentNodeRepository intentNodeRepository;
-    private final IntentKnowledgeBaseRepository intentKnowledgeBaseRepository;
-    private final IntentTreeCacheManager intentTreeCacheManager;
+    private final McpServerDeleteHandler deleteHandler;
 
     public McpServerAdminFacadeServiceImpl(AdminAccessService adminAccessService,
                                            McpServerRepository mcpServerRepository,
@@ -86,10 +75,7 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
                                            McpServerTestService mcpServerTestService,
                                            McpCatalogSyncService mcpCatalogSyncService,
                                            McpRuntimeToolRegistry mcpRuntimeToolRegistry,
-                                           McpAlertService mcpAlertService,
-                                           IntentNodeRepository intentNodeRepository,
-                                           IntentKnowledgeBaseRepository intentKnowledgeBaseRepository,
-                                           IntentTreeCacheManager intentTreeCacheManager) {
+                                           McpServerDeleteHandler deleteHandler) {
         this.adminAccessService = adminAccessService;
         this.mcpServerRepository = mcpServerRepository;
         this.mcpToolCatalogRepository = mcpToolCatalogRepository;
@@ -101,10 +87,7 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
         this.mcpServerTestService = mcpServerTestService;
         this.mcpCatalogSyncService = mcpCatalogSyncService;
         this.mcpRuntimeToolRegistry = mcpRuntimeToolRegistry;
-        this.mcpAlertService = mcpAlertService;
-        this.intentNodeRepository = intentNodeRepository;
-        this.intentKnowledgeBaseRepository = intentKnowledgeBaseRepository;
-        this.intentTreeCacheManager = intentTreeCacheManager;
+        this.deleteHandler = deleteHandler;
     }
 
     @Override
@@ -226,117 +209,8 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
     @Transactional
     public DeleteMcpServerResponse deleteServer(String serverId, boolean force) {
         adminAccessService.requireAdmin();
-
         McpServerDTO server = requireServer(serverId);
-        List<McpToolCatalogDTO> catalogRows = mcpToolCatalogRepository.findByServerId(serverId);
-        List<String> toolNames = catalogRows.stream()
-                .map(McpToolCatalogDTO::getExposedModelName)
-                .filter(StringUtils::hasText)
-                .toList();
-        List<McpToolReferenceDTO> references = referenceInspector.inspect(toolNames);
-        if (!force && !references.isEmpty()) {
-            return new DeleteMcpServerResponse(
-                    false,
-                    false,
-                    references.size(),
-                    0,
-                    references.stream().map(this::toReferenceVO).toList()
-            );
-        }
-        int activeReferenceCount = references.size();
-        if (force && !references.isEmpty()) {
-            cleanupIntentNodeReferences(references, toolNames);
-            references = referenceInspector.inspect(toolNames);
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        if (!catalogRows.isEmpty()) {
-            mcpToolCatalogRepository.softDeleteByServerId(serverId, now, now);
-        }
-        if (!mcpServerRepository.softDelete(serverId, now, now)) {
-            throw new BizException("Failed to delete MCP server: " + serverId);
-        }
-        if (force && !references.isEmpty()) {
-            mcpAlertService.raiseUnresolvedReference(
-                    server.getId(),
-                    server.getSlug(),
-                    references.size(),
-                    references.stream().map(McpToolReferenceDTO::getReferencePath).toList()
-            );
-        }
-        mcpRuntimeToolRegistry.invalidate();
-        return new DeleteMcpServerResponse(
-                true,
-                true,
-                activeReferenceCount,
-                references.size(),
-                references.stream().map(this::toReferenceVO).toList()
-        );
-    }
-
-    private void cleanupIntentNodeReferences(List<McpToolReferenceDTO> references, List<String> toolNames) {
-        if (references == null || references.isEmpty() || toolNames == null || toolNames.isEmpty()) {
-            return;
-        }
-
-        Set<String> removedToolNames = new LinkedHashSet<>(toolNames);
-        Set<String> nodeIds = references.stream()
-                .filter(reference -> reference != null && reference.getReferenceType() == McpReferenceType.INTENT_NODE)
-                .map(McpToolReferenceDTO::getReferenceId)
-                .filter(StringUtils::hasText)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (nodeIds.isEmpty()) {
-            return;
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        Set<String> affectedAgentIds = new LinkedHashSet<>();
-        for (String nodeId : nodeIds) {
-            IntentNodeDTO node = intentNodeRepository.findById(nodeId);
-            if (node == null) {
-                continue;
-            }
-
-            List<String> currentAllowedTools = node.getAllowedTools() == null ? List.of() : node.getAllowedTools();
-            List<String> remainingAllowedTools = currentAllowedTools.stream()
-                    .filter(toolName -> !removedToolNames.contains(toolName))
-                    .toList();
-            if (remainingAllowedTools.size() == currentAllowedTools.size()) {
-                continue;
-            }
-
-            if (StringUtils.hasText(node.getAgentId())) {
-                affectedAgentIds.add(node.getAgentId());
-            }
-
-            if (shouldDeleteIntentNodeAfterCleanup(node, currentAllowedTools, remainingAllowedTools)) {
-                intentKnowledgeBaseRepository.deleteByIntentNodeIds(List.of(nodeId));
-                if (!intentNodeRepository.deleteByIds(List.of(nodeId))) {
-                    throw new BizException("Failed to remove intent node reference during MCP delete: " + nodeId);
-                }
-                continue;
-            }
-
-            node.setAllowedTools(remainingAllowedTools);
-            node.setUpdatedAt(now);
-            if (!intentNodeRepository.update(node)) {
-                throw new BizException("Failed to update intent node reference during MCP delete: " + nodeId);
-            }
-        }
-
-        for (String agentId : affectedAgentIds) {
-            intentTreeCacheManager.refreshActiveSnapshot(agentId);
-        }
-    }
-
-    private boolean shouldDeleteIntentNodeAfterCleanup(IntentNodeDTO node,
-                                                       List<String> currentAllowedTools,
-                                                       List<String> remainingAllowedTools) {
-        return node != null
-                && node.getIntentKind() == IntentKind.TOOL
-                && currentAllowedTools != null
-                && !currentAllowedTools.isEmpty()
-                && (remainingAllowedTools == null || remainingAllowedTools.isEmpty());
+        return deleteHandler.execute(server, this::toReferenceVO, force);
     }
 
     @Override
