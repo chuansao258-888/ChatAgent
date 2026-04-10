@@ -13,7 +13,7 @@ import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.parser.FileTypeDetector;
 import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;

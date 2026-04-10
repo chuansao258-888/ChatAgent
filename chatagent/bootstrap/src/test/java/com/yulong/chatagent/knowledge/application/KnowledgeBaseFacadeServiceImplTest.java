@@ -11,7 +11,7 @@ import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
 import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;

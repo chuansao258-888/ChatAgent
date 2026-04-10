@@ -1,4 +1,4 @@
-package com.yulong.chatagent.rag.service;
+package com.yulong.chatagent.rag.application;
 
 import org.springframework.web.multipart.MultipartFile;
 

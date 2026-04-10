@@ -11,7 +11,7 @@ import com.yulong.chatagent.rag.parser.ParserType;
 import com.yulong.chatagent.rag.parser.PipelineSource;
 import com.yulong.chatagent.rag.parser.QualityLevel;
 import com.yulong.chatagent.rag.parser.SegmentType;
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.SessionFileMilvusIndexer;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import com.yulong.chatagent.support.dto.FileChunkDTO;

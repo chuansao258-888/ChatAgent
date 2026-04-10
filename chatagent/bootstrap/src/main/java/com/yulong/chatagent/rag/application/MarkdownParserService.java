@@ -1,4 +1,4 @@
-package com.yulong.chatagent.rag.service;
+package com.yulong.chatagent.rag.application;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

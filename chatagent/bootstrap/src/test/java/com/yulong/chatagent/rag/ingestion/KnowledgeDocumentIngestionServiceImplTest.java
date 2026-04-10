@@ -12,7 +12,7 @@ import com.yulong.chatagent.rag.parser.PipelineSource;
 import com.yulong.chatagent.rag.parser.QualityLevel;
 import com.yulong.chatagent.rag.parser.SegmentType;
 import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.KnowledgeBaseMilvusIndexer;
 import com.yulong.chatagent.support.dto.KnowledgeChunkDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;

@@ -1,4 +1,4 @@
-package com.yulong.chatagent.rag.service.impl;
+package com.yulong.chatagent.rag.application;
 
 import com.vladsch.flexmark.ast.Heading;
 import com.vladsch.flexmark.ext.tables.TableBlock;
@@ -8,7 +8,7 @@ import com.vladsch.flexmark.util.ast.Document;
 import com.vladsch.flexmark.util.ast.Node;
 import com.vladsch.flexmark.util.data.MutableDataSet;
 import com.vladsch.flexmark.util.sequence.BasedSequence;
-import com.yulong.chatagent.rag.service.MarkdownParserService;
+import com.yulong.chatagent.rag.application.MarkdownParserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

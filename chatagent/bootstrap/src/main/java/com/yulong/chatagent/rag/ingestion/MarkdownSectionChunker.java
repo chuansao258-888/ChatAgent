@@ -3,7 +3,7 @@ package com.yulong.chatagent.rag.ingestion;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeChunkDraft;
-import com.yulong.chatagent.rag.service.MarkdownParserService;
+import com.yulong.chatagent.rag.application.MarkdownParserService;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 

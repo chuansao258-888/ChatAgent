@@ -6,10 +6,10 @@ import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.intent.application.IntentResolution;
-import com.yulong.chatagent.rag.service.FormattedRetrievalPrompt;
+import com.yulong.chatagent.rag.application.FormattedRetrievalPrompt;
 import com.yulong.chatagent.rag.model.RetrievalHit;
-import com.yulong.chatagent.rag.service.RagService;
-import com.yulong.chatagent.rag.service.RetrievalHitFormatter;
+import com.yulong.chatagent.rag.application.RagService;
+import com.yulong.chatagent.rag.application.RetrievalHitFormatter;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

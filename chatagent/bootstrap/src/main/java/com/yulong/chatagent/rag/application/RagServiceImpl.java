@@ -1,11 +1,11 @@
-package com.yulong.chatagent.rag.service.impl;
+package com.yulong.chatagent.rag.application;
 
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
 import com.yulong.chatagent.rag.SearchScopeResolver;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import com.yulong.chatagent.rag.retrieve.KnowledgeBaseSimilaritySearcher;
-import com.yulong.chatagent.rag.service.RagService;
+import com.yulong.chatagent.rag.application.RagService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;

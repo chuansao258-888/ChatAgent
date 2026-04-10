@@ -10,7 +10,7 @@ import com.yulong.chatagent.file.model.vo.ChatSessionFileVO;
 import com.yulong.chatagent.file.port.ChatSessionFileRepository;
 import com.yulong.chatagent.file.port.FileChunkRepository;
 import com.yulong.chatagent.rag.ingestion.FileIngestionService;
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.SessionFileMilvusIndexer;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;

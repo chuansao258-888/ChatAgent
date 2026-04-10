@@ -20,7 +20,7 @@ import com.yulong.chatagent.rag.parser.DetectedFileType;
 import com.yulong.chatagent.rag.parser.FileTypeDetector;
 import com.yulong.chatagent.rag.parser.PipelineSource;
 import com.yulong.chatagent.rag.retrieve.KnowledgeDocumentSignalService;
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import com.yulong.chatagent.trace.TraceContext;

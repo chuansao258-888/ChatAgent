@@ -3,7 +3,7 @@ package com.yulong.chatagent.rag.ingestion;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeChunkDraft;
-import com.yulong.chatagent.rag.service.MarkdownParserService;
+import com.yulong.chatagent.rag.application.MarkdownParserService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

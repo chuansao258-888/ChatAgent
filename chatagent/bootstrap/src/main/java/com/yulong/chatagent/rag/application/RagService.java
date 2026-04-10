@@ -1,4 +1,4 @@
-package com.yulong.chatagent.rag.service;
+package com.yulong.chatagent.rag.application;
 
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.rag.model.RetrievalHit;

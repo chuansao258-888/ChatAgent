@@ -1,6 +1,6 @@
-package com.yulong.chatagent.rag.service.impl;
+package com.yulong.chatagent.rag.application;
 
-import com.yulong.chatagent.rag.service.DocumentStorageService;
+import com.yulong.chatagent.rag.application.DocumentStorageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
