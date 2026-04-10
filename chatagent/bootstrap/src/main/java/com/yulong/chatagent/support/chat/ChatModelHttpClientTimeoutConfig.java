@@ -1,4 +1,4 @@
-package com.yulong.chatagent.chat;
+package com.yulong.chatagent.support.chat;
 
 import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import io.netty.channel.ChannelOption;

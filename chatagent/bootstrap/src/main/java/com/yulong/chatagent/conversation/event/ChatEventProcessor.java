@@ -6,7 +6,7 @@ import com.yulong.chatagent.agent.ChatAgent;
 import com.yulong.chatagent.agent.ChatAgentFactory;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
-import com.yulong.chatagent.chat.ChatModelAvailability;
+import com.yulong.chatagent.support.chat.ChatModelAvailability;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
