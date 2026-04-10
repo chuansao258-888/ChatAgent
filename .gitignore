@@ -36,5 +36,6 @@ data/milvus/
 tools/mineru/models/
 
 output.txt
+output/
 
 postman/*local*.json
