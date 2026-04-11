@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yulong.chatagent.support.persistence.mapper.IntentNodeMapper">
 
-    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.IntentNode">
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.dto.IntentNodeDTO">
         <id property="id" column="id" jdbcType="VARCHAR"/>
         <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
         <result property="parentId" column="parent_id" jdbcType="VARCHAR"/>
@@ -13,10 +13,12 @@
         <result property="nodeLevel" column="node_level" jdbcType="VARCHAR"/>
         <result property="name" column="name" jdbcType="VARCHAR"/>
         <result property="description" column="description" jdbcType="VARCHAR"/>
-        <result property="examples" column="examples" jdbcType="VARCHAR"/>
+        <result property="examples" column="examples" jdbcType="VARCHAR"
+                typeHandler="com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler"/>
         <result property="intentKind" column="intent_kind" jdbcType="VARCHAR"/>
         <result property="scopePolicy" column="scope_policy" jdbcType="VARCHAR"/>
-        <result property="allowedTools" column="allowed_tools" jdbcType="VARCHAR"/>
+        <result property="allowedTools" column="allowed_tools" jdbcType="VARCHAR"
+                typeHandler="com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler"/>
         <result property="systemPromptOverride" column="system_prompt_override" jdbcType="VARCHAR"/>
         <result property="enabled" column="enabled" jdbcType="BOOLEAN"/>
         <result property="sortOrder" column="sort_order" jdbcType="INTEGER"/>
@@ -44,7 +46,7 @@
         updated_at
     </sql>
 
-    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.IntentNode">
+    <insert id="insert" parameterType="com.yulong.chatagent.support.dto.IntentNodeDTO">
         INSERT INTO intent_node (
             id,
             agent_id,
@@ -72,10 +74,10 @@
             #{nodeLevel},
             #{name},
             #{description},
-            CAST(#{examples} AS jsonb),
+            CAST(#{examples, typeHandler=com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler} AS jsonb),
             #{intentKind},
             #{scopePolicy},
-            CAST(#{allowedTools} AS jsonb),
+            CAST(#{allowedTools, typeHandler=com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler} AS jsonb),
             #{systemPromptOverride},
             #{enabled},
             #{sortOrder},
@@ -114,10 +116,10 @@
                 #{item.nodeLevel},
                 #{item.name},
                 #{item.description},
-                CAST(#{item.examples} AS jsonb),
+                CAST(#{item.examples, typeHandler=com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler} AS jsonb),
                 #{item.intentKind},
                 #{item.scopePolicy},
-                CAST(#{item.allowedTools} AS jsonb),
+                CAST(#{item.allowedTools, typeHandler=com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler} AS jsonb),
                 #{item.systemPromptOverride},
                 #{item.enabled},
                 #{item.sortOrder},
@@ -143,7 +145,7 @@
         WHERE id = CAST(#{id} AS uuid)
     </select>
 
-    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.IntentNode">
+    <update id="updateById" parameterType="com.yulong.chatagent.support.dto.IntentNodeDTO">
         UPDATE intent_node
         SET parent_id = CAST(NULLIF(#{parentId}, '') AS uuid),
             version = #{version},
@@ -151,10 +153,10 @@
             node_level = #{nodeLevel},
             name = #{name},
             description = #{description},
-            examples = CAST(#{examples} AS jsonb),
+            examples = CAST(#{examples, typeHandler=com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler} AS jsonb),
             intent_kind = #{intentKind},
             scope_policy = #{scopePolicy},
-            allowed_tools = CAST(#{allowedTools} AS jsonb),
+            allowed_tools = CAST(#{allowedTools, typeHandler=com.yulong.chatagent.support.persistence.typehandler.JsonStringListTypeHandler} AS jsonb),
             system_prompt_override = #{systemPromptOverride},
             enabled = #{enabled},
             sort_order = #{sortOrder},

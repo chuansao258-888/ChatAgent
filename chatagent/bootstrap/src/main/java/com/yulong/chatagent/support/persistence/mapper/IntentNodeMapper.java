@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.IntentNode;
+import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -12,15 +12,15 @@ import java.util.List;
 @Mapper
 public interface IntentNodeMapper {
 
-    List<IntentNode> selectByAgentIdAndVersion(String agentId, int version);
+    List<IntentNodeDTO> selectByAgentIdAndVersion(String agentId, int version);
 
-    IntentNode selectById(String id);
+    IntentNodeDTO selectById(String id);
 
-    int insert(IntentNode intentNode);
+    int insert(IntentNodeDTO intentNode);
 
-    int batchInsert(@Param("intentNodes") List<IntentNode> intentNodes);
+    int batchInsert(@Param("intentNodes") List<IntentNodeDTO> intentNodes);
 
-    int updateById(IntentNode intentNode);
+    int updateById(IntentNodeDTO intentNode);
 
     int deleteByIds(@Param("ids") List<String> ids);
 

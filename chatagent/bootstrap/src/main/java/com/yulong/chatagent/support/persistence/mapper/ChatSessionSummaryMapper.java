@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.ChatSessionSummary;
+import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -9,11 +9,11 @@ import org.apache.ibatis.annotations.Mapper;
 @Mapper
 public interface ChatSessionSummaryMapper {
 
-    ChatSessionSummary selectBySessionId(String sessionId);
+    ChatSessionSummaryDTO selectBySessionId(String sessionId);
 
-    int insert(ChatSessionSummary summary);
+    int insert(ChatSessionSummaryDTO summary);
 
-    int updateBySessionIdAndVersion(ChatSessionSummary summary);
+    int updateBySessionIdAndVersion(ChatSessionSummaryDTO summary);
 
     int deleteBySessionId(String sessionId);
 }

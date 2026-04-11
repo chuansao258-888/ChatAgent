@@ -1,7 +1,6 @@
 package com.yulong.chatagent.user.converter;
 
 import com.yulong.chatagent.context.LoginUser;
-import com.yulong.chatagent.support.persistence.entity.User;
 import com.yulong.chatagent.user.model.dto.JwtClaims;
 import com.yulong.chatagent.user.model.dto.UserDTO;
 import com.yulong.chatagent.user.model.response.LoginResponse;
@@ -11,54 +10,10 @@ import org.springframework.util.Assert;
 
 @Component
 /**
- * Central place for conversions between persistence, token, context, and API
+ * Central place for conversions between token, context, and API
  * models inside the user module.
  */
 public class UserConverter {
-
-    /**
-     * Converts a user DTO into the persistence entity used by MyBatis.
-     *
-     * @param userDTO application user DTO
-     * @return persistence entity
-     */
-    public User toEntity(UserDTO userDTO) {
-        Assert.notNull(userDTO, "UserDTO cannot be null");
-
-        return User.builder()
-                .id(userDTO.getId())
-                .username(userDTO.getUsername())
-                .passwordHash(userDTO.getPasswordHash())
-                .role(userDTO.getRole())
-                .avatar(userDTO.getAvatar())
-                .status(userDTO.getStatus())
-                .deleted(userDTO.getDeleted())
-                .createdAt(userDTO.getCreatedAt())
-                .updatedAt(userDTO.getUpdatedAt())
-                .build();
-    }
-
-    /**
-     * Converts a persistence entity into the application-level user DTO.
-     *
-     * @param user persistence entity
-     * @return application user DTO
-     */
-    public UserDTO toDTO(User user) {
-        Assert.notNull(user, "User cannot be null");
-
-        return UserDTO.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .passwordHash(user.getPasswordHash())
-                .role(user.getRole())
-                .avatar(user.getAvatar())
-                .status(user.getStatus())
-                .deleted(user.getDeleted())
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .build();
-    }
 
     /**
      * Extracts the minimal claim set that should be embedded in a JWT.

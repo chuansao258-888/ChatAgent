@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.IntentKnowledgeBase;
+import com.yulong.chatagent.support.dto.IntentKnowledgeBaseDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -12,11 +12,11 @@ import java.util.List;
 @Mapper
 public interface IntentKnowledgeBaseMapper {
 
-    List<IntentKnowledgeBase> selectByIntentNodeIds(@Param("intentNodeIds") List<String> intentNodeIds);
+    List<IntentKnowledgeBaseDTO> selectByIntentNodeIds(@Param("intentNodeIds") List<String> intentNodeIds);
 
-    int insert(IntentKnowledgeBase binding);
+    int insert(IntentKnowledgeBaseDTO binding);
 
-    int batchInsert(@Param("bindings") List<IntentKnowledgeBase> bindings);
+    int batchInsert(@Param("bindings") List<IntentKnowledgeBaseDTO> bindings);
 
     int deleteByIntentNodeIds(@Param("intentNodeIds") List<String> intentNodeIds);
 

@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.port.AssistantTemplateRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.AssistantTemplateDTO;
-import com.yulong.chatagent.support.persistence.entity.AgentTemplate;
 import com.yulong.chatagent.support.persistence.mapper.AgentTemplateMapper;
 import org.springframework.stereotype.Repository;
 
@@ -37,30 +36,41 @@ public class MyBatisAssistantTemplateRepository implements AssistantTemplateRepo
     @Override
     public List<AssistantTemplateDTO> findAll() {
         List<AssistantTemplateDTO> result = new ArrayList<>();
-        for (AgentTemplate template : agentTemplateMapper.selectAll()) {
-            result.add(toDTO(template));
+        for (AssistantTemplateDTO dto : agentTemplateMapper.selectAll()) {
+            populateRichFields(dto);
+            result.add(dto);
         }
         return result;
     }
 
     @Override
     public AssistantTemplateDTO findById(String id) {
-        return toDTO(agentTemplateMapper.selectById(id));
+        AssistantTemplateDTO dto = agentTemplateMapper.selectById(id);
+        if (dto != null) {
+            populateRichFields(dto);
+        }
+        return dto;
     }
 
     @Override
     public AssistantTemplateDTO findByCode(String code) {
-        return toDTO(agentTemplateMapper.selectByCode(code));
+        AssistantTemplateDTO dto = agentTemplateMapper.selectByCode(code);
+        if (dto != null) {
+            populateRichFields(dto);
+        }
+        return dto;
     }
 
     @Override
     public boolean save(AssistantTemplateDTO template) {
-        return agentTemplateMapper.insert(toEntity(template)) > 0;
+        populateJsonFields(template);
+        return agentTemplateMapper.insert(template) > 0;
     }
 
     @Override
     public boolean update(AssistantTemplateDTO template) {
-        return agentTemplateMapper.updateById(toEntity(template)) > 0;
+        populateJsonFields(template);
+        return agentTemplateMapper.updateById(template) > 0;
     }
 
     @Override
@@ -68,49 +78,26 @@ public class MyBatisAssistantTemplateRepository implements AssistantTemplateRepo
         return agentTemplateMapper.deleteById(id) > 0;
     }
 
-    private AssistantTemplateDTO toDTO(AgentTemplate template) {
-        if (template == null) {
-            return null;
-        }
+    private void populateRichFields(AssistantTemplateDTO dto) {
         try {
-            return AssistantTemplateDTO.builder()
-                    .id(template.getId())
-                    .code(template.getCode())
-                    .name(template.getName())
-                    .description(template.getDescription())
-                    .systemPrompt(template.getSystemPrompt())
-                    .model(AgentDTO.ModelType.fromModelName(template.getModel()))
-                    .allowedTools(readStringList(template.getAllowedTools()))
-                    .chatOptions(readChatOptions(template.getChatOptions()))
-                    .intentTree(readIntentTree(template.getIntentTree()))
-                    .builtIn(template.getBuiltIn())
-                    .createdAt(template.getCreatedAt())
-                    .updatedAt(template.getUpdatedAt())
-                    .build();
+            dto.setModel(dto.getModelValue() != null
+                    ? AgentDTO.ModelType.fromModelName(dto.getModelValue())
+                    : null);
+            dto.setAllowedTools(readStringList(dto.getAllowedToolsJson()));
+            dto.setChatOptions(readChatOptions(dto.getChatOptionsJson()));
+            dto.setIntentTree(readIntentTree(dto.getIntentTreeJson()));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to deserialize assistant template", e);
         }
     }
 
-    private AgentTemplate toEntity(AssistantTemplateDTO dto) {
-        if (dto == null) {
-            return null;
-        }
+    private void populateJsonFields(AssistantTemplateDTO dto) {
         try {
-            return AgentTemplate.builder()
-                    .id(dto.getId())
-                    .code(dto.getCode())
-                    .name(dto.getName())
-                    .description(dto.getDescription())
-                    .systemPrompt(dto.getSystemPrompt())
-                    .model(dto.getModel().getModelName())
-                    .allowedTools(writeValue(dto.getAllowedTools() == null ? List.of() : dto.getAllowedTools()))
-                    .chatOptions(writeValue(dto.getChatOptions() == null ? AgentDTO.ChatOptions.defaultOptions() : dto.getChatOptions()))
-                    .intentTree(writeValue(dto.getIntentTree() == null ? List.of() : dto.getIntentTree()))
-                    .builtIn(Boolean.TRUE.equals(dto.getBuiltIn()))
-                    .createdAt(dto.getCreatedAt())
-                    .updatedAt(dto.getUpdatedAt())
-                    .build();
+            dto.setModelValue(dto.getModel() != null ? dto.getModel().getModelName() : null);
+            dto.setAllowedToolsJson(writeValue(dto.getAllowedTools() == null ? List.of() : dto.getAllowedTools()));
+            dto.setChatOptionsJson(writeValue(dto.getChatOptions() == null ? AgentDTO.ChatOptions.defaultOptions() : dto.getChatOptions()));
+            dto.setIntentTreeJson(writeValue(dto.getIntentTree() == null ? List.of() : dto.getIntentTree()));
+            dto.setBuiltIn(Boolean.TRUE.equals(dto.getBuiltIn()));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize assistant template", e);
         }

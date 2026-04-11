@@ -4,8 +4,10 @@ import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
 import com.yulong.chatagent.intent.model.IntentNodeStatus;
 import com.yulong.chatagent.intent.model.ScopePolicy;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,6 +17,8 @@ import java.util.List;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class IntentNodeDTO {
     private String id;
     private String agentId;
@@ -34,4 +38,3 @@ public class IntentNodeDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-

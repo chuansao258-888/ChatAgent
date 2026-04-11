@@ -1,6 +1,5 @@
 package com.yulong.chatagent.support.persistence.adapter.user;
 
-import com.yulong.chatagent.support.persistence.entity.UserProfile;
 import com.yulong.chatagent.support.persistence.mapper.UserProfileMapper;
 import com.yulong.chatagent.user.model.dto.UserProfileDTO;
 import com.yulong.chatagent.user.port.UserProfileRepository;
@@ -20,35 +19,11 @@ public class MyBatisUserProfileRepository implements UserProfileRepository {
 
     @Override
     public UserProfileDTO findByUserId(String userId) {
-        return toDTO(userProfileMapper.selectByUserId(userId));
+        return userProfileMapper.selectByUserId(userId);
     }
 
     @Override
     public boolean saveOrUpdate(UserProfileDTO userProfile) {
-        return userProfileMapper.upsert(toEntity(userProfile)) > 0;
-    }
-
-    private UserProfileDTO toDTO(UserProfile entity) {
-        if (entity == null) {
-            return null;
-        }
-        return UserProfileDTO.builder()
-                .userId(entity.getUserId())
-                .summary(entity.getSummary())
-                .createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt())
-                .build();
-    }
-
-    private UserProfile toEntity(UserProfileDTO dto) {
-        if (dto == null) {
-            return null;
-        }
-        return UserProfile.builder()
-                .userId(dto.getUserId())
-                .summary(dto.getSummary())
-                .createdAt(dto.getCreatedAt())
-                .updatedAt(dto.getUpdatedAt())
-                .build();
+        return userProfileMapper.upsert(userProfile) > 0;
     }
 }

@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.User;
+import com.yulong.chatagent.user.model.dto.UserDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,21 +11,21 @@ import java.util.List;
  * Low-level MyBatis mapper for the {@code t_user} table.
  */
 public interface UserMapper {
-    int insert(User user);
+    int insert(UserDTO user);
 
-    User selectById(String id);
+    UserDTO selectById(String id);
 
-    User selectByUsername(String username);
+    UserDTO selectByUsername(String username);
 
-    int updateById(User user);
+    int updateById(UserDTO user);
 
-    List<User> selectPage(@Param("keyword") String keyword,
-                          @Param("status") String status,
-                          @Param("limit") int limit,
-                          @Param("offset") int offset);
+    List<UserDTO> selectPage(@Param("keyword") String keyword,
+                             @Param("status") String status,
+                             @Param("limit") int limit,
+                             @Param("offset") int offset);
 
     long countPage(@Param("keyword") String keyword,
                    @Param("status") String status);
 
-    List<User> selectActiveAdminsForUpdate();
+    List<UserDTO> selectActiveAdminsForUpdate();
 }

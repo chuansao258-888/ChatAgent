@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.FileChunk;
+import com.yulong.chatagent.support.dto.FileChunkDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,9 +11,9 @@ import java.util.List;
  */
 @Mapper
 public interface FileChunkMapper {
-    int insertBatch(@Param("chunks") List<FileChunk> chunks);
+    int insertBatch(@Param("chunks") List<FileChunkDTO> chunks);
 
-    List<FileChunk> selectBySessionFileId(String sessionFileId);
+    List<FileChunkDTO> selectBySessionFileId(String sessionFileId);
 
     int deleteBySessionFileId(String sessionFileId);
 }

@@ -2,11 +2,9 @@ package com.yulong.chatagent.support.persistence.adapter.intent;
 
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.support.dto.IntentKnowledgeBaseDTO;
-import com.yulong.chatagent.support.persistence.entity.IntentKnowledgeBase;
 import com.yulong.chatagent.support.persistence.mapper.IntentKnowledgeBaseMapper;
 import org.springframework.stereotype.Repository;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -26,21 +24,12 @@ public class MyBatisIntentKnowledgeBaseRepository implements IntentKnowledgeBase
         if (intentNodeIds == null || intentNodeIds.isEmpty()) {
             return List.of();
         }
-        List<IntentKnowledgeBaseDTO> result = new ArrayList<>();
-        for (IntentKnowledgeBase binding : intentKnowledgeBaseMapper.selectByIntentNodeIds(intentNodeIds)) {
-            result.add(toDTO(binding));
-        }
-        return result;
+        return intentKnowledgeBaseMapper.selectByIntentNodeIds(intentNodeIds);
     }
 
     @Override
     public boolean save(IntentKnowledgeBaseDTO binding) {
-        IntentKnowledgeBase entity = toEntity(binding);
-        boolean saved = intentKnowledgeBaseMapper.insert(entity) > 0;
-        if (saved && binding != null) {
-            binding.setId(entity.getId());
-        }
-        return saved;
+        return intentKnowledgeBaseMapper.insert(binding) > 0;
     }
 
     @Override
@@ -48,11 +37,7 @@ public class MyBatisIntentKnowledgeBaseRepository implements IntentKnowledgeBase
         if (bindings == null || bindings.isEmpty()) {
             return true;
         }
-        List<IntentKnowledgeBase> entities = new ArrayList<>();
-        for (IntentKnowledgeBaseDTO binding : bindings) {
-            entities.add(toEntity(binding));
-        }
-        return intentKnowledgeBaseMapper.batchInsert(entities) == entities.size();
+        return intentKnowledgeBaseMapper.batchInsert(bindings) == bindings.size();
     }
 
     @Override
@@ -66,29 +51,5 @@ public class MyBatisIntentKnowledgeBaseRepository implements IntentKnowledgeBase
     @Override
     public boolean deleteByKnowledgeBaseId(String knowledgeBaseId) {
         return intentKnowledgeBaseMapper.deleteByKnowledgeBaseId(knowledgeBaseId) >= 0;
-    }
-
-    private IntentKnowledgeBaseDTO toDTO(IntentKnowledgeBase entity) {
-        if (entity == null) {
-            return null;
-        }
-        return IntentKnowledgeBaseDTO.builder()
-                .id(entity.getId())
-                .intentNodeId(entity.getIntentNodeId())
-                .knowledgeBaseId(entity.getKnowledgeBaseId())
-                .createdAt(entity.getCreatedAt())
-                .build();
-    }
-
-    private IntentKnowledgeBase toEntity(IntentKnowledgeBaseDTO dto) {
-        if (dto == null) {
-            return null;
-        }
-        return IntentKnowledgeBase.builder()
-                .id(dto.getId())
-                .intentNodeId(dto.getIntentNodeId())
-                .knowledgeBaseId(dto.getKnowledgeBaseId())
-                .createdAt(dto.getCreatedAt())
-                .build();
     }
 }

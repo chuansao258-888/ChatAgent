@@ -5,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
-import com.yulong.chatagent.support.persistence.entity.ChatSessionSummary;
 import com.yulong.chatagent.support.persistence.mapper.ChatSessionSummaryMapper;
 import org.springframework.stereotype.Repository;
 
@@ -33,7 +32,11 @@ public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRe
 
     @Override
     public ChatSessionSummaryDTO findBySessionId(String sessionId) {
-        return toDTO(chatSessionSummaryMapper.selectBySessionId(sessionId));
+        ChatSessionSummaryDTO dto = chatSessionSummaryMapper.selectBySessionId(sessionId);
+        if (dto != null) {
+            dto.setAnchoredEntities(readAnchoredEntities(dto.getAnchoredEntitiesJson()));
+        }
+        return dto;
     }
 
     @Override
@@ -49,13 +52,15 @@ public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRe
             }
             summary.setCreatedAt(now);
             summary.setUpdatedAt(now);
-            return chatSessionSummaryMapper.insert(toEntity(summary)) > 0;
+            summary.setAnchoredEntitiesJson(writeAnchoredEntities(summary.getAnchoredEntities()));
+            return chatSessionSummaryMapper.insert(summary) > 0;
         }
 
         summary.setVersion(existing.getVersion());
         summary.setCreatedAt(existing.getCreatedAt());
         summary.setUpdatedAt(LocalDateTime.now());
-        boolean updated = chatSessionSummaryMapper.updateBySessionIdAndVersion(toEntity(summary)) > 0;
+        summary.setAnchoredEntitiesJson(writeAnchoredEntities(summary.getAnchoredEntities()));
+        boolean updated = chatSessionSummaryMapper.updateBySessionIdAndVersion(summary) > 0;
         if (updated) {
             summary.setVersion(existing.getVersion() + 1);
         }
@@ -67,52 +72,22 @@ public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRe
         return chatSessionSummaryMapper.deleteBySessionId(sessionId) > 0;
     }
 
-    private ChatSessionSummaryDTO toDTO(ChatSessionSummary summary) {
-        if (summary == null) {
-            return null;
+    private Map<String, List<String>> readAnchoredEntities(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
         }
         try {
-            return ChatSessionSummaryDTO.builder()
-                    .sessionId(summary.getSessionId())
-                    .lastSeqNo(summary.getLastSeqNo())
-                    .summary(summary.getSummary())
-                    .anchoredEntities(readAnchoredEntities(summary.getAnchoredEntities()))
-                    .version(summary.getVersion())
-                    .createdAt(summary.getCreatedAt())
-                    .updatedAt(summary.getUpdatedAt())
-                    .build();
+            return objectMapper.readValue(json, ANCHORED_ENTITY_MAP_TYPE);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to deserialize chat session summary", e);
         }
     }
 
-    private ChatSessionSummary toEntity(ChatSessionSummaryDTO summary) {
-        if (summary == null) {
-            return null;
-        }
+    private String writeAnchoredEntities(Map<String, List<String>> anchoredEntities) {
         try {
-            return ChatSessionSummary.builder()
-                    .sessionId(summary.getSessionId())
-                    .lastSeqNo(summary.getLastSeqNo())
-                    .summary(summary.getSummary())
-                    .anchoredEntities(writeAnchoredEntities(summary.getAnchoredEntities()))
-                    .version(summary.getVersion())
-                    .createdAt(summary.getCreatedAt())
-                    .updatedAt(summary.getUpdatedAt())
-                    .build();
+            return objectMapper.writeValueAsString(anchoredEntities == null ? Map.of() : anchoredEntities);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize chat session summary", e);
         }
-    }
-
-    private Map<String, List<String>> readAnchoredEntities(String json) throws JsonProcessingException {
-        if (json == null || json.isBlank()) {
-            return Map.of();
-        }
-        return objectMapper.readValue(json, ANCHORED_ENTITY_MAP_TYPE);
-    }
-
-    private String writeAnchoredEntities(Map<String, List<String>> anchoredEntities) throws JsonProcessingException {
-        return objectMapper.writeValueAsString(anchoredEntities == null ? Map.of() : anchoredEntities);
     }
 }

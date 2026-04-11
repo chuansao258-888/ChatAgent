@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.AgentTemplate;
+import com.yulong.chatagent.support.dto.AssistantTemplateDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -12,16 +12,15 @@ import java.util.List;
 @Mapper
 public interface AgentTemplateMapper {
 
-    int insert(AgentTemplate template);
+    int insert(AssistantTemplateDTO template);
 
-    List<AgentTemplate> selectAll();
+    List<AssistantTemplateDTO> selectAll();
 
-    AgentTemplate selectById(@Param("id") String id);
+    AssistantTemplateDTO selectById(@Param("id") String id);
 
-    AgentTemplate selectByCode(@Param("code") String code);
+    AssistantTemplateDTO selectByCode(@Param("code") String code);
 
-    int updateById(AgentTemplate template);
+    int updateById(AssistantTemplateDTO template);
 
     int deleteById(@Param("id") String id);
 }
-

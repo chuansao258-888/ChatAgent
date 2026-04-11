@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.UserProfile;
+import com.yulong.chatagent.user.model.dto.UserProfileDTO;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
@@ -9,9 +9,9 @@ import org.apache.ibatis.annotations.Mapper;
  */
 public interface UserProfileMapper {
 
-    UserProfile selectByUserId(String userId);
+    UserProfileDTO selectByUserId(String userId);
 
-    int insert(UserProfile userProfile);
+    int insert(UserProfileDTO userProfile);
 
-    int upsert(UserProfile userProfile);
+    int upsert(UserProfileDTO userProfile);
 }
