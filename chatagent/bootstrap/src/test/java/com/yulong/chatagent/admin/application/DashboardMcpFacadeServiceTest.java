@@ -81,10 +81,12 @@ class DashboardMcpFacadeServiceTest {
                 mcpAlertService,
                 new McpRolloutPolicy(rolloutProperties)
         );
+        DashboardOverviewAggregator overviewAggregator = new DashboardOverviewAggregator(dashboardMapper);
         facadeService = new DashboardFacadeServiceImpl(
                 adminAccessService,
                 dashboardMapper,
-                mcpMetricsComposer
+                mcpMetricsComposer,
+                overviewAggregator
         );
     }
 

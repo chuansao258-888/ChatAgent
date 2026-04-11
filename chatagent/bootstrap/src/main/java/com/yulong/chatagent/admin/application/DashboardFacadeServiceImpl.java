@@ -36,18 +36,21 @@ public class DashboardFacadeServiceImpl implements DashboardFacadeService {
     private final AdminAccessService adminAccessService;
     private final DashboardMapper dashboardMapper;
     private final DashboardMcpMetricsComposer mcpMetricsComposer;
+    private final DashboardOverviewAggregator overviewAggregator;
 
     @Autowired
     public DashboardFacadeServiceImpl(AdminAccessService adminAccessService,
                                       DashboardMapper dashboardMapper,
-                                      DashboardMcpMetricsComposer mcpMetricsComposer) {
+                                      DashboardMcpMetricsComposer mcpMetricsComposer,
+                                      DashboardOverviewAggregator overviewAggregator) {
         this.adminAccessService = adminAccessService;
         this.dashboardMapper = dashboardMapper;
         this.mcpMetricsComposer = mcpMetricsComposer;
+        this.overviewAggregator = overviewAggregator;
     }
 
     DashboardFacadeServiceImpl(AdminAccessService adminAccessService, DashboardMapper dashboardMapper) {
-        this(adminAccessService, dashboardMapper, null);
+        this(adminAccessService, dashboardMapper, null, null);
     }
 
     @Override
@@ -58,40 +61,13 @@ public class DashboardFacadeServiceImpl implements DashboardFacadeService {
         WindowRange current = dashboardWindow.currentRange(now);
         WindowRange previous = dashboardWindow.previousRange(now);
 
-        long totalUsers = safeLong(dashboardMapper.countUsersBefore(current.end()));
-        long totalUsersPrevious = safeLong(dashboardMapper.countUsersBefore(current.start()));
-        long activeUsers = safeLong(dashboardMapper.countActiveUsersBetween(current.start(), current.end()));
-        long activeUsersPrevious = safeLong(dashboardMapper.countActiveUsersBetween(previous.start(), previous.end()));
-        long totalSessions = safeLong(dashboardMapper.countSessionsBefore(current.end()));
-        long totalSessionsPrevious = safeLong(dashboardMapper.countSessionsBefore(current.start()));
-        long sessionsInWindow = safeLong(dashboardMapper.countSessionsBetween(current.start(), current.end()));
-        long sessionsInPreviousWindow = safeLong(dashboardMapper.countSessionsBetween(previous.start(), previous.end()));
-        long totalMessages = safeLong(dashboardMapper.countMessagesBefore(current.end()));
-        long totalMessagesPrevious = safeLong(dashboardMapper.countMessagesBefore(current.start()));
-        long messagesInWindow = safeLong(dashboardMapper.countMessagesBetween(current.start(), current.end()));
-        long messagesInPreviousWindow = safeLong(dashboardMapper.countMessagesBetween(previous.start(), previous.end()));
-
-        return DashboardOverviewVO.builder()
-                .window(dashboardWindow.value())
-                .compareWindow(dashboardWindow.compareWindowValue())
-                .updatedAt(toEpochMillis(now))
-                .kpis(DashboardOverviewVO.DashboardOverviewGroupVO.builder()
-                        .totalUsers(buildKpi(totalUsers, totalUsers - totalUsersPrevious, percentageDelta(totalUsers, totalUsersPrevious)))
-                        .activeUsers(buildKpi(activeUsers, activeUsers - activeUsersPrevious, percentageDelta(activeUsers, activeUsersPrevious)))
-                        .totalSessions(buildKpi(totalSessions, totalSessions - totalSessionsPrevious, null))
-                        .sessions24h(buildKpi(
-                                sessionsInWindow,
-                                sessionsInWindow - sessionsInPreviousWindow,
-                                percentageDelta(sessionsInWindow, sessionsInPreviousWindow)
-                        ))
-                        .totalMessages(buildKpi(totalMessages, totalMessages - totalMessagesPrevious, null))
-                        .messages24h(buildKpi(
-                                messagesInWindow,
-                                messagesInWindow - messagesInPreviousWindow,
-                                percentageDelta(messagesInWindow, messagesInPreviousWindow)
-                        ))
-                        .build())
-                .build();
+        return overviewAggregator.aggregate(
+                current.start(), current.end(),
+                previous.start(), previous.end(),
+                dashboardWindow.value(),
+                dashboardWindow.compareWindowValue(),
+                toEpochMillis(now)
+        );
     }
 
     @Override
@@ -267,21 +243,6 @@ public class DashboardFacadeServiceImpl implements DashboardFacadeService {
             cursor = granularity.increment(cursor);
         }
         return points;
-    }
-
-    private DashboardOverviewVO.DashboardOverviewKpiVO buildKpi(long value, long delta, Double deltaPct) {
-        return DashboardOverviewVO.DashboardOverviewKpiVO.builder()
-                .value(value)
-                .delta(delta)
-                .deltaPct(deltaPct)
-                .build();
-    }
-
-    private Double percentageDelta(long current, long previous) {
-        if (previous <= 0) {
-            return null;
-        }
-        return roundToOneDecimal((current - previous) * 100.0 / previous);
     }
 
     private Double rate(long numerator, long denominator) {
