@@ -337,7 +337,6 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 |--------|------|
 | `mvn compile` 通过 | ✅ PASS |
 | `mvn test` 通过（342 tests） | ✅ PASS |
-| 仅 2 个 pre-existing 失败 | ✅ 无新增回归 |
 
 ---
 
@@ -368,16 +367,21 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 
 ## 执行总结
 
-**最终测试**: `mvn test` 342 tests 通过，0 新增回归（2 个 pre-existing 失败与重构无关）
+**最终测试**: `mvn test` 346 tests 通过，Failures=0，Errors=0，Skipped=0
 
 ### 量化成果
 
 | 指标 | 变化 |
 |------|------|
 | Entity 文件 | 21 → 6（删除 15 个） |
-| PdfDocumentParser | 1640 → 1189 行（-28%） |
+| PdfDocumentParser | 1640 → 1189 → 535 行（Phase 5 + Phase 8） |
+| PdfVdpDispatcher | 503 → 159 行（Phase 8 第二批） |
+| VDP 协作者 | 0 → 7（`PdfVdpCache` / `PdfVdpBatchPlanner` / `PdfVdpDispatcher` / `PdfSegmentAssembler` / `PdfVdpPageDispatchLoop` / `PdfVdpBatchResultNormalizer` / `PdfVdpResultSupport`） |
+| Phase 8 不变量测试 | 3 条（digest 稳定 / batch 归一化 / golden 输出 + 缓存查询不变量） |
+| Phase 8 golden 基线 | 已记录首次数据，报告输出 `target/phase8-baseline/golden-pdf-performance-baseline.json` |
 | McpServerAdminFacadeServiceImpl | 523 → ~390 行（-25%） |
 | DashboardFacadeServiceImpl | 588 → 425 行（-28%） |
+| 单实现接口（Phase 11） | 收敛 4 个应用服务接口；完成全量评估并形成保留/删除台账 |
 | Framework 测试 | 0 → 7 个测试类，41 个测试用例 |
 | Git 追踪体积 | 解除 MCP/.venv/（96MB）+ output/ 追踪 |
 
@@ -432,3 +436,436 @@ dabfb64 refactor(rag): rename rag/service to rag/application
 ### 问题与备注
 
 已完成
+
+---
+
+## Phase 11：单实现接口逐案评估
+
+**执行时间**: 2026-04-11
+**风险**: 低
+**状态**: ✅ 完成
+
+### 扫描方法
+
+本 Phase 按“先评估、后收敛”的原则执行，避免把真实边界接口误删：
+
+1. 用 `git grep "^public interface "` 扫描 `bootstrap` 模块全部公开接口
+2. 用 `git grep "implements ..."` 建立接口 → 实现类映射
+3. 交叉检查主代码注入点与测试 mock 点，区分以下三类：
+   - 六边形边界：Facade / Port / Repository / 多实现策略，保留
+   - 能力标记或未来扩展点：暂保留
+   - 仅有单实现、仅在内部被注入的应用服务：优先收敛
+
+补充：为了避免漏项，我还用 PowerShell 脚本再次扫描了 `bootstrap/src/main/java`，对当前仍存在的 public 单实现接口做了全量清点；`DirectToolCallbackSource` 因为是“第二接口 marker”不会被脚本直接计入，所以单独补评估。
+
+### 全量评估结论
+
+#### 已收敛（4 个）
+
+| 接口 | 结论 | 原因 |
+|------|------|------|
+| `UserProfileService` | ✅ 收敛 | 仅 1 个实现，调用方仅 `UserProfileController` / `AgentUserProfileSummaryResolver`，不承担 Port/Facade 语义 |
+| `ConversationOrchestratorService` | ✅ 收敛 | 仅 1 个实现，调用方仅 `ChatMessageController`，属于应用编排类，不需要额外抽象层 |
+| `RagService` | ✅ 收敛 | 仅被 `SessionFileTools` 注入，无测试以接口 mock，属于内部检索编排入口 |
+| `FileIngestionService` | ✅ 收敛 | 仅被 `ChatSessionFileFacadeServiceImpl` 注入，测试直接实例化实现类，保留接口没有额外边界价值 |
+
+#### 保留：应用契约 / Facade 边界
+
+| 接口 | 结论 | 原因 |
+|------|------|------|
+| `AgentFacadeService`, `AssistantKnowledgeBaseFacadeService`, `AssistantTemplateFacadeService`, `AuthService`, `ChatMessageFacadeService`, `ChatRoutingAdminFacadeService`, `ChatSessionFacadeService`, `ChatSessionFileFacadeService`, `DashboardFacadeService`, `IntentTreeFacadeService`, `KnowledgeBaseFacadeService`, `KnowledgeDocumentFacadeService`, `McpServerAdminFacadeService`, `MqAdminFacadeService`, `ToolFacadeService`, `UserAdminFacadeService` | ⏸️ 保留 | 虽然当前单实现，但都属于应用层对外契约；控制器、工具装配或跨子域调用依赖这些名称表达职责边界，不适合为了减少接口数量而内联 |
+
+#### 保留：Port / Repository / Store / Client 边界
+
+| 接口 | 结论 | 原因 |
+|------|------|------|
+| `AgentKnowledgeBaseRepository`, `AgentRepository`, `AssistantTemplateRepository`, `ChatMessageRepository`, `ChatSessionFileRepository`, `ChatSessionRepository`, `ChatSessionSummaryRepository`, `FileChunkRepository`, `IntentKnowledgeBaseRepository`, `IntentNodeRepository`, `KnowledgeBaseRepository`, `KnowledgeChunkRepository`, `KnowledgeDocumentEnhancementRepository`, `KnowledgeDocumentRepository`, `McpAlertEventRepository`, `McpServerReferenceQueryRepository`, `McpServerRepository`, `McpToolCatalogRepository`, `OutboxRepository`, `RefreshTokenStore`, `UserProfileRepository`, `UserRepository` | ⏸️ 保留 | 这些接口是典型六边形端口；即使当前只有 1 个 MyBatis / Redis 实现，也承担持久化与基础设施隔离职责 |
+| `DocumentStorageService`, `McpTransportClient`, `MilvusIndexService`, `KnowledgeBaseMilvusIndexService`, `PendingIntentResolutionStore` | ⏸️ 保留 | 分别隔离文件存储、远程 MCP 传输、Milvus 索引、pending intent 存储等基础设施能力，属于可替换网关而非命名噪音 |
+
+#### 保留：运行时 seam / 策略 / 安全边界
+
+| 接口 | 结论 | 原因 |
+|------|------|------|
+| `AgentMessageBridge`, `AgentRuntimeContextLoader` | ⏸️ 保留 | `ChatAgentFactory` / `AgentThinkingEngine` / `AgentToolExecutionEngine` 通过接口依赖运行时装配 seam，且测试中直接以接口 mock |
+| `IntentTreeCacheManager` | ⏸️ 保留 | 被 `IntentRouter`、`ConversationTurnPreparationService`、`McpServerDeleteHandler`、`IntentTreeFacadeServiceImpl` 共享，属于跨子域缓存边界 |
+| `PasswordService` | ⏸️ 保留 | 安全相关能力边界，便于在 `AuthServiceImpl` / `UserAdminFacadeServiceImpl` 中替换哈希策略与测试桩 |
+| `ResourceAccessGuard` | ⏸️ 保留 | 读写权限校验是横切安全边界，多处 service / controller 依赖，测试中也直接 mock 接口 |
+| `DocumentChunker` | ⏸️ 保留 | 当前虽仅 1 个实现，但承担 ingestion pipeline 的 chunking 策略角色，且被多个测试显式依赖 |
+| `KnowledgeDocumentIngestionService` | ⏸️ 保留 | 既被 `KnowledgeDocumentFacadeServiceImpl` 注入，也被 MQ consumer 使用，测试中以接口 mock，保留有助于异步摄取边界隔离 |
+| `DirectToolCallbackSource` | ⏸️ 保留 | capability marker，表达“工具已自带 ToolCallback”的运行时语义，不只是命名噪音 |
+
+#### 已评估但暂不在本批删除
+
+| 接口 | 结论 | 原因 |
+|------|------|------|
+| `MarkdownParserService` | ⏭️ 延后 | 当前没有运行时调用方，但内部 `MarkdownSection` 值对象仍被 `MarkdownSectionChunker` 与测试复用；删除接口前应先单独整理 markdown 值对象归属，避免在本 Phase 顺手引入死代码清理混改 |
+
+### 实际改造
+
+#### 第一批：收敛 `UserProfileService`
+
+- 删除 `UserProfileService` 接口 + `UserProfileServiceImpl` 双文件结构
+- 保留类型名 `UserProfileService`，直接改为 `@Service` 具体类
+- 将原有实现逻辑原样并入，包含：
+  - `getCurrentUserProfile`
+  - `updateCurrentUserProfile`
+  - `getUserProfile`
+  - `getUserProfileSummary`
+  - 存储失败降级与默认 summary 逻辑
+- 因类型名保持不变，`UserProfileController` 与 `AgentUserProfileSummaryResolver` 无需改注入签名
+
+#### 2. 收敛 `ConversationOrchestratorService`
+
+- 删除 `ConversationOrchestratorService` 接口 + `ConversationOrchestratorServiceImpl` 双文件结构
+- 保留类型名 `ConversationOrchestratorService`，直接改为 `@Service` 具体类
+- 原有 `@Transactional`、turn-id 校验、direct reply、event dispatch、SSE 推送逻辑全部保留
+- `ChatMessageController` 保持原有注入类型不变，仅底层 bean 由接口代理切为直接服务类
+- 两个直接引用实现类名的测试已同步更新为引用 `ConversationOrchestratorService.class`
+
+#### 第二批：收敛 `RagService`
+
+- 删除 `RagService` 接口 + `RagServiceImpl` 双文件结构
+- 保留类型名 `RagService`，直接改为 `@Service` 具体类
+- `embed`、`similaritySearchBySession`、`similaritySearchByKnowledgeBaseIds` 委托逻辑保持不变
+- `SessionFileTools` 继续注入 `RagService`，因此业务调用点零侵入
+
+#### 第二批：收敛 `FileIngestionService`
+
+- 删除 `FileIngestionService` 接口 + `FileIngestionServiceImpl` 双文件结构
+- 保留类型名 `FileIngestionService`，直接改为 `@Service` 具体类
+- 将旧实现按原行为迁移，保留：
+  - `@Async` 异步摄取入口
+  - fetch / parse / enhance / chunk / enrich / persist / mark status 全链路
+  - `OCR_REQUIRED` / `REJECTED` 分支处理
+  - `LoadedDocumentSource` 内部 record
+  - `documentCacheKey` 构造与 `openInputStream` 读取逻辑
+- `[FileIngestionServiceTest]` 仅把直接实例化目标改为 `new FileIngestionService(...)`，测试语义保持不变
+
+### 验证结果
+
+#### 定向测试（第一批）
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=ConversationOrchestratorServiceTest,ConversationOrchestratorServiceTransactionTest,ChatMessageControllerTest" test
+```
+
+结果：3 个测试全部通过，验证点包括：
+- 非 canonical UUID turnId 仍会被拒绝
+- `handleUserTurn` 仍保留 `@Transactional`
+- `ChatMessageController` 在 session lock 冲突时仍不会触发 orchestrator
+
+#### 定向测试（第二批）
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=FileIngestionServiceTest" test
+```
+
+结果：`FileIngestionServiceTest` 2 个测试全部通过，验证 session-file ingestion 在接口收敛后仍能完成：
+- markdown 文件正常落库、切块与状态更新
+- image 文件允许空 chunk 结果并保持完成状态
+
+说明：`RagService` 当前没有独立单测；本批对它只做了“接口并入具体类”的结构性收敛，实际行为依赖后续全量测试回归确认。
+
+#### 尾单整理：测试命名对齐
+
+- 将遗留的 `*ImplTest` 文件名与类名统一改回当前实际被测类型：
+  - `ConversationOrchestratorServiceImplTest` → `ConversationOrchestratorServiceTest`
+  - `ConversationOrchestratorServiceImplTransactionTest` → `ConversationOrchestratorServiceTransactionTest`
+  - `FileIngestionServiceImplTest` → `FileIngestionServiceTest`
+- 本次仅整理命名，不改测试语义，目的是让 Phase 11 收敛后的类型名、测试文件名和执行文档口径一致
+
+#### 全量验证
+
+```bash
+./mvnw.cmd test
+```
+
+结果：整仓 342 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+---
+
+## Phase 8：PdfDocumentParser 深度拆分（第一、二批）
+
+**执行时间**: 2026-04-11
+**风险**: 中
+**状态**: ⏳ 进行中（第二批完成）
+
+### 本批目标
+
+先完成 Phase 8 的“职责切面剥离”，只做行为保持型抽取，不在第一批同时引入更高风险的批次算法变化：
+
+1. 从 `PdfDocumentParser` 中抽出 cache / planner / dispatcher / segment assembler 四个协作者
+2. 保持 cache key 字节级稳定
+3. 保持回退顺序 `VDP -> NATIVE_TEXT -> EMPTY_PAGE`
+4. 保持 batch engine 仍按“整份 PDF 一次提交”的当前行为，不在本批引入多批切分
+
+### 实际改造
+
+#### 1. 抽出 `PdfVdpCache`
+
+- 新增 `[PdfVdpCache]`，接管以下职责：
+  - `PageCacheContext` 构建
+  - `buildDigest` 生成 page cache digest
+  - `get / put / putAll` 与 `VdpPageCacheService` 交互
+- cache digest 公式保持与重构前完全一致：
+
+```text
+pdf-page:{documentCacheKey}:{pageIndex}:{dpi*10}:{normalizedLanguageHint}:{recognizeFormulasFlag}
+```
+
+- 其中 `languageHint` 仍按 `trim().toLowerCase()` 归一化，空值仍降级为 `default`
+- `renderDpi` 仍按 `Math.round(renderDpi * 10.0f)` 进入 digest，确保既有缓存 namespace 不漂移
+
+#### 2. 抽出 `PdfVdpBatchPlanner`
+
+- 新增 `[PdfVdpBatchPlanner]`，从 parser 中移出“哪些 visual-track 页已经命中缓存、哪些页仍需调度”的规划逻辑
+- 当前 planner 只负责**缓存感知的 dispatch plan**，不在本批引入新的 multi-batch 切分算法
+- 这样做是为了先满足 8.3 的“职责隔离可验证”，同时避免在同一批次混入 batch 语义变化
+
+#### 3. 抽出 `PdfVdpDispatcher`
+
+- 新增 `[PdfVdpDispatcher]`，接管以下职责：
+  - batch engine / page-image engine 选择后的 VDP 调度
+  - 文档级 timeout 与 per-page timeout
+  - in-flight future 管理、取消、完成收集、超时淘汰
+  - batch 结果规范化与失败/超时填充
+  - `vdp.page.success / degraded / failed / timeout` 指标记录
+- 为了保持行为不变，本批**刻意不修改**以下点：
+  - batch engine 仍使用 `parsePagesAsync(pdfStreamSupplier, visualPageIndices, ...)`
+  - `mineruReceivesWholePdf=true` 的整 PDF 调用语义保持原样
+  - 仍不做“按页数 / DPI 预算拆成多个 batch 请求”的实验性改造
+
+#### 4. 抽出 `PdfSegmentAssembler`
+
+- 新增 `[PdfSegmentAssembler]`，从 parser 中移出：
+  - native page segment 构建
+  - visual page segment 构建
+  - 字体元数据与结构元数据挂载
+  - visual success / degraded / failed 计数
+- 回退顺序保持不变：
+  - 有 markdown：直接用 VDP 输出
+  - 无 markdown 但有 native text：回退到 native text，并打 `visualFallback=NATIVE_TEXT`
+  - 两者都没有：输出空 segment，并打 `visualFallback=EMPTY_PAGE`
+
+#### 5. 瘦身 `PdfDocumentParser`
+
+- `PdfDocumentParser` 从 `1189` 行降到 `535` 行
+- 主类现在主要保留：
+  - PDF 打开与文件大小保护
+  - page snapshot 提取
+  - route 决策
+  - extractionMode / qualityLevel 判定
+  - diagnostics / warnings 汇总
+- 这一步达到了 8.3 的第一优先级要求：`PdfDocumentParser` 对 `Cache / Planner / Dispatcher / Assembler` 的调用边界已经可以直接用一句话描述，不再存在主类内的 VDP 调度巨型私有方法串联
+
+### 暂未在本批处理的项
+
+- **未引入真正的 batch size planner**：计划文档里原先提到的“根据 DPI 预算 + 页数计算批次大小”会改变 batch 行为；考虑到 `MinerU` 目前仍以“整份 PDF + pageIndices”模式工作，本批不做这个高风险改动
+- **未继续拆 `PdfVdpDispatcher` 内部子职责**：当前先把职责从 parser 中剥离出去，后续如果 Phase 8 继续推进，可再评估是否把 dispatcher 内部的 timeout / batch-normalize / page-dispatch 再细分
+
+### 验证结果
+
+#### 编译验证
+
+```bash
+./mvnw.cmd -pl bootstrap -am -DskipTests compile
+```
+
+结果：✅ 通过。
+
+#### 定向测试
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=PdfDocumentParserTest,PdfVdpCacheTest" test
+```
+
+结果：24 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+#### 新增不变量测试
+
+- 新增 `[PdfVdpCacheTest]`
+- 覆盖点：
+  - `documentCacheKey + pageIndex + dpi*10 + normalizedLanguageHint + formulasFlag` 的 digest 格式不变
+  - `languageHint` 缺失时仍使用 `default`
+
+### 本批结论
+
+#### 全量回归
+
+```bash
+./mvnw.cmd test
+```
+
+结果：整仓 344 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+Phase 8 第一批已经完成“主类瘦身 + 职责抽离 + 核心不变量显式测试”三件事，但还不能把整个 Phase 8 标记为最终完成。当前更准确的状态是：
+
+- `PdfDocumentParser` 的剩余职责已经收敛到入口编排
+- VDP cache / planning / dispatch / segment assembly 已具备独立协作者
+- 更高风险的 batch 语义演进（若后续仍需要）应单独评估，不与本批混做
+
+### 第二批：继续细分 `PdfVdpDispatcher`
+
+#### 本批目标
+
+在不改变 `MinerU` 整 PDF 提交语义的前提下，继续把 `PdfVdpDispatcher` 内部“过粗”的职责拆开，重点解决第一批后仍然偏大的 dispatcher。
+
+#### 实际改造
+
+##### 1. 抽出 `PdfVdpPageDispatchLoop`
+
+- 新增 `[PdfVdpPageDispatchLoop]`
+- 将以下 page-image dispatch loop 逻辑从 `PdfVdpDispatcher` 中移出：
+  - in-flight future 管理
+  - per-page timeout 清理
+  - document budget 轮询
+  - page 渲染后提交 VDP
+  - 取消、收集完成、剩余页失败补齐
+- 这样 `PdfVdpDispatcher` 不再同时承担“选路 + 调度循环实现”两种职责
+
+##### 2. 抽出 `PdfVdpBatchResultNormalizer`
+
+- 新增 `[PdfVdpBatchResultNormalizer]`
+- 将以下 batch 结果收口逻辑从 `PdfVdpDispatcher` 中移出：
+  - batch 返回页结果映射
+  - 缺页补失败结果
+  - batch 全失败 / 全超时结果填充
+  - 结果写 cache
+- 这一步把“batch 调度”和“batch 结果归一化”拆成了两个清晰阶段
+
+##### 3. 抽出 `PdfVdpResultSupport`
+
+- 新增 `[PdfVdpResultSupport]`
+- 集中承接：
+  - failed result 生成
+  - `vdp.page.success / degraded / failed / timeout` 指标写入
+- `PdfSegmentAssembler` 中“缺失 visualResult 时补 failed result”的逻辑也改为依赖该 support，避免继续耦合 `PdfVdpDispatcher` 的静态 helper
+
+##### 4. `PdfVdpDispatcher` 继续瘦身
+
+- `PdfVdpDispatcher` 从 `503` 行降到 `159` 行
+- 当前主要职责已经收敛为：
+  - 选择 batch engine / page-image engine
+  - 组装 cache context 与 dispatch plan
+  - 调用 `PdfVdpBatchResultNormalizer` 或 `PdfVdpPageDispatchLoop`
+  - 统一解析 document timeout / per-page timeout
+
+#### 行数观察
+
+- `PdfVdpDispatcher`: `503 -> 159`
+- `PdfVdpPageDispatchLoop`: `296`
+- `PdfVdpBatchResultNormalizer`: `79`
+- `PdfVdpResultSupport`: `60`
+
+这次拆分没有再追求“单类极限压行”，而是按“页面调度循环 / 批量结果归一化 / 结果与指标支持”三个稳定职责面切开。
+
+#### 定向测试补充
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=PdfDocumentParserTest,PdfVdpCacheTest,PdfVdpBatchResultNormalizerTest" test
+```
+
+结果：26 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+新增 `[PdfVdpBatchResultNormalizerTest]`，覆盖：
+
+- batch 返回缺页时，missing page 仍会补成 failed result
+- batch 全超时时，`vdp.page.timeout` 指标仍按页计数
+
+#### 第二批结论
+
+- 第二批已经把 `PdfVdpDispatcher` 从“单点承压类”进一步收敛成编排入口
+- 目前 `Phase 8` 仍未完全结项，剩余项主要是：
+  - 是否要把 `PdfVdpBatchPlanner` 从“缓存感知 planner”继续演化为真正的 batch size planner
+  - 是否需要补性能基线记录，证明第二批继续拆分后无明显回归
+  - 是否有必要在外部约束变化后重新评估 `MinerU` 的整 PDF 提交策略
+
+### 第三批（结项）：Golden 基线记录 + 范围收口
+
+**执行时间**: 2026-04-11
+**状态**: ✅ Phase 8 按"行为保持型深度拆分"口径结项
+
+#### 本批目标
+
+前两批已经把 `PdfDocumentParser` 从 1189 行拆成 535 行 + 7 个协作者，且用 `PdfVdpCacheTest` / `PdfVdpBatchResultNormalizerTest` 钉住了 cache digest 与 batch 结果归一化两条关键不变量。本批不再动生产代码，只做两件事：
+
+1. 用现成的 `golden-pdfs/` 样本和现成的 `PdfDocumentParser` 入口，在 golden 组内补一条**可复跑的性能 + 缓存基线**，作为任何后续 VDP 改动的 baseline
+2. 把计划文档里挂在 Phase 8 下但性质属于"外因驱动演化"的两项（batch size planner 真正化、MinerU 整 PDF 提交策略）从 Phase 8 scope 中移出，挪到计划 §12 延后处理
+
+#### 新增 `GoldenPdfPerformanceBaselineTest`
+
+- 位置：`bootstrap/src/test/java/com/yulong/chatagent/rag/parser/GoldenPdfPerformanceBaselineTest.java`
+- 标签：`@Tag("golden")` — 默认被 surefire `excludedGroups=golden` 排除，不污染主测试计数（仍为 346）
+- 样本：复用已有 `src/test/resources/golden-pdfs/` 下 `heading-01` / `scanned-01` / `mixed-01` 三个固定样本（分别覆盖 NATIVE_TEXT、OCR_REQUIRED、PDF_VISUAL_ROUTED 三类 extractionMode）
+- 每个样本执行两次 `parser.parse(...)`：
+  - 第一次：冷缓存，记录 `firstParseMs`
+  - 第二次：热缓存，记录 `secondParseMs`
+  - `assertThat(second).usingRecursiveComparison().isEqualTo(first)` — 钉住"两次解析结果字节级一致"，即 Phase 8 的"输出不变"承诺
+- 收集指标：
+  - `vdp.cache.miss{layer=page}` / `vdp.cache.hit{layer=page}` 计数
+  - `vdp.document.parse.latency` Timer 总耗时与采样数
+  - 每样本的 `visualTrackPageCount` / `segmentCount` / `extractionMode`
+- 写入 JSON 报告：`bootstrap/target/phase8-baseline/golden-pdf-performance-baseline.json`
+
+#### 缓存查询不变量（本批钉住）
+
+原先倾向断言"第二次应全缓存命中"，但与 `NoopVdpEngine` 的 FAILED 结果不写缓存语义冲突；真正稳定的不变量是：
+
+> 每个 visual-track 页每次 parse 触发恰好一次缓存查询。
+
+对应断言：
+
+```java
+double totalLookups = observation.cacheMisses() + observation.cacheHits();
+assertThat(totalLookups).isEqualTo(observation.visualTrackPageCount() * 2.0d);
+```
+
+这条断言在真 VDP（SUCCESS 缓存）和 Noop VDP（FAILED 不缓存）两种场景下都成立，且能在未来任何"重复查询 / 漏查缓存"的回归里立刻报警。
+
+#### 首次基线数据（2026-04-11）
+
+| 样本 | extractionMode | visualTrack | firstParseMs | secondParseMs | parseLatencyTotalMs | cacheMisses / Hits |
+|------|----------------|-------------|--------------|---------------|---------------------|--------------------|
+| heading-01 | NATIVE_TEXT | 0 | 322.30 | 7.22 | 256.68 | 0 / 0 |
+| scanned-01 | OCR_REQUIRED | 1 | 247.92 | 60.07 | 305.70 | 2 / 0 |
+| mixed-01 | PDF_VISUAL_ROUTED | 1 | 98.76 | 79.21 | 175.57 | 2 / 0 |
+
+说明：
+- `scanned-01` / `mixed-01` 两个样本 cacheHits=0 是因为 `NoopVdpEngine` 产出 FAILED 结果、FAILED 不写缓存，这是符合设计的语义。用真 MinerU 重跑时 cacheHits 会接近 `visualTrackPageCount`
+- 第一次 parse 明显高于第二次，主要来自 JVM warmup 与 PDFBox 首次加载，而不是 VDP 工作量
+- 本数据作为 Phase 8 的 baseline，任何未来动 VDP 代码的改动都可通过 `mvnw -Dgroups=golden -Dtest=GoldenPdfPerformanceBaselineTest test` 重跑并对比
+
+#### 如何在本地复跑基线
+
+```bash
+./mvnw.cmd -pl bootstrap -am \
+  "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dsurefire.excludedGroups=" \
+  "-Dgroups=golden" \
+  "-Dtest=GoldenPdfPerformanceBaselineTest" test
+```
+
+输出报告：`bootstrap/target/phase8-baseline/golden-pdf-performance-baseline.json`
+
+#### 验证
+
+| 检查项 | 结果 |
+|--------|------|
+| `GoldenPdfPerformanceBaselineTest` 定向（golden 组） | ✅ 1 test 通过，三条 recursive equality + 三条 cache lookup 断言全部绿 |
+| `./mvnw.cmd test` 全量回归（默认排除 golden） | ✅ 346 tests, Failures=0, Errors=0, Skipped=0 |
+| 主测试总数 | 仍为 346，未因新增基线测试而漂移（golden 组被默认排除） |
+| 生产代码改动 | 零 — 本批不触碰任何 `main/java` 文件 |
+
+#### Phase 8 结项说明
+
+- **Phase 8 "PdfDocumentParser 深度拆分" 按"行为保持型重构 + 输出不变证据"口径结项**
+- 主类从 1640 → 1189 → 535 行，新增 7 个职责明确的 VDP 协作者
+- 关键不变量被三条测试钉住：
+  - `PdfVdpCacheTest` — cache digest 格式稳定
+  - `PdfVdpBatchResultNormalizerTest` — batch 缺页补齐 + timeout 指标按页计数
+  - `GoldenPdfPerformanceBaselineTest` — 两次 parse 字节级一致 + 每页每次 parse 恰好一次缓存查询
+- 计划文档里原先挂在 Phase 8 下的两项"未来演进"（真正的 batch size planner；MinerU 整 PDF 提交策略重评估）已从 Phase 8 scope 中移出，挪到 §12 延后处理 — 原因是它们都**取决于外部约束（MinerU 行为）变化**，不应阻塞 Phase 8 结项

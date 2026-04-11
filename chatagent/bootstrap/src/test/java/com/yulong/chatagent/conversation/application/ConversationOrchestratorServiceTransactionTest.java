@@ -8,11 +8,11 @@ import java.lang.reflect.Method;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ConversationOrchestratorServiceImplTransactionTest {
+class ConversationOrchestratorServiceTransactionTest {
 
     @Test
     void handleUserTurnShouldRemainTransactional() throws NoSuchMethodException {
-        Method method = ConversationOrchestratorServiceImpl.class
+        Method method = ConversationOrchestratorService.class
                 .getMethod("handleUserTurn", CreateChatMessageRequest.class);
 
         assertThat(method.isAnnotationPresent(Transactional.class)).isTrue();

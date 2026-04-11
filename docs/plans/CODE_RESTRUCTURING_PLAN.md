@@ -43,8 +43,10 @@
 | 5 | 上帝类拆分 | 2d | 中 | ✅ 完成（部分调整） |
 | 6 | 数据对象精简 | 1.5d | 中 | ✅ 完成（6A 部分，6B 跳过） |
 | 7 | chat 包分裂修复 + Framework 测试 | 1d | 低 | ✅ 完成 |
+| 8 | PdfDocumentParser 深度拆分（VDP 调度管线） | 2d | 中高 | ✅ 完成（3 批；2 项外因驱动演化移至 §12） |
+| 11 | 单实现接口逐案评估 | 1.5d | 低 | ✅ 完成（全量评估台账；收敛 4 个应用服务接口） |
 
-**总工时**：约 9 个工作日。推荐执行顺序：Phase 0 → 1 → 3 → 2 → 4 → 7 → 5 → 6。
+**总工时**：约 9 个工作日（Phase 0–7）+ 3.5 个工作日（Phase 8 + 11 已完成部分）。**推荐执行顺序**：Phase 0 → 1 → 3 → 2 → 4 → 7 → 5 → 6 → **11 → 8 → 9-α → 9-β → 10**。当前进度停在 Phase 8 结项，下一步为 Phase 9-α（契约不变批）。
 
 ---
 
@@ -416,7 +418,324 @@ mvn test    # 三个模块全部通过
 git revert <commit-hash>
 ```
 
-所有 Phase 均不引入数据库 schema 变更、API 契约变更或新依赖。变更均为纯结构性的（包移动、类重命名、import 更新）。
+### 11.1 Phase 0–7（已完成）
+
+均为纯结构性变更：包移动、类重命名、import 更新。不引入数据库 schema 变更、API 契约变更或新依赖。单 commit 回滚即可。
+
+### 11.2 Phase 8–11（待执行）— 例外说明
+
+这四个 Phase **不再是纯结构性**，回滚成本和策略需要区别对待：
+
+| Phase | 可能的非结构性变更 | 回滚策略 |
+|-------|-------------------|----------|
+| 8 | 无 API/依赖变更，但触及性能关键路径 | 单 commit 回滚；**前置要求**：提交前保存 VDP 缓存命中率 + 解析耗时基线，回滚判据包含性能回退 |
+| 9 | **可能改变 HTTP 响应体结构**（分类 B/C），属于 API 契约变更 | 按"契约不变 / 契约变化"两批独立 commit，契约变化批回滚需前端同步回退；见 Phase 9 新增的 9-α / 9-β 分批 |
+| 10 | **引入 ArchUnit 依赖**（新 test-scope 依赖）+ Spring `ApplicationEventPublisher` 使用扩大 | ArchUnit 单独 commit 可独立回滚；事件机制回滚需同时恢复 `IntentTreeFacadeServiceImpl` 的直接端口依赖 |
+| 11 | 无 API 变更，但会动到被测试 Mock 的类型 | 单 commit 回滚；**前置要求**：删除前确认无 `@MockBean` 依赖该接口 |
+
+**通用原则**：Phase 8–11 的每个 commit 在 PR 描述中必须列出"此 commit 是否改变：① API 响应体 ② 依赖项 ③ 性能基线"三项，便于事后快速定位回滚粒度。
+
+---
+
+## 11.5 后续计划：未完全解决项（Phase 8–11）
+
+> 状态：📋 待执行
+> 背景：Phase 0–7 解决了"结构性污染"（包归位、持久化统一、命名一致、chat 分裂、Framework 测试），但真正的**内部复杂度**未根治。本节针对四类遗留问题给出可执行的后续方案。
+> **推荐执行顺序（单人推进）**：Phase 11 → 8 → 9-α → 9-β → 10
+>   - 11 最先：纯评估 + 小规模删除，热身同时梳理接口全景，为后续拆分摸清边界
+>   - 8 其次：纯后端改动，风险可控，性能基线一次性建立
+>   - 9-α 第三：契约不变批，可独立合入，无需前端联调
+>   - 9-β 第四：契约变化批，等前端联调窗口
+>   - 10 最后：架构层变更，依赖前面三个 Phase 把"什么是边界 / 什么该共享"澄清清楚
+> 基线数据（2026-04-11 实测）：
+> - `PdfDocumentParser` 1189 行（Phase 5A 之后）
+> - `DashboardFacadeServiceImpl` 425 行
+> - `McpServerAdminFacadeServiceImpl` 233 行（Phase 5B + CrudHelper 抽取后已显著瘦身）
+> - 数据对象总量：DTO 20 + VO 24 + Response 35 + Request 25 ≈ **104 个**
+> - 单实现接口：约 36 个
+
+---
+
+### Phase 8：PdfDocumentParser 深度拆分（VDP 调度管线）
+
+**工时**：2 天 | **风险**：中高（触及核心解析链路，需完整回归）
+
+#### 8.1 问题
+
+Phase 5A 已将渲染（`PdfPageRenderer`）、路由（`PdfQualityRouter`）、文本提取（`PdfPageTextExtractor`）抽出，但 **VDP 调度管线约 500 行**仍留在 `PdfDocumentParser` 中，与缓存、批处理、超时处理紧密耦合。`PdfDocumentParser` 目前仍是 1189 行。
+
+耦合点（Phase 5A 放弃拆分的原因）：
+1. **缓存**：按页签名缓存 VDP 结果，跨批次复用
+2. **批处理**：按 DPI/内存预算动态切批，失败页回退
+3. **超时**：单页/整体双重 deadline，超时后降级为 OCR 或纯文本
+4. **Segment 构建**：VDP 输出与文本提取输出合并为统一 Segment 流
+
+#### 8.2 拆分策略（引入显式管线对象）
+
+| 新类 | 职责 | 预计行数 |
+|------|------|----------|
+| `PdfVdpCache` | 按页签名缓存 VDP 结果（get/put/invalidate），独立于调度 |
+| `PdfVdpBatchPlanner` | 根据 DPI 预算 + 页数计算批次大小，纯函数，无状态 |
+| `PdfVdpDispatcher` | 单批次的 VDP 调用 + 超时 + 重试 + 失败回退，依赖 Cache 和 Planner |
+| `PdfSegmentAssembler` | 合并 VDP 输出与文本提取输出为 Segment 流 |
+| `PdfDocumentParser`（最终形态） | 顶层编排：打开 PDF → 路由 → 分派 Dispatcher/TextExtractor → Assembler → 返回 |
+
+> **不设"目标行数"指标**。行数是副产物，不是目的。盲目压行会导致过度抽类（例如为了减 50 行硬拆一个 `PdfContext`），反而增加认知负担。行数只作为**观察指标**（最终 `PdfDocumentParser` 可能落在 400–700 行之间都算合理），验收标准见 8.3。
+
+#### 8.3 主验收标准（按重要性排序）
+
+1. **职责隔离可验证**：`PdfDocumentParser` 对 Cache / BatchPlanner / Dispatcher / Assembler 的调用应能用一句话描述，不存在"Dispatcher 回头调用 Parser 的私有方法"这类回环依赖。
+2. **不变量全部保留**（一条都不能破）：
+   - **缓存 key 的稳定性**：页签名由 `(内容 hash, DPI, 渲染参数)` 组成，拆分后必须字节级一致，否则缓存命中率崩塌。
+   - **超时传递**：顶层 deadline 必须穿透到 Dispatcher，不能在拆分过程中丢失。
+   - **失败回退顺序**：VDP 失败 → OCR → 纯文本，拆分后必须保留这个降级链。
+3. **性能不退化**：见 8.4 的基准测试门槛。
+4. **（次级目标）主类行数下降**：行数只是观察结果，不是验收条件。不要为了压行数而过度抽类。
+
+#### 8.4 验证
+
+```bash
+mvn test -pl bootstrap -Dtest='*Pdf*'
+# 回归样本：准备 3 类 PDF（纯文本/扫描件/混合）跑端到端解析
+# 对比 Phase 8 前后 Segment 输出的 diff，必须为空
+```
+
+**必做基准测试**（Phase 8 是性能敏感区）：
+- 3 类 PDF 样本（纯文本/扫描件/混合）解析耗时前后对比
+- VDP 缓存查询不变量：`cacheMisses + cacheHits == visualTrackPageCount × 2`（每页每次 parse 恰好一次查询）
+
+> **Phase 8 状态（2026-04-11）**：✅ 已按"行为保持型深度拆分 + 输出不变证据"口径结项。
+> - 主类从 1640 → 1189 → 535 行，新增 7 个 VDP 协作者
+> - 三条不变量测试钉住：`PdfVdpCacheTest`（digest 格式稳定）、`PdfVdpBatchResultNormalizerTest`（batch 缺页补齐 + timeout 指标按页计数）、`GoldenPdfPerformanceBaselineTest`（两次 parse 字节级一致 + 缓存查询不变量）
+> - 基线报告：`bootstrap/target/phase8-baseline/golden-pdf-performance-baseline.json`，通过 `-Dgroups=golden -Dtest=GoldenPdfPerformanceBaselineTest` 可复跑
+> - 原先"暂未处理"的两项（真正的 batch size planner / MinerU 整 PDF 提交策略）**已从 Phase 8 scope 移出**，挪到 §12 延后处理，理由是都取决于 MinerU 外部约束变化，不应阻塞 Phase 8 结项
+
+---
+
+### Phase 9：数据对象精简（DTO/VO/Response 三元组合并）
+
+**工时**：3 天 | **风险**：中（触及 Facade ↔ Controller 边界，需前端联调）
+
+#### 9.1 问题
+
+当前存在三类数据对象，形成**三元组**：
+
+```
+DTO（持久化边界）→ VO（展示层）→ Response（HTTP 响应包装）
+```
+
+实际观察：
+- **薄 VO**：大量 VO 只是 DTO 的字段子集 + 少量格式化（日期 → 字符串、枚举 → label）
+- **薄 Response**：大量 Response 只是 `List<VO>` 或 `{ item: VO, meta: PageMeta }` 的包装，无独立逻辑
+- **冗余**：Phase 6A 删除 15 个 Entity 后，DTO 已承担原 Entity 职责，VO/Response 价值进一步稀释
+
+三元组示例：`McpServerDTO` → `McpServerVO` → `GetMcpServerResponse`，每层字段高度重合。
+
+#### 9.2 拆分策略（分类处理，不一刀切）
+
+**分类 A：薄 VO 直接删除，Facade 返回 DTO**
+判定条件：VO 与 DTO 字段 100% 对应，仅有 Lombok getter/setter，无格式化逻辑。
+目标：~8 个 VO（如 `McpToolReferenceVO`、`IntentVersionVO` 等候选）
+
+**分类 B：保留 VO，但删除薄 Response**
+判定条件：Response 只有一个字段（`List<VO>` 或 `VO`），无 meta/分页。
+策略：Controller 直接返回 `ApiResponse<List<VO>>` 或 `ApiResponse<VO>`。
+目标：~15 个 Response（如 `GetAgentsResponse` 仅含 `List<AgentVO>`）
+
+**分类 C：保留 VO，但合并 Request → 使用公共参数对象**
+判定条件：Create/Update Request 字段 90% 重合（仅 id 有无之差）。
+策略：合并为单个 `UpsertXxxRequest`，用 `@Validated(OnCreate.class)` / `@Validated(OnUpdate.class)` 区分。
+目标：Agent、AdminUser、AssistantTemplate、KnowledgeBase、IntentNode、McpServer 的 Create/Update 对 = **6 对 → 6 个**
+
+**分类 D：保留现状**
+- 含格式化逻辑的 VO（如 `DashboardOverviewVO` 的环比计算展示）
+- 含分页 meta 的 Response（如 `GetChatSessionsResponse`）
+- 前端强依赖字段名的 VO（破坏契约成本过高）
+
+#### 9.3 执行顺序：两阶段（契约不变 → 契约变化）
+
+前端联调窗口是真正的推进瓶颈。为避免后端改动被前端档期卡死，先做**不改 HTTP 响应体结构**的那一半，彻底合并后再开第二批。
+
+**阶段 9-α：契约不变批（可独立合入，无需前端联调）**
+
+| 批次 | 范围 | 说明 |
+|------|------|------|
+| 9-α-1 | 分类 A 试点：3 个薄 VO（McpToolReferenceVO、IntentVersionVO、ChatSessionFileVO）→ Facade 内部直接用 DTO | **前提**：这些 VO 必须满足"Facade 返回的 Response 已经是 `ApiResponse<DTO>` 或字段名与 DTO 一致"，即 VO → DTO 替换后序列化输出字节级一致。若不一致，归入 9-β。 |
+| 9-α-2 | 分类 A 扩展到其余候选（逐个核对序列化输出） | 同上，必须字节级一致 |
+| 9-α-3 | 分类 D 的"隐藏机会"：内部辅助类的 VO 删除（不经过 Controller 的） | 纯内部重构 |
+
+**验收**：每个 commit 前后用 `curl` 抓取受影响端点的真实响应，`diff` 必须为空。
+
+**阶段 9-β：契约变化批（需要前端联调窗口）**
+
+| 批次 | 范围 | 需前端同步 |
+|------|------|-----------|
+| 9-β-1 | 分类 B：薄 Response 删除（Controller 改返回 `ApiResponse<List<VO>>`） | 是，改响应体结构 |
+| 9-β-2 | 分类 C：Create/Update Request 合并为 `UpsertXxxRequest` | 是，改请求体结构 |
+
+**阶段 9-β 前置**：
+- 与前端约定联调窗口
+- 生成 OpenAPI 快照，明确列出变更端点
+- 前端在同一 sprint 内同步 TypeScript 类型
+
+**总量变化**：观察指标，不作为 KPI。DTO + VO + Response + Request 预计会明显下降，但具体数字取决于 9-α 和 9-β 各自落地多少。重要的是**重复消除 + 契约清晰**，不是"删了几个文件"。
+
+#### 9.4 约束
+
+- **必须与前端同步**：删除 VO/Response 前确认前端不直接引用字段名（TypeScript 类型生成可自动适配）
+- **每批单独 commit**：便于前端按批次联调
+- **API 路径不变**：仅改变响应体结构时，用 OpenAPI 快照对比
+
+#### 9.5 验证
+
+```bash
+mvn clean compile
+mvn test -pl bootstrap
+# OpenAPI 快照对比：每批次生成 openapi.json，diff 仅应显示预期的结构变化
+```
+
+---
+
+### Phase 10：依赖三角解耦（intent → agent → admin）
+
+**工时**：3 天 | **风险**：高（架构变更，需多轮评审）
+
+#### 10.1 问题
+
+当前依赖链（Phase 2 之后仍然存在）：
+
+```
+intent/application/IntentTreeFacadeServiceImpl
+  → agent/port/AgentRepository（Phase 2 归位后）
+  → agent/port/AgentKnowledgeBaseRepository
+admin/application/AgentFacadeServiceImpl
+  → agent/port/AgentRepository
+  → intent/port/IntentNodeRepository（读 intent 做级联）
+agent/application/InternalAssistantService
+  → admin 的某些缓存 / 配置
+```
+
+三个领域相互读端口，形成闭环。根本原因：**Agent 既是 intent 的叶子节点归属，又是 admin 编排的实体，还是运行时的加载单元**，单一实体被三个领域共享。
+
+#### 10.2 解耦策略
+
+**方案 A（推荐）：引入领域事件**
+- Agent 变更（创建/更新/删除/发布）发布 `AgentChangedEvent`
+- Intent 订阅事件，维护自己的 `agentId → intentNode` 索引（读模型）
+- admin 继续作为写入源，不再需要 intent 反向读
+- 消除 `intent → agent` 的直接端口依赖
+
+**方案 B（备选）：抽取共享读模型到 support/**
+- 新建 `support/readmodel/AgentSnapshot`，作为跨领域只读快照
+- intent 和 admin 都读 `AgentSnapshot`，不读 `AgentRepository`
+- `AgentRepository` 仅被 agent 领域自身使用
+
+#### 10.3 拆分步骤（方案 A）
+
+| 步骤 | 动作 |
+|------|------|
+| 1 | 定义 `AgentChangedEvent`（created/updated/deleted/published 子类型）放在 `agent/event/` |
+| 2 | `admin/application/AgentFacadeServiceImpl` 写入成功后发布事件（Spring `ApplicationEventPublisher`） |
+| 3 | `intent/application/` 新增 `IntentAgentIndexUpdater` 监听事件，维护 `agentId → List<IntentNode>` 索引 |
+| 4 | 重构 `IntentTreeFacadeServiceImpl` 读 index 而非 `AgentRepository` |
+| 5 | 删除 `intent/` 中对 `agent/port/AgentRepository` 的 import |
+| 6 | 运行依赖检查：`intent/**` 不应 import `agent/port/**` |
+
+#### 10.4 注意事项
+
+- **事件必须同步发布**（Spring 默认同步），否则读模型最终一致性会让调用方读到旧数据
+- **启动时预热**：应用启动时全量扫描 agent 重建 index，避免冷启动时 intent 读空
+- **事务边界**：事件发布必须在 DB 事务内，避免"写成功但事件丢失"
+
+#### 10.5 验证
+
+```bash
+mvn test -pl bootstrap
+# 依赖检查（可用 ArchUnit 或简单 grep）：
+grep -r "import com.yulong.chatagent.agent.port" bootstrap/src/main/java/com/yulong/chatagent/intent/
+# 预期：零结果
+```
+
+**建议引入 ArchUnit** 固化依赖规则，防止回退：
+
+```java
+@Test
+void intent_should_not_depend_on_agent_port() {
+    noClasses().that().resideInAPackage("..intent..")
+        .should().dependOnClassesThat().resideInAPackage("..agent.port..")
+        .check(classes);
+}
+```
+
+---
+
+### Phase 11：单实现接口逐案评估
+
+**工时**：1.5 天 | **风险**：低（纯删除，IDE 可自动 inline）
+
+#### 11.1 问题
+
+当前约 36 个单实现接口。Phase 计划原本"延后"，但 Phase 6A 删除 15 个 Entity 后，部分 Converter/Helper 接口价值进一步下降，值得重新评估。
+
+> **不设删除数量目标**。接口删减必须是评估结果，不是 KPI。把"删 X 个"设为指标会诱使把本该保留的边界（如六边形端口）也一起删掉。本 Phase 的验收条件是"每个接口都被评估过且有明确的保留/删除理由"，而不是"删到多少以下"。
+
+#### 11.2 分类标准（决定保留 vs 删除）
+
+| 保留的理由 | 删除的理由 |
+|------------|------------|
+| 六边形端口（Repository/Port/Gateway）— 即使当前单实现，也是架构边界 | Converter / Mapper — 纯函数，接口无抽象价值 |
+| 被测试 Mock（实际使用 `@MockBean`） | 被测试用具体类 Mock（Mockito `mock(ImplClass.class)`） |
+| 框架要求（Spring AOP / 事务代理需要接口） | 无 AOP / 无事务 |
+| 领域对外契约（FacadeService，前端契约的一部分） | 内部 Helper（`XxxResolver`、`XxxAssembler`） |
+
+#### 11.3 执行步骤
+
+1. 脚本扫描：列出所有单实现接口（`find` + `grep "implements"` 计数）
+2. 对每个接口填表（保留/删除 + 理由）
+3. 删除的接口：
+   - IDE refactor → Inline Interface → 所有引用改为具体类
+   - 删除接口文件
+   - 重命名 `XxxImpl` → `Xxx`（如果无冲突）
+4. 每批 5–8 个接口单独 commit
+
+#### 11.4 候选列表（需首轮扫描确认）
+
+- 各领域 `XxxConverter`（Phase 6A 未删除的 Agent/ChatMessage/ChatSession 等）— 倾向保留，因为有复杂 JSON↔enum 转换
+- 各领域 `XxxAssembler` / `XxxMapper`（应用层装配器）— 倾向删除
+- `FacadeService` 接口 — 保留，架构边界
+
+**预期结果**：每个接口都有评估记录（保留/删除 + 理由）。实际删除数量由评估决定，不预设。
+
+#### 11.5 验证
+
+```bash
+mvn clean compile
+mvn test -pl bootstrap
+```
+
+---
+
+### 后续 Phase 依赖与排期建议
+
+**单人推进顺序**：
+
+```
+Phase 11 (接口评估) ──▶ Phase 8 (Pdf 内部拆分) ──▶ Phase 9-α (契约不变)
+                                                       │
+                                                       ▼
+                                                  Phase 9-β (契约变化，需前端联调)
+                                                       │
+                                                       ▼
+                                                  Phase 10 (依赖三角解耦)
+```
+
+**理由**：
+- Phase 11 最轻，热身同时梳理接口全景
+- Phase 8 纯后端、无外部依赖，能在一个专注窗口完成
+- Phase 9 按 α/β 分批，α 可随时合入，β 等前端窗口
+- Phase 10 放最后：前面三个 Phase 会澄清"哪些是真正的领域边界"，降低事件建模的误判风险
+
+**总工时**：约 9.5 个工作日（不含前端联调等待时间）
 
 ---
 
@@ -425,10 +744,13 @@ git revert <commit-hash>
 | 项目 | 原因 |
 |------|------|
 | 拆分 bootstrap 为多个 Maven 模块 | 当前团队规模下单模块可接受，风险收益比不高 |
-| 解决 intent → agent → admin 依赖三角 | 需引入领域事件或中介者模式，属于更深的架构变更 |
-| 合并单实现接口（36 个） | 这些接口提供六边形边界价值，合并会消除 port/adapter 区分，可在结构移动完成后逐案评估 |
+| 解决 intent → agent → admin 依赖三角 | ~~需引入领域事件或中介者模式，属于更深的架构变更~~ → 已纳入 **Phase 10**（方案 A：领域事件 + 读模型索引） |
+| 合并单实现接口（36 个） | ~~这些接口提供六边形边界价值，合并会消除 port/adapter 区分，可在结构移动完成后逐案评估~~ → 已纳入 **Phase 11**（按分类标准逐案处理，预期删除 10–11 个） |
 | `user/infrastructure/cache/` 包迁移 | RedisRefreshTokenStore 是用户领域专属的 Redis 基础设施，保留在 `user/` 下合理 |
 | 新增 Maven 模块 | 按照约束，不引入新模块 |
+| `PdfVdpBatchPlanner` 演化为真正的 batch size planner | Phase 8 第一/二批已完成行为保持型拆分。"按 DPI 预算 + 页数拆多批提交"属于**外因驱动演化**：只有 `MinerU` 停止支持 "整份 PDF + pageIndices" 或其性能随页数线性劣化时才需要。当前 planner 只做"缓存感知筛页"，这是正确的最小形态，不应在 Phase 8 scope 内硬推 |
+| 重新评估 `MinerU` 整 PDF 提交策略 | 同上，完全取决于 MinerU 外部约束变化。若未来需要按页数切片提交，应作为独立的性能 / 协议演进工作项，而不是重构 Phase |
+| Phase 6B 合并薄 VO 到 Response 类 | 会破坏前端 API 契约，当前 Dashboard 4 个独立端点的结构已合理；Phase 9 将按 9-α / 9-β 两批在更广范围内处理数据对象精简 |
 
 ---
 

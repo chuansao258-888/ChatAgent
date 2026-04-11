@@ -13,9 +13,9 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-class ConversationOrchestratorServiceImplTest {
+class ConversationOrchestratorServiceTest {
 
-    private final ConversationOrchestratorServiceImpl subject = new ConversationOrchestratorServiceImpl(
+    private final ConversationOrchestratorService subject = new ConversationOrchestratorService(
             mock(ChatSessionFacadeService.class),
             mock(ChatSessionRepository.class),
             mock(ChatMessageFacadeService.class),

@@ -37,7 +37,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class FileIngestionServiceImplTest {
+class FileIngestionServiceTest {
 
     @Mock
     private ChatSessionFileRepository chatSessionFileRepository;
@@ -66,11 +66,11 @@ class FileIngestionServiceImplTest {
     @Mock
     private DocumentParser documentParser;
 
-    private FileIngestionServiceImpl ingestionService;
+    private FileIngestionService ingestionService;
 
     @BeforeEach
     void setUp() {
-        ingestionService = new FileIngestionServiceImpl(
+        ingestionService = new FileIngestionService(
                 chatSessionFileRepository,
                 fileChunkRepository,
                 documentStorageService,
