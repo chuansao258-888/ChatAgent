@@ -2,7 +2,6 @@ package com.yulong.chatagent.support.persistence.adapter.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
-import com.yulong.chatagent.support.persistence.entity.ChatSessionSummary;
 import com.yulong.chatagent.support.persistence.mapper.ChatSessionSummaryMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,20 +63,20 @@ class MyBatisChatSessionSummaryRepositoryTest {
 
         repository.saveOrUpdate(summary);
 
-        ArgumentCaptor<ChatSessionSummary> captor = ArgumentCaptor.forClass(ChatSessionSummary.class);
+        ArgumentCaptor<ChatSessionSummaryDTO> captor = ArgumentCaptor.forClass(ChatSessionSummaryDTO.class);
         verify(chatSessionSummaryMapper).insert(captor.capture());
-        assertThat(captor.getValue().getAnchoredEntities()).isEqualTo("{}");
+        assertThat(captor.getValue().getAnchoredEntitiesJson()).isEqualTo("{}");
     }
 
     @Test
     void shouldUpdateSummaryWithOptimisticVersionIncrement() {
         LocalDateTime createdAt = LocalDateTime.now().minusMinutes(10);
         when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(
-                ChatSessionSummary.builder()
+                ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
                         .lastSeqNo(8L)
                         .summary("Old summary")
-                        .anchoredEntities("")
+                        .anchoredEntitiesJson("")
                         .version(3)
                         .createdAt(createdAt)
                         .updatedAt(createdAt)
@@ -103,11 +102,11 @@ class MyBatisChatSessionSummaryRepositoryTest {
     @Test
     void shouldReturnFalseWhenOptimisticLockUpdateConflicts() {
         when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(
-                ChatSessionSummary.builder()
+                ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
                         .lastSeqNo(8L)
                         .summary("Old summary")
-                        .anchoredEntities("{}")
+                        .anchoredEntitiesJson("{}")
                         .version(3)
                         .createdAt(LocalDateTime.now().minusMinutes(10))
                         .updatedAt(LocalDateTime.now().minusMinutes(5))
