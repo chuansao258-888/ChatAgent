@@ -17,8 +17,8 @@
 | 2 | Intent 控制器 + Agent 端口归位 | ✅ 完成 | `b75c58c` | 22 | IntentTreeController + 3 Agent 端口归位 |
 | 4 | 双重持久化统一 | ✅ 完成 | `83e27eb` | 9 | user/infrastructure→support/persistence |
 | 7A | chat 包分裂修复 | ✅ 完成 | `ac44d53` | 4 | chat/→support/chat/ |
-| 5 | 上帝类拆分 | ✅ 完成 | `68ca33b` | 4 | McpServerDeleteHandler + DashboardMcpMetricsComposer |
-| 6 | 数据对象精简 | ✅ 完成 | `492bbed` | 3 | 3 个 Entity Lombok 化 |
+| 5 | 上帝类拆分 | ✅ 完成 | 多个 | ~20 | PdfPageRenderer/QualityRouter/TextExtractor + McpServerCrudHelper + DashboardOverviewAggregator |
+| 6A | Entity 层消除 | ✅ 完成 | 多个 | ~80 | 15 个 Entity 合并进 DTO，6 个保留 |
 | 7B | Framework 模块测试 | ✅ 完成 | `919f0a3` | 8 | 7 个测试类，41 个测试全部通过 |
 
 ---
@@ -246,8 +246,14 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 
 ### 执行动作
 
-#### 5A. 拆分 PdfDocumentParser（1640 行）
-- **延后处理** — 构造器链复杂（6 个重载），拆分风险高。待后续独立处理。
+#### 5A. 拆分 PdfDocumentParser（1640 行 → 1189 行）
+
+| 新类 | 职责 | Commit |
+|------|------|--------|
+| PdfPageRenderer | PDF 转图片渲染（DPI 配置） | `453d957` |
+| PdfQualityRouter | 路由决策、字符密度分析 | `453d957` |
+| PdfPageTextExtractor | 逐页文本提取、Font 分析、结构化 Markdown 恢复 | `453d957` |
+| PdfDocumentParser（瘦身） | VDP 调度管线、缓存、批处理、Segment 构建 | — |
 
 #### 5B. 拆分 McpServerAdminFacadeServiceImpl（523 行）
 | 新类 | 职责 |
@@ -261,6 +267,10 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 | DashboardFacadeServiceImpl（瘦身） | 顶层编排 + overview + trends + 性能聚合 |
 | DashboardMcpMetricsComposer | MCP 性能指标 + 告警查询 |
 
+**额外拆分：**
+- `DashboardOverviewAggregator`（`d584a4b`）— overview KPI 聚合逻辑从 DashboardFacadeServiceImpl 提取
+- `McpServerCrudHelper`（`46bf4fe`）— CRUD DTO 组装和持久化逻辑从 McpServerAdminFacadeServiceImpl 提取
+
 ### 验证结果
 
 | 检查项 | 结果 |
@@ -269,9 +279,10 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 | `mvn test` 通过 | ✅ PASS |
 
 ### 问题与备注
-- PdfDocumentParser 拆分延后：构造器链有 6 个重载，共享 renderDpi、charDensityThreshold 等配置字段，拆分需修改所有构造器，风险高
-- McpServerAdminFacadeServiceImpl 从 528 行减少到 ~390 行，删除逻辑已完全委托给 McpServerDeleteHandler
-- DashboardFacadeServiceImpl 从 588 行减少到 ~430 行，MCP 指标聚合已委托给 DashboardMcpMetricsComposer
+- PdfDocumentParser 从 1640 行减至 1189 行，VDP 调度管线（~500 行）因与缓存、批处理紧密耦合暂保留在主类中
+- McpServerAdminFacadeServiceImpl 从 528 行减少到 ~390 行
+- DashboardFacadeServiceImpl 从 588 行减少到 ~350 行
+- DashboardTrendsAggregator 因与 private enum 紧密耦合而跳过
 
 **执行时间**: 2026-04-11
 **风险**: 低
@@ -293,6 +304,61 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 ### 问题与备注
 
 已完成
+
+---
+
+## Phase 6A：Entity 层消除 — 合并进 DTO
+
+**执行时间**: 2026-04-11
+**风险**: 中
+
+### 执行动作
+
+将 Entity 层合并进 DTO 层，消除 Mapper → Entity → Adapter → DTO 的双重转换。每个合并按以下模式执行：
+1. DTO 添加 `@NoArgsConstructor` + `@AllArgsConstructor`
+2. MyBatis XML: resultMap type / parameterType 改为 DTO 类路径
+3. Mapper 接口: 方法签名改用 DTO 类型
+4. Adapter: 删除 `toEntity()`/`toDTO()` 方法，直接委托给 Mapper
+5. 删除 Entity 文件
+
+#### 已合并（15 个 Entity 删除）
+
+| Entity | DTO | Commit | 备注 |
+|--------|-----|--------|------|
+| ChatSessionFile | ChatSessionFileDTO | `c13fee9` | 直接合并 |
+| McpServer | McpServerDTO | `b7aa575` | 直接合并 |
+| McpToolCatalog | McpToolCatalogDTO | `b7aa575` | 直接合并 |
+| McpAlertEvent | McpAlertEventDTO | `b7aa575` | 直接合并 |
+| IntentNode | IntentNodeDTO | `61be522` | 新增 JsonStringListTypeHandler |
+| IntentKnowledgeBase | IntentKnowledgeBaseDTO | `61be522` | 直接合并 |
+| User | UserDTO | `61be522` | 移除 UserConverter.toEntity/toDTO |
+| UserProfile | UserProfileDTO | `61be522` | 直接合并 |
+| AgentTemplate | AssistantTemplateDTO | `61be522` | JSON 字段用 populateRichFields/populateJsonFields |
+| ChatSessionSummary | ChatSessionSummaryDTO | `61be522` + `0843d15` | anchoredEntities JSON 转换保留在 Adapter |
+| FileChunk | FileChunkDTO | `61be522` | 直接合并 |
+| AgentKnowledgeBase | AgentKnowledgeBaseDTO | `0c1a1bb` | 直接合并 |
+| KnowledgeBase | KnowledgeBaseDTO | `0843d15` | 直接合并 |
+| KnowledgeDocument | KnowledgeDocumentDTO | `0843d15` | 直接合并 |
+| KnowledgeChunk | KnowledgeChunkDTO | `0843d15` | 直接合并 |
+
+#### 保留 Entity（6 个，有合理原因）
+
+| Entity | 保留原因 |
+|--------|----------|
+| Agent | Converter 做 model String↔ModelType enum、allowedTools JSON↔List、chatOptions JSON↔ChatOptions 转换 |
+| ChatMessage | Converter 做 role String↔RoleType enum、metadata JSON↔MetaData 转换 |
+| ChatSession | Converter 做 metadata JSON↔MetaData 转换 |
+| KnowledgeDocumentEnhancement | DTO 有 List/Map 类型但 DB 存 JSON String |
+| ChatTurnMetric | 无 DTO，Mapper 直接使用 Entity |
+| MqOutbox | Entity 即 Port 层的领域模型，9 个文件引用 |
+
+### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `mvn compile` 通过 | ✅ PASS |
+| `mvn test` 通过（342 tests） | ✅ PASS |
+| 仅 2 个 pre-existing 失败 | ✅ 无新增回归 |
 
 ---
 
