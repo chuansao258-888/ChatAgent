@@ -100,6 +100,12 @@ class McpServerAdminFacadeServiceImplTest {
     @BeforeEach
     void setUp() {
         McpServerReferenceInspector referenceInspector = new McpServerReferenceInspector(referenceQueryRepository);
+        McpServerCrudHelper crudHelper = new McpServerCrudHelper(
+                new McpEndpointValidator(new MockEnvironment()),
+                new McpCredentialCipher(BASE64_KEY, "v1"),
+                new McpServerStatusMachine(),
+                mcpServerRepository
+        );
         McpServerDeleteHandler deleteHandler = new McpServerDeleteHandler(
                 mcpToolCatalogRepository,
                 mcpServerRepository,
@@ -114,14 +120,12 @@ class McpServerAdminFacadeServiceImplTest {
                 adminAccessService,
                 mcpServerRepository,
                 mcpToolCatalogRepository,
-                new McpEndpointValidator(new MockEnvironment()),
-                new McpCredentialCipher(BASE64_KEY, "v1"),
-                new McpServerStatusMachine(),
                 referenceInspector,
                 new McpToolNameNormalizer(),
                 mcpServerTestService,
                 mcpCatalogSyncService,
                 mcpRuntimeToolRegistry,
+                crudHelper,
                 deleteHandler
         );
         when(adminAccessService.requireAdmin()).thenReturn(LoginUser.builder()
