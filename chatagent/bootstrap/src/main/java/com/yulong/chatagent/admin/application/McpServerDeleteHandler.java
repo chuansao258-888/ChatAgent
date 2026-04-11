@@ -1,7 +1,6 @@
 package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.admin.model.response.DeleteMcpServerResponse;
-import com.yulong.chatagent.admin.model.vo.McpToolReferenceVO;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.exception.BizException;
@@ -25,7 +24,6 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
 @Component
 class McpServerDeleteHandler {
@@ -58,9 +56,7 @@ class McpServerDeleteHandler {
     }
 
     @Transactional
-    public DeleteMcpServerResponse execute(McpServerDTO server,
-                                           Function<McpToolReferenceDTO, McpToolReferenceVO> referenceVoConverter,
-                                           boolean force) {
+    public DeleteMcpServerResponse execute(McpServerDTO server, boolean force) {
         List<McpToolCatalogDTO> catalogRows = mcpToolCatalogRepository.findByServerId(server.getId());
         List<String> toolNames = catalogRows.stream()
                 .map(McpToolCatalogDTO::getExposedModelName)
@@ -72,7 +68,7 @@ class McpServerDeleteHandler {
             return new DeleteMcpServerResponse(
                     false, false,
                     references.size(), 0,
-                    references.stream().map(referenceVoConverter).toList()
+                    references
             );
         }
 
@@ -102,7 +98,7 @@ class McpServerDeleteHandler {
         return new DeleteMcpServerResponse(
                 true, true,
                 activeReferenceCount, references.size(),
-                references.stream().map(referenceVoConverter).toList()
+                references
         );
     }
 

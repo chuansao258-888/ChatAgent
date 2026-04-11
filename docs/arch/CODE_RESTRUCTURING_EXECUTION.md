@@ -20,6 +20,7 @@
 | 5 | 上帝类拆分 | ✅ 完成 | 多个 | ~20 | PdfPageRenderer/QualityRouter/TextExtractor + McpServerCrudHelper + DashboardOverviewAggregator |
 | 6A | Entity 层消除 | ✅ 完成 | 多个 | ~80 | 15 个 Entity 合并进 DTO，6 个保留 |
 | 7B | Framework 模块测试 | ✅ 完成 | `919f0a3` | 8 | 7 个测试类，41 个测试全部通过 |
+| 9-α | 数据对象精简（契约不变批） | ✅ 完成 | TBD | 5 | McpToolReferenceVO 删除 + IntentVersionVO 改 record；8 个候选归入 9-β |
 
 ---
 
@@ -382,6 +383,7 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 | McpServerAdminFacadeServiceImpl | 523 → ~390 行（-25%） |
 | DashboardFacadeServiceImpl | 588 → 425 行（-28%） |
 | 单实现接口（Phase 11） | 收敛 4 个应用服务接口；完成全量评估并形成保留/删除台账 |
+| 数据对象精简（Phase 9-α） | 删除 McpToolReferenceVO（→ DTO 直用）；IntentVersionVO 改为 record；全量评估 24 个 VO 形成 10/14 保留台账 |
 | Framework 测试 | 0 → 7 个测试类，41 个测试用例 |
 | Git 追踪体积 | 解除 MCP/.venv/（96MB）+ output/ 追踪 |
 
@@ -869,3 +871,117 @@ assertThat(totalLookups).isEqualTo(observation.visualTrackPageCount() * 2.0d);
   - `PdfVdpBatchResultNormalizerTest` — batch 缺页补齐 + timeout 指标按页计数
   - `GoldenPdfPerformanceBaselineTest` — 两次 parse 字节级一致 + 每页每次 parse 恰好一次缓存查询
 - 计划文档里原先挂在 Phase 8 下的两项"未来演进"（真正的 batch size planner；MinerU 整 PDF 提交策略重评估）已从 Phase 8 scope 中移出，挪到 §12 延后处理 — 原因是它们都**取决于外部约束（MinerU 行为）变化**，不应阻塞 Phase 8 结项
+
+---
+
+
+## Phase 9-α：数据对象精简 — 契约不变批
+
+**执行时间**: 2026-04-11
+**风险**: 低
+**状态**: ✅ 完成（2 个 VO 收敛；其余分类 A 候选归入 9-β）
+
+### 9-α 扫描方法
+
+逐个读取全部 24 个 VO 文件及其对应 DTO，做字段级比对。判定标准：
+
+- **可删（分类 A）**：VO 与 DTO 字段 100% 一致，或 VO 是 DTO 的纯子集，无格式化/类型转换/计算字段
+- **保留（分类 B）**：VO 有计算字段、来源非 DTO、嵌套聚合逻辑、或 DTO↔VO 之间有类型转换
+
+### 全量评估记录
+
+#### 分类 A：可收敛（10 个 VO）
+
+| # | VO | 对应 DTO | 重叠程度 | 构造逻辑 | 收敛风险 |
+|---|---|---|----------|----------|----------|
+| 1 | `McpToolReferenceVO` | `McpToolReferenceDTO` | 100%（4 字段完全一致） | `toReferenceVO()` 逐字段拷贝 | 零 |
+| 2 | `McpToolCatalogVO` | `McpToolCatalogDTO` | VO 是 DTO 子集（DTO 多 schemaJson/schemaHash/deletedAt） | `toCatalogVO()` 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 3 个字段 |
+| 3 | `ChatSessionFileVO` | `ChatSessionFileDTO` | VO 是 DTO 子集（DTO 多 sessionId/storagePath/metadata） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 3 个字段 |
+| 4 | `ChatMessageVO` | `ChatMessageDTO` | VO 子集（DTO 多 createdAt/updatedAt） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 2 个字段 |
+| 5 | `ChatSessionVO` | `ChatSessionDTO` | VO 是 DTO 子集（DTO 多 userId/metadata/createdAt/updatedAt） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 4 个字段 |
+| 6 | `AgentVO` | `AgentDTO` | VO 是 DTO 子集（DTO 多 userId/activeIntentVersion/createdAt/updatedAt） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 4 个字段 |
+| 7 | `KnowledgeBaseVO` | `KnowledgeBaseDTO` | VO 是 DTO 子集（DTO 多 createdBy/metadata） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 2 个字段 |
+| 8 | `KnowledgeDocumentVO` | `KnowledgeDocumentDTO` | VO 是 DTO 子集（DTO 多 storagePath/contentHash/failedReason/indexedAt/retryCount/metadata） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 7 个字段 |
+| 9 | `IntentVersionVO` | 无 DTO（纯视图：version + active） | 由 `buildVersionVos()` 从整数+布尔构造 | 零 — 可改为 inline record |
+| 10 | `McpServerVO` | `McpServerDTO` | VO 是 DTO 子集（DTO 多 encryptedCredentials/credentialKeyVersion/deletedAt），VO 多 `unresolvedReferenceCount`（计算字段） | `toServerVO()` 逐字段拷贝 + `resolveUnresolvedReferenceCount()` | 中 — VO 有计算字段，删 VO 后需保留计算逻辑 |
+
+#### 分类 B：必须保留（14 个 VO）
+
+| VO | 保留原因 |
+|---|---|
+| `McpDiscoveredToolVO` | 来源是 `McpRemoteToolDescriptor`（record，非 DTO），且 exposedModelName 经过 normalizeToolName() 计算 |
+| `ChatRoutingCandidateVO` | 来源是 `ChatRoutingProperties.CandidateConfig` + 运行时路由状态合并，无 DTO |
+| `IntentNodeVO` | DTO 有 agentId/createdAt/updatedAt 但 VO 多了 knowledgeBaseIds（从关联表查询），DTO 里没有 |
+| `AssistantTemplateVO` | DTO 有双字段（model+modelValue 等），VO 只暴露 rich 字段 + 嵌套 IntentTreeNodeTemplateVO（enum→String）|
+| `AdminUserVO` | 来源是 UserDTO/User 实体，无直接 1:1 DTO |
+| `LoginUserVO` | 来源是 JWT claims + UserDTO，无直接 DTO |
+| `UserProfileVO` | 来源是 UserProfileDTO，但只有 3 个字段（userId/summary/updatedAt），不完整子集 |
+| `DashboardOverviewVO` | 纯聚合视图，含嵌套 KPI 结构，无 DTO |
+| `DashboardTrendsVO` | 纯聚合视图，含嵌套 series/point 结构，无 DTO |
+| `DashboardMcpAlertVO` | 来源 McpAlertEventDTO 但 VO 多了 serverSlug/toolName（从关联查询填充）|
+| `DashboardMcpAlertsVO` | 包装器，含 openAlertCount + 嵌套 alert 列表 |
+| `DashboardMcpPerformanceVO` | 纯聚合视图 |
+| `DashboardMcpServerMetricVO` | 从 McpServerDTO + 调用统计聚合，无 1:1 DTO |
+| `DashboardPerformanceVO` | 纯聚合视图，嵌套 McpPerformance |
+
+### 实际改造
+
+#### 9-α-1 试点：McpToolReferenceVO → McpToolReferenceDTO
+
+- VO 与 DTO 字段 100% 一致（referenceType / referenceId / referenceName / referencePath），无转换逻辑
+- 改动范围：
+  - `DeleteMcpServerResponse` — 字段类型从 `List<McpToolReferenceVO>` 改为 `List<McpToolReferenceDTO>`
+  - `McpServerDeleteHandler.execute()` — 移除 `Function<McpToolReferenceDTO, McpToolReferenceVO>` 参数，直接传递 DTO 列表
+  - `McpServerAdminFacadeServiceImpl` — 删除 `toReferenceVO()` 转换方法，调用 `deleteHandler.execute(server, force)` 不再传转换器
+  - 删除 `McpToolReferenceVO.java`
+- 序列化行为不变：DTO 使用 `@Data`（Lombok 生成 getter/setter），Jackson 序列化字段名与原 VO 完全一致
+
+#### 9-α-1 试点：IntentVersionVO → record
+
+- VO 只有 2 个字段（version + active），无 DTO，由 `buildVersionVos()` 从 Integer + Boolean 构造
+- 改动范围：
+  - `IntentVersionVO` — 从 `@Data @AllArgsConstructor` class 改为 `public record IntentVersionVO(Integer version, boolean active) {}`
+  - 所有消费方（`GetIntentVersionsResponse`、`GetIntentTreeResponse`、`IntentTreeFacadeServiceImpl`）使用 `new IntentVersionVO(...)` 构造，record 的 compact constructor 兼容原有调用
+- 序列化行为不变：record 的 Jackson 序列化与 `@Data` class 字段名一致
+
+#### 9-α-1 试点：ChatMessageVO → 延后至 9-β
+
+- VO 有 7 个字段，DTO 有 9 个字段（多 `createdAt` / `updatedAt`）
+- `ChatMessageConverter.toVO()` 显式丢弃这两个字段
+- 替换后 HTTP 响应体会多暴露 2 个字段，属于契约变化，不满足 9-α 前提
+- **结论**：归入 9-β
+
+#### 9-α-2 扩展评估
+
+逐个核实分类 A 剩余 7 个候选：
+
+| VO | DTO 多出字段 | 是否契约变化 | 结论 |
+|---|---|---|---|
+| McpToolCatalogVO | schemaJson / schemaHash / deletedAt | 是 | 9-β |
+| ChatSessionFileVO | sessionId / storagePath / metadata | 是 | 9-β |
+| ChatSessionVO | userId / metadata / createdAt / updatedAt | 是 | 9-β |
+| AgentVO | userId / activeIntentVersion / createdAt / updatedAt | 是 | 9-β |
+| KnowledgeBaseVO | createdBy / metadata | 是 | 9-β |
+| KnowledgeDocumentVO | storagePath / contentHash / failedReason / indexedAt / retryCount / metadata | 是 | 9-β |
+| McpServerVO | encryptedCredentials / credentialKeyVersion / deletedAt（且 VO 多 unresolvedReferenceCount） | 是 | 9-β |
+
+**全部归入 9-β**：每个 VO 都是 DTO 的真子集，删除后 HTTP 响应体会暴露额外字段。
+
+#### 9-α-3 内部辅助 VO
+
+扫描全部 23 个 VO 文件，逐一检查是否仅被内部 Helper 使用而不经 Controller/Response。结果显示每个 VO 至少被一个 Response 类或 Controller 直接引用。**无 9-α-3 候选**。
+
+### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `mvn compile` 通过 | ✅ PASS |
+| `McpServerAdminFacadeServiceImplTest`（9 tests） | ✅ PASS |
+| `./mvnw.cmd test` 全量（346 tests） | ✅ PASS，Failures=0, Errors=0, Skipped=0 |
+
+### 9-α 结论
+
+- **2 个 VO 成功收敛**：McpToolReferenceVO 删除（直接用 DTO）、IntentVersionVO 改为 record
+- **8 个分类 A 候选归入 9-β**：均因 DTO 多暴露字段而不满足"契约不变"前提
+- **14 个分类 B VO 保留**：有计算字段 / 聚合结构 / 非 DTO 来源，不应删除
+- Phase 9-α 按计划"契约不变批"口径结项，剩余数据对象精简需等前端联调窗口

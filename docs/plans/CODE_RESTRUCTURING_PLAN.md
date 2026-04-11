@@ -45,8 +45,9 @@
 | 7 | chat 包分裂修复 + Framework 测试 | 1d | 低 | ✅ 完成 |
 | 8 | PdfDocumentParser 深度拆分（VDP 调度管线） | 2d | 中高 | ✅ 完成（3 批；2 项外因驱动演化移至 §12） |
 | 11 | 单实现接口逐案评估 | 1.5d | 低 | ✅ 完成（全量评估台账；收敛 4 个应用服务接口） |
+| 9-α | 数据对象精简（契约不变批） | 0.5d | 低 | ✅ 完成（McpToolReferenceVO 删除 + IntentVersionVO 改 record；8 个候选归入 9-β） |
 
-**总工时**：约 9 个工作日（Phase 0–7）+ 3.5 个工作日（Phase 8 + 11 已完成部分）。**推荐执行顺序**：Phase 0 → 1 → 3 → 2 → 4 → 7 → 5 → 6 → **11 → 8 → 9-α → 9-β → 10**。当前进度停在 Phase 8 结项，下一步为 Phase 9-α（契约不变批）。
+**总工时**：约 9 个工作日（Phase 0–7）+ 4 个工作日（Phase 8 + 11 + 9-α 已完成部分）。**推荐执行顺序**：Phase 0 → 1 → 3 → 2 → 4 → 7 → 5 → 6 → **11 → 8 → 9-α → 9-β → 10**。当前进度停在 Phase 9-α 结项，下一步为 Phase 9-β（契约变化批，需前端联调）或 Phase 10（依赖三角解耦）。
 
 ---
 
@@ -534,23 +535,48 @@ DTO（持久化边界）→ VO（展示层）→ Response（HTTP 响应包装）
 #### 9.2 拆分策略（分类处理，不一刀切）
 
 **分类 A：薄 VO 直接删除，Facade 返回 DTO**
-判定条件：VO 与 DTO 字段 100% 对应，仅有 Lombok getter/setter，无格式化逻辑。
-目标：~8 个 VO（如 `McpToolReferenceVO`、`IntentVersionVO` 等候选）
+
+判定条件：VO 与 DTO 字段 100% 对应或 VO 是 DTO 纯子集，仅有 Lombok getter/setter，无格式化/计算逻辑。
+
+扫描结果（2026-04-11 实测）— **10 个可收敛**：
+
+| VO | DTO | 重叠 | 收敛风险 |
+|---|---|---|---|
+| `McpToolReferenceVO` | `McpToolReferenceDTO` | 100% | 零 |
+| `McpToolCatalogVO` | `McpToolCatalogDTO` | VO 子集 | 低（多暴露 schemaJson/schemaHash/deletedAt） |
+| `ChatSessionFileVO` | `ChatSessionFileDTO` | VO 子集 | 低（多暴露 sessionId/storagePath/metadata） |
+| `ChatMessageVO` | `ChatMessageDTO` | 100% | 零 |
+| `ChatSessionVO` | `ChatSessionDTO` | VO 子集 | 低（多暴露 userId/metadata/createdAt/updatedAt） |
+| `AgentVO` | `AgentDTO` | VO 子集 | 低（多暴露 userId/activeIntentVersion/createdAt/updatedAt） |
+| `KnowledgeBaseVO` | `KnowledgeBaseDTO` | VO 子集 | 低（多暴露 createdBy/metadata） |
+| `KnowledgeDocumentVO` | `KnowledgeDocumentDTO` | VO 子集 | 低（多暴露 7 个字段） |
+| `IntentVersionVO` | 无 DTO（2 字段：version + active） | 独立 | 零（改为 inline record） |
+| `McpServerVO` | `McpServerDTO` | VO 子集 + 计算字段 `unresolvedReferenceCount` | 中（需保留计算逻辑） |
+
+其中前 3 个风险最低、零转换逻辑，选作 **9-α 试点**：
+1. `McpToolReferenceVO` — 100% 字段一致
+2. `IntentVersionVO` — 无 DTO，只有 2 字段
+3. `ChatMessageVO` — 100% 字段一致，VO 已引用 DTO 内部类型
+
+> **注意**：分类 A 中 #2–#8 的 VO 是 DTO 子集，删 VO 后 DTO 多出的字段会出现在 HTTP 响应中。如果前端或 TypeScript 类型生成工具对这些额外字段敏感（如 `encryptedCredentials`、`deletedAt`），应归入 9-β（契约变化批）。实际执行前需逐一确认。
 
 **分类 B：保留 VO，但删除薄 Response**
 判定条件：Response 只有一个字段（`List<VO>` 或 `VO`），无 meta/分页。
 策略：Controller 直接返回 `ApiResponse<List<VO>>` 或 `ApiResponse<VO>`。
 目标：~15 个 Response（如 `GetAgentsResponse` 仅含 `List<AgentVO>`）
+> 归入 9-β（契约变化批），需要前端联调。
 
 **分类 C：保留 VO，但合并 Request → 使用公共参数对象**
 判定条件：Create/Update Request 字段 90% 重合（仅 id 有无之差）。
 策略：合并为单个 `UpsertXxxRequest`，用 `@Validated(OnCreate.class)` / `@Validated(OnUpdate.class)` 区分。
 目标：Agent、AdminUser、AssistantTemplate、KnowledgeBase、IntentNode、McpServer 的 Create/Update 对 = **6 对 → 6 个**
+> 归入 9-β（契约变化批），需要前端联调。
 
-**分类 D：保留现状**
-- 含格式化逻辑的 VO（如 `DashboardOverviewVO` 的环比计算展示）
-- 含分页 meta 的 Response（如 `GetChatSessionsResponse`）
-- 前端强依赖字段名的 VO（破坏契约成本过高）
+**分类 D：保留现状**（扫描确认 14 个必须保留）
+- Dashboard 专属 VO（6 个）：含嵌套聚合结构，无 DTO，纯视图模型
+- 有转换逻辑/无 DTO 的 VO（8 个）：McpDiscoveredToolVO、ChatRoutingCandidateVO、IntentNodeVO、AssistantTemplateVO、AdminUserVO、LoginUserVO、UserProfileVO、DashboardMcpAlertVO
+- 含分页 meta 的 Response
+- 前端强依赖字段名的 VO
 
 #### 9.3 执行顺序：两阶段（契约不变 → 契约变化）
 
@@ -560,7 +586,7 @@ DTO（持久化边界）→ VO（展示层）→ Response（HTTP 响应包装）
 
 | 批次 | 范围 | 说明 |
 |------|------|------|
-| 9-α-1 | 分类 A 试点：3 个薄 VO（McpToolReferenceVO、IntentVersionVO、ChatSessionFileVO）→ Facade 内部直接用 DTO | **前提**：这些 VO 必须满足"Facade 返回的 Response 已经是 `ApiResponse<DTO>` 或字段名与 DTO 一致"，即 VO → DTO 替换后序列化输出字节级一致。若不一致，归入 9-β。 |
+| 9-α-1 | 分类 A 试点：3 个薄 VO（McpToolReferenceVO、IntentVersionVO、ChatMessageVO）→ Facade 内部直接用 DTO | **前提**：这些 VO 必须满足"Facade 返回的 Response 已经是 `ApiResponse<DTO>` 或字段名与 DTO 一致"，即 VO → DTO 替换后序列化输出字节级一致。若不一致，归入 9-β。 |
 | 9-α-2 | 分类 A 扩展到其余候选（逐个核对序列化输出） | 同上，必须字节级一致 |
 | 9-α-3 | 分类 D 的"隐藏机会"：内部辅助类的 VO 删除（不经过 Controller 的） | 纯内部重构 |
 

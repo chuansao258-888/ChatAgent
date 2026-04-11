@@ -10,7 +10,6 @@ import com.yulong.chatagent.admin.model.response.TestMcpServerResponse;
 import com.yulong.chatagent.admin.model.vo.McpDiscoveredToolVO;
 import com.yulong.chatagent.admin.model.vo.McpServerVO;
 import com.yulong.chatagent.admin.model.vo.McpToolCatalogVO;
-import com.yulong.chatagent.admin.model.vo.McpToolReferenceVO;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
 import com.yulong.chatagent.mcp.application.McpCatalogSyncService;
@@ -118,7 +117,7 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
     public DeleteMcpServerResponse deleteServer(String serverId, boolean force) {
         adminAccessService.requireAdmin();
         McpServerDTO server = crudHelper.requireServer(serverId);
-        return deleteHandler.execute(server, this::toReferenceVO, force);
+        return deleteHandler.execute(server, force);
     }
 
     @Override
@@ -211,15 +210,6 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
                 .createdAt(dto.getCreatedAt())
                 .updatedAt(dto.getUpdatedAt())
                 .build();
-    }
-
-    private McpToolReferenceVO toReferenceVO(McpToolReferenceDTO dto) {
-        return new McpToolReferenceVO(
-                dto.getReferenceType(),
-                dto.getReferenceId(),
-                dto.getReferenceName(),
-                dto.getReferencePath()
-        );
     }
 
     private McpDiscoveredToolVO toDiscoveredToolVO(McpRemoteToolDescriptor descriptor, McpServerDTO server) {
