@@ -284,27 +284,6 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 - DashboardFacadeServiceImpl 从 588 行减少到 ~350 行
 - DashboardTrendsAggregator 因与 private enum 紧密耦合而跳过
 
-**执行时间**: 2026-04-11
-**风险**: 低
-
-### 执行动作
-
-#### 1. Lombok 化 Entity
-- `Agent.java`：删除手写 equals/hashCode/toString
-- `ChatMessage.java`：删除手写 equals/hashCode/toString
-- `ChatSession.java`：删除手写 equals/hashCode/toString
-
-### 验证结果
-
-| 检查项 | 结果 |
-|--------|------|
-| `mvn compile` 通过 | ✅ PASS |
-| `mvn test` 通过 | ✅ PASS |
-
-### 问题与备注
-
-已完成
-
 ---
 
 ## Phase 6A：Entity 层消除 — 合并进 DTO
@@ -359,6 +338,70 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 | `mvn compile` 通过 | ✅ PASS |
 | `mvn test` 通过（342 tests） | ✅ PASS |
 | 仅 2 个 pre-existing 失败 | ✅ 无新增回归 |
+
+---
+
+## Phase 6B：合并薄 VO 到 Response 类
+
+**执行时间**: 2026-04-11
+**状态**: ⏭️ 已跳过
+
+### 跳过原因
+
+当前 Dashboard 有 4 个独立端点，各返回专属 VO：
+
+| 端点 | VO |
+|------|-----|
+| `/api/admin/dashboard/overview` | DashboardOverviewVO |
+| `/api/admin/dashboard/performance` | DashboardPerformanceVO |
+| `/api/admin/dashboard/trends` | DashboardTrendsVO |
+| `/api/admin/dashboard/mcp-alerts` | DashboardMcpAlertsVO |
+
+合并所有 VO 到 `DashboardOverviewVO` 会：
+1. 破坏前端 API 契约
+2. 创建巨型响应，不利于缓存和按需加载
+3. 混合关注点（KPI、性能、趋势、告警）
+
+当前结构职责分离清晰，无需强行合并。
+
+---
+
+## 执行总结
+
+**最终测试**: `mvn test` 342 tests 通过，0 新增回归（2 个 pre-existing 失败与重构无关）
+
+### 量化成果
+
+| 指标 | 变化 |
+|------|------|
+| Entity 文件 | 21 → 6（删除 15 个） |
+| PdfDocumentParser | 1640 → 1189 行（-28%） |
+| McpServerAdminFacadeServiceImpl | 523 → ~390 行（-25%） |
+| DashboardFacadeServiceImpl | 588 → ~350 行（-40%） |
+| Framework 测试 | 0 → 7 个测试类，41 个测试用例 |
+| Git 追踪体积 | 解除 MCP/.venv/（96MB）+ output/ 追踪 |
+
+### 提交历史
+
+```
+22a8cb4 docs: update restructuring execution record with Phase 5 and 6A results
+0247281 fix: update ChatSessionSummaryRepositoryTest to use DTO instead of deleted entity
+0843d15 refactor(persistence): merge Knowledge entities into DTOs, delete unused entities
+0c1a1bb refactor(persistence): merge AgentKnowledgeBase entity into DTO
+61be522 refactor(persistence): merge Intent, User, UserProfile, AgentTemplate, ChatSessionSummary, FileChunk entities into DTOs
+b7aa575 refactor(persistence): merge McpServer, McpToolCatalog, McpAlertEvent entities into DTOs
+c13fee9 refactor(persistence): merge ChatSessionFile entity into ChatSessionFileDTO
+453d957 refactor(pdf): split PdfDocumentParser into PdfPageRenderer, PdfQualityRouter, and PdfPageTextExtractor
+d584a4b refactor(dashboard): extract DashboardOverviewAggregator from DashboardFacadeServiceImpl
+46bf4fe refactor(mcp): extract McpServerCrudHelper from McpServerAdminFacadeServiceImpl
+919f0a3 test(framework): add baseline test coverage for framework module
+ac44d53 refactor(chat): move chat config classes to support/chat package
+83e27eb refactor(persistence): unify user persistence into support/persistence
+b75c58c refactor: move IntentTreeController to intent and Agent ports to agent package
+dabfb64 refactor(rag): rename rag/service to rag/application
+3800051 refactor(mcp): move MCP utility classes from admin to mcp package
+1d71ab7 chore: remove root temp files and untrack output/ directory
+```
 
 ---
 
