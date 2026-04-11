@@ -143,10 +143,10 @@ function AuthenticatedSideMenu() {
           onClick={() => {
             navigate("/admin");
           }}
-          className="mt-3 flex items-center gap-3 rounded-input border border-white/12 bg-transparent px-4 py-3 text-left text-white/65 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white/90"
+          className="mt-3 flex items-center justify-center gap-3 rounded-input border border-white/12 bg-transparent px-4 py-3 text-center text-white/65 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white/90"
         >
           <ControlOutlined />
-          <span className="font-medium">Admin console</span>
+          <span className="font-medium">Admin Console</span>
         </button>
       ) : null}
 

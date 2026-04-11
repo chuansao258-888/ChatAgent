@@ -6,15 +6,15 @@ import com.yulong.chatagent.conversation.event.ChatEventDispatcher;
 import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatSessionResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
+import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
+import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPublisher;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.intent.application.ConversationTurnPreparationService;
 import com.yulong.chatagent.intent.application.TurnPreparationResult;
 import com.yulong.chatagent.sse.SseService;
-import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -97,7 +97,7 @@ public class ConversationOrchestratorService {
     private ConversationTurnContext buildTurnContext(CreateChatMessageRequest request) {
         CreateChatMessageRequest normalizedRequest = normalizeRequest(request);
 
-        GetChatSessionResponse chatSession = chatSessionFacadeService.getChatSession(normalizedRequest.getSessionId());
+        ChatSessionVO chatSession = chatSessionFacadeService.getChatSession(normalizedRequest.getSessionId());
         String resolvedAgentId = requireAgentId(chatSession, normalizedRequest.getSessionId());
 
         CreateChatMessageResponse createdMessage = chatMessageFacadeService.createChatMessage(normalizedRequest);
@@ -213,11 +213,11 @@ public class ConversationOrchestratorService {
                 .build();
     }
 
-    private String requireAgentId(GetChatSessionResponse chatSession, String sessionId) {
-        if (chatSession == null || chatSession.getChatSession() == null) {
+    private String requireAgentId(ChatSessionVO chatSession, String sessionId) {
+        if (chatSession == null) {
             throw new BizException("Chat session not found: " + sessionId);
         }
-        String agentId = chatSession.getChatSession().getAgentId();
+        String agentId = chatSession.getAgentId();
         if (agentId == null || agentId.isBlank()) {
             throw new BizException("Chat session is missing its internal assistant binding: " + sessionId);
         }

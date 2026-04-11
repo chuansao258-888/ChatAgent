@@ -35,4 +35,37 @@ public class InternalAssistantService {
         }
         return assistant;
     }
+
+    /**
+     * Updates the active intent version on the system assistant.
+     *
+     * <p>Encapsulates the agent write so that intent-domain callers
+     * do not need a direct dependency on {@code AgentRepository}.</p>
+     *
+     * @param version the intent version to activate
+     * @return {@code true} on success
+     */
+    public boolean updateActiveIntentVersion(int version) {
+        AgentDTO assistant = getRequiredAssistant();
+        assistant.setActiveIntentVersion(version);
+        return agentRepository.update(assistant);
+    }
+
+    /**
+     * Returns the active intent version for a given agent, or {@code null}
+     * if the agent does not exist or has no active version.
+     *
+     * <p>Provides a read-only gateway so that intent-domain cache management
+     * does not need a direct dependency on {@code AgentRepository}.</p>
+     *
+     * @param agentId agent identifier
+     * @return active intent version, or {@code null}
+     */
+    public Integer getActiveIntentVersion(String agentId) {
+        AgentDTO agent = agentRepository.findById(agentId);
+        if (agent == null || agent.getActiveIntentVersion() == null || agent.getActiveIntentVersion() <= 0) {
+            return null;
+        }
+        return agent.getActiveIntentVersion();
+    }
 }

@@ -1,11 +1,8 @@
 package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.access.ResourceAccessGuard;
-import com.yulong.chatagent.admin.model.request.CreateAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.request.InitializeAssistantFromTemplateRequest;
-import com.yulong.chatagent.admin.model.request.UpdateAssistantTemplateRequest;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplateResponse;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplatesResponse;
+import com.yulong.chatagent.admin.model.request.UpsertAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.response.InitializeAssistantFromTemplateResponse;
 import com.yulong.chatagent.admin.model.vo.AssistantTemplateVO;
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
@@ -16,10 +13,9 @@ import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.intent.application.IntentTreeFacadeService;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
-import com.yulong.chatagent.intent.model.request.CreateIntentNodeRequest;
 import com.yulong.chatagent.intent.model.request.SetIntentNodeKnowledgeBasesRequest;
+import com.yulong.chatagent.intent.model.request.UpsertIntentNodeRequest;
 import com.yulong.chatagent.intent.model.response.CreateIntentNodeResponse;
-import com.yulong.chatagent.intent.model.response.PublishIntentTreeResponse;
 import com.yulong.chatagent.intent.port.IntentNodeRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
@@ -59,24 +55,22 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
     private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
-    public GetAssistantTemplatesResponse getTemplates() {
+    public List<AssistantTemplateVO> getTemplates() {
         adminAccessService.requireAdmin();
-        return new GetAssistantTemplatesResponse(
-                assistantTemplateRepository.findAll().stream()
-                        .map(this::toVO)
-                        .toList()
-        );
+        return assistantTemplateRepository.findAll().stream()
+                .map(this::toVO)
+                .toList();
     }
 
     @Override
-    public GetAssistantTemplateResponse getTemplate(String templateId) {
+    public AssistantTemplateVO getTemplate(String templateId) {
         adminAccessService.requireAdmin();
-        return new GetAssistantTemplateResponse(toVO(requireTemplate(templateId)));
+        return toVO(requireTemplate(templateId));
     }
 
     @Override
     @Transactional
-    public String createTemplate(CreateAssistantTemplateRequest request) {
+    public String createTemplate(UpsertAssistantTemplateRequest request) {
         adminAccessService.requireAdmin();
         AssistantTemplateDTO template = buildTemplateForCreate(request);
         if (!assistantTemplateRepository.save(template)) {
@@ -87,7 +81,7 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
 
     @Override
     @Transactional
-    public void updateTemplate(String templateId, UpdateAssistantTemplateRequest request) {
+    public void updateTemplate(String templateId, UpsertAssistantTemplateRequest request) {
         adminAccessService.requireAdmin();
         AssistantTemplateDTO existing = requireTemplate(templateId);
         AssistantTemplateDTO updated = buildTemplateForUpdate(existing, request);
@@ -136,7 +130,7 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
 
         Map<String, String> createdNodeIdsByCode = new LinkedHashMap<>();
         for (AssistantTemplateDTO.IntentTreeNodeTemplateDTO nodeTemplate : template.getIntentTree()) {
-            CreateIntentNodeRequest createRequest = new CreateIntentNodeRequest();
+            UpsertIntentNodeRequest createRequest = new UpsertIntentNodeRequest();
             createRequest.setParentId(resolveParentId(nodeTemplate.getParentCode(), createdNodeIdsByCode));
             createRequest.setNodeLevel(nodeTemplate.getNodeLevel());
             createRequest.setName(nodeTemplate.getName());
@@ -161,11 +155,11 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
             }
         }
 
-        PublishIntentTreeResponse publishResponse = intentTreeFacadeService.publishIntentTreeSnapshot();
-        return new InitializeAssistantFromTemplateResponse(templateId, publishResponse.getVersion());
+        Integer publishedVersion = intentTreeFacadeService.publishIntentTreeSnapshot();
+        return new InitializeAssistantFromTemplateResponse(templateId, publishedVersion);
     }
 
-    private AssistantTemplateDTO buildTemplateForCreate(CreateAssistantTemplateRequest request) {
+    private AssistantTemplateDTO buildTemplateForCreate(UpsertAssistantTemplateRequest request) {
         LocalDateTime now = LocalDateTime.now();
         return AssistantTemplateDTO.builder()
                 .id(UUID.randomUUID().toString())
@@ -183,7 +177,7 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
                 .build();
     }
 
-    private AssistantTemplateDTO buildTemplateForUpdate(AssistantTemplateDTO existing, UpdateAssistantTemplateRequest request) {
+    private AssistantTemplateDTO buildTemplateForUpdate(AssistantTemplateDTO existing, UpsertAssistantTemplateRequest request) {
         return AssistantTemplateDTO.builder()
                 .id(existing.getId())
                 .code(requireUniqueCode(

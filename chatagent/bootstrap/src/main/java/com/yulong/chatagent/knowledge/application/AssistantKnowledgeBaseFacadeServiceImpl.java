@@ -8,7 +8,6 @@ import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
 import com.yulong.chatagent.knowledge.model.request.SetAssistantKnowledgeBasesRequest;
-import com.yulong.chatagent.knowledge.model.response.GetAssistantKnowledgeBasesResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
@@ -35,7 +34,7 @@ public class AssistantKnowledgeBaseFacadeServiceImpl implements AssistantKnowled
     private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
-    public GetAssistantKnowledgeBasesResponse getAssistantKnowledgeBases() {
+    public KnowledgeBaseVO[] getAssistantKnowledgeBases() {
         adminAccessService.requireAdmin();
         List<String> boundKnowledgeBaseIds = agentKnowledgeBaseRepository.findKnowledgeBaseIdsByAgentId(
                 InternalAssistantService.SYSTEM_ASSISTANT_ID
@@ -45,9 +44,7 @@ public class AssistantKnowledgeBaseFacadeServiceImpl implements AssistantKnowled
         for (KnowledgeBaseDTO knowledgeBase : knowledgeBaseRepository.findByIds(activeKnowledgeBaseIds)) {
             result.add(knowledgeBaseConverter.toVO(knowledgeBase));
         }
-        return GetAssistantKnowledgeBasesResponse.builder()
-                .knowledgeBases(result.toArray(new KnowledgeBaseVO[0]))
-                .build();
+        return result.toArray(new KnowledgeBaseVO[0]);
     }
 
     @Override

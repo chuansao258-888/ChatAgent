@@ -5,8 +5,11 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * Unified payload for creating or updating an agent.
+ */
 @Data
-public class UpdateAgentRequest {
+public class UpsertAgentRequest {
     private String name;
     private String description;
     private String systemPrompt;
@@ -14,4 +17,3 @@ public class UpdateAgentRequest {
     private List<String> allowedTools;
     private AgentDTO.ChatOptions chatOptions;
 }
-

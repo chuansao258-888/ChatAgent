@@ -2,7 +2,7 @@ package com.yulong.chatagent.conversation.application.model;
 
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatSessionResponse;
+import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 
 import java.util.List;
@@ -14,7 +14,7 @@ import java.util.List;
  */
 public record ConversationTurnContext(
         CreateChatMessageRequest request,
-        GetChatSessionResponse session,
+        ChatSessionVO session,
         CreateChatMessageResponse createdUserMessage,
         List<ChatMessageDTO> recentHistory
 ) {

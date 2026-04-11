@@ -13,9 +13,6 @@ import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import com.yulong.chatagent.conversation.converter.ChatSessionConverter;
 import com.yulong.chatagent.conversation.model.request.CreateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatSessionRequest;
-import com.yulong.chatagent.conversation.model.response.CreateChatSessionResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatSessionResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatSessionsResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
 import com.yulong.chatagent.context.UserContext;
 import lombok.AllArgsConstructor;
@@ -42,28 +39,24 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
     private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
-    public GetChatSessionsResponse getChatSessions() {
+    public ChatSessionVO[] getChatSessions() {
         String userId = requireCurrentUserId();
         List<ChatSessionDTO> chatSessions = chatSessionRepository.findByUserId(userId);
         List<ChatSessionVO> result = new ArrayList<>();
         for (ChatSessionDTO chatSession : chatSessions) {
             result.add(chatSessionConverter.toVO(chatSession));
         }
-        return GetChatSessionsResponse.builder()
-                .chatSessions(result.toArray(new ChatSessionVO[0]))
-                .build();
+        return result.toArray(new ChatSessionVO[0]);
     }
 
     @Override
-    public GetChatSessionResponse getChatSession(String chatSessionId) {
+    public ChatSessionVO getChatSession(String chatSessionId) {
         ChatSessionDTO chatSession = resourceAccessGuard.assertCanReadSession(UserContext.requireUser(), chatSessionId);
-
-        return GetChatSessionResponse.builder()
-                .chatSession(chatSessionConverter.toVO(chatSession))
-                .build();
+        return chatSessionConverter.toVO(chatSession);
     }
 
-    public CreateChatSessionResponse createChatSession(CreateChatSessionRequest request) {
+    @Override
+    public String createChatSession(CreateChatSessionRequest request) {
         String userId = requireCurrentUserId();
         String agentId = internalAssistantService.getRequiredAssistantId();
         ChatSessionDTO chatSessionDTO = chatSessionConverter.toDTO(request);
@@ -77,9 +70,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
             throw new BizException("Failed to create chat session");
         }
 
-        return CreateChatSessionResponse.builder()
-                .chatSessionId(chatSessionDTO.getId())
-                .build();
+        return chatSessionDTO.getId();
     }
 
     @Override

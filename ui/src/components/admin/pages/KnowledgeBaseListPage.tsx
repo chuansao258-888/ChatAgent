@@ -38,7 +38,7 @@ export default function KnowledgeBaseListPage() {
     setLoading(true);
     try {
       const response = await getKnowledgeBases();
-      setKnowledgeBases(response.knowledgeBases);
+      setKnowledgeBases(response);
     } catch (error) {
       console.error("Failed to load knowledge bases:", error);
       message.error("Unable to load knowledge bases.");
@@ -125,7 +125,7 @@ export default function KnowledgeBaseListPage() {
       message.success("Knowledge base created.");
       form.resetFields();
       await loadKnowledgeBases();
-      navigate(`/admin/knowledge-bases/${response.knowledgeBaseId}`);
+      navigate(`/admin/knowledge-bases/${response}`);
     } catch (error) {
       console.error("Failed to create knowledge base:", error);
       message.error("Unable to create the knowledge base.");

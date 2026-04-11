@@ -5,6 +5,7 @@ import com.yulong.chatagent.admin.application.AdminAccessService;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.knowledge.converter.KnowledgeDocumentConverter;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeDocumentVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
@@ -106,6 +107,47 @@ class KnowledgeDocumentFacadeServiceImplTest {
     @AfterEach
     void tearDown() {
         UserContext.clear();
+    }
+
+    @Test
+    void shouldReturnDirectKnowledgeDocumentArray() {
+        LoginUser adminUser = LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build();
+        UserContext.set(adminUser);
+        when(adminAccessService.requireAdmin()).thenReturn(adminUser);
+        when(resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, "kb-1")).thenReturn(KnowledgeBaseDTO.builder()
+                .id("kb-1")
+                .status("ACTIVE")
+                .build());
+
+        KnowledgeDocumentDTO document = KnowledgeDocumentDTO.builder()
+                .id("doc-1")
+                .knowledgeBaseId("kb-1")
+                .filename("guide.pdf")
+                .originalFilename("guide.pdf")
+                .mimeType("application/pdf")
+                .sizeBytes(1024L)
+                .parseStatus("COMPLETED")
+                .build();
+        KnowledgeDocumentVO expected = KnowledgeDocumentVO.builder()
+                .id("doc-1")
+                .knowledgeBaseId("kb-1")
+                .filename("guide.pdf")
+                .originalFilename("guide.pdf")
+                .mimeType("application/pdf")
+                .sizeBytes(1024L)
+                .parseStatus("COMPLETED")
+                .deleted(false)
+                .build();
+
+        when(knowledgeDocumentRepository.findByKnowledgeBaseId("kb-1")).thenReturn(java.util.List.of(document));
+        when(knowledgeDocumentConverter.toVO(document)).thenReturn(expected);
+
+        KnowledgeDocumentVO[] response = facadeService.getKnowledgeDocuments("kb-1");
+
+        assertThat(response).containsExactly(expected);
     }
 
     @Test

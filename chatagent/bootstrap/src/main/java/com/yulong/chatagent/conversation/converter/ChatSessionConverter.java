@@ -2,11 +2,11 @@ package com.yulong.chatagent.conversation.converter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.support.dto.ChatSessionDTO;
-import com.yulong.chatagent.support.persistence.entity.ChatSession;
 import com.yulong.chatagent.conversation.model.request.CreateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
+import com.yulong.chatagent.support.dto.ChatSessionDTO;
+import com.yulong.chatagent.support.persistence.entity.ChatSession;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;

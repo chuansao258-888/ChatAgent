@@ -1,20 +1,17 @@
 package com.yulong.chatagent.knowledge.application;
 
-import com.yulong.chatagent.knowledge.model.request.CreateKnowledgeBaseRequest;
-import com.yulong.chatagent.knowledge.model.request.UpdateKnowledgeBaseRequest;
-import com.yulong.chatagent.knowledge.model.response.CreateKnowledgeBaseResponse;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBaseResponse;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
+import com.yulong.chatagent.knowledge.model.request.UpsertKnowledgeBaseRequest;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 
 public interface KnowledgeBaseFacadeService {
 
-    GetKnowledgeBasesResponse getKnowledgeBases();
+    KnowledgeBaseVO[] getKnowledgeBases();
 
-    GetKnowledgeBaseResponse getKnowledgeBase(String knowledgeBaseId);
+    KnowledgeBaseVO getKnowledgeBase(String knowledgeBaseId);
 
-    CreateKnowledgeBaseResponse createKnowledgeBase(CreateKnowledgeBaseRequest request);
+    String createKnowledgeBase(UpsertKnowledgeBaseRequest request);
 
-    void updateKnowledgeBase(String knowledgeBaseId, UpdateKnowledgeBaseRequest request);
+    void updateKnowledgeBase(String knowledgeBaseId, UpsertKnowledgeBaseRequest request);
 
     void deleteKnowledgeBase(String knowledgeBaseId);
 }

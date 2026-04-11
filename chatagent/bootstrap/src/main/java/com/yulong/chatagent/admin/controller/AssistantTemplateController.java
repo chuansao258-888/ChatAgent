@@ -3,12 +3,10 @@ package com.yulong.chatagent.admin.controller;
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.admin.application.AssistantTemplateFacadeService;
-import com.yulong.chatagent.admin.model.request.CreateAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.request.InitializeAssistantFromTemplateRequest;
-import com.yulong.chatagent.admin.model.request.UpdateAssistantTemplateRequest;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplateResponse;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplatesResponse;
+import com.yulong.chatagent.admin.model.request.UpsertAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.response.InitializeAssistantFromTemplateResponse;
+import com.yulong.chatagent.admin.model.vo.AssistantTemplateVO;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,6 +17,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * Administrator endpoints for assistant template management.
@@ -32,23 +32,23 @@ public class AssistantTemplateController {
     private final AssistantTemplateFacadeService assistantTemplateFacadeService;
 
     @GetMapping
-    public ApiResponse<GetAssistantTemplatesResponse> getTemplates() {
+    public ApiResponse<List<AssistantTemplateVO>> getTemplates() {
         return ApiResponse.success(assistantTemplateFacadeService.getTemplates());
     }
 
     @GetMapping("/{templateId}")
-    public ApiResponse<GetAssistantTemplateResponse> getTemplate(@PathVariable String templateId) {
+    public ApiResponse<AssistantTemplateVO> getTemplate(@PathVariable String templateId) {
         return ApiResponse.success(assistantTemplateFacadeService.getTemplate(templateId));
     }
 
     @PostMapping
-    public ApiResponse<String> createTemplate(@RequestBody CreateAssistantTemplateRequest request) {
+    public ApiResponse<String> createTemplate(@RequestBody UpsertAssistantTemplateRequest request) {
         return ApiResponse.success(assistantTemplateFacadeService.createTemplate(request));
     }
 
     @PatchMapping("/{templateId}")
     public ApiResponse<Void> updateTemplate(@PathVariable String templateId,
-                                            @RequestBody UpdateAssistantTemplateRequest request) {
+                                            @RequestBody UpsertAssistantTemplateRequest request) {
         assistantTemplateFacadeService.updateTemplate(templateId, request);
         return ApiResponse.success();
     }

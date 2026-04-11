@@ -3,10 +3,10 @@ package com.yulong.chatagent.admin.model.request;
 import lombok.Data;
 
 /**
- * Request payload for creating one MCP server configuration.
+ * Unified payload for creating or updating one MCP server configuration.
  */
 @Data
-public class CreateMcpServerRequest {
+public class UpsertMcpServerRequest {
     private String slug;
     private String name;
     private String description;

@@ -2,11 +2,10 @@ package com.yulong.chatagent.intent.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.agent.port.AgentRepository;
+import com.yulong.chatagent.agent.application.InternalAssistantService;
 import com.yulong.chatagent.intent.model.IntentNodeStatus;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.intent.port.IntentNodeRepository;
-import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.IntentKnowledgeBaseDTO;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -30,20 +29,20 @@ public class DefaultIntentTreeCacheManager implements IntentTreeCacheManager {
 
     private static final String CACHE_KEY_PREFIX = "chatagent:intent:tree:";
 
-    private final AgentRepository agentRepository;
+    private final InternalAssistantService internalAssistantService;
     private final IntentNodeRepository intentNodeRepository;
     private final IntentKnowledgeBaseRepository intentKnowledgeBaseRepository;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
     private final Duration cacheTtl;
 
-    public DefaultIntentTreeCacheManager(AgentRepository agentRepository,
+    public DefaultIntentTreeCacheManager(InternalAssistantService internalAssistantService,
                                          IntentNodeRepository intentNodeRepository,
                                          IntentKnowledgeBaseRepository intentKnowledgeBaseRepository,
                                          StringRedisTemplate stringRedisTemplate,
                                          ObjectMapper objectMapper,
                                          @Value("${chatagent.intent.cache-ttl-minutes:30}") long cacheTtlMinutes) {
-        this.agentRepository = agentRepository;
+        this.internalAssistantService = internalAssistantService;
         this.intentNodeRepository = intentNodeRepository;
         this.intentKnowledgeBaseRepository = intentKnowledgeBaseRepository;
         this.stringRedisTemplate = stringRedisTemplate;
@@ -57,8 +56,7 @@ public class DefaultIntentTreeCacheManager implements IntentTreeCacheManager {
             return IntentTreeSnapshot.empty(agentId);
         }
 
-        AgentDTO agent = agentRepository.findById(agentId);
-        Integer activeVersion = resolveActiveVersion(agent);
+        Integer activeVersion = internalAssistantService.getActiveIntentVersion(agentId);
         if (activeVersion == null) {
             return IntentTreeSnapshot.empty(agentId);
         }
@@ -130,13 +128,6 @@ public class DefaultIntentTreeCacheManager implements IntentTreeCacheManager {
                     .add(binding.getKnowledgeBaseId());
         }
         return new IntentTreeSnapshot(agentId, version, activeNodes, kbIdsByNodeId);
-    }
-
-    private Integer resolveActiveVersion(AgentDTO agent) {
-        if (agent == null || agent.getActiveIntentVersion() == null || agent.getActiveIntentVersion() <= 0) {
-            return null;
-        }
-        return agent.getActiveIntentVersion();
     }
 
     private String cacheKey(String agentId) {

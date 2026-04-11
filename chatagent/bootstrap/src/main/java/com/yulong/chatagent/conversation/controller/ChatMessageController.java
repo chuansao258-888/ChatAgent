@@ -7,7 +7,7 @@ import com.yulong.chatagent.model.common.ApiResponse;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatMessagesResponse;
+import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import lombok.AllArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,7 +37,7 @@ public class ChatMessageController {
      * @return message history response
      */
     @GetMapping("/chat-messages/session/{sessionId}")
-    public ApiResponse<GetChatMessagesResponse> getChatMessagesBySessionId(@PathVariable String sessionId) {
+    public ApiResponse<ChatMessageVO[]> getChatMessagesBySessionId(@PathVariable String sessionId) {
         return ApiResponse.success(chatMessageFacadeService.getChatMessagesBySessionId(sessionId));
     }
 

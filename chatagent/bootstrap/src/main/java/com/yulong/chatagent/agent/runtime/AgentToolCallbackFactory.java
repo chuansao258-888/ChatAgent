@@ -4,7 +4,7 @@ import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentToolScopeMode;
-import com.yulong.chatagent.admin.application.ToolFacadeService;
+import com.yulong.chatagent.agent.application.ToolFacadeService;
 import com.yulong.chatagent.mcp.runtime.McpRolloutPolicy;
 import com.yulong.chatagent.mcp.runtime.McpToolWrapper;
 import com.yulong.chatagent.support.dto.AgentDTO;

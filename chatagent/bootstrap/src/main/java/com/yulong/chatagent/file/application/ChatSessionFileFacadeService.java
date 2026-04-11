@@ -1,7 +1,7 @@
 package com.yulong.chatagent.file.application;
 
-import com.yulong.chatagent.file.model.response.GetChatSessionFilesResponse;
 import com.yulong.chatagent.file.model.response.UploadChatSessionFileResponse;
+import com.yulong.chatagent.file.model.vo.ChatSessionFileVO;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -9,7 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
  */
 public interface ChatSessionFileFacadeService {
 
-    GetChatSessionFilesResponse getChatSessionFiles(String sessionId);
+    ChatSessionFileVO[] getChatSessionFiles(String sessionId);
 
     UploadChatSessionFileResponse uploadFile(String sessionId, MultipartFile file);
 

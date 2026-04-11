@@ -4,7 +4,7 @@ import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.knowledge.application.AssistantKnowledgeBaseFacadeService;
 import com.yulong.chatagent.knowledge.model.request.SetAssistantKnowledgeBasesRequest;
-import com.yulong.chatagent.knowledge.model.response.GetAssistantKnowledgeBasesResponse;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +25,7 @@ public class AssistantKnowledgeBaseController {
     private final AssistantKnowledgeBaseFacadeService assistantKnowledgeBaseFacadeService;
 
     @GetMapping("/knowledge-bases")
-    public ApiResponse<GetAssistantKnowledgeBasesResponse> getAssistantKnowledgeBases() {
+    public ApiResponse<KnowledgeBaseVO[]> getAssistantKnowledgeBases() {
         return ApiResponse.success(assistantKnowledgeBaseFacadeService.getAssistantKnowledgeBases());
     }
 

@@ -53,8 +53,8 @@ export default function AssistantTemplatePage() {
         getAssistantTemplates(),
         getKnowledgeBases(),
       ]);
-      setTemplates(templateResponse.templates);
-      setKnowledgeBases(knowledgeBaseResponse.knowledgeBases);
+      setTemplates(templateResponse);
+      setKnowledgeBases(knowledgeBaseResponse);
     } catch (error) {
       console.error("Failed to load assistant templates:", error);
       message.error("Unable to load assistant templates.");

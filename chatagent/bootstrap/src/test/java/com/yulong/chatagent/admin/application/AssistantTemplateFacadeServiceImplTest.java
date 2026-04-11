@@ -2,8 +2,8 @@ package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.admin.model.request.InitializeAssistantFromTemplateRequest;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplatesResponse;
 import com.yulong.chatagent.admin.model.response.InitializeAssistantFromTemplateResponse;
+import com.yulong.chatagent.admin.model.vo.AssistantTemplateVO;
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.agent.port.AssistantTemplateRepository;
@@ -13,10 +13,9 @@ import com.yulong.chatagent.intent.application.IntentTreeFacadeService;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
 import com.yulong.chatagent.intent.model.ScopePolicy;
-import com.yulong.chatagent.intent.model.request.CreateIntentNodeRequest;
+import com.yulong.chatagent.intent.model.request.UpsertIntentNodeRequest;
 import com.yulong.chatagent.intent.model.request.SetIntentNodeKnowledgeBasesRequest;
 import com.yulong.chatagent.intent.model.response.CreateIntentNodeResponse;
-import com.yulong.chatagent.intent.model.response.PublishIntentTreeResponse;
 import com.yulong.chatagent.intent.port.IntentNodeRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
@@ -103,10 +102,10 @@ class AssistantTemplateFacadeServiceImplTest {
                         .build()
         ));
 
-        GetAssistantTemplatesResponse response = facadeService.getTemplates();
+        List<AssistantTemplateVO> response = facadeService.getTemplates();
 
-        assertThat(response.getTemplates()).hasSize(1);
-        assertThat(response.getTemplates().get(0).getCode()).isEqualTo("hr");
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getCode()).isEqualTo("hr");
     }
 
     @Test
@@ -172,10 +171,10 @@ class AssistantTemplateFacadeServiceImplTest {
                 IntentNodeDTO.builder().id("draft-1").build()
         ));
         when(intentNodeRepository.deleteByIds(List.of("draft-1"))).thenReturn(true);
-        when(intentTreeFacadeService.createIntentNode(any(CreateIntentNodeRequest.class)))
+        when(intentTreeFacadeService.createIntentNode(any(UpsertIntentNodeRequest.class)))
                 .thenReturn(new CreateIntentNodeResponse("node-1"))
                 .thenReturn(new CreateIntentNodeResponse("node-2"));
-        when(intentTreeFacadeService.publishIntentTreeSnapshot()).thenReturn(new PublishIntentTreeResponse(3));
+        when(intentTreeFacadeService.publishIntentTreeSnapshot()).thenReturn(3);
 
         InitializeAssistantFromTemplateRequest request = new InitializeAssistantFromTemplateRequest();
         request.setKnowledgeBaseIds(List.of("kb-1", "kb-2"));
@@ -192,9 +191,9 @@ class AssistantTemplateFacadeServiceImplTest {
                 List.of("kb-1", "kb-2")
         );
 
-        ArgumentCaptor<CreateIntentNodeRequest> createCaptor = ArgumentCaptor.forClass(CreateIntentNodeRequest.class);
+        ArgumentCaptor<UpsertIntentNodeRequest> createCaptor = ArgumentCaptor.forClass(UpsertIntentNodeRequest.class);
         verify(intentTreeFacadeService, org.mockito.Mockito.times(2)).createIntentNode(createCaptor.capture());
-        List<CreateIntentNodeRequest> createRequests = createCaptor.getAllValues();
+        List<UpsertIntentNodeRequest> createRequests = createCaptor.getAllValues();
         assertThat(createRequests.get(0).getName()).isEqualTo("IT");
         assertThat(createRequests.get(0).getParentId()).isNull();
         assertThat(createRequests.get(1).getParentId()).isEqualTo("node-1");

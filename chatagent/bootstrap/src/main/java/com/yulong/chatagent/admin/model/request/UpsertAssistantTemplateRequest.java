@@ -7,10 +7,10 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * Request payload for creating an assistant template.
+ * Unified payload for creating or updating an assistant template.
  */
 @Data
-public class CreateAssistantTemplateRequest {
+public class UpsertAssistantTemplateRequest {
     private String code;
     private String name;
     private String description;
@@ -20,4 +20,3 @@ public class CreateAssistantTemplateRequest {
     private AgentDTO.ChatOptions chatOptions;
     private List<AssistantTemplateDTO.IntentTreeNodeTemplateDTO> intentTree;
 }
-

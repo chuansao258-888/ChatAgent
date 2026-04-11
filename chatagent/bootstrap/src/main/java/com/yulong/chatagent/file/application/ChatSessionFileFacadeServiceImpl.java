@@ -4,7 +4,6 @@ import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.exception.ServiceException;
 import com.yulong.chatagent.file.converter.ChatSessionFileConverter;
-import com.yulong.chatagent.file.model.response.GetChatSessionFilesResponse;
 import com.yulong.chatagent.file.model.response.UploadChatSessionFileResponse;
 import com.yulong.chatagent.file.model.vo.ChatSessionFileVO;
 import com.yulong.chatagent.file.port.ChatSessionFileRepository;
@@ -45,7 +44,7 @@ public class ChatSessionFileFacadeServiceImpl implements ChatSessionFileFacadeSe
     private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
-    public GetChatSessionFilesResponse getChatSessionFiles(String sessionId) {
+    public ChatSessionFileVO[] getChatSessionFiles(String sessionId) {
         requireCurrentUserId();
         resourceAccessGuard.assertCanReadSession(UserContext.requireUser(), sessionId);
 
@@ -54,9 +53,7 @@ public class ChatSessionFileFacadeServiceImpl implements ChatSessionFileFacadeSe
             result.add(chatSessionFileConverter.toVO(sessionFile));
         }
 
-        return GetChatSessionFilesResponse.builder()
-                .files(result.toArray(new ChatSessionFileVO[0]))
-                .build();
+        return result.toArray(new ChatSessionFileVO[0]);
     }
 
     @Override

@@ -1,5 +1,7 @@
 package com.yulong.chatagent.admin.application;
 
+import com.yulong.chatagent.agent.application.ToolFacadeService;
+
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
 import com.yulong.chatagent.mcp.runtime.McpRuntimeToolRegistry;

@@ -3,11 +3,10 @@ import { Button, Drawer, Form, Input, Select, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { createMcpServer, updateMcpServer } from "../../api/admin.ts";
 import type {
-  CreateMcpServerRequest,
   McpAuthType,
   McpProtocol,
   McpServerVO,
-  UpdateMcpServerRequest,
+  UpsertMcpServerRequest,
 } from "../../types/admin.ts";
 
 interface McpServerCreateDrawerProps {
@@ -82,7 +81,7 @@ export default function McpServerCreateDrawer({
     setSubmitting(true);
     try {
       if (isEditMode && server) {
-        const payload: UpdateMcpServerRequest = {
+        const payload: UpsertMcpServerRequest = {
           slug: values.slug.trim(),
           name: values.name.trim(),
           description: values.description?.trim() || undefined,
@@ -95,7 +94,7 @@ export default function McpServerCreateDrawer({
         message.success("MCP server updated.");
         await onSaved(server.id);
       } else {
-        const payload: CreateMcpServerRequest = {
+        const payload: UpsertMcpServerRequest = {
           slug: values.slug.trim(),
           name: values.name.trim(),
           description: values.description?.trim() || undefined,

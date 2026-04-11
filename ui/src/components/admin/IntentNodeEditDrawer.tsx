@@ -2,18 +2,16 @@ import { Button, Drawer, Form, Input, InputNumber, Select, Switch, Tag, Typograp
 import { useEffect, useMemo } from "react";
 import IntentKnowledgeBaseBindPanel from "./IntentKnowledgeBaseBindPanel.tsx";
 import type {
-  CreateIntentNodeRequest,
   IntentKind,
   IntentNodeLevel,
   IntentNodeVO,
   KnowledgeBaseVO,
   ScopePolicy,
   ToolVO,
-  UpdateIntentNodeRequest,
 } from "../../types/admin.ts";
 
 export interface IntentNodeEditSubmitValue {
-  payload: CreateIntentNodeRequest | UpdateIntentNodeRequest;
+  payload: Record<string, unknown>;
   knowledgeBaseIds: string[];
 }
 
@@ -150,7 +148,7 @@ export default function IntentNodeEditDrawer({
                 : undefined,
             enabled: values.enabled,
             sortOrder: values.sortOrder,
-          } satisfies CreateIntentNodeRequest)
+          })
         : ({
             name: values.name.trim(),
             description: sanitizeNullableString(values.description),
@@ -168,7 +166,7 @@ export default function IntentNodeEditDrawer({
                 : null,
             enabled: values.enabled,
             sortOrder: values.sortOrder,
-          } satisfies UpdateIntentNodeRequest);
+          });
 
     await onSubmit({
       payload,

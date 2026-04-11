@@ -24,9 +24,9 @@ export default function AssistantSettingsPage() {
         getKnowledgeBases(),
         getAssistantKnowledgeBases(),
       ]);
-      setKnowledgeBases(knowledgeBasesResponse.knowledgeBases);
+      setKnowledgeBases(knowledgeBasesResponse);
       setSelectedKnowledgeBaseIds(
-        assistantResponse.knowledgeBases.map((knowledgeBase) => knowledgeBase.id),
+        assistantResponse.map((knowledgeBase) => knowledgeBase.id),
       );
     } catch (error) {
       console.error("Failed to load assistant settings:", error);

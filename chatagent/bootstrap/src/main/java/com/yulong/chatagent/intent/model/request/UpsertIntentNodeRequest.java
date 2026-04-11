@@ -8,10 +8,10 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * Payload for updating one draft intent node.
+ * Unified payload for creating or updating one draft intent node.
  */
 @Data
-public class UpdateIntentNodeRequest {
+public class UpsertIntentNodeRequest {
     private String parentId;
     private IntentNodeLevel nodeLevel;
     private String name;

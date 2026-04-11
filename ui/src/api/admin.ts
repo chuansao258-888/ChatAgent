@@ -1,12 +1,8 @@
 import { del, get, patch, post, put } from "./http.ts";
 import type {
-  CreateMcpServerRequest,
   CreateAdminUserRequest,
   CreateAdminUserResponse,
-  CreateIntentNodeRequest,
   CreateIntentNodeResponse,
-  CreateKnowledgeBaseRequest,
-  CreateKnowledgeBaseResponse,
   DeleteMcpServerResponse,
   DashboardGranularity,
   DashboardMcpAlertsVO,
@@ -16,30 +12,26 @@ import type {
   DashboardTrendsVO,
   DashboardWindow,
   GetAdminUsersResponse,
-  GetAssistantKnowledgeBasesResponse,
-  GetAssistantTemplateResponse,
-  GetAssistantTemplatesResponse,
   GetIntentTreeResponse,
-  GetIntentVersionsResponse,
-  GetKnowledgeBaseResponse,
-  GetKnowledgeBasesResponse,
-  GetKnowledgeDocumentsResponse,
-  GetMcpServersResponse,
   InitializeAssistantFromTemplateRequest,
   InitializeAssistantFromTemplateResponse,
   GetOptionalToolsResponse,
-  PublishIntentTreeResponse,
   ResetAdminUserPasswordResponse,
   SyncMcpToolCatalogResponse,
   TestMcpServerResponse,
   SetAssistantKnowledgeBasesRequest,
   SetIntentNodeKnowledgeBasesRequest,
-  UpdateMcpServerRequest,
   UpdateAdminUserRequest,
   UpdateAdminUserStatusRequest,
-  UpdateIntentNodeRequest,
-  UpdateKnowledgeBaseRequest,
   UploadKnowledgeDocumentResponse,
+  // VO types returned directly (Phase 9-β-1 eliminated thin Response wrappers)
+  KnowledgeBaseVO,
+  KnowledgeDocumentVO,
+  AssistantTemplateVO,
+  IntentVersionVO,
+  McpServerVO,
+  // Upsert request types (Phase 9-β-2 merged Create/Update pairs)
+  UpsertMcpServerRequest,
 } from "../types/admin.ts";
 
 export async function getAdminUsers(params?: {
@@ -81,27 +73,27 @@ export async function deleteAdminUser(userId: string): Promise<void> {
   return del<void>(`/admin/users/${userId}`);
 }
 
-export async function getKnowledgeBases(): Promise<GetKnowledgeBasesResponse> {
-  return get<GetKnowledgeBasesResponse>("/admin/knowledge-bases");
+// --- KnowledgeBase (was wrapped, now returns array / single VO / string) ---
+
+export async function getKnowledgeBases(): Promise<KnowledgeBaseVO[]> {
+  return get<KnowledgeBaseVO[]>("/admin/knowledge-bases");
 }
 
 export async function getKnowledgeBase(
   knowledgeBaseId: string,
-): Promise<GetKnowledgeBaseResponse> {
-  return get<GetKnowledgeBaseResponse>(
-    `/admin/knowledge-bases/${knowledgeBaseId}`,
-  );
+): Promise<KnowledgeBaseVO> {
+  return get<KnowledgeBaseVO>(`/admin/knowledge-bases/${knowledgeBaseId}`);
 }
 
 export async function createKnowledgeBase(
-  request: CreateKnowledgeBaseRequest,
-): Promise<CreateKnowledgeBaseResponse> {
-  return post<CreateKnowledgeBaseResponse>("/admin/knowledge-bases", request);
+  request: { name: string; description?: string },
+): Promise<string> {
+  return post<string>("/admin/knowledge-bases", request);
 }
 
 export async function updateKnowledgeBase(
   knowledgeBaseId: string,
-  request: UpdateKnowledgeBaseRequest,
+  request: { name?: string; description?: string },
 ): Promise<void> {
   return patch<void>(`/admin/knowledge-bases/${knowledgeBaseId}`, request);
 }
@@ -112,10 +104,12 @@ export async function deleteKnowledgeBase(
   return del<void>(`/admin/knowledge-bases/${knowledgeBaseId}`);
 }
 
+// --- KnowledgeDocument (was wrapped, now returns array) ---
+
 export async function getKnowledgeDocuments(
   knowledgeBaseId: string,
-): Promise<GetKnowledgeDocumentsResponse> {
-  return get<GetKnowledgeDocumentsResponse>(
+): Promise<KnowledgeDocumentVO[]> {
+  return get<KnowledgeDocumentVO[]>(
     `/admin/knowledge-bases/${knowledgeBaseId}/documents`,
   );
 }
@@ -154,10 +148,10 @@ export async function deleteKnowledgeDocument(
   );
 }
 
-export async function getAssistantKnowledgeBases(): Promise<GetAssistantKnowledgeBasesResponse> {
-  return get<GetAssistantKnowledgeBasesResponse>(
-    "/admin/assistant/knowledge-bases",
-  );
+// --- AssistantKnowledgeBase (was wrapped, now returns array) ---
+
+export async function getAssistantKnowledgeBases(): Promise<KnowledgeBaseVO[]> {
+  return get<KnowledgeBaseVO[]>("/admin/assistant/knowledge-bases");
 }
 
 export async function setAssistantKnowledgeBases(
@@ -166,14 +160,53 @@ export async function setAssistantKnowledgeBases(
   return put<void>("/admin/assistant/knowledge-bases", request);
 }
 
-export async function getAssistantTemplates(): Promise<GetAssistantTemplatesResponse> {
-  return get<GetAssistantTemplatesResponse>("/admin/assistant/templates");
+// --- AssistantTemplate (was wrapped, now returns array / single VO / string) ---
+
+export async function getAssistantTemplates(): Promise<AssistantTemplateVO[]> {
+  return get<AssistantTemplateVO[]>("/admin/assistant/templates");
 }
 
 export async function getAssistantTemplate(
   templateId: string,
-): Promise<GetAssistantTemplateResponse> {
-  return get<GetAssistantTemplateResponse>(`/admin/assistant/templates/${templateId}`);
+): Promise<AssistantTemplateVO> {
+  return get<AssistantTemplateVO>(`/admin/assistant/templates/${templateId}`);
+}
+
+export async function createAssistantTemplate(
+  request: {
+    code: string;
+    name: string;
+    description?: string;
+    systemPrompt: string;
+    model: string;
+    allowedTools?: string[];
+    chatOptions?: Record<string, unknown>;
+    intentTree: unknown[];
+  },
+): Promise<string> {
+  return post<string>("/admin/assistant/templates", request);
+}
+
+export async function updateAssistantTemplate(
+  templateId: string,
+  request: {
+    code?: string;
+    name?: string;
+    description?: string;
+    systemPrompt?: string;
+    model?: string;
+    allowedTools?: string[];
+    chatOptions?: Record<string, unknown>;
+    intentTree?: unknown[];
+  },
+): Promise<void> {
+  return patch<void>(`/admin/assistant/templates/${templateId}`, request);
+}
+
+export async function deleteAssistantTemplate(
+  templateId: string,
+): Promise<void> {
+  return del<void>(`/admin/assistant/templates/${templateId}`);
 }
 
 export async function initializeAssistantFromTemplate(
@@ -191,19 +224,45 @@ export async function getOptionalTools(): Promise<GetOptionalToolsResponse> {
   return { tools };
 }
 
+// --- IntentTree ---
+
 export async function getIntentTree(): Promise<GetIntentTreeResponse> {
   return get<GetIntentTreeResponse>("/admin/assistant/intent-tree");
 }
 
 export async function createIntentNode(
-  request: CreateIntentNodeRequest,
+  request: {
+    parentId?: string;
+    nodeLevel: string;
+    name: string;
+    description?: string;
+    examples?: string[];
+    intentKind?: string;
+    scopePolicy?: string;
+    allowedTools?: string[];
+    systemPromptOverride?: string;
+    enabled?: boolean;
+    sortOrder?: number;
+  },
 ): Promise<CreateIntentNodeResponse> {
   return post<CreateIntentNodeResponse>("/admin/assistant/intent-tree/nodes", request);
 }
 
 export async function updateIntentNode(
   nodeId: string,
-  request: UpdateIntentNodeRequest,
+  request: {
+    parentId?: string | null;
+    nodeLevel?: string;
+    name?: string;
+    description?: string | null;
+    examples?: string[];
+    intentKind?: string;
+    scopePolicy?: string;
+    allowedTools?: string[];
+    systemPromptOverride?: string | null;
+    enabled?: boolean;
+    sortOrder?: number;
+  },
 ): Promise<void> {
   return patch<void>(`/admin/assistant/intent-tree/nodes/${nodeId}`, request);
 }
@@ -222,17 +281,21 @@ export async function setIntentNodeKnowledgeBases(
   );
 }
 
-export async function publishIntentTreeSnapshot(): Promise<PublishIntentTreeResponse> {
-  return post<PublishIntentTreeResponse>("/admin/assistant/intent-tree/publish");
+// publishIntentTreeSnapshot now returns Integer directly
+export async function publishIntentTreeSnapshot(): Promise<number> {
+  return post<number>("/admin/assistant/intent-tree/publish");
 }
 
-export async function getIntentVersions(): Promise<GetIntentVersionsResponse> {
-  return get<GetIntentVersionsResponse>("/admin/assistant/intent-tree/versions");
+// getIntentVersions now returns List<IntentVersionVO> directly
+export async function getIntentVersions(): Promise<IntentVersionVO[]> {
+  return get<IntentVersionVO[]>("/admin/assistant/intent-tree/versions");
 }
 
 export async function switchActiveIntentVersion(version: number): Promise<void> {
   return put<void>(`/admin/assistant/intent-tree/versions/${version}/activate`);
 }
+
+// --- Dashboard (unchanged) ---
 
 export async function getDashboardOverview(
   window: DashboardWindow = "24h",
@@ -260,19 +323,21 @@ export async function getDashboardMcpAlerts(
   return get<DashboardMcpAlertsVO>("/admin/dashboard/mcp-alerts", { limit });
 }
 
-export async function getMcpServers(): Promise<GetMcpServersResponse> {
-  return get<GetMcpServersResponse>("/admin/mcp-servers");
+// --- MCP Servers (getMcpServers was wrapped, now returns array) ---
+
+export async function getMcpServers(): Promise<McpServerVO[]> {
+  return get<McpServerVO[]>("/admin/mcp-servers");
 }
 
 export async function createMcpServer(
-  request: CreateMcpServerRequest,
+  request: UpsertMcpServerRequest,
 ): Promise<string> {
   return post<string>("/admin/mcp-servers", request, { silent: true });
 }
 
 export async function updateMcpServer(
   serverId: string,
-  request: UpdateMcpServerRequest,
+  request: UpsertMcpServerRequest,
 ): Promise<void> {
   return patch<void>(`/admin/mcp-servers/${serverId}`, request, { silent: true });
 }

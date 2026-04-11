@@ -1,10 +1,7 @@
 package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.context.UserContext;
-import com.yulong.chatagent.admin.model.request.CreateAgentRequest;
-import com.yulong.chatagent.admin.model.request.UpdateAgentRequest;
-import com.yulong.chatagent.admin.model.response.CreateAgentResponse;
-import com.yulong.chatagent.admin.model.response.GetAgentsResponse;
+import com.yulong.chatagent.admin.model.request.UpsertAgentRequest;
 import com.yulong.chatagent.admin.model.vo.AgentVO;
 import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.exception.BizException;
@@ -28,20 +25,18 @@ public class AgentFacadeServiceImpl implements AgentFacadeService {
     private final AgentConverter agentConverter;
 
     @Override
-    public GetAgentsResponse getAgents() {
+    public List<AgentVO> getAgents() {
         String userId = requireCurrentUserId();
         List<AgentDTO> agents = agentRepository.findByUserId(userId);
         List<AgentVO> result = new ArrayList<>();
         for (AgentDTO agent : agents) {
             result.add(agentConverter.toVO(agent));
         }
-        return GetAgentsResponse.builder()
-                .agents(result.toArray(new AgentVO[0]))
-                .build();
+        return result;
     }
 
     @Override
-    public CreateAgentResponse createAgent(CreateAgentRequest request) {
+    public String createAgent(UpsertAgentRequest request) {
         String userId = requireCurrentUserId();
         AgentDTO agentDTO = agentConverter.toDTO(request);
         agentDTO.setUserId(userId);
@@ -53,9 +48,7 @@ public class AgentFacadeServiceImpl implements AgentFacadeService {
             throw new BizException("Failed to create agent");
         }
 
-        return CreateAgentResponse.builder()
-                .agentId(agentDTO.getId())
-                .build();
+        return agentDTO.getId();
     }
 
     @Override
@@ -68,7 +61,7 @@ public class AgentFacadeServiceImpl implements AgentFacadeService {
     }
 
     @Override
-    public void updateAgent(String agentId, UpdateAgentRequest request) {
+    public void updateAgent(String agentId, UpsertAgentRequest request) {
         String userId = requireCurrentUserId();
         AgentDTO existingAgent = requireOwnedAgent(agentId, userId);
 
@@ -92,4 +85,3 @@ public class AgentFacadeServiceImpl implements AgentFacadeService {
         return agent;
     }
 }
-

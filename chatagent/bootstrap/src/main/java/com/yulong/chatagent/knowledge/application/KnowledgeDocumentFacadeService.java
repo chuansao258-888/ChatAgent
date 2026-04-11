@@ -1,13 +1,13 @@
 package com.yulong.chatagent.knowledge.application;
 
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeDocumentsResponse;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeDocumentVO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface KnowledgeDocumentFacadeService {
 
-    GetKnowledgeDocumentsResponse getKnowledgeDocuments(String knowledgeBaseId);
+    KnowledgeDocumentVO[] getKnowledgeDocuments(String knowledgeBaseId);
 
     UploadKnowledgeDocumentResponse uploadKnowledgeDocument(String knowledgeBaseId, MultipartFile file);
 

@@ -8,11 +8,7 @@ import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
-import com.yulong.chatagent.knowledge.model.request.CreateKnowledgeBaseRequest;
-import com.yulong.chatagent.knowledge.model.request.UpdateKnowledgeBaseRequest;
-import com.yulong.chatagent.knowledge.model.response.CreateKnowledgeBaseResponse;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBaseResponse;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
+import com.yulong.chatagent.knowledge.model.request.UpsertKnowledgeBaseRequest;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
@@ -56,29 +52,25 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
     private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
-    public GetKnowledgeBasesResponse getKnowledgeBases() {
+    public KnowledgeBaseVO[] getKnowledgeBases() {
         adminAccessService.requireAdmin();
         List<KnowledgeBaseVO> result = new ArrayList<>();
         for (KnowledgeBaseDTO knowledgeBase : knowledgeBaseRepository.findAll()) {
             result.add(knowledgeBaseConverter.toVO(knowledgeBase));
         }
-        return GetKnowledgeBasesResponse.builder()
-                .knowledgeBases(result.toArray(new KnowledgeBaseVO[0]))
-                .build();
+        return result.toArray(new KnowledgeBaseVO[0]);
     }
 
     @Override
-    public GetKnowledgeBaseResponse getKnowledgeBase(String knowledgeBaseId) {
+    public KnowledgeBaseVO getKnowledgeBase(String knowledgeBaseId) {
         LoginUser adminUser = adminAccessService.requireAdmin();
-        return GetKnowledgeBaseResponse.builder()
-                .knowledgeBase(knowledgeBaseConverter.toVO(
-                        resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, knowledgeBaseId)
-                ))
-                .build();
+        return knowledgeBaseConverter.toVO(
+                resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, knowledgeBaseId)
+        );
     }
 
     @Override
-    public CreateKnowledgeBaseResponse createKnowledgeBase(CreateKnowledgeBaseRequest request) {
+    public String createKnowledgeBase(UpsertKnowledgeBaseRequest request) {
         String adminUserId = adminAccessService.requireAdminUserId();
         if (request == null || !StringUtils.hasText(request.getName())) {
             throw new BizException("Knowledge base name is required");
@@ -99,13 +91,11 @@ public class KnowledgeBaseFacadeServiceImpl implements KnowledgeBaseFacadeServic
         if (!knowledgeBaseRepository.save(knowledgeBase)) {
             throw new BizException("Failed to create knowledge base");
         }
-        return CreateKnowledgeBaseResponse.builder()
-                .knowledgeBaseId(knowledgeBase.getId())
-                .build();
+        return knowledgeBase.getId();
     }
 
     @Override
-    public void updateKnowledgeBase(String knowledgeBaseId, UpdateKnowledgeBaseRequest request) {
+    public void updateKnowledgeBase(String knowledgeBaseId, UpsertKnowledgeBaseRequest request) {
         KnowledgeBaseDTO knowledgeBase = resourceAccessGuard.assertCanManageKnowledgeBase(
                 UserContext.requireUser(),
                 knowledgeBaseId

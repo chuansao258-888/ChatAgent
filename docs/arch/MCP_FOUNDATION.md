@@ -725,7 +725,7 @@ Current verification command:
 
 ```powershell
 $env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'
-.\mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=Mcp*Test,WebClientMcpTransportClientTest,ToolFacadeServiceImplTest,AgentToolCallbackFactoryTest,Dashboard*Test,AgentToolExecutionEngineTest,DefaultAgentRuntimeContextLoaderTest,ChatEventProcessorTest,ConversationOrchestratorServiceImplTest,AgentRunTaskListenerTest,AgentRunTaskPayloadTest" test
+.\mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=Mcp*Test,WebClientMcpTransportClientTest,ToolFacadeServiceImplTest,AgentToolCallbackFactoryTest,Dashboard*Test,AgentToolExecutionEngineTest,DefaultAgentRuntimeContextLoaderTest,ChatEventProcessorTest,ConversationOrchestratorServiceTest,AgentRunTaskListenerTest,AgentRunTaskPayloadTest" test
 ```
 
 ## Current Boundaries

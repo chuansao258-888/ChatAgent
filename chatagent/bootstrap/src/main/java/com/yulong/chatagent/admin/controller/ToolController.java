@@ -1,7 +1,7 @@
 package com.yulong.chatagent.admin.controller;
 
 import com.yulong.chatagent.agent.tools.Tool;
-import com.yulong.chatagent.admin.application.ToolFacadeService;
+import com.yulong.chatagent.agent.application.ToolFacadeService;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.AllArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

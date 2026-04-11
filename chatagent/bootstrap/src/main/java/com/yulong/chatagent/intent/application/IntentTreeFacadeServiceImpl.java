@@ -1,18 +1,14 @@
 package com.yulong.chatagent.intent.application;
 
-import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.agent.application.InternalAssistantService;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
 import com.yulong.chatagent.intent.model.IntentNodeStatus;
-import com.yulong.chatagent.intent.model.request.CreateIntentNodeRequest;
 import com.yulong.chatagent.intent.model.request.SetIntentNodeKnowledgeBasesRequest;
-import com.yulong.chatagent.intent.model.request.UpdateIntentNodeRequest;
+import com.yulong.chatagent.intent.model.request.UpsertIntentNodeRequest;
 import com.yulong.chatagent.intent.model.response.CreateIntentNodeResponse;
 import com.yulong.chatagent.intent.model.response.GetIntentTreeResponse;
-import com.yulong.chatagent.intent.model.response.GetIntentVersionsResponse;
-import com.yulong.chatagent.intent.model.response.PublishIntentTreeResponse;
 import com.yulong.chatagent.intent.model.vo.IntentNodeVO;
 import com.yulong.chatagent.intent.model.vo.IntentVersionVO;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
@@ -48,7 +44,6 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
     private static final int DRAFT_VERSION = 0;
 
     private final InternalAssistantService internalAssistantService;
-    private final AgentRepository agentRepository;
     private final IntentNodeRepository intentNodeRepository;
     private final IntentKnowledgeBaseRepository intentKnowledgeBaseRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
@@ -70,7 +65,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
 
     @Override
     @Transactional
-    public CreateIntentNodeResponse createIntentNode(CreateIntentNodeRequest request) {
+    public CreateIntentNodeResponse createIntentNode(UpsertIntentNodeRequest request) {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         IntentNodeDTO parent = resolveParent(request.getParentId(), draftNodes);
@@ -104,7 +99,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
 
     @Override
     @Transactional
-    public void updateIntentNode(String nodeId, UpdateIntentNodeRequest request) {
+    public void updateIntentNode(String nodeId, UpsertIntentNodeRequest request) {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         IntentNodeDTO existing = requireDraftNode(nodeId, assistant.getId(), draftNodes);
@@ -209,7 +204,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
 
     @Override
     @Transactional
-    public PublishIntentTreeResponse publishIntentTreeSnapshot() {
+    public Integer publishIntentTreeSnapshot() {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         if (draftNodes.isEmpty()) {
@@ -265,20 +260,17 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
             }
         }
 
-        assistant.setActiveIntentVersion(nextVersion);
-        if (!agentRepository.update(assistant)) {
+        if (!internalAssistantService.updateActiveIntentVersion(nextVersion)) {
             throw new BizException("Failed to switch active intent version");
         }
         intentTreeCacheManager.refreshActiveSnapshot(assistant.getId());
-        return new PublishIntentTreeResponse(nextVersion);
+        return nextVersion;
     }
 
     @Override
-    public GetIntentVersionsResponse getIntentVersions() {
+    public List<IntentVersionVO> getIntentVersions() {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
-        return new GetIntentVersionsResponse(
-                buildVersionVos(assistant.getId(), assistant.getActiveIntentVersion())
-        );
+        return buildVersionVos(assistant.getId(), assistant.getActiveIntentVersion());
     }
 
     @Override
@@ -291,11 +283,24 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         if (intentNodeRepository.findByAgentIdAndVersion(assistant.getId(), version).isEmpty()) {
             throw new BizException("Published intent version not found: " + version);
         }
-        assistant.setActiveIntentVersion(version);
-        if (!agentRepository.update(assistant)) {
+        if (!internalAssistantService.updateActiveIntentVersion(version)) {
             throw new BizException("Failed to activate intent version: " + version);
         }
         intentTreeCacheManager.refreshActiveSnapshot(assistant.getId());
+    }
+
+    @Override
+    @Transactional
+    public void clearDraftTree() {
+        AgentDTO assistant = internalAssistantService.getRequiredAssistant();
+        List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
+        if (draftNodes.isEmpty()) {
+            return;
+        }
+        List<String> ids = draftNodes.stream().map(IntentNodeDTO::getId).toList();
+        if (!intentNodeRepository.deleteByIds(ids)) {
+            throw new BizException("Failed to clear the existing draft intent tree");
+        }
     }
 
     private List<IntentNodeDTO> loadDraftNodes(String agentId) {

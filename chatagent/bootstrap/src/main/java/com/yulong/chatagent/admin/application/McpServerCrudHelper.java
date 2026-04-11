@@ -1,7 +1,6 @@
 package com.yulong.chatagent.admin.application;
 
-import com.yulong.chatagent.admin.model.request.CreateMcpServerRequest;
-import com.yulong.chatagent.admin.model.request.UpdateMcpServerRequest;
+import com.yulong.chatagent.admin.model.request.UpsertMcpServerRequest;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.errorcode.BaseErrorCode;
 import com.yulong.chatagent.exception.BizException;
@@ -45,7 +44,7 @@ class McpServerCrudHelper {
 
     // ---- public API -------------------------------------------------------
 
-    public McpServerDTO buildCreateDTO(CreateMcpServerRequest request) {
+    public McpServerDTO buildCreateDTO(UpsertMcpServerRequest request) {
         String slug = requireSlug(request == null ? null : request.getSlug());
         McpProtocol protocol = McpProtocol.fromValue(request == null ? null : request.getProtocol());
         McpAuthType authType = McpAuthType.fromValue(request == null ? null : request.getAuthType());
@@ -70,7 +69,7 @@ class McpServerCrudHelper {
                 .build();
     }
 
-    public McpServerDTO buildUpdateDTO(McpServerDTO existing, UpdateMcpServerRequest request) {
+    public McpServerDTO buildUpdateDTO(McpServerDTO existing, UpsertMcpServerRequest request) {
         String slug = request != null && request.getSlug() != null ? requireSlug(request.getSlug()) : existing.getSlug();
         McpProtocol protocol = request != null && request.getProtocol() != null
                 ? McpProtocol.fromValue(request.getProtocol())

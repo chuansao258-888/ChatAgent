@@ -3,13 +3,12 @@ package com.yulong.chatagent.admin.controller;
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.admin.application.McpServerAdminFacadeService;
-import com.yulong.chatagent.admin.model.request.CreateMcpServerRequest;
-import com.yulong.chatagent.admin.model.request.UpdateMcpServerRequest;
+import com.yulong.chatagent.admin.model.request.UpsertMcpServerRequest;
 import com.yulong.chatagent.admin.model.response.DeleteMcpServerResponse;
 import com.yulong.chatagent.admin.model.response.GetMcpServerResponse;
-import com.yulong.chatagent.admin.model.response.ListMcpServersResponse;
 import com.yulong.chatagent.admin.model.response.SyncMcpToolCatalogResponse;
 import com.yulong.chatagent.admin.model.response.TestMcpServerResponse;
+import com.yulong.chatagent.admin.model.vo.McpServerVO;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * Administrator MCP server management endpoints.
@@ -34,7 +35,7 @@ public class McpServerAdminController {
     private final McpServerAdminFacadeService mcpServerAdminFacadeService;
 
     @GetMapping
-    public ApiResponse<ListMcpServersResponse> getServers() {
+    public ApiResponse<List<McpServerVO>> getServers() {
         return ApiResponse.success(mcpServerAdminFacadeService.getServers());
     }
 
@@ -44,13 +45,13 @@ public class McpServerAdminController {
     }
 
     @PostMapping
-    public ApiResponse<String> createServer(@RequestBody CreateMcpServerRequest request) {
+    public ApiResponse<String> createServer(@RequestBody UpsertMcpServerRequest request) {
         return ApiResponse.success(mcpServerAdminFacadeService.createServer(request));
     }
 
     @PatchMapping("/{serverId}")
     public ApiResponse<Void> updateServer(@PathVariable String serverId,
-                                          @RequestBody UpdateMcpServerRequest request) {
+                                          @RequestBody UpsertMcpServerRequest request) {
         mcpServerAdminFacadeService.updateServer(serverId, request);
         return ApiResponse.success();
     }

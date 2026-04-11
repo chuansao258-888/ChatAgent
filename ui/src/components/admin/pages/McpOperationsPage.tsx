@@ -102,7 +102,7 @@ export default function McpOperationsPage() {
       setPerformance(performanceData);
       setAlerts(alertData.alerts);
       setOpenAlertCount(alertData.openAlertCount);
-      setServers(serverData.servers);
+      setServers(serverData);
     } catch (error) {
       console.error("Failed to load MCP operations page:", error);
       message.error("Unable to load MCP operations right now.");

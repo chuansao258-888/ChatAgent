@@ -1,4 +1,4 @@
-package com.yulong.chatagent.admin.application;
+package com.yulong.chatagent.agent.application;
 
 import com.yulong.chatagent.agent.tools.Tool;
 

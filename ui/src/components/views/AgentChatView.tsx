@@ -275,9 +275,9 @@ const AgentChatView: React.FC = () => {
         getChatSessionFiles(chatSessionId),
       ]);
 
-      mergeRealtimeMessages(messagesResp.chatMessages);
-      evaluatePendingProgress(chatSessionId, messagesResp.chatMessages);
-      setSessionFiles(filesResp.files);
+      mergeRealtimeMessages(messagesResp);
+      evaluatePendingProgress(chatSessionId, messagesResp);
+      setSessionFiles(filesResp);
     } catch (error) {
       if (isMissingChatSessionError(error)) {
         setMessages([]);
@@ -344,8 +344,8 @@ const AgentChatView: React.FC = () => {
     compensationPollTimerRef.current = setInterval(() => {
       void getChatMessagesBySessionId(chatSessionId)
         .then((response) => {
-          mergeRealtimeMessages(response.chatMessages);
-          evaluatePendingProgress(chatSessionId, response.chatMessages);
+          mergeRealtimeMessages(response);
+          evaluatePendingProgress(chatSessionId, response);
         })
         .catch((error) => {
           console.warn("Compensation poll failed:", error);
@@ -384,7 +384,7 @@ const AgentChatView: React.FC = () => {
           title: message.slice(0, 20),
         });
         await refreshChatSessions();
-        navigate(`/chat/${response.chatSessionId}`, {
+        navigate(`/chat/${response}`, {
           replace: true,
           state: {
             init: false,
@@ -476,7 +476,7 @@ const AgentChatView: React.FC = () => {
       try {
         await uploadChatSessionFile(chatSessionId, file);
         const filesResp = await getChatSessionFiles(chatSessionId);
-        setSessionFiles(filesResp.files);
+        setSessionFiles(filesResp);
         antdMessage.success(`${file.name} uploaded.`);
       } catch (error) {
         console.error("Failed to upload chat file:", error);

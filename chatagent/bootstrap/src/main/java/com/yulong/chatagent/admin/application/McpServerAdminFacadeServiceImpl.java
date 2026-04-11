@@ -1,10 +1,8 @@
 package com.yulong.chatagent.admin.application;
 
-import com.yulong.chatagent.admin.model.request.CreateMcpServerRequest;
-import com.yulong.chatagent.admin.model.request.UpdateMcpServerRequest;
+import com.yulong.chatagent.admin.model.request.UpsertMcpServerRequest;
 import com.yulong.chatagent.admin.model.response.DeleteMcpServerResponse;
 import com.yulong.chatagent.admin.model.response.GetMcpServerResponse;
-import com.yulong.chatagent.admin.model.response.ListMcpServersResponse;
 import com.yulong.chatagent.admin.model.response.SyncMcpToolCatalogResponse;
 import com.yulong.chatagent.admin.model.response.TestMcpServerResponse;
 import com.yulong.chatagent.admin.model.vo.McpDiscoveredToolVO;
@@ -71,13 +69,11 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
     }
 
     @Override
-    public ListMcpServersResponse getServers() {
+    public List<McpServerVO> getServers() {
         adminAccessService.requireAdmin();
-        return new ListMcpServersResponse(
-                mcpServerRepository.findAll().stream()
-                        .map(this::toServerVO)
-                        .toList()
-        );
+        return mcpServerRepository.findAll().stream()
+                .map(this::toServerVO)
+                .toList();
     }
 
     @Override
@@ -92,7 +88,7 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
 
     @Override
     @Transactional
-    public String createServer(CreateMcpServerRequest request) {
+    public String createServer(UpsertMcpServerRequest request) {
         adminAccessService.requireAdmin();
         McpServerDTO server = crudHelper.buildCreateDTO(request);
         crudHelper.ensureSlugAvailable(server.getSlug(), null);
@@ -103,7 +99,7 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
 
     @Override
     @Transactional
-    public void updateServer(String serverId, UpdateMcpServerRequest request) {
+    public void updateServer(String serverId, UpsertMcpServerRequest request) {
         adminAccessService.requireAdmin();
         McpServerDTO existing = crudHelper.requireServer(serverId);
         McpServerDTO updated = crudHelper.buildUpdateDTO(existing, request);

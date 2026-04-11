@@ -1,7 +1,7 @@
 package com.yulong.chatagent.admin.application;
 
-import com.yulong.chatagent.admin.model.request.CreateMcpServerRequest;
-import com.yulong.chatagent.admin.model.request.UpdateMcpServerRequest;
+import com.yulong.chatagent.admin.model.vo.McpServerVO;
+import com.yulong.chatagent.admin.model.request.UpsertMcpServerRequest;
 import com.yulong.chatagent.admin.model.response.DeleteMcpServerResponse;
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpServerReferenceQueryRepository;
@@ -139,7 +139,7 @@ class McpServerAdminFacadeServiceImplTest {
         when(mcpServerRepository.findBySlug("google_search")).thenReturn(null);
         when(mcpServerRepository.save(any(McpServerDTO.class))).thenReturn(true);
 
-        CreateMcpServerRequest request = new CreateMcpServerRequest();
+        UpsertMcpServerRequest request = new UpsertMcpServerRequest();
         request.setSlug("google_search");
         request.setName("Google Search");
         request.setProtocol("HTTP");
@@ -161,7 +161,7 @@ class McpServerAdminFacadeServiceImplTest {
         when(mcpServerRepository.save(any(McpServerDTO.class)))
                 .thenThrow(new DuplicateKeyException("ERROR: duplicate key value violates unique constraint \"uq_t_mcp_server_slug\""));
 
-        CreateMcpServerRequest request = new CreateMcpServerRequest();
+        UpsertMcpServerRequest request = new UpsertMcpServerRequest();
         request.setSlug("weather");
         request.setName("Weather");
         request.setProtocol("HTTP");
@@ -183,7 +183,7 @@ class McpServerAdminFacadeServiceImplTest {
         when(mcpServerRepository.findBySlug("google_search")).thenReturn(existingServer());
         when(mcpServerRepository.update(any(McpServerDTO.class))).thenReturn(true);
 
-        UpdateMcpServerRequest request = new UpdateMcpServerRequest();
+        UpsertMcpServerRequest request = new UpsertMcpServerRequest();
         request.setEndpointUrl("https://example.com/updated");
 
         facadeService.updateServer("srv-1", request);
@@ -195,6 +195,22 @@ class McpServerAdminFacadeServiceImplTest {
     }
 
     @Test
+    void shouldReturnDirectServerViewList() {
+        when(mcpServerRepository.findAll()).thenReturn(List.of(existingServer()));
+        when(mcpToolCatalogRepository.findByServerId("srv-1")).thenReturn(List.of(enabledToolCatalog()));
+        when(referenceQueryRepository.findActiveReferencesByToolNames(List.of("mcp_google_search"))).thenReturn(List.of(
+                new McpToolReferenceDTO(McpReferenceType.AGENT, "agent-1", "Support Agent", "/allowedTools")
+        ));
+
+        List<McpServerVO> response = facadeService.getServers();
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getId()).isEqualTo("srv-1");
+        assertThat(response.get(0).getSlug()).isEqualTo("google_search");
+        assertThat(response.get(0).getUnresolvedReferenceCount()).isEqualTo(1);
+    }
+
+    @Test
     void shouldTranslateDuplicateSlugConstraintToConflictOnUpdate() {
         McpServerDTO existing = existingServer();
         when(mcpServerRepository.findById("srv-1")).thenReturn(existing);
@@ -202,7 +218,7 @@ class McpServerAdminFacadeServiceImplTest {
         when(mcpServerRepository.update(any(McpServerDTO.class)))
                 .thenThrow(new DuplicateKeyException("ERROR: duplicate key value violates unique constraint \"uq_t_mcp_server_slug\""));
 
-        UpdateMcpServerRequest request = new UpdateMcpServerRequest();
+        UpsertMcpServerRequest request = new UpsertMcpServerRequest();
         request.setSlug("weather");
 
         assertThatThrownBy(() -> facadeService.updateServer("srv-1", request))

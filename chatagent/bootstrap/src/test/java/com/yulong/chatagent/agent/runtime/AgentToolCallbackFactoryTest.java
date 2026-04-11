@@ -1,6 +1,6 @@
 package com.yulong.chatagent.agent.runtime;
 
-import com.yulong.chatagent.admin.application.ToolFacadeService;
+import com.yulong.chatagent.agent.application.ToolFacadeService;
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
 import com.yulong.chatagent.intent.application.IntentResolution;

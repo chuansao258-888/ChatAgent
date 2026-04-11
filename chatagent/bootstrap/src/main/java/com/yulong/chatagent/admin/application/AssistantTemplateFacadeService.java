@@ -1,28 +1,27 @@
 package com.yulong.chatagent.admin.application;
 
-import com.yulong.chatagent.admin.model.request.CreateAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.request.InitializeAssistantFromTemplateRequest;
-import com.yulong.chatagent.admin.model.request.UpdateAssistantTemplateRequest;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplateResponse;
-import com.yulong.chatagent.admin.model.response.GetAssistantTemplatesResponse;
+import com.yulong.chatagent.admin.model.request.UpsertAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.response.InitializeAssistantFromTemplateResponse;
+import com.yulong.chatagent.admin.model.vo.AssistantTemplateVO;
+
+import java.util.List;
 
 /**
  * Admin-facing template operations for initializing the internal assistant.
  */
 public interface AssistantTemplateFacadeService {
 
-    GetAssistantTemplatesResponse getTemplates();
+    List<AssistantTemplateVO> getTemplates();
 
-    GetAssistantTemplateResponse getTemplate(String templateId);
+    AssistantTemplateVO getTemplate(String templateId);
 
-    String createTemplate(CreateAssistantTemplateRequest request);
+    String createTemplate(UpsertAssistantTemplateRequest request);
 
-    void updateTemplate(String templateId, UpdateAssistantTemplateRequest request);
+    void updateTemplate(String templateId, UpsertAssistantTemplateRequest request);
 
     void deleteTemplate(String templateId);
 
     InitializeAssistantFromTemplateResponse initializeAssistantFromTemplate(String templateId,
                                                                            InitializeAssistantFromTemplateRequest request);
 }
-

@@ -3,8 +3,7 @@ package com.yulong.chatagent.admin.converter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.admin.model.request.CreateAgentRequest;
-import com.yulong.chatagent.admin.model.request.UpdateAgentRequest;
+import com.yulong.chatagent.admin.model.request.UpsertAgentRequest;
 import com.yulong.chatagent.admin.model.vo.AgentVO;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.persistence.entity.Agent;
@@ -76,8 +75,8 @@ public class AgentConverter {
         return toVO(toDTO(agent));
     }
 
-    public AgentDTO toDTO(CreateAgentRequest request) {
-        Assert.notNull(request, "CreateAgentRequest cannot be null");
+    public AgentDTO toDTO(UpsertAgentRequest request) {
+        Assert.notNull(request, "UpsertAgentRequest cannot be null");
         Assert.notNull(request.getAllowedTools(), "Allowed tools cannot be null");
         Assert.notNull(request.getChatOptions(), "Chat options cannot be null");
         Assert.notNull(request.getModel(), "Model cannot be null");
@@ -92,9 +91,9 @@ public class AgentConverter {
                 .build();
     }
 
-    public void updateDTOFromRequest(AgentDTO dto, UpdateAgentRequest request) {
+    public void updateDTOFromRequest(AgentDTO dto, UpsertAgentRequest request) {
         Assert.notNull(dto, "AgentDTO cannot be null");
-        Assert.notNull(request, "UpdateAgentRequest cannot be null");
+        Assert.notNull(request, "UpsertAgentRequest cannot be null");
 
         if (request.getName() != null) {
             dto.setName(request.getName());

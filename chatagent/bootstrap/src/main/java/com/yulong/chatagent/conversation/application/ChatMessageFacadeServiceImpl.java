@@ -5,13 +5,12 @@ import com.yulong.chatagent.conversation.port.ChatMessageRepository;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
-import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatMessagesResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
+import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,17 +27,14 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
     private final ResourceAccessGuard resourceAccessGuard;
 
     @Override
-    public GetChatMessagesResponse getChatMessagesBySessionId(String sessionId) {
+    public ChatMessageVO[] getChatMessagesBySessionId(String sessionId) {
         requireOwnedSessionIfAuthenticated(sessionId);
         List<ChatMessageDTO> chatMessages = chatMessageRepository.findBySessionId(sessionId);
         List<ChatMessageVO> result = new ArrayList<>();
         for (ChatMessageDTO chatMessage : chatMessages) {
             result.add(chatMessageConverter.toVO(chatMessage));
         }
-
-        return GetChatMessagesResponse.builder()
-                .chatMessages(result.toArray(new ChatMessageVO[0]))
-                .build();
+        return result.toArray(new ChatMessageVO[0]);
     }
 
     @Override

@@ -5,7 +5,6 @@ import com.yulong.chatagent.admin.application.AdminAccessService;
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
-import com.yulong.chatagent.knowledge.model.response.GetAssistantKnowledgeBasesResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.support.dto.KnowledgeBaseDTO;
@@ -71,9 +70,9 @@ class AssistantKnowledgeBaseFacadeServiceImplTest {
                         .updatedAt(LocalDateTime.now())
                         .build()));
 
-        GetAssistantKnowledgeBasesResponse response = facadeService.getAssistantKnowledgeBases();
+        KnowledgeBaseVO[] response = facadeService.getAssistantKnowledgeBases();
 
-        assertThat(response.getKnowledgeBases()).extracting(KnowledgeBaseVO::getId)
+        assertThat(response).extracting(KnowledgeBaseVO::getId)
                 .containsExactly("kb-active");
         verify(knowledgeBaseRepository).filterActiveIds(List.of("kb-active", "kb-archived"));
     }

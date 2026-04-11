@@ -6,7 +6,6 @@ import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.exception.ServiceException;
 import com.yulong.chatagent.knowledge.converter.KnowledgeDocumentConverter;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeDocumentsResponse;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeDocumentVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
@@ -71,7 +70,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
     private OutboxEventPublisher outboxEventPublisher;
 
     @Override
-    public GetKnowledgeDocumentsResponse getKnowledgeDocuments(String knowledgeBaseId) {
+    public KnowledgeDocumentVO[] getKnowledgeDocuments(String knowledgeBaseId) {
         adminAccessService.requireAdmin();
         resourceAccessGuard.assertCanManageKnowledgeBase(UserContext.requireUser(), knowledgeBaseId);
 
@@ -79,9 +78,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         for (KnowledgeDocumentDTO document : knowledgeDocumentRepository.findByKnowledgeBaseId(knowledgeBaseId)) {
             result.add(knowledgeDocumentConverter.toVO(document));
         }
-        return GetKnowledgeDocumentsResponse.builder()
-                .documents(result.toArray(new KnowledgeDocumentVO[0]))
-                .build();
+        return result.toArray(new KnowledgeDocumentVO[0]);
     }
 
     @Override

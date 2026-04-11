@@ -3,14 +3,14 @@ package com.yulong.chatagent.intent.controller;
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.intent.application.IntentTreeFacadeService;
-import com.yulong.chatagent.intent.model.request.CreateIntentNodeRequest;
 import com.yulong.chatagent.intent.model.request.SetIntentNodeKnowledgeBasesRequest;
-import com.yulong.chatagent.intent.model.request.UpdateIntentNodeRequest;
+import com.yulong.chatagent.intent.model.request.UpsertIntentNodeRequest;
 import com.yulong.chatagent.intent.model.response.CreateIntentNodeResponse;
 import com.yulong.chatagent.intent.model.response.GetIntentTreeResponse;
-import com.yulong.chatagent.intent.model.response.GetIntentVersionsResponse;
-import com.yulong.chatagent.intent.model.response.PublishIntentTreeResponse;
+import com.yulong.chatagent.intent.model.vo.IntentVersionVO;
 import com.yulong.chatagent.model.common.ApiResponse;
+
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,13 +39,13 @@ public class IntentTreeController {
     }
 
     @PostMapping("/nodes")
-    public ApiResponse<CreateIntentNodeResponse> createIntentNode(@RequestBody CreateIntentNodeRequest request) {
+    public ApiResponse<CreateIntentNodeResponse> createIntentNode(@RequestBody UpsertIntentNodeRequest request) {
         return ApiResponse.success(intentTreeFacadeService.createIntentNode(request));
     }
 
     @PatchMapping("/nodes/{nodeId}")
     public ApiResponse<Void> updateIntentNode(@PathVariable String nodeId,
-                                              @RequestBody UpdateIntentNodeRequest request) {
+                                              @RequestBody UpsertIntentNodeRequest request) {
         intentTreeFacadeService.updateIntentNode(nodeId, request);
         return ApiResponse.success();
     }
@@ -64,12 +64,12 @@ public class IntentTreeController {
     }
 
     @PostMapping("/publish")
-    public ApiResponse<PublishIntentTreeResponse> publishIntentTreeSnapshot() {
+    public ApiResponse<Integer> publishIntentTreeSnapshot() {
         return ApiResponse.success(intentTreeFacadeService.publishIntentTreeSnapshot());
     }
 
     @GetMapping("/versions")
-    public ApiResponse<GetIntentVersionsResponse> getIntentVersions() {
+    public ApiResponse<List<IntentVersionVO>> getIntentVersions() {
         return ApiResponse.success(intentTreeFacadeService.getIntentVersions());
     }
 

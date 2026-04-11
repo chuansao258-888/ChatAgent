@@ -1,9 +1,9 @@
 package com.yulong.chatagent.admin.application;
 
-import com.yulong.chatagent.admin.model.request.CreateAgentRequest;
-import com.yulong.chatagent.admin.model.request.UpdateAgentRequest;
-import com.yulong.chatagent.admin.model.response.CreateAgentResponse;
-import com.yulong.chatagent.admin.model.response.GetAgentsResponse;
+import com.yulong.chatagent.admin.model.request.UpsertAgentRequest;
+import com.yulong.chatagent.admin.model.vo.AgentVO;
+
+import java.util.List;
 
 /**
  * Facade for administrator-managed agent configuration.
@@ -11,33 +11,22 @@ import com.yulong.chatagent.admin.model.response.GetAgentsResponse;
 public interface AgentFacadeService {
 
     /**
-     * Lists all configured agents.
-     *
-     * @return agent list response
+     * Lists all configured agents for the current admin scope.
      */
-    GetAgentsResponse getAgents();
+    List<AgentVO> getAgents();
 
     /**
-     * Creates a new agent definition.
-     *
-     * @param request create agent request
-     * @return created agent response
+     * Creates a new agent definition and returns its id.
      */
-    CreateAgentResponse createAgent(CreateAgentRequest request);
+    String createAgent(UpsertAgentRequest request);
 
     /**
      * Deletes one agent definition.
-     *
-     * @param agentId agent identifier
      */
     void deleteAgent(String agentId);
 
     /**
      * Updates one agent definition.
-     *
-     * @param agentId agent identifier
-     * @param request update request payload
      */
-    void updateAgent(String agentId, UpdateAgentRequest request);
+    void updateAgent(String agentId, UpsertAgentRequest request);
 }
-

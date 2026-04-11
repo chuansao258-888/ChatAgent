@@ -2,7 +2,7 @@
 
 > 分支：`reconstruct/code-reconstruction`
 > 基于提交：`9613e77` (main)
-> 执行日期：2026-04-11
+> 执行日期：2026-04-11 ~ 2026-04-12
 > 参考方案：[CODE_RESTRUCTURING_PLAN.md](../plans/CODE_RESTRUCTURING_PLAN.md)
 
 ---
@@ -20,7 +20,8 @@
 | 5 | 上帝类拆分 | ✅ 完成 | 多个 | ~20 | PdfPageRenderer/QualityRouter/TextExtractor + McpServerCrudHelper + DashboardOverviewAggregator |
 | 6A | Entity 层消除 | ✅ 完成 | 多个 | ~80 | 15 个 Entity 合并进 DTO，6 个保留 |
 | 7B | Framework 模块测试 | ✅ 完成 | `919f0a3` | 8 | 7 个测试类，41 个测试全部通过 |
-| 9-α | 数据对象精简（契约不变批） | ✅ 完成 | TBD | 5 | McpToolReferenceVO 删除 + IntentVersionVO 改 record；8 个候选归入 9-β |
+| 9-α | 数据对象精简（契约不变批） | ✅ 完成 | TBD | 多个 | McpToolReferenceVO 删除 + IntentVersionVO 改 record |
+| 9-β | 数据对象精简（契约变化批） | ✅ 完成 | TBD | 多个 | 三批删除 13 薄 Response + 5 对 Create/Update 合并为 UpsertRequest + 漏网复核零候选 |
 
 ---
 
@@ -368,7 +369,7 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 
 ## 执行总结
 
-**最终测试**: `mvn test` 346 tests 通过，Failures=0，Errors=0，Skipped=0
+**最终测试**: `mvn test` 351 tests 通过，Failures=0，Errors=0，Skipped=0
 
 ### 量化成果
 
@@ -383,7 +384,7 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 | McpServerAdminFacadeServiceImpl | 523 → ~390 行（-25%） |
 | DashboardFacadeServiceImpl | 588 → 425 行（-28%） |
 | 单实现接口（Phase 11） | 收敛 4 个应用服务接口；完成全量评估并形成保留/删除台账 |
-| 数据对象精简（Phase 9-α） | 删除 McpToolReferenceVO（→ DTO 直用）；IntentVersionVO 改为 record；全量评估 24 个 VO 形成 10/14 保留台账 |
+| 数据对象精简（Phase 9） | 9-α 删除 McpToolReferenceVO + IntentVersionVO 改 record；9-β-1 三批删除 13 个薄 Response；9-β-2 合并 5 对 Create/Update 为 UpsertRequest；9-β-3 漏网复核零候选；当前 DTO 21 + VO 23 + API Response 17 + Request 20 = 81 |
 | Framework 测试 | 0 → 7 个测试类，41 个测试用例 |
 | Git 追踪体积 | 解除 MCP/.venv/（96MB）+ output/ 追踪 |
 
@@ -858,7 +859,7 @@ assertThat(totalLookups).isEqualTo(observation.visualTrackPageCount() * 2.0d);
 | 检查项 | 结果 |
 |--------|------|
 | `GoldenPdfPerformanceBaselineTest` 定向（golden 组） | ✅ 1 test 通过，三条 recursive equality + 三条 cache lookup 断言全部绿 |
-| `./mvnw.cmd test` 全量回归（默认排除 golden） | ✅ 346 tests, Failures=0, Errors=0, Skipped=0 |
+| `./mvnw.cmd test` 全量回归（默认排除 golden） | ✅ 348 tests, Failures=0, Errors=0, Skipped=0 |
 | 主测试总数 | 仍为 346，未因新增基线测试而漂移（golden 组被默认排除） |
 | 生产代码改动 | 零 — 本批不触碰任何 `main/java` 文件 |
 
@@ -877,111 +878,518 @@ assertThat(totalLookups).isEqualTo(observation.visualTrackPageCount() * 2.0d);
 
 ## Phase 9-α：数据对象精简 — 契约不变批
 
-**执行时间**: 2026-04-11
+**执行时间**: 2026-04-11 ~ 2026-04-12
 **风险**: 低
-**状态**: ✅ 完成（2 个 VO 收敛；其余分类 A 候选归入 9-β）
+**状态**: ✅ 完成（仅保留“VO 与 DTO 字段完全一样才删除”的收敛规则）
 
-### 9-α 扫描方法
+### 9-α 扫描与判定标准
 
-逐个读取全部 24 个 VO 文件及其对应 DTO，做字段级比对。判定标准：
+Phase 9 初稿一度把“VO 是 DTO 的字段子集”也视为可删候选，但这会把“裁剪暴露面”和“删除包装层”混为一谈。经过对 `DATA_OBJECT_INVENTORY.md` 与当前工作树的再次 review，本阶段准则收紧为：
 
-- **可删（分类 A）**：VO 与 DTO 字段 100% 一致，或 VO 是 DTO 的纯子集，无格式化/类型转换/计算字段
-- **保留（分类 B）**：VO 有计算字段、来源非 DTO、嵌套聚合逻辑、或 DTO↔VO 之间有类型转换
+- **默认保留 VO**
+- 只有当 **VO 与 DTO 字段完全一致** 时，才允许把删除 VO 作为 9-α 的默认方案
+- 这里的“完全一致”包括：字段名、字段类型、可空性/序列化行为、无额外计算/脱敏/裁剪逻辑
 
-### 全量评估记录
+按这个新准则重新核对后，当前仅有 1 个“删 VO → 直用 DTO”的有效样本，另有 1 个“极小值对象 record 化”样本：
 
-#### 分类 A：可收敛（10 个 VO）
+| 项目 | 结论 | 原因 |
+|------|------|------|
+| `McpToolReferenceVO` | ✅ 删除，改用 `McpToolReferenceDTO` | 4 个字段与 DTO 完全一致 |
+| `IntentVersionVO` | ✅ 改为 record | 无对应 DTO，但只有 `version + active` 两个字段 |
 
-| # | VO | 对应 DTO | 重叠程度 | 构造逻辑 | 收敛风险 |
-|---|---|---|----------|----------|----------|
-| 1 | `McpToolReferenceVO` | `McpToolReferenceDTO` | 100%（4 字段完全一致） | `toReferenceVO()` 逐字段拷贝 | 零 |
-| 2 | `McpToolCatalogVO` | `McpToolCatalogDTO` | VO 是 DTO 子集（DTO 多 schemaJson/schemaHash/deletedAt） | `toCatalogVO()` 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 3 个字段 |
-| 3 | `ChatSessionFileVO` | `ChatSessionFileDTO` | VO 是 DTO 子集（DTO 多 sessionId/storagePath/metadata） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 3 个字段 |
-| 4 | `ChatMessageVO` | `ChatMessageDTO` | VO 子集（DTO 多 createdAt/updatedAt） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 2 个字段 |
-| 5 | `ChatSessionVO` | `ChatSessionDTO` | VO 是 DTO 子集（DTO 多 userId/metadata/createdAt/updatedAt） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 4 个字段 |
-| 6 | `AgentVO` | `AgentDTO` | VO 是 DTO 子集（DTO 多 userId/activeIntentVersion/createdAt/updatedAt） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 4 个字段 |
-| 7 | `KnowledgeBaseVO` | `KnowledgeBaseDTO` | VO 是 DTO 子集（DTO 多 createdBy/metadata） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 2 个字段 |
-| 8 | `KnowledgeDocumentVO` | `KnowledgeDocumentDTO` | VO 是 DTO 子集（DTO 多 storagePath/contentHash/failedReason/indexedAt/retryCount/metadata） | builder 逐字段拷贝 | 低 — 删 VO 后响应会多暴露 7 个字段 |
-| 9 | `IntentVersionVO` | 无 DTO（纯视图：version + active） | 由 `buildVersionVos()` 从整数+布尔构造 | 零 — 可改为 inline record |
-| 10 | `McpServerVO` | `McpServerDTO` | VO 是 DTO 子集（DTO 多 encryptedCredentials/credentialKeyVersion/deletedAt），VO 多 `unresolvedReferenceCount`（计算字段） | `toServerVO()` 逐字段拷贝 + `resolveUnresolvedReferenceCount()` | 中 — VO 有计算字段，删 VO 后需保留计算逻辑 |
+### 2026-04-12 校准批：收回冲突的 DTO 直出尝试
 
-#### 分类 B：必须保留（14 个 VO）
+在开始继续推进 Phase 9 之前，我先检查了当前工作树，发现已经存在一批“把 VO 直接替换成 DTO”的未提交尝试。这些尝试与上面的新准则冲突，而且其中有一部分已经破坏了代码边界：
 
-| VO | 保留原因 |
-|---|---|
-| `McpDiscoveredToolVO` | 来源是 `McpRemoteToolDescriptor`（record，非 DTO），且 exposedModelName 经过 normalizeToolName() 计算 |
-| `ChatRoutingCandidateVO` | 来源是 `ChatRoutingProperties.CandidateConfig` + 运行时路由状态合并，无 DTO |
-| `IntentNodeVO` | DTO 有 agentId/createdAt/updatedAt 但 VO 多了 knowledgeBaseIds（从关联表查询），DTO 里没有 |
-| `AssistantTemplateVO` | DTO 有双字段（model+modelValue 等），VO 只暴露 rich 字段 + 嵌套 IntentTreeNodeTemplateVO（enum→String）|
-| `AdminUserVO` | 来源是 UserDTO/User 实体，无直接 1:1 DTO |
-| `LoginUserVO` | 来源是 JWT claims + UserDTO，无直接 DTO |
-| `UserProfileVO` | 来源是 UserProfileDTO，但只有 3 个字段（userId/summary/updatedAt），不完整子集 |
-| `DashboardOverviewVO` | 纯聚合视图，含嵌套 KPI 结构，无 DTO |
-| `DashboardTrendsVO` | 纯聚合视图，含嵌套 series/point 结构，无 DTO |
-| `DashboardMcpAlertVO` | 来源 McpAlertEventDTO 但 VO 多了 serverSlug/toolName（从关联查询填充）|
-| `DashboardMcpAlertsVO` | 包装器，含 openAlertCount + 嵌套 alert 列表 |
-| `DashboardMcpPerformanceVO` | 纯聚合视图 |
-| `DashboardMcpServerMetricVO` | 从 McpServerDTO + 调用统计聚合，无 1:1 DTO |
-| `DashboardPerformanceVO` | 纯聚合视图，嵌套 McpPerformance |
+- `GetAgentsResponse` 被改成 `AgentDTO[]`
+- `GetChatSessionResponse` / `GetChatSessionsResponse` 被改成 `ChatSessionDTO`
+- `GetKnowledgeBaseResponse` / `GetKnowledgeBasesResponse` / `GetAssistantKnowledgeBasesResponse` 被改成 `KnowledgeBaseDTO`
+- `GetMcpServerResponse` 被改成 `List<McpToolCatalogDTO>`
+- `McpToolCatalogVO.java` 被删除
+- `ChatMessageConverter.toVO(...)` 被删掉，但 `AgentMessageBridgeImpl` 仍依赖该方法
+
+这批改动如果继续保留，会让当前 Phase 9 同时混入“契约变化”和“边界回退”两种风险，不利于后续分批执行，所以本批先全部收回到安全边界内。
 
 ### 实际改造
 
-#### 9-α-1 试点：McpToolReferenceVO → McpToolReferenceDTO
+#### 9-α-1 已保留的正式收敛项
 
-- VO 与 DTO 字段 100% 一致（referenceType / referenceId / referenceName / referencePath），无转换逻辑
-- 改动范围：
-  - `DeleteMcpServerResponse` — 字段类型从 `List<McpToolReferenceVO>` 改为 `List<McpToolReferenceDTO>`
-  - `McpServerDeleteHandler.execute()` — 移除 `Function<McpToolReferenceDTO, McpToolReferenceVO>` 参数，直接传递 DTO 列表
-  - `McpServerAdminFacadeServiceImpl` — 删除 `toReferenceVO()` 转换方法，调用 `deleteHandler.execute(server, force)` 不再传转换器
-  - 删除 `McpToolReferenceVO.java`
-- 序列化行为不变：DTO 使用 `@Data`（Lombok 生成 getter/setter），Jackson 序列化字段名与原 VO 完全一致
+- `McpToolReferenceVO` 删除，`DeleteMcpServerResponse` 直接使用 `List<McpToolReferenceDTO>`
+- `IntentVersionVO` 改为 Java record，序列化行为保持不变
 
-#### 9-α-1 试点：IntentVersionVO → record
+#### 9-α-2 VO 边界恢复（2026-04-12）
 
-- VO 只有 2 个字段（version + active），无 DTO，由 `buildVersionVos()` 从 Integer + Boolean 构造
-- 改动范围：
-  - `IntentVersionVO` — 从 `@Data @AllArgsConstructor` class 改为 `public record IntentVersionVO(Integer version, boolean active) {}`
-  - 所有消费方（`GetIntentVersionsResponse`、`GetIntentTreeResponse`、`IntentTreeFacadeServiceImpl`）使用 `new IntentVersionVO(...)` 构造，record 的 compact constructor 兼容原有调用
-- 序列化行为不变：record 的 Jackson 序列化与 `@Data` class 字段名一致
+##### Agent 模块
 
-#### 9-α-1 试点：ChatMessageVO → 延后至 9-β
+- `AgentFacadeServiceImpl.getAgents()` 恢复为 `AgentDTO -> AgentVO` 显式转换
+- `GetAgentsResponse` 恢复为 `AgentVO[]`
 
-- VO 有 7 个字段，DTO 有 9 个字段（多 `createdAt` / `updatedAt`）
-- `ChatMessageConverter.toVO()` 显式丢弃这两个字段
-- 替换后 HTTP 响应体会多暴露 2 个字段，属于契约变化，不满足 9-α 前提
-- **结论**：归入 9-β
+##### Conversation 模块
 
-#### 9-α-2 扩展评估
+- `GetChatMessagesResponse` 恢复为 `ChatMessageVO[]`
+- `GetChatSessionResponse` / `GetChatSessionsResponse` 恢复为 `ChatSessionVO`
+- `SseMessage.Payload.message` 恢复为 `ChatMessageVO`
+- `ChatMessageConverter` 恢复 `toVO(ChatMessageDTO)` / `toVO(ChatMessage)`，保持 `AgentMessageBridgeImpl` 的现有调用成立
+- `ChatSessionConverter` 恢复 `toVO(ChatSessionDTO)` / `toVO(ChatSession)`，避免 facade 再把 VO 当 DTO 使用
+- `ChatMessageFacadeServiceImpl` 恢复 `ChatMessageDTO -> ChatMessageVO[]` 的显式组装
+- `ChatSessionFacadeServiceImpl` 恢复 `ChatSessionDTO -> ChatSessionVO[]` / `ChatSessionVO` 的显式组装
+- `ConversationOrchestratorService` 恢复 direct-reply SSE payload 使用 `ChatMessageVO`
+- `AgentMessageBridgeImpl` / `ChatEventProcessor` 恢复所有 SSE message snapshot / fallback message 使用 `ChatMessageVO`
 
-逐个核实分类 A 剩余 7 个候选：
+##### Knowledge 模块
 
-| VO | DTO 多出字段 | 是否契约变化 | 结论 |
-|---|---|---|---|
-| McpToolCatalogVO | schemaJson / schemaHash / deletedAt | 是 | 9-β |
-| ChatSessionFileVO | sessionId / storagePath / metadata | 是 | 9-β |
-| ChatSessionVO | userId / metadata / createdAt / updatedAt | 是 | 9-β |
-| AgentVO | userId / activeIntentVersion / createdAt / updatedAt | 是 | 9-β |
-| KnowledgeBaseVO | createdBy / metadata | 是 | 9-β |
-| KnowledgeDocumentVO | storagePath / contentHash / failedReason / indexedAt / retryCount / metadata | 是 | 9-β |
-| McpServerVO | encryptedCredentials / credentialKeyVersion / deletedAt（且 VO 多 unresolvedReferenceCount） | 是 | 9-β |
+- `KnowledgeBaseFacadeServiceImpl` 恢复注入 `KnowledgeBaseConverter`
+- `getKnowledgeBases()` / `getKnowledgeBase()` 恢复为 `KnowledgeBaseVO` 输出
+- `AssistantKnowledgeBaseFacadeServiceImpl` 恢复 `KnowledgeBaseDTO -> KnowledgeBaseVO` 转换
+- `GetKnowledgeBaseResponse` / `GetKnowledgeBasesResponse` / `GetAssistantKnowledgeBasesResponse` 全部恢复为 `KnowledgeBaseVO`
 
-**全部归入 9-β**：每个 VO 都是 DTO 的真子集，删除后 HTTP 响应体会暴露额外字段。
+##### MCP 模块
 
-#### 9-α-3 内部辅助 VO
+- 重新加入 `McpToolCatalogVO`
+- `GetMcpServerResponse.catalogTools` 恢复为 `List<McpToolCatalogVO>`
 
-扫描全部 23 个 VO 文件，逐一检查是否仅被内部 Helper 使用而不经 Controller/Response。结果显示每个 VO 至少被一个 Response 类或 Controller 直接引用。**无 9-α-3 候选**。
+### 当前 Phase 9-α 台账
+
+#### 已收敛（仅 2 项）
+
+| 项目 | 方式 | 说明 |
+|------|------|------|
+| `McpToolReferenceVO` | 删除，改用 DTO | 唯一满足“字段完全一致”的删 VO 样本 |
+| `IntentVersionVO` | 改为 record | 极小值对象，非 DTO 替换 |
+
+#### 经复核后默认保留（8 项）
+
+| VO | 保留原因 |
+|----|----------|
+| `AgentVO` | DTO 多 `userId / activeIntentVersion / createdAt / updatedAt` |
+| `ChatSessionVO` | DTO 多 `userId / metadata / createdAt / updatedAt` |
+| `ChatMessageVO` | DTO 多 `createdAt / updatedAt` |
+| `ChatSessionFileVO` | DTO 多 `sessionId / storagePath / metadata` |
+| `KnowledgeBaseVO` | DTO 多 `createdBy / metadata` |
+| `KnowledgeDocumentVO` | DTO 多 `storagePath / contentHash / failedReason / indexedAt / retryCount / metadata` |
+| `McpServerVO` | DTO 含敏感字段，VO 还多 `unresolvedReferenceCount` 计算字段 |
+| `McpToolCatalogVO` | DTO 多 `schemaJson / schemaHash / deletedAt` |
+
+#### 必须保留（14 项）
+
+| VO | 保留原因 |
+|----|----------|
+| `McpDiscoveredToolVO` | 来自远端工具描述，含名称规范化 |
+| `ChatRoutingCandidateVO` | 配置 + 运行时状态聚合 |
+| `IntentNodeVO` | 含 DTO 中不存在的 `knowledgeBaseIds` |
+| `AssistantTemplateVO` | rich 字段视图 + 嵌套转换 |
+| `AdminUserVO` | 非 1:1 DTO 来源 |
+| `LoginUserVO` | JWT claims + UserDTO 组合 |
+| `UserProfileVO` | 裁剪视图，不是等价 DTO |
+| `DashboardOverviewVO` | 聚合视图 |
+| `DashboardTrendsVO` | 聚合视图 |
+| `DashboardMcpAlertVO` | 关联补充字段 |
+| `DashboardMcpAlertsVO` | 聚合包装器 |
+| `DashboardMcpPerformanceVO` | 聚合视图 |
+| `DashboardMcpServerMetricVO` | 统计聚合结果 |
+| `DashboardPerformanceVO` | 聚合视图 |
 
 ### 验证结果
 
-| 检查项 | 结果 |
-|--------|------|
-| `mvn compile` 通过 | ✅ PASS |
-| `McpServerAdminFacadeServiceImplTest`（9 tests） | ✅ PASS |
-| `./mvnw.cmd test` 全量（346 tests） | ✅ PASS，Failures=0, Errors=0, Skipped=0 |
+#### 定向验证
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=AgentMessageBridgeImplTest,KnowledgeBaseFacadeServiceImplTest,AssistantKnowledgeBaseFacadeServiceImplTest,McpServerAdminFacadeServiceImplTest" test
+```
+
+结果：15 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+覆盖面：
+
+- `AgentMessageBridgeImplTest` — 验证 `ChatMessageConverter.toVO(...)` 恢复后桥接层仍可构造消息视图
+- `KnowledgeBaseFacadeServiceImplTest` — 验证 `KnowledgeBaseVO` 边界恢复后的 facade 行为
+- `AssistantKnowledgeBaseFacadeServiceImplTest` — 验证管理员知识库绑定查询仍返回 VO 视图
+- `McpServerAdminFacadeServiceImplTest` — 验证 `McpToolCatalogVO` 恢复后 MCP 详情聚合仍正常
+
+#### 全量回归
+
+```bash
+./mvnw.cmd test
+```
+
+结果：整仓 346 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+备注：
+
+- 初始定向测试通过后，继续做 `conversation` 链路扫尾时又暴露出一串同类残留（`GetChatMessagesResponse`、`SseMessage`、`ChatSessionConverter`、`ChatSessionFacadeServiceImpl`、`AgentMessageBridgeImpl`、`ChatEventProcessor`）
+- 最终以这次 `./mvnw.cmd test` 全量 346 通过作为本批校准的**最终验收结果**
 
 ### 9-α 结论
 
-- **2 个 VO 成功收敛**：McpToolReferenceVO 删除（直接用 DTO）、IntentVersionVO 改为 record
-- **8 个分类 A 候选归入 9-β**：均因 DTO 多暴露字段而不满足"契约不变"前提
-- **14 个分类 B VO 保留**：有计算字段 / 聚合结构 / 非 DTO 来源，不应删除
-- Phase 9-α 按计划"契约不变批"口径结项，剩余数据对象精简需等前端联调窗口
+- **Phase 9-α 的真实边界已经重新收紧**：只删除“字段完全一致”的 VO，不再把“DTO 的字段子集”作为默认删除候选
+- **当前正式收敛项仍然只有 2 个**：`McpToolReferenceVO` 与 `IntentVersionVO`
+- **23 个当前在库 VO 中，22 个应保留**：其中 8 个是这次经复核后明确改判为保留的薄 VO，14 个本来就是聚合/计算/非 DTO 来源
+- **2026-04-12 这批工作是 Phase 9 的校准批**：目的是把工作树里已经出现的 DTO 直出尝试收回到正确边界，而不是继续扩大契约变化面
+
+---
+
+## Phase 9-β：数据对象精简 — 契约变化批（已完成）
+
+**执行时间**: 2026-04-12
+**风险**: 中
+**状态**: ✅ 完成（9-β-1 三批 + 9-β-2 Upsert + 9-β-3 漏网复核）
+
+### 9-β-1 选批原则
+
+在 9-α 把 VO 边界重新校准以后，9-β 的第一批没有再碰 VO 删除，而是只处理**低耦合、单字段壳很明显**的 Response：
+
+- 只改 `Controller -> Facade -> FacadeImpl` 的返回类型
+- 只删除“内部只有一个 `VO` / `VO[]` / `List<VO>` 字段”的薄 Response
+- **不改** `VO` 字段、不改 `Request` 结构、不动多字段 Response（如 `CreateKnowledgeBaseResponse`、`InitializeAssistantFromTemplateResponse`）
+
+这批最终落在 3 条链路上：
+
+1. `AssistantTemplate`
+2. `AssistantKnowledgeBase`
+3. `KnowledgeBase`
+
+### 实际改造
+
+#### AssistantTemplate：删除 2 个薄 Response
+
+涉及文件：
+
+- `admin/controller/AssistantTemplateController`
+- `admin/application/AssistantTemplateFacadeService`
+- `admin/application/AssistantTemplateFacadeServiceImpl`
+
+改造内容：
+
+- `getTemplates()`：`ApiResponse<GetAssistantTemplatesResponse>` → `ApiResponse<List<AssistantTemplateVO>>`
+- `getTemplate(String templateId)`：`ApiResponse<GetAssistantTemplateResponse>` → `ApiResponse<AssistantTemplateVO>`
+- facade 接口与实现同步改为直接返回 `List<AssistantTemplateVO>` / `AssistantTemplateVO`
+- 删除：
+  - `GetAssistantTemplatesResponse`
+  - `GetAssistantTemplateResponse`
+
+HTTP 契约变化：
+
+- 之前：`data.templates: [...]`
+- 现在：`data: [...]`
+- 之前：`data.template: {...}`
+- 现在：`data: {...}`
+
+#### AssistantKnowledgeBase：删除 1 个薄 Response
+
+涉及文件：
+
+- `admin/controller/AssistantKnowledgeBaseController`
+- `knowledge/application/AssistantKnowledgeBaseFacadeService`
+- `knowledge/application/AssistantKnowledgeBaseFacadeServiceImpl`
+
+改造内容：
+
+- `getAssistantKnowledgeBases()`：`ApiResponse<GetAssistantKnowledgeBasesResponse>` → `ApiResponse<KnowledgeBaseVO[]>`
+- facade 接口与实现同步改为直接返回 `KnowledgeBaseVO[]`
+- 删除 `GetAssistantKnowledgeBasesResponse`
+
+HTTP 契约变化：
+
+- 之前：`data.knowledgeBases: [...]`
+- 现在：`data: [...]`
+
+#### KnowledgeBase：删除 2 个薄 Response
+
+涉及文件：
+
+- `knowledge/controller/KnowledgeBaseController`
+- `knowledge/application/KnowledgeBaseFacadeService`
+- `knowledge/application/KnowledgeBaseFacadeServiceImpl`
+
+改造内容：
+
+- `getKnowledgeBases()`：`ApiResponse<GetKnowledgeBasesResponse>` → `ApiResponse<KnowledgeBaseVO[]>`
+- `getKnowledgeBase(String knowledgeBaseId)`：`ApiResponse<GetKnowledgeBaseResponse>` → `ApiResponse<KnowledgeBaseVO>`
+- facade 接口与实现同步改为直接返回 `KnowledgeBaseVO[]` / `KnowledgeBaseVO`
+- 删除：
+  - `GetKnowledgeBasesResponse`
+  - `GetKnowledgeBaseResponse`
+
+HTTP 契约变化：
+
+- 之前：`data.knowledgeBases: [...]`
+- 现在：`data: [...]`
+- 之前：`data.knowledgeBase: {...}`
+- 现在：`data: {...}`
+
+### 刻意未处理的项
+
+- `CreateKnowledgeBaseResponse` 保留：虽然只有 1 个字段，但它表达的是“创建结果语义”，不是纯查询壳
+- `InitializeAssistantFromTemplateResponse` 保留：2 个字段都有独立业务语义
+- `VO` 一律不删：本批目标是缩掉最外层薄包装，而不是再次打开“DTO 直出替代 VO”的口子
+- `Conversation` / `Agent` / `MCP` 端点暂未纳入本批：它们虽然也有薄 Response，但当前工作树里还有别的并行改动，先避开高交叉区
+
+### 测试与回归
+
+#### 定向验证
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=AssistantTemplateFacadeServiceImplTest,AssistantKnowledgeBaseFacadeServiceImplTest,KnowledgeBaseFacadeServiceImplTest" test
+```
+
+结果：8 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+本批测试变化：
+
+- 更新 `AssistantTemplateFacadeServiceImplTest`，把断言从 `response.getTemplates()` 调整为直接断言 `List<AssistantTemplateVO>`
+- 更新 `AssistantKnowledgeBaseFacadeServiceImplTest`，把断言从 `response.getKnowledgeBases()` 调整为直接断言 `KnowledgeBaseVO[]`
+- 为 `KnowledgeBaseFacadeServiceImplTest` 新增 2 条测试，分别钉住：
+  - `getKnowledgeBases()` 直接返回 `KnowledgeBaseVO[]`
+  - `getKnowledgeBase()` 直接返回 `KnowledgeBaseVO`
+
+#### 全量回归
+
+```bash
+./mvnw.cmd test
+```
+
+结果：整仓 348 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+### 9-β 第一批结论
+
+- 9-β 已经开始落地，但在这一步还只完成了**第一批薄 Response 删除**
+- 这批一共删除了 5 个 Response 类，数据对象总量从 103 收敛到 98，`Response` 从 34 收敛到 29
+- 9-β 的推进方式已经明确：**先删薄 Response，再评估 Request 合并；VO 边界继续按 9-α 的收紧规则执行**
+- 下一步仍有两块待完成：
+  - 9-β-1 剩余薄 Response（如 `GetAgentsResponse`、`GetChatMessagesResponse`、`ListMcpServersResponse` 等）
+  - 9-β-2 Create/Update Request 合并为 `UpsertXxxRequest`
+
+### 2026-04-12 纠偏记录：Conversation VO 边界恢复
+
+在 9-β-1 首批完成后复核工作树时，发现 `conversation` 链路又出现了一次**越界漂移**，与 9-α 已确认的保留结论不一致：
+
+- `ChatMessageVO.java` 被删除
+- `ChatSessionVO.java` 被删除
+- 同时残留多处“DTO 直出”代码：
+  - `ChatMessageConverter.toVO(...)` / `ChatSessionConverter.toVO(...)`
+  - `GetChatMessagesResponse`
+  - `GetChatSessionResponse`
+  - `GetChatSessionsResponse`
+  - `SseMessage.Payload.message`
+  - `ChatMessageFacadeServiceImpl`
+  - `ChatSessionFacadeServiceImpl`
+  - `ConversationOrchestratorService`
+  - `ChatEventProcessor`
+  - `AgentMessageBridgeImpl`
+
+这类漂移**不属于本批 9-β-1 的目标**，而且会直接破坏 9-α 已写入 inventory 的规则（`ChatMessageVO` / `ChatSessionVO` 均应保留）。因此本次按“越界修改纠偏”处理，而不是把它算作新的 Phase 9 收敛项。
+
+#### 纠偏动作
+
+- 恢复 `ChatMessageVO.java`
+- 恢复 `ChatSessionVO.java`
+- `ChatMessageConverter.toVO(...)` 改回返回 `ChatMessageVO`
+- `ChatSessionConverter.toVO(...)` 改回返回 `ChatSessionVO`
+- `GetChatMessagesResponse` 改回 `ChatMessageVO[]`
+- `GetChatSessionResponse` 改回 `ChatSessionVO`
+- `GetChatSessionsResponse` 改回 `ChatSessionVO[]`
+- `SseMessage.Payload.message` 改回 `ChatMessageVO`
+- `ChatMessageFacadeServiceImpl` / `ChatSessionFacadeServiceImpl` 恢复显式 DTO → VO 组装
+- `ConversationOrchestratorService`、`ChatEventProcessor`、`AgentMessageBridgeImpl` 恢复 SSE payload 使用 `ChatMessageVO`
+
+#### 重新验证
+
+```bash
+./mvnw.cmd -pl bootstrap -am compile
+./mvnw.cmd test
+```
+
+结果：
+
+- `bootstrap compile` 通过
+- 整仓 348 个测试全部通过，`Failures=0, Errors=0, Skipped=0`
+
+这次重新验证后的结果，才是当前工作树的有效验收结论。
+
+### 2026-04-12 第二批：MCP 列表 / 会话文件列表 / 知识文档列表
+
+在 conversation 越界漂移纠偏后，9-β-1 继续推进第二批薄 Response 收敛。这一批仍然严格遵守首批边界：
+
+- 只删最外层薄 Response
+- 不删 VO
+- 不改 Request
+- 只挑调用链短、低交叉、单字段壳明显的端点
+
+#### 本批删除的 3 个薄 Response
+
+| 已删除类 | 当前替代 | 影响链路 |
+|----------|----------|----------|
+| `ListMcpServersResponse` | `ApiResponse<List<McpServerVO>>` | `McpServerAdminController` / `McpServerAdminFacadeService` |
+| `GetChatSessionFilesResponse` | `ApiResponse<ChatSessionFileVO[]>` | `ChatSessionFileController` / `ChatSessionFileFacadeService` |
+| `GetKnowledgeDocumentsResponse` | `ApiResponse<KnowledgeDocumentVO[]>` | `KnowledgeDocumentController` / `KnowledgeDocumentFacadeService` |
+
+#### 实际改造
+
+##### MCP 列表
+
+- `McpServerAdminFacadeService.getServers()`：`ListMcpServersResponse` → `List<McpServerVO>`
+- `McpServerAdminFacadeServiceImpl.getServers()`：删除包装层，直接返回 `List<McpServerVO>`
+- `McpServerAdminController.getServers()`：`ApiResponse<ListMcpServersResponse>` → `ApiResponse<List<McpServerVO>>`
+
+契约变化：
+
+- 之前：`data.servers: [...]`
+- 现在：`data: [...]`
+
+##### 会话文件列表
+
+- `ChatSessionFileFacadeService.getChatSessionFiles()`：`GetChatSessionFilesResponse` → `ChatSessionFileVO[]`
+- `ChatSessionFileFacadeServiceImpl.getChatSessionFiles()`：直接返回 `ChatSessionFileVO[]`
+- `ChatSessionFileController.getChatSessionFiles()`：`ApiResponse<GetChatSessionFilesResponse>` → `ApiResponse<ChatSessionFileVO[]>`
+
+契约变化：
+
+- 之前：`data.files: [...]`
+- 现在：`data: [...]`
+
+##### 知识文档列表
+
+- `KnowledgeDocumentFacadeService.getKnowledgeDocuments()`：`GetKnowledgeDocumentsResponse` → `KnowledgeDocumentVO[]`
+- `KnowledgeDocumentFacadeServiceImpl.getKnowledgeDocuments()`：直接返回 `KnowledgeDocumentVO[]`
+- `KnowledgeDocumentController.getKnowledgeDocuments()`：`ApiResponse<GetKnowledgeDocumentsResponse>` → `ApiResponse<KnowledgeDocumentVO[]>`
+
+契约变化：
+
+- 之前：`data.documents: [...]`
+- 现在：`data: [...]`
+
+#### 测试与回归
+
+##### 定向验证
+
+```bash
+./mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" \
+  "-Dtest=McpServerAdminFacadeServiceImplTest,KnowledgeDocumentFacadeServiceImplTest,ChatSessionFileFacadeServiceImplTest" test
+```
+
+结果：18 个测试全部通过，`Failures=0, Errors=0, Skipped=0`。
+
+本批新增 / 调整测试：
+
+- `McpServerAdminFacadeServiceImplTest`
+  - 新增 `shouldReturnDirectServerViewList()`，钉住 `getServers()` 直接返回 `List<McpServerVO>`，同时保留 `unresolvedReferenceCount` 计算语义
+- `KnowledgeDocumentFacadeServiceImplTest`
+  - 新增 `shouldReturnDirectKnowledgeDocumentArray()`，钉住 `getKnowledgeDocuments()` 直接返回 `KnowledgeDocumentVO[]`
+- `ChatSessionFileFacadeServiceImplTest`
+  - 新增测试类，补 `shouldReturnDirectChatSessionFileArray()`，覆盖 `UserContext + ResourceAccessGuard + DTO → VO` 链路
+
+##### 编译与全量回归
+
+```bash
+./mvnw.cmd -pl bootstrap -am compile
+./mvnw.cmd test
+```
+
+结果：
+
+- `bootstrap compile` 通过
+- 整仓 351 个测试全部通过，`Failures=0, Errors=0, Skipped=0`
+
+### 9-β 第三批：Agent / Intent / KnowledgeBase 薄 Response
+
+在第二批完成后，9-β-1 继续推进第三批薄 Response 删除，同时严格遵守 VO 边界不变原则。
+
+#### 本批删除的 5 个薄 Response
+
+| 已删除类 | 当前替代 | 影响链路 |
+|----------|----------|----------|
+| `CreateAgentResponse` | `ApiResponse<String>` | `AgentFacadeService` / `AgentFacadeServiceImpl` |
+| `GetAgentsResponse` | `ApiResponse<List<AgentVO>>` | `AgentFacadeService` / `AgentFacadeServiceImpl` |
+| `GetIntentVersionsResponse` | `ApiResponse<List<IntentVersionVO>>` | `IntentTreeFacadeService` / `IntentTreeController` |
+| `PublishIntentTreeResponse` | `ApiResponse<Integer>` | `IntentTreeFacadeService` / `IntentTreeController` / `AssistantTemplateFacadeServiceImpl` |
+| `CreateKnowledgeBaseResponse` | `ApiResponse<String>` | `KnowledgeBaseFacadeService` / `KnowledgeBaseController` |
+
+#### 实际改造
+
+##### Agent
+
+- `AgentFacadeService.createAgent()`：`CreateAgentResponse` → `String`（直接返回 agentId）
+- `AgentFacadeService.getAgents()`：`GetAgentsResponse` → `List<AgentVO>`
+- `AgentFacadeServiceImpl`：删除 Response 组装，直接返回 DTO id 和 VO 列表
+- 删除 `CreateAgentResponse`、`GetAgentsResponse`
+
+契约变化：
+
+- `POST /api/admin/agents`：`data.agentId` → `data`
+- `GET /api/admin/agents`：`data.agents` → `data`
+
+##### Intent
+
+- `IntentTreeFacadeService.publishIntentTreeSnapshot()`：`PublishIntentTreeResponse` → `Integer`
+- `IntentTreeFacadeService.getIntentVersions()`：`GetIntentVersionsResponse` → `List<IntentVersionVO>`
+- `IntentTreeController`：同步更新返回类型
+- `AssistantTemplateFacadeServiceImpl`：`publishResponse.getVersion()` → `publishedVersion`（直接 Integer）
+- 删除 `PublishIntentTreeResponse`、`GetIntentVersionsResponse`
+
+契约变化：
+
+- `POST /api/admin/assistant/intent-tree/publish`：`data.version` → `data`
+- `GET /api/admin/assistant/intent-tree/versions`：`data.versions` → `data`
+
+##### KnowledgeBase
+
+- `KnowledgeBaseFacadeService.createKnowledgeBase()`：`CreateKnowledgeBaseResponse` → `String`
+- `KnowledgeBaseController.createKnowledgeBase()`：`ApiResponse<CreateKnowledgeBaseResponse>` → `ApiResponse<String>`
+- 删除 `CreateKnowledgeBaseResponse`
+
+契约变化：
+
+- `POST /api/admin/knowledge-bases`：`data.knowledgeBaseId` → `data`
+
+#### 刻意未处理的项
+
+- `CreateChatMessageResponse`（2 字段）和 `CreateAdminUserResponse`（3 字段）：降级为保留，转换会损失类型安全
+- `AgentFacadeService` 无 HTTP controller 消费，标记为孤立 facade（超出 Phase 9 scope）
+
+#### 测试变化
+
+- `IntentTreeFacadeServiceImplTest`：`PublishIntentTreeResponse response = ...` → `Integer response = ...`；`response.getVersion()` → 直接 `assertThat(response).isEqualTo(3)`
+- `AssistantTemplateFacadeServiceImplTest`：`thenReturn(new PublishIntentTreeResponse(3))` → `thenReturn(3)`
+
+---
+
+### 9-β-2：Create/Update Request 合并为 UpsertRequest
+
+5 对字段完全一致的 Create/Update Request 合并为单个 `UpsertXxxRequest`，Controller 的 POST（create）和 PATCH（update）端点共用同一类型。
+
+#### 合并清单
+
+| 原 Create 类 | 原 Update 类 | 合并为 | 涉及 Controller / Facade |
+|-------------|-------------|--------|--------------------------|
+| `CreateAgentRequest` | `UpdateAgentRequest` | `UpsertAgentRequest` | `AgentFacadeService` / `AgentConverter` |
+| `CreateAssistantTemplateRequest` | `UpdateAssistantTemplateRequest` | `UpsertAssistantTemplateRequest` | `AssistantTemplateController` / `AssistantTemplateFacadeService` |
+| `CreateIntentNodeRequest` | `UpdateIntentNodeRequest` | `UpsertIntentNodeRequest` | `IntentTreeController` / `IntentTreeFacadeService` / `AssistantTemplateFacadeServiceImpl` |
+| `CreateKnowledgeBaseRequest` | `UpdateKnowledgeBaseRequest` | `UpsertKnowledgeBaseRequest` | `KnowledgeBaseController` / `KnowledgeBaseFacadeService` |
+| `CreateMcpServerRequest` | `UpdateMcpServerRequest` | `UpsertMcpServerRequest` | `McpServerAdminController` / `McpServerAdminFacadeService` / `McpServerCrudHelper` |
+
+#### 测试变化
+
+- `AssistantTemplateFacadeServiceImplTest`：`CreateIntentNodeRequest` → `UpsertIntentNodeRequest`
+- `McpServerAdminFacadeServiceImplTest`：`CreateMcpServerRequest` → `UpsertMcpServerRequest`；`UpdateMcpServerRequest` → `UpsertMcpServerRequest`
+
+---
+
+### 9-β-3：漏网项复核
+
+对全部 23 个 VO 与对应 DTO 做字段逐一比对：
+
+**结果**：零漏网候选。所有剩余 VO 都是有意投射——它们隐藏敏感字段（credentials、storagePath）、内部字段（deletedAt、metadata）或添加计算字段（unresolvedReferenceCount、knowledgeBaseIds）。
+
+**额外发现**：`AgentFacadeService` 无 HTTP controller 消费（grep 确认仅被自身接口和实现引用），标记为孤立 facade，但不删除（超出 Phase 9 scope）。
+
+---
+
+### 9-β 最终结论
+
+- 9-β-1 三批累计删除 13 个薄 Response（原 26 → 17）
+- 9-β-2 5 对 Create/Update 合并为 5 个 UpsertRequest（原 25 → 15 Request）
+- 9-β-3 漏网复核：零 VO 候选；AgentFacadeService 孤立已标记
+- 全量测试 351 个通过，`Failures=0, Errors=0, Skipped=0`
+- **Phase 9 全部完成**

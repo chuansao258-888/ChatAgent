@@ -25,15 +25,7 @@ export interface CreateChatSessionRequest {
   title?: string;
 }
 
-export interface CreateChatSessionResponse {
-  chatSessionId: string;
-}
-
-export async function createChatSession(
-  request: CreateChatSessionRequest,
-): Promise<CreateChatSessionResponse> {
-  return post<CreateChatSessionResponse>("/chat-sessions", request);
-}
+// CreateChatSessionResponse removed in Phase 9-β-1 — backend returns string directly
 
 export interface ChatSessionVO {
   id: string;
@@ -41,26 +33,27 @@ export interface ChatSessionVO {
   title?: string;
 }
 
-export interface GetChatSessionsResponse {
-  chatSessions: ChatSessionVO[];
-}
-
-export interface GetChatSessionResponse {
-  chatSession: ChatSessionVO;
-}
-
 export interface UpdateChatSessionRequest {
   title?: string;
 }
 
-export async function getChatSessions(): Promise<GetChatSessionsResponse> {
-  return get<GetChatSessionsResponse>("/chat-sessions");
+// getChatSessions now returns ChatSessionVO[] directly
+export async function getChatSessions(): Promise<ChatSessionVO[]> {
+  return get<ChatSessionVO[]>("/chat-sessions");
 }
 
+// getChatSession now returns ChatSessionVO directly
 export async function getChatSession(
   chatSessionId: string,
-): Promise<GetChatSessionResponse> {
-  return get<GetChatSessionResponse>(`/chat-sessions/${chatSessionId}`);
+): Promise<ChatSessionVO> {
+  return get<ChatSessionVO>(`/chat-sessions/${chatSessionId}`);
+}
+
+// createChatSession now returns string (the session ID) directly
+export async function createChatSession(
+  request: CreateChatSessionRequest,
+): Promise<string> {
+  return post<string>("/chat-sessions", request);
 }
 
 export async function updateChatSession(
@@ -78,9 +71,7 @@ export interface MetaData {
   [key: string]: unknown;
 }
 
-export interface GetChatMessagesResponse {
-  chatMessages: ChatMessageVO[];
-}
+// GetChatMessagesResponse removed in Phase 9-β-1 — backend returns ChatMessageVO[] directly
 
 export interface CreateChatMessageRequest {
   sessionId: string;
@@ -100,10 +91,11 @@ export interface UpdateChatMessageRequest {
   metadata?: MetaData;
 }
 
+// getChatMessagesBySessionId now returns ChatMessageVO[] directly
 export async function getChatMessagesBySessionId(
   sessionId: string,
-): Promise<GetChatMessagesResponse> {
-  return get<GetChatMessagesResponse>(`/chat-messages/session/${sessionId}`);
+): Promise<ChatMessageVO[]> {
+  return get<ChatMessageVO[]>(`/chat-messages/session/${sessionId}`);
 }
 
 export async function createChatMessage(
@@ -135,19 +127,18 @@ export interface ChatSessionFileVO {
   updatedAt?: string;
 }
 
-export interface GetChatSessionFilesResponse {
-  files: ChatSessionFileVO[];
-}
+// GetChatSessionFilesResponse removed in Phase 9-β-1 — backend returns ChatSessionFileVO[] directly
 
 export interface UploadChatSessionFileResponse {
   sessionFileId: string;
   sessionId: string;
 }
 
+// getChatSessionFiles now returns ChatSessionFileVO[] directly
 export async function getChatSessionFiles(
   sessionId: string,
-): Promise<GetChatSessionFilesResponse> {
-  return get<GetChatSessionFilesResponse>(`/chat-sessions/${sessionId}/files`);
+): Promise<ChatSessionFileVO[]> {
+  return get<ChatSessionFileVO[]>(`/chat-sessions/${sessionId}/files`);
 }
 
 export async function uploadChatSessionFile(

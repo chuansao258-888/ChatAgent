@@ -1,12 +1,12 @@
 package com.yulong.chatagent.intent.application;
 
-import com.yulong.chatagent.intent.model.request.CreateIntentNodeRequest;
 import com.yulong.chatagent.intent.model.request.SetIntentNodeKnowledgeBasesRequest;
-import com.yulong.chatagent.intent.model.request.UpdateIntentNodeRequest;
+import com.yulong.chatagent.intent.model.request.UpsertIntentNodeRequest;
 import com.yulong.chatagent.intent.model.response.CreateIntentNodeResponse;
 import com.yulong.chatagent.intent.model.response.GetIntentTreeResponse;
-import com.yulong.chatagent.intent.model.response.GetIntentVersionsResponse;
-import com.yulong.chatagent.intent.model.response.PublishIntentTreeResponse;
+import com.yulong.chatagent.intent.model.vo.IntentVersionVO;
+
+import java.util.List;
 
 /**
  * Administrator-facing intent-tree management for the single internal assistant.
@@ -15,17 +15,30 @@ public interface IntentTreeFacadeService {
 
     GetIntentTreeResponse getIntentTree();
 
-    CreateIntentNodeResponse createIntentNode(CreateIntentNodeRequest request);
+    CreateIntentNodeResponse createIntentNode(UpsertIntentNodeRequest request);
 
-    void updateIntentNode(String nodeId, UpdateIntentNodeRequest request);
+    void updateIntentNode(String nodeId, UpsertIntentNodeRequest request);
 
     void deleteIntentNode(String nodeId);
 
     void setIntentNodeKnowledgeBases(String nodeId, SetIntentNodeKnowledgeBasesRequest request);
 
-    PublishIntentTreeResponse publishIntentTreeSnapshot();
+    /**
+     * Publishes the current draft tree as a new immutable snapshot and
+     * returns the newly assigned version number.
+     */
+    Integer publishIntentTreeSnapshot();
 
-    GetIntentVersionsResponse getIntentVersions();
+    List<IntentVersionVO> getIntentVersions();
 
     void switchActiveIntentVersion(int version);
+
+    /**
+     * Removes all draft (version 0) nodes for the system assistant.
+     *
+     * <p>Used by admin orchestration (e.g. template initialization) to
+     * reset the draft tree without a direct dependency on the intent
+     * persistence port.</p>
+     */
+    void clearDraftTree();
 }

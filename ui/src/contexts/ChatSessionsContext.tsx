@@ -22,7 +22,7 @@ export function ChatSessionsProvider({ children }: { children: React.ReactNode }
     setLoading(true);
     try {
       const resp = await getChatSessions();
-      setChatSessions(resp.chatSessions);
+      setChatSessions(resp);
     } finally {
       setLoading(false);
     }

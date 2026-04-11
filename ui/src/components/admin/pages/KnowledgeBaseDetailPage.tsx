@@ -70,7 +70,7 @@ export default function KnowledgeBaseDetailPage() {
       return;
     }
     const documentsResponse = await getKnowledgeDocuments(kbId);
-    setDocuments(documentsResponse.documents);
+    setDocuments(documentsResponse);
   };
 
   const loadKnowledgeBase = async () => {
@@ -83,11 +83,11 @@ export default function KnowledgeBaseDetailPage() {
         getKnowledgeBase(kbId),
         getKnowledgeDocuments(kbId),
       ]);
-      setKnowledgeBase(knowledgeBaseResponse.knowledgeBase);
-      setDocuments(documentsResponse.documents);
+      setKnowledgeBase(knowledgeBaseResponse);
+      setDocuments(documentsResponse);
       form.setFieldsValue({
-        name: knowledgeBaseResponse.knowledgeBase.name,
-        description: knowledgeBaseResponse.knowledgeBase.description,
+        name: knowledgeBaseResponse.name,
+        description: knowledgeBaseResponse.description,
       });
     } catch (error) {
       console.error("Failed to load knowledge base detail:", error);

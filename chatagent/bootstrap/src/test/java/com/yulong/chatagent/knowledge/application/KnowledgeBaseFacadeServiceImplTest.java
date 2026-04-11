@@ -7,6 +7,7 @@ import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.converter.KnowledgeBaseConverter;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
@@ -89,6 +90,54 @@ class KnowledgeBaseFacadeServiceImplTest {
     @AfterEach
     void tearDown() {
         UserContext.clear();
+    }
+
+    @Test
+    void shouldReturnKnowledgeBasesAsDirectVoArray() {
+        when(adminAccessService.requireAdmin()).thenReturn(LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build());
+        when(knowledgeBaseRepository.findAll()).thenReturn(List.of(
+                KnowledgeBaseDTO.builder()
+                        .id("kb-1")
+                        .name("Employee Handbook")
+                        .description("HR policies")
+                        .visibility("SHARED")
+                        .status("ACTIVE")
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .build()
+        ));
+
+        KnowledgeBaseVO[] response = facadeService.getKnowledgeBases();
+
+        assertThat(response).hasSize(1);
+        assertThat(response[0].getId()).isEqualTo("kb-1");
+    }
+
+    @Test
+    void shouldReturnSingleKnowledgeBaseAsDirectVo() {
+        LoginUser adminUser = LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build();
+        KnowledgeBaseDTO knowledgeBase = KnowledgeBaseDTO.builder()
+                .id("kb-1")
+                .name("Employee Handbook")
+                .description("HR policies")
+                .visibility("SHARED")
+                .status("ACTIVE")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        when(adminAccessService.requireAdmin()).thenReturn(adminUser);
+        when(resourceAccessGuard.assertCanManageKnowledgeBase(adminUser, "kb-1")).thenReturn(knowledgeBase);
+
+        KnowledgeBaseVO response = facadeService.getKnowledgeBase("kb-1");
+
+        assertThat(response.getId()).isEqualTo("kb-1");
+        assertThat(response.getName()).isEqualTo("Employee Handbook");
     }
 
     @Test

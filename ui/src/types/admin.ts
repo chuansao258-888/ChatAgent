@@ -28,39 +28,9 @@ export interface KnowledgeDocumentStatusSseMessage {
   };
 }
 
-export interface GetKnowledgeBasesResponse {
-  knowledgeBases: KnowledgeBaseVO[];
-}
-
-export interface GetKnowledgeBaseResponse {
-  knowledgeBase: KnowledgeBaseVO;
-}
-
-export interface CreateKnowledgeBaseRequest {
-  name: string;
-  description?: string;
-}
-
-export interface CreateKnowledgeBaseResponse {
-  knowledgeBaseId: string;
-}
-
-export interface UpdateKnowledgeBaseRequest {
-  name?: string;
-  description?: string;
-}
-
-export interface GetKnowledgeDocumentsResponse {
-  documents: KnowledgeDocumentVO[];
-}
-
 export interface UploadKnowledgeDocumentResponse {
   knowledgeBaseId: string;
   documentId: string;
-}
-
-export interface GetAssistantKnowledgeBasesResponse {
-  knowledgeBases: KnowledgeBaseVO[];
 }
 
 export interface SetAssistantKnowledgeBasesRequest {
@@ -112,48 +82,12 @@ export interface GetIntentTreeResponse {
   nodes: IntentNodeVO[];
 }
 
-export interface GetIntentVersionsResponse {
-  versions: IntentVersionVO[];
-}
-
-export interface CreateIntentNodeRequest {
-  parentId?: string;
-  nodeLevel: IntentNodeLevel;
-  name: string;
-  description?: string;
-  examples?: string[];
-  intentKind?: IntentKind;
-  scopePolicy?: ScopePolicy;
-  allowedTools?: string[];
-  systemPromptOverride?: string;
-  enabled?: boolean;
-  sortOrder?: number;
-}
-
-export interface UpdateIntentNodeRequest {
-  parentId?: string | null;
-  nodeLevel?: IntentNodeLevel;
-  name?: string;
-  description?: string | null;
-  examples?: string[];
-  intentKind?: IntentKind;
-  scopePolicy?: ScopePolicy;
-  allowedTools?: string[];
-  systemPromptOverride?: string | null;
-  enabled?: boolean;
-  sortOrder?: number;
-}
-
 export interface CreateIntentNodeResponse {
   nodeId: string;
 }
 
 export interface SetIntentNodeKnowledgeBasesRequest {
   knowledgeBaseIds: string[];
-}
-
-export interface PublishIntentTreeResponse {
-  version: number;
 }
 
 export interface AssistantTemplateNodeVO {
@@ -190,14 +124,6 @@ export interface AssistantTemplateVO {
   builtIn: boolean;
   createdAt?: string;
   updatedAt?: string;
-}
-
-export interface GetAssistantTemplatesResponse {
-  templates: AssistantTemplateVO[];
-}
-
-export interface GetAssistantTemplateResponse {
-  template: AssistantTemplateVO;
 }
 
 export interface InitializeAssistantFromTemplateRequest {
@@ -391,27 +317,14 @@ export interface McpServerVO {
   updatedAt?: string | null;
 }
 
-export interface GetMcpServersResponse {
-  servers: McpServerVO[];
-}
-
-export interface CreateMcpServerRequest {
+// Phase 9-β-2: merged Create/Update into Upsert
+export interface UpsertMcpServerRequest {
   slug: string;
   name: string;
   description?: string;
   protocol: McpProtocol | string;
   authType?: McpAuthType | string;
   endpointUrl: string;
-  credentials?: string;
-}
-
-export interface UpdateMcpServerRequest {
-  slug?: string;
-  name?: string;
-  description?: string;
-  protocol?: McpProtocol | string;
-  authType?: McpAuthType | string;
-  endpointUrl?: string;
   credentials?: string;
 }
 

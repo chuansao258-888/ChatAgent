@@ -34,12 +34,10 @@ import {
   updateIntentNode,
 } from "../../../api/admin.ts";
 import type {
-  CreateIntentNodeRequest,
   IntentNodeVO,
   IntentVersionVO,
   KnowledgeBaseVO,
   ToolVO,
-  UpdateIntentNodeRequest,
 } from "../../../types/admin.ts";
 import IntentNodeEditDrawer, {
   type IntentNodeEditSubmitValue,
@@ -119,7 +117,7 @@ export default function IntentTreePage() {
         ]);
       const nextNodes = sortNodes(intentTreeResponse.nodes);
       setNodes(nextNodes);
-      setKnowledgeBases(knowledgeBaseResponse.knowledgeBases);
+      setKnowledgeBases(knowledgeBaseResponse);
       setOptionalTools(toolResponse.tools);
       setVersions(intentTreeResponse.versions);
       setActiveVersion(intentTreeResponse.activeVersion);
@@ -231,10 +229,10 @@ export default function IntentTreePage() {
         "intentKind" in payload ? payload.intentKind : editorState.node?.intentKind;
 
       if (editorState.mode === "create") {
-        const response = await createIntentNode(payload as CreateIntentNodeRequest);
+        const response = await createIntentNode(payload as Record<string, unknown>);
         targetNodeId = response.nodeId;
       } else if (targetNodeId) {
-        await updateIntentNode(targetNodeId, payload as UpdateIntentNodeRequest);
+        await updateIntentNode(targetNodeId, payload as Record<string, unknown>);
       }
 
       if (targetNodeId && finalIntentKind === "KB") {
@@ -312,8 +310,8 @@ export default function IntentTreePage() {
   const handlePublish = async () => {
     setPublishing(true);
     try {
-      const response = await publishIntentTreeSnapshot();
-      message.success(`Published snapshot v${response.version}.`);
+      const publishedVersion = await publishIntentTreeSnapshot();
+      message.success(`Published snapshot v${publishedVersion}.`);
       await loadIntentTreeData(selectedNode?.id);
     } catch (error) {
       console.error("Failed to publish intent snapshot:", error);

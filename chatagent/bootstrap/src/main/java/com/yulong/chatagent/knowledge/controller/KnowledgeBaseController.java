@@ -3,11 +3,8 @@ package com.yulong.chatagent.knowledge.controller;
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.knowledge.application.KnowledgeBaseFacadeService;
-import com.yulong.chatagent.knowledge.model.request.CreateKnowledgeBaseRequest;
-import com.yulong.chatagent.knowledge.model.request.UpdateKnowledgeBaseRequest;
-import com.yulong.chatagent.knowledge.model.response.CreateKnowledgeBaseResponse;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBaseResponse;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeBasesResponse;
+import com.yulong.chatagent.knowledge.model.request.UpsertKnowledgeBaseRequest;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,23 +28,23 @@ public class KnowledgeBaseController {
     private final KnowledgeBaseFacadeService knowledgeBaseFacadeService;
 
     @PostMapping
-    public ApiResponse<CreateKnowledgeBaseResponse> createKnowledgeBase(@RequestBody CreateKnowledgeBaseRequest request) {
+    public ApiResponse<String> createKnowledgeBase(@RequestBody UpsertKnowledgeBaseRequest request) {
         return ApiResponse.success(knowledgeBaseFacadeService.createKnowledgeBase(request));
     }
 
     @GetMapping
-    public ApiResponse<GetKnowledgeBasesResponse> getKnowledgeBases() {
+    public ApiResponse<KnowledgeBaseVO[]> getKnowledgeBases() {
         return ApiResponse.success(knowledgeBaseFacadeService.getKnowledgeBases());
     }
 
     @GetMapping("/{knowledgeBaseId}")
-    public ApiResponse<GetKnowledgeBaseResponse> getKnowledgeBase(@PathVariable String knowledgeBaseId) {
+    public ApiResponse<KnowledgeBaseVO> getKnowledgeBase(@PathVariable String knowledgeBaseId) {
         return ApiResponse.success(knowledgeBaseFacadeService.getKnowledgeBase(knowledgeBaseId));
     }
 
     @PatchMapping("/{knowledgeBaseId}")
     public ApiResponse<Void> updateKnowledgeBase(@PathVariable String knowledgeBaseId,
-                                                 @RequestBody UpdateKnowledgeBaseRequest request) {
+                                                 @RequestBody UpsertKnowledgeBaseRequest request) {
         knowledgeBaseFacadeService.updateKnowledgeBase(knowledgeBaseId, request);
         return ApiResponse.success();
     }

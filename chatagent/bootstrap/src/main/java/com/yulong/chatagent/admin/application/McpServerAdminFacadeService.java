@@ -1,25 +1,26 @@
 package com.yulong.chatagent.admin.application;
 
-import com.yulong.chatagent.admin.model.request.CreateMcpServerRequest;
-import com.yulong.chatagent.admin.model.request.UpdateMcpServerRequest;
+import com.yulong.chatagent.admin.model.request.UpsertMcpServerRequest;
 import com.yulong.chatagent.admin.model.response.DeleteMcpServerResponse;
 import com.yulong.chatagent.admin.model.response.GetMcpServerResponse;
-import com.yulong.chatagent.admin.model.response.ListMcpServersResponse;
 import com.yulong.chatagent.admin.model.response.SyncMcpToolCatalogResponse;
 import com.yulong.chatagent.admin.model.response.TestMcpServerResponse;
+import com.yulong.chatagent.admin.model.vo.McpServerVO;
+
+import java.util.List;
 
 /**
  * Administrative MCP server management use cases.
  */
 public interface McpServerAdminFacadeService {
 
-    ListMcpServersResponse getServers();
+    List<McpServerVO> getServers();
 
     GetMcpServerResponse getServer(String serverId);
 
-    String createServer(CreateMcpServerRequest request);
+    String createServer(UpsertMcpServerRequest request);
 
-    void updateServer(String serverId, UpdateMcpServerRequest request);
+    void updateServer(String serverId, UpsertMcpServerRequest request);
 
     DeleteMcpServerResponse deleteServer(String serverId, boolean force);
 

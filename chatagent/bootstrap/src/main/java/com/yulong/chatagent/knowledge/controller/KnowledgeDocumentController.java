@@ -3,8 +3,8 @@ package com.yulong.chatagent.knowledge.controller;
 import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.knowledge.application.KnowledgeDocumentFacadeService;
-import com.yulong.chatagent.knowledge.model.response.GetKnowledgeDocumentsResponse;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
+import com.yulong.chatagent.knowledge.model.vo.KnowledgeDocumentVO;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -34,7 +34,7 @@ public class KnowledgeDocumentController {
     }
 
     @GetMapping
-    public ApiResponse<GetKnowledgeDocumentsResponse> getKnowledgeDocuments(@PathVariable String knowledgeBaseId) {
+    public ApiResponse<KnowledgeDocumentVO[]> getKnowledgeDocuments(@PathVariable String knowledgeBaseId) {
         return ApiResponse.success(knowledgeDocumentFacadeService.getKnowledgeDocuments(knowledgeBaseId));
     }
 

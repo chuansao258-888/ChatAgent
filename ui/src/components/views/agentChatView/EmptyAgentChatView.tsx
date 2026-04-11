@@ -55,10 +55,10 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
       title: titleSeed.slice(0, 20),
     });
 
-    pendingSessionIdRef.current = response.chatSessionId;
+    pendingSessionIdRef.current = response;
     await refreshChatSessions();
     return {
-      chatSessionId: response.chatSessionId,
+      chatSessionId: response,
     };
   };
 

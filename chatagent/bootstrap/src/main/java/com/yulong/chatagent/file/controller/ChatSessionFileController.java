@@ -1,8 +1,8 @@
 package com.yulong.chatagent.file.controller;
 
 import com.yulong.chatagent.file.application.ChatSessionFileFacadeService;
-import com.yulong.chatagent.file.model.response.GetChatSessionFilesResponse;
 import com.yulong.chatagent.file.model.response.UploadChatSessionFileResponse;
+import com.yulong.chatagent.file.model.vo.ChatSessionFileVO;
 import com.yulong.chatagent.model.common.ApiResponse;
 import lombok.AllArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,7 +25,7 @@ public class ChatSessionFileController {
     private final ChatSessionFileFacadeService chatSessionFileFacadeService;
 
     @GetMapping("/chat-sessions/{sessionId}/files")
-    public ApiResponse<GetChatSessionFilesResponse> getChatSessionFiles(@PathVariable String sessionId) {
+    public ApiResponse<ChatSessionFileVO[]> getChatSessionFiles(@PathVariable String sessionId) {
         return ApiResponse.success(chatSessionFileFacadeService.getChatSessionFiles(sessionId));
     }
 

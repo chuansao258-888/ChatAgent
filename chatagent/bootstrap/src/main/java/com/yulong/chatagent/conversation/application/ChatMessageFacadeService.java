@@ -4,7 +4,7 @@ import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
-import com.yulong.chatagent.conversation.model.response.GetChatMessagesResponse;
+import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 
 import java.util.List;
 
@@ -22,7 +22,7 @@ public interface ChatMessageFacadeService {
      * @param sessionId chat session identifier
      * @return ordered message list for the session
      */
-    GetChatMessagesResponse getChatMessagesBySessionId(String sessionId);
+    ChatMessageVO[] getChatMessagesBySessionId(String sessionId);
 
     /**
      * Returns the most recent messages for prompt assembly or context windows.

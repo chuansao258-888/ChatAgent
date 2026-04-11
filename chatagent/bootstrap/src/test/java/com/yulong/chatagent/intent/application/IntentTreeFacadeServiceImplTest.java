@@ -1,12 +1,10 @@
 package com.yulong.chatagent.intent.application;
 
-import com.yulong.chatagent.agent.port.AgentRepository;
 import com.yulong.chatagent.agent.application.InternalAssistantService;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
 import com.yulong.chatagent.intent.model.IntentNodeStatus;
 import com.yulong.chatagent.intent.model.ScopePolicy;
-import com.yulong.chatagent.intent.model.response.PublishIntentTreeResponse;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.intent.port.IntentNodeRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeBaseRepository;
@@ -24,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,9 +32,6 @@ class IntentTreeFacadeServiceImplTest {
 
     @Mock
     private InternalAssistantService internalAssistantService;
-
-    @Mock
-    private AgentRepository agentRepository;
 
     @Mock
     private IntentNodeRepository intentNodeRepository;
@@ -55,7 +51,6 @@ class IntentTreeFacadeServiceImplTest {
     void setUp() {
         facadeService = new IntentTreeFacadeServiceImpl(
                 internalAssistantService,
-                agentRepository,
                 intentNodeRepository,
                 intentKnowledgeBaseRepository,
                 knowledgeBaseRepository,
@@ -111,12 +106,11 @@ class IntentTreeFacadeServiceImplTest {
                         .build()
         ));
         when(intentKnowledgeBaseRepository.saveAll(anyList())).thenReturn(true);
-        when(agentRepository.update(assistant)).thenReturn(true);
+        when(internalAssistantService.updateActiveIntentVersion(anyInt())).thenReturn(true);
 
-        PublishIntentTreeResponse response = facadeService.publishIntentTreeSnapshot();
+        Integer response = facadeService.publishIntentTreeSnapshot();
 
-        assertThat(response.getVersion()).isEqualTo(3);
-        assertThat(assistant.getActiveIntentVersion()).isEqualTo(3);
+        assertThat(response).isEqualTo(3);
 
         ArgumentCaptor<List<IntentNodeDTO>> nodeCaptor = ArgumentCaptor.forClass(List.class);
         verify(intentNodeRepository).saveAll(nodeCaptor.capture());
@@ -135,6 +129,7 @@ class IntentTreeFacadeServiceImplTest {
                 .orElseThrow();
         assertThat(publishedTopic.getParentId()).isEqualTo(publishedDomain.getId());
         verify(intentTreeCacheManager).refreshActiveSnapshot("assistant-1");
+        verify(internalAssistantService).updateActiveIntentVersion(3);
     }
 
     @Test
@@ -155,11 +150,11 @@ class IntentTreeFacadeServiceImplTest {
                         .intentKind(IntentKind.KB)
                         .build()
         ));
-        when(agentRepository.update(assistant)).thenReturn(true);
+        when(internalAssistantService.updateActiveIntentVersion(5)).thenReturn(true);
 
         facadeService.switchActiveIntentVersion(5);
 
-        assertThat(assistant.getActiveIntentVersion()).isEqualTo(5);
+        verify(internalAssistantService).updateActiveIntentVersion(5);
         verify(intentTreeCacheManager).refreshActiveSnapshot("assistant-1");
     }
 }
