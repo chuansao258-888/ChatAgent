@@ -28,6 +28,19 @@ import java.util.List;
 @Slf4j
 public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoader {
 
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are ChatAgent, a helpful, accurate, and concise enterprise assistant.
+
+            Core principles:
+            - Answer in the same language the user writes in (Chinese → Chinese, English → English).
+            - When the user asks about real-time information (weather, news, time, etc.), always use available tools instead of guessing or declining.
+            - Each new user message is an independent request. Never reuse a previous tool result for a different query. If the new question involves a different city, date, or parameter, you MUST call the tool again with the new parameters.
+            - When tools are available and relevant to the question, call them before answering.
+            - If a tool call fails, report the failure honestly and suggest alternatives.
+            - For knowledge-base queries, prefer information retrieved from tools over your training data.
+            - Keep responses focused and actionable. Avoid filler phrases.
+            - If you are unsure, say so clearly rather than fabricating an answer.""";
+
     private final AgentDefinitionLoader agentDefinitionLoader;
     private final AgentMemoryLoader agentMemoryLoader;
     private final AgentSessionFileSummaryResolver sessionFileSummaryResolver;
@@ -103,11 +116,10 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                      String userProfileSummary,
                                      List<ToolCallback> toolCallbacks) {
         StringBuilder builder = new StringBuilder();
-        
+
         // 1. Base System Prompt
-        if (StringUtils.hasText(baseSystemPrompt)) {
-            builder.append(baseSystemPrompt.trim()).append("\n\n");
-        }
+        String effectivePrompt = StringUtils.hasText(baseSystemPrompt) ? baseSystemPrompt.trim() : DEFAULT_SYSTEM_PROMPT;
+        builder.append(effectivePrompt).append("\n\n");
 
         // 2. [Historical Context Summary] (L2 Memory)
         if (StringUtils.hasText(sessionSummary) && !sessionSummary.contains("No historical context summary available")) {
@@ -164,7 +176,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         builder.append("\n[Tool Strategy]\n")
                 .append("- Review the available tools and their descriptions before deciding how to answer.\n")
                 .append("- Always prioritize the latest user message over earlier turns. Do not repeat the previous task unless the user explicitly asks to continue or refresh it.\n")
-                .append("- When the user asks how or why you produced a prior answer, explain the basis from the existing conversation and tool results before deciding to call tools again.\n")
+                .append("- CRITICAL: If the latest user message asks about a different entity (city, date, topic, etc.) than previous turns, you MUST call the relevant tool with the new parameters. Never answer a new query by re-summarizing old tool results.\n")
+                .append("- DO NOT CALL TOOLS when the latest user message is asking about a PRIOR answer (e.g. \"how did you know\", \"why did you say that\", \"where did you get that\"). In that case, explain your reasoning from the conversation history. Only call a tool if the user explicitly asks to refresh or re-check.\n")
                 .append("- You do NOT know the current date, time, or the user's location. Never guess — call a tool if the information is available.\n")
                 .append("- When a query depends on information you lack (dates, coordinates, IDs, etc.), call prerequisite tools first to gather it, then proceed.\n")
                 .append("- Chain tool calls as needed: gather → compute → answer.\n");
@@ -219,14 +232,21 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         String compact = normalized.replace(" ", "");
 
         return compact.contains("怎么知道")
+                || compact.contains("怎么直到")
+                || compact.contains("怎么得")
                 || compact.contains("如何知道")
                 || compact.contains("为什么知道")
+                || compact.contains("为什么说")
+                || compact.contains("为什么这么")
+                || compact.contains("怎么来的")
                 || compact.contains("依据")
                 || compact.contains("来源")
                 || compact.contains("根据什么")
                 || compact.contains("怎么算")
                 || normalized.contains("how did you know")
                 || normalized.contains("how do you know")
+                || normalized.contains("how did you get")
+                || normalized.contains("where did you get")
                 || normalized.contains("why did you say")
                 || normalized.contains("what was that based on")
                 || normalized.contains("what did you base that on")

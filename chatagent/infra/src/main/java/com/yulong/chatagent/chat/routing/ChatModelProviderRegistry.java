@@ -34,7 +34,7 @@ public class ChatModelProviderRegistry {
             bindings.put("deepseek-chat", new DeepSeekBinding("deepseek-chat", deepSeekChatModel, deepSeekApi));
 
             DeepSeekChatOptions reasonerOptions = DeepSeekChatOptions.builder()
-                    .model("deepseek-reasoner").build();
+                    .model("deepseek-reasoner").maxTokens(8192).build();
             ObservationRegistry obsRegistry = observationRegistryProvider.getIfAvailable(
                     () -> ObservationRegistry.NOOP);
             DeepSeekChatModel reasonerModel = DeepSeekChatModel.builder()
@@ -52,7 +52,7 @@ public class ChatModelProviderRegistry {
             bindings.put("glm-4.6", new ZhiPuAiBinding("glm-4.6", zhiPuAiChatModel, zhiPuAiApi));
 
             ZhiPuAiChatOptions glm51Options = ZhiPuAiChatOptions.builder()
-                    .model("glm-5.1").build();
+                    .model("glm-5.1").temperature(0.35).topP(0.85).maxTokens(4096).build();
             ZhiPuAiChatModel glm51Model = new ZhiPuAiChatModel(zhiPuAiApi, glm51Options);
             bindings.put("glm-5.1", new ZhiPuAiBinding("glm-5.1", glm51Model, zhiPuAiApi));
         }

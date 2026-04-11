@@ -47,6 +47,7 @@ public class MultiChatClientConfig {
         DeepSeekApi deepSeekApi = extractField(deepSeekChatModel, "deepSeekApi", DeepSeekApi.class);
         DeepSeekChatOptions options = DeepSeekChatOptions.builder()
                 .model("deepseek-reasoner")
+                .maxTokens(8192)
                 .build();
         DeepSeekChatModel reasonerModel = DeepSeekChatModel.builder()
                 .deepSeekApi(deepSeekApi)
@@ -80,6 +81,9 @@ public class MultiChatClientConfig {
         ZhiPuAiApi zhiPuAiApi = extractField(zhiPuAiChatModel, "zhiPuAiApi", ZhiPuAiApi.class);
         ZhiPuAiChatOptions options = ZhiPuAiChatOptions.builder()
                 .model("glm-5.1")
+                .temperature(0.35)
+                .topP(0.85)
+                .maxTokens(4096)
                 .build();
         ZhiPuAiChatModel glm51Model = new ZhiPuAiChatModel(zhiPuAiApi, options);
         return ChatClient.create(glm51Model);

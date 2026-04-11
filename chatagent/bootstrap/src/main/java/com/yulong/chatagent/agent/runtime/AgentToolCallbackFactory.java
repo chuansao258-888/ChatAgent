@@ -8,6 +8,8 @@ import com.yulong.chatagent.agent.application.ToolFacadeService;
 import com.yulong.chatagent.mcp.runtime.McpRolloutPolicy;
 import com.yulong.chatagent.mcp.runtime.McpToolWrapper;
 import com.yulong.chatagent.support.dto.AgentDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.aop.framework.AopProxyUtils;
@@ -28,6 +30,8 @@ import java.util.stream.Collectors;
  */
 @Component
 public class AgentToolCallbackFactory {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentToolCallbackFactory.class);
 
     private final ToolFacadeService toolFacadeService;
     private final McpRolloutPolicy rolloutPolicy;
@@ -88,6 +92,12 @@ public class AgentToolCallbackFactory {
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
         List<String> allowedToolNames = agentConfig == null ? List.of() : agentConfig.getAllowedTools();
         List<Tool> optionalTools = toolFacadeService.getOptionalTools();
+        log.info("Tool resolution: agentId={}, allowedTools={}, optionalToolsAvailable={}, fixedToolsCount={}, intentResolution={}",
+                agentConfig == null ? null : agentConfig.getId(),
+                allowedToolNames,
+                optionalTools.stream().map(Tool::getName).toList(),
+                runtimeTools.size(),
+                intentResolution == null ? "null" : intentResolution.kind());
         runtimeTools.removeIf(tool -> shouldHideFixedTool(tool, intentResolution, allowedToolNames, optionalTools, agentConfig));
         if (toolScopeMode == IntentToolScopeMode.STRICT_TOOL_ONLY) {
             return resolveRuntimeToolsStrict(runtimeTools, allowedToolNames, optionalTools, intentResolution, agentConfig);
@@ -100,13 +110,15 @@ public class AgentToolCallbackFactory {
                                                  List<Tool> optionalTools,
                                                  IntentResolution intentResolution,
                                                  AgentDTO agentConfig) {
-        if (intentResolution != null) {
-            if (intentResolution.kind() != IntentKind.TOOL) {
-                return runtimeTools;
-            }
-            allowedToolNames = legacyIntersectAllowedTools(allowedToolNames, intentResolution.allowedTools());
+        if (intentResolution == null) {
+            // No intent matched → agent chooses freely from all available tools
+            appendAllOptionalTools(runtimeTools, optionalTools, agentConfig);
+            return runtimeTools;
         }
-
+        if (intentResolution.kind() != IntentKind.TOOL) {
+            return runtimeTools;
+        }
+        allowedToolNames = legacyIntersectAllowedTools(allowedToolNames, intentResolution.allowedTools());
         appendOptionalTools(runtimeTools, allowedToolNames, optionalTools, agentConfig);
         return runtimeTools;
     }
@@ -116,8 +128,12 @@ public class AgentToolCallbackFactory {
                                                               List<Tool> optionalTools,
                                                               IntentResolution intentResolution,
                                                               AgentDTO agentConfig) {
-        if (intentResolution != null
-                && intentResolution.kind() == IntentKind.TOOL
+        if (intentResolution == null) {
+            // No intent matched → agent chooses freely from all available tools
+            appendAllOptionalTools(runtimeTools, optionalTools, agentConfig);
+            return runtimeTools;
+        }
+        if (intentResolution.kind() == IntentKind.TOOL
                 && intentResolution.allowedTools() != null
                 && !intentResolution.allowedTools().isEmpty()) {
             allowedToolNames = intersectAllowedTools(allowedToolNames, intentResolution.allowedTools());
@@ -125,6 +141,16 @@ public class AgentToolCallbackFactory {
 
         appendOptionalTools(runtimeTools, allowedToolNames, optionalTools, agentConfig);
         return runtimeTools;
+    }
+
+    private void appendAllOptionalTools(List<Tool> runtimeTools,
+                                        List<Tool> optionalTools,
+                                        AgentDTO agentConfig) {
+        for (Tool tool : optionalTools) {
+            if (isRuntimeAllowed(tool, agentConfig)) {
+                runtimeTools.add(tool);
+            }
+        }
     }
 
     private void appendOptionalTools(List<Tool> runtimeTools,
@@ -136,6 +162,12 @@ public class AgentToolCallbackFactory {
                 .collect(Collectors.toMap(Tool::getName, Function.identity()));
 
         if (allowedToolNames == null || allowedToolNames.isEmpty()) {
+            // No explicit allowlist → load all available optional tools so the agent can choose freely
+            for (Tool tool : optionalTools) {
+                if (isRuntimeAllowed(tool, agentConfig)) {
+                    runtimeTools.add(tool);
+                }
+            }
             return;
         }
 

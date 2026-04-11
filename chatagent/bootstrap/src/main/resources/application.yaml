@@ -57,12 +57,18 @@ spring:
       chat:
         options:
           model: ${CHATAGENT_DEEPSEEK_MODEL:deepseek-chat}
+          temperature: ${CHATAGENT_DEEPSEEK_TEMPERATURE:0.2}
+          top-p: ${CHATAGENT_DEEPSEEK_TOP_P:0.8}
+          max-tokens: ${CHATAGENT_DEEPSEEK_MAX_TOKENS:2048}
     zhipuai:
       api-key: ${CHATAGENT_ZHIPUAI_API_KEY:}
       base-url: ${CHATAGENT_ZHIPUAI_BASE_URL:https://open.bigmodel.cn/api/paas}
       chat:
         options:
           model: ${CHATAGENT_ZHIPUAI_MODEL:glm-4.6}
+          temperature: ${CHATAGENT_ZHIPUAI_TEMPERATURE:0.35}
+          top-p: ${CHATAGENT_ZHIPUAI_TOP_P:0.85}
+          max-tokens: ${CHATAGENT_ZHIPUAI_MAX_TOKENS:4096}
 
 mybatis:
   type-aliases-package: com.yulong.chatagent.support.persistence.entity

@@ -219,7 +219,7 @@ class AgentToolCallbackFactoryTest {
     }
 
     @Test
-    void shouldNotGrantIntentToolsWhenAgentDefaultPoolIsEmpty() {
+    void shouldGrantIntentToolsWhenAgentDefaultPoolIsEmpty() {
         ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
         when(toolFacadeService.getFixedTools()).thenReturn(List.of(fixedTool("TerminateTool")));
         when(toolFacadeService.getOptionalTools()).thenReturn(List.of(optionalTool("toolB")));
@@ -237,7 +237,7 @@ class AgentToolCallbackFactoryTest {
         List<ToolCallback> callbacks = factory.create(agent, resolution(IntentKind.TOOL, List.of("toolB"), List.of()));
 
         assertThat(callbackNames(callbacks))
-                .containsExactly("TerminateTool");
+                .containsExactlyInAnyOrder("TerminateTool", "toolB");
     }
 
     @Test

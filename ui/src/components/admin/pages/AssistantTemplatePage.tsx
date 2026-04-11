@@ -7,6 +7,7 @@ import {
 import { Button, Card, Empty, Space, Spin, Tag, Typography, message } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import {
+  createAssistantTemplate,
   getAssistantTemplates,
   getKnowledgeBases,
   initializeAssistantFromTemplate,
@@ -96,6 +97,47 @@ export default function AssistantTemplatePage() {
     }
   };
 
+  const handleCreateAndInitializeGeneric = async () => {
+    setInitializing(true);
+    try {
+      const templateId = await createAssistantTemplate({
+        code: "general-purpose",
+        name: "General-purpose assistant",
+        description: "A versatile assistant that can use all available tools and knowledge bases. No intent routing — the agent decides freely based on context.",
+        systemPrompt: [
+          "You are ChatAgent, a helpful, accurate, and concise enterprise assistant.",
+          "",
+          "Core principles:",
+          "- Answer in the same language the user writes in (Chinese → Chinese, English → English).",
+          "- When the user asks about real-time information (weather, news, time, etc.), always use available tools instead of guessing or declining.",
+          "- When tools are available and relevant to the question, call them before answering.",
+          "- If a tool call fails, report the failure honestly and suggest alternatives.",
+          "- For knowledge-base queries, prefer information retrieved from tools over your training data.",
+          "- Keep responses focused and actionable. Avoid filler phrases.",
+          "- If you are unsure, say so clearly rather than fabricating an answer.",
+        ].join("\n"),
+        model: "glm-5.1",
+        allowedTools: [],
+        intentTree: [],
+      });
+      const activeKbIds = knowledgeBases
+        .filter((kb) => kb.status.toUpperCase() === "ACTIVE")
+        .map((kb) => kb.id);
+      const response = await initializeAssistantFromTemplate(templateId, {
+        knowledgeBaseIds: activeKbIds,
+      });
+      message.success(
+        `Created and initialized generic template. Active intent version is now v${response.activeIntentVersion}.`,
+      );
+      await loadPageData();
+    } catch (error) {
+      console.error("Failed to create and initialize generic template:", error);
+      message.error("Unable to create the generic template.");
+    } finally {
+      setInitializing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full min-h-[320px] items-center justify-center">
@@ -119,14 +161,26 @@ export default function AssistantTemplatePage() {
             of hand-configuring prompt, tools, and intent tree every time.
           </Typography.Text>
         </div>
-        <div className="rounded-section border border-white/[0.06] bg-white/[0.04] px-4 py-4 shadow-admin-card">
-          <div className="text-xs uppercase tracking-[0.18em] text-white/40">
-            Active knowledge bases ready for binding
+        <Space>
+          <div className="rounded-section border border-white/[0.06] bg-white/[0.04] px-4 py-4 shadow-admin-card">
+            <div className="text-xs uppercase tracking-[0.18em] text-white/40">
+              Active knowledge bases ready for binding
+            </div>
+            <div className="mt-2 text-2xl font-semibold text-white">
+              {activeKnowledgeBaseCount}
+            </div>
           </div>
-          <div className="mt-2 text-2xl font-semibold text-white">
-            {activeKnowledgeBaseCount}
-          </div>
-        </div>
+          <Button
+            type="primary"
+            icon={<RocketOutlined />}
+            loading={initializing}
+            onClick={() => {
+              void handleCreateAndInitializeGeneric();
+            }}
+          >
+            Reset to generic assistant
+          </Button>
+        </Space>
       </div>
 
       {templates.length === 0 ? (

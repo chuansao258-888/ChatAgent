@@ -8,7 +8,6 @@ import AdminLayout from "./admin/AdminLayout.tsx";
 import AdminRouteGuard from "./admin/AdminRouteGuard.tsx";
 import AdminOverviewPage from "./admin/pages/AdminOverviewPage.tsx";
 import AssistantSettingsPage from "./admin/pages/AssistantSettingsPage.tsx";
-import AssistantTemplatePage from "./admin/pages/AssistantTemplatePage.tsx";
 import IntentTreePage from "./admin/pages/IntentTreePage.tsx";
 import KnowledgeBaseDetailPage from "./admin/pages/KnowledgeBaseDetailPage.tsx";
 import KnowledgeBaseListPage from "./admin/pages/KnowledgeBaseListPage.tsx";
@@ -53,7 +52,6 @@ export default function ChatAgentLayout() {
           element={<KnowledgeBaseDetailPage />}
         />
         <Route path="intent-tree" element={<IntentTreePage />} />
-        <Route path="templates" element={<AssistantTemplatePage />} />
         <Route path="users" element={<UserManagementPage />} />
         <Route path="assistant" element={<AssistantSettingsPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />

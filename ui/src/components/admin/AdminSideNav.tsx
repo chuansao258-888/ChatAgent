@@ -1,7 +1,6 @@
 import {
   ApartmentOutlined,
   ApiOutlined,
-  AppstoreOutlined,
   ArrowLeftOutlined,
   DatabaseOutlined,
   PartitionOutlined,
@@ -24,11 +23,6 @@ const navItems = [
     to: "/admin/intent-tree",
     label: "Intent Tree",
     icon: <PartitionOutlined />,
-  },
-  {
-    to: "/admin/templates",
-    label: "Templates",
-    icon: <AppstoreOutlined />,
   },
   { to: "/admin/users", label: "Users", icon: <TeamOutlined /> },
   { to: "/admin/assistant", label: "Assistant", icon: <SettingOutlined /> },
