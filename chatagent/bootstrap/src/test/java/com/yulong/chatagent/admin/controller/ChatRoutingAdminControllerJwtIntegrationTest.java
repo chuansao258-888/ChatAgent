@@ -5,11 +5,15 @@ import com.yulong.chatagent.admin.application.ChatRoutingAdminFacadeService;
 import com.yulong.chatagent.admin.model.response.GetChatRoutingStateResponse;
 import com.yulong.chatagent.admin.model.vo.ChatRoutingCandidateVO;
 import com.yulong.chatagent.exception.GlobalExceptionHandler;
+import com.yulong.chatagent.user.application.AuthenticatedUserSnapshotCache;
 import com.yulong.chatagent.user.application.JwtTokenService;
 import com.yulong.chatagent.user.config.JwtAuthenticationInterceptor;
 import com.yulong.chatagent.user.config.UserWebMvcConfig;
 import com.yulong.chatagent.user.converter.UserConverter;
+import com.yulong.chatagent.user.model.UserStatus;
 import com.yulong.chatagent.user.model.dto.JwtClaims;
+import com.yulong.chatagent.user.model.dto.UserDTO;
+import com.yulong.chatagent.user.port.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,14 +69,26 @@ class ChatRoutingAdminControllerJwtIntegrationTest {
     @Autowired
     private ChatRoutingAdminFacadeService chatRoutingAdminFacadeService;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private AuthenticatedUserSnapshotCache authenticatedUserSnapshotCache;
+
     @BeforeEach
     void setUp() {
-        Mockito.reset(chatRoutingAdminFacadeService);
+        Mockito.reset(chatRoutingAdminFacadeService, userRepository);
+        authenticatedUserSnapshotCache.invalidate("admin-1");
+        authenticatedUserSnapshotCache.invalidate("user-1");
+        when(userRepository.findById("admin-1")).thenReturn(activeUser("admin-1", "tester-admin", "admin"));
+        when(userRepository.findById("user-1")).thenReturn(activeUser("user-1", "tester-user", "user"));
     }
 
     @AfterEach
     void tearDown() {
-        Mockito.reset(chatRoutingAdminFacadeService);
+        authenticatedUserSnapshotCache.invalidate("admin-1");
+        authenticatedUserSnapshotCache.invalidate("user-1");
+        Mockito.reset(chatRoutingAdminFacadeService, userRepository);
     }
 
     @Test
@@ -159,11 +175,23 @@ class ChatRoutingAdminControllerJwtIntegrationTest {
     }
 
     private String adminToken(String role) {
+        String userId = "admin".equals(role) ? "admin-1" : "user-1";
+        String username = "admin".equals(role) ? "tester-admin" : "tester-user";
         return jwtTokenService.generateAccessToken(JwtClaims.builder()
-                .userId("user-1")
-                .username("tester")
+                .userId(userId)
+                .username(username)
                 .role(role)
                 .build());
+    }
+
+    private static UserDTO activeUser(String userId, String username, String role) {
+        return UserDTO.builder()
+                .id(userId)
+                .username(username)
+                .role(role)
+                .status(UserStatus.ACTIVE.name())
+                .deleted(false)
+                .build();
     }
 
     private static String bearer(String token) {
@@ -186,6 +214,7 @@ class ChatRoutingAdminControllerJwtIntegrationTest {
     @Import({
             ChatRoutingAdminController.class,
             JwtAuthenticationInterceptor.class,
+            AuthenticatedUserSnapshotCache.class,
             RequireRoleInterceptor.class,
             UserWebMvcConfig.class,
             JwtTokenService.class,
@@ -202,6 +231,11 @@ class ChatRoutingAdminControllerJwtIntegrationTest {
         @Bean
         ChatRoutingAdminFacadeService chatRoutingAdminFacadeService() {
             return Mockito.mock(ChatRoutingAdminFacadeService.class);
+        }
+
+        @Bean
+        UserRepository userRepository() {
+            return Mockito.mock(UserRepository.class);
         }
     }
 }

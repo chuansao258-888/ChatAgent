@@ -16,8 +16,8 @@ class ChatRoutingPropertiesBindingTest {
     void shouldBindRoutingPropertiesFromApplicationYaml() throws Exception {
         ChatRoutingProperties properties = bindFromApplicationYaml();
 
-        assertThat(properties.getDefaultModel()).isEqualTo("deepseek-chat");
-        assertThat(properties.getDeepThinkingModel()).isEqualTo("glm-4");
+        assertThat(properties.getDefaultModel()).isEqualTo("glm-5.1");
+        assertThat(properties.getDeepThinkingModel()).isEqualTo("glm-5.1");
         assertThat(properties.getFirstPacketTimeoutSeconds()).isEqualTo(60);
         assertThat(properties.getStreamTotalTimeoutSeconds()).isEqualTo(300);
         assertThat(properties.getHttpConnectTimeoutSeconds()).isEqualTo(10);
@@ -32,19 +32,19 @@ class ChatRoutingPropertiesBindingTest {
 
         assertThat(properties.getCandidates())
                 .extracting(ChatRoutingProperties.CandidateConfig::getId)
-                .containsExactly("deepseek-chat", "glm-4");
-        ChatRoutingProperties.CandidateConfig deepseek = properties.getCandidates().get(0);
-        assertThat(deepseek.getSpringClientKey()).isEqualTo("deepseek-chat");
-        assertThat(deepseek.getPriority()).isEqualTo(10);
-        assertThat(deepseek.getEnabled()).isTrue();
-        assertThat(deepseek.getSupportsThinking()).isFalse();
-
-        ChatRoutingProperties.CandidateConfig glm = properties.getCandidates().get(1);
-        assertThat(glm.getSpringClientKey()).isEqualTo("glm-4.6");
-        assertThat(glm.getPriority()).isEqualTo(20);
+                .containsExactly("glm-5.1", "deepseek-reasoner");
+        ChatRoutingProperties.CandidateConfig glm = properties.getCandidates().get(0);
+        assertThat(glm.getSpringClientKey()).isEqualTo("glm-5.1");
+        assertThat(glm.getPriority()).isEqualTo(5);
         assertThat(glm.getEnabled()).isTrue();
         assertThat(glm.getSupportsThinking()).isTrue();
         assertThat(glm.getThinkingStrategy()).isEqualTo("ZHIPU_THINKING_FLAG");
+
+        ChatRoutingProperties.CandidateConfig deepseek = properties.getCandidates().get(1);
+        assertThat(deepseek.getSpringClientKey()).isEqualTo("deepseek-reasoner");
+        assertThat(deepseek.getPriority()).isEqualTo(10);
+        assertThat(deepseek.getEnabled()).isTrue();
+        assertThat(deepseek.getSupportsThinking()).isFalse();
     }
 
     private static ChatRoutingProperties bindFromApplicationYaml() throws Exception {

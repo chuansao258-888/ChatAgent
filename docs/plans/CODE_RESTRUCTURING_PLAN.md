@@ -273,7 +273,7 @@ mvn test -pl bootstrap
 | `McpServerCrudHelper` | Create/Update DTO 组装、字段映射、slug 生成、save/update 委托 |
 | `McpServerDeleteHandler` | 删除编排：引用检查 → Intent 清理 → Catalog 清理 → 服务器删除 → 告警处理 |
 
-### 5C：拆分 DashboardFacadeServiceImpl（588 行 → ~350 行）
+### 5C：拆分 DashboardFacadeServiceImpl（588 行 → 425 行）
 
 **实际落地**：
 
@@ -445,7 +445,7 @@ git revert <commit-hash>
 | Entity 文件 | 21 → 6（删除 15 个，消除双重转换层） |
 | PdfDocumentParser | 1640 → 1189 行（-28%） |
 | McpServerAdminFacadeServiceImpl | 523 → ~390 行（-25%） |
-| DashboardFacadeServiceImpl | 588 → ~350 行（-40%） |
+| DashboardFacadeServiceImpl | 588 → 425 行（-28%） |
 | Framework 测试 | 0 → 7 个测试类，41 个测试用例 |
 | Git 追踪体积 | 解除 MCP/.venv/（96MB）+ output/ 追踪 |
 

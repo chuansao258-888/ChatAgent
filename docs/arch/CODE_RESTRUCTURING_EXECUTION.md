@@ -281,7 +281,7 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 ### 问题与备注
 - PdfDocumentParser 从 1640 行减至 1189 行，VDP 调度管线（~500 行）因与缓存、批处理紧密耦合暂保留在主类中
 - McpServerAdminFacadeServiceImpl 从 528 行减少到 ~390 行
-- DashboardFacadeServiceImpl 从 588 行减少到 ~350 行
+- DashboardFacadeServiceImpl 从 588 行减少到 425 行
 - DashboardTrendsAggregator 因与 private enum 紧密耦合而跳过
 
 ---
@@ -377,7 +377,7 @@ bootstrap/.../chat/ChatModelHttpClientTimeoutConfig.java   → bootstrap/.../sup
 | Entity 文件 | 21 → 6（删除 15 个） |
 | PdfDocumentParser | 1640 → 1189 行（-28%） |
 | McpServerAdminFacadeServiceImpl | 523 → ~390 行（-25%） |
-| DashboardFacadeServiceImpl | 588 → ~350 行（-40%） |
+| DashboardFacadeServiceImpl | 588 → 425 行（-28%） |
 | Framework 测试 | 0 → 7 个测试类，41 个测试用例 |
 | Git 追踪体积 | 解除 MCP/.venv/（96MB）+ output/ 追踪 |
 
