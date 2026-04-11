@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.AgentKnowledgeBase;
+import com.yulong.chatagent.support.dto.AgentKnowledgeBaseDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,7 +11,7 @@ import java.util.List;
  */
 @Mapper
 public interface AgentKnowledgeBaseMapper {
-    int insert(AgentKnowledgeBase binding);
+    int insert(AgentKnowledgeBaseDTO binding);
 
     int deleteByAgentId(@Param("agentId") String agentId);
 

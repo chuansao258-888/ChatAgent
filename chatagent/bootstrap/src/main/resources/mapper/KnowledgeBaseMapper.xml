@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yulong.chatagent.support.persistence.mapper.KnowledgeBaseMapper">
 
-    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.persistence.entity.KnowledgeBase">
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.dto.KnowledgeBaseDTO">
         <id property="id" column="id" jdbcType="VARCHAR"/>
         <result property="createdBy" column="created_by" jdbcType="VARCHAR"/>
         <result property="name" column="name" jdbcType="VARCHAR"/>
@@ -16,7 +16,7 @@
         <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeBase">
+    <insert id="insert" parameterType="com.yulong.chatagent.support.dto.KnowledgeBaseDTO">
         INSERT INTO knowledge_base
         (id,
          created_by,
@@ -94,7 +94,7 @@
         WHERE id = CAST(#{id} AS uuid)
     </select>
 
-    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.KnowledgeBase">
+    <update id="updateById" parameterType="com.yulong.chatagent.support.dto.KnowledgeBaseDTO">
         UPDATE knowledge_base
         <set>
             <if test="name != null">

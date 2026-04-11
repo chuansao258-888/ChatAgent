@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.KnowledgeChunk;
+import com.yulong.chatagent.support.dto.KnowledgeChunkDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,9 +11,9 @@ import java.util.List;
  */
 @Mapper
 public interface KnowledgeChunkMapper {
-    int insert(KnowledgeChunk knowledgeChunk);
+    int insert(KnowledgeChunkDTO knowledgeChunk);
 
-    List<KnowledgeChunk> selectByKnowledgeDocumentId(@Param("knowledgeDocumentId") String knowledgeDocumentId);
+    List<KnowledgeChunkDTO> selectByKnowledgeDocumentId(@Param("knowledgeDocumentId") String knowledgeDocumentId);
 
     int deleteByKnowledgeDocumentId(@Param("knowledgeDocumentId") String knowledgeDocumentId);
 }

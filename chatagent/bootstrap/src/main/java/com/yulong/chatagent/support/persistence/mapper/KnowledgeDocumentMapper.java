@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.KnowledgeDocument;
+import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,13 +11,13 @@ import java.util.List;
  */
 @Mapper
 public interface KnowledgeDocumentMapper {
-    int insert(KnowledgeDocument knowledgeDocument);
+    int insert(KnowledgeDocumentDTO knowledgeDocument);
 
-    List<KnowledgeDocument> selectByKnowledgeBaseId(@Param("knowledgeBaseId") String knowledgeBaseId);
+    List<KnowledgeDocumentDTO> selectByKnowledgeBaseId(@Param("knowledgeBaseId") String knowledgeBaseId);
 
-    KnowledgeDocument selectById(@Param("id") String id);
+    KnowledgeDocumentDTO selectById(@Param("id") String id);
 
-    int updateById(KnowledgeDocument knowledgeDocument);
+    int updateById(KnowledgeDocumentDTO knowledgeDocument);
 
     int deleteById(@Param("id") String id);
 }

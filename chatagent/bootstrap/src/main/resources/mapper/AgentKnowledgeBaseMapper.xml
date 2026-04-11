@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yulong.chatagent.support.persistence.mapper.AgentKnowledgeBaseMapper">
 
-    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.AgentKnowledgeBase">
+    <insert id="insert" parameterType="com.yulong.chatagent.support.dto.AgentKnowledgeBaseDTO">
         INSERT INTO agent_knowledge_base
         (agent_id,
          knowledge_base_id,

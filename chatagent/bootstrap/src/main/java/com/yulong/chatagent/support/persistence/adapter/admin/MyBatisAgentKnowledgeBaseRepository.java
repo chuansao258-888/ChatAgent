@@ -1,7 +1,7 @@
 package com.yulong.chatagent.support.persistence.adapter.admin;
 
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
-import com.yulong.chatagent.support.persistence.entity.AgentKnowledgeBase;
+import com.yulong.chatagent.support.dto.AgentKnowledgeBaseDTO;
 import com.yulong.chatagent.support.persistence.mapper.AgentKnowledgeBaseMapper;
 import org.springframework.stereotype.Repository;
 
@@ -38,7 +38,7 @@ public class MyBatisAgentKnowledgeBaseRepository implements AgentKnowledgeBaseRe
         }
         LocalDateTime now = LocalDateTime.now();
         for (String knowledgeBaseId : knowledgeBaseIds) {
-            agentKnowledgeBaseMapper.insert(AgentKnowledgeBase.builder()
+            agentKnowledgeBaseMapper.insert(AgentKnowledgeBaseDTO.builder()
                     .agentId(agentId)
                     .knowledgeBaseId(knowledgeBaseId)
                     .createdAt(now)
