@@ -1,10 +1,14 @@
 package com.yulong.chatagent.context;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 /**
  * Authenticated user snapshot stored in {@link UserContext} for the duration
  * of a single request.

@@ -2,6 +2,8 @@ package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.admin.port.McpServerRepository;
 import com.yulong.chatagent.admin.port.McpToolCatalogRepository;
+import com.yulong.chatagent.mcp.application.McpFeatureFlag;
+import com.yulong.chatagent.mcp.application.McpServerReferenceInspector;
 import com.yulong.chatagent.mcp.metrics.McpMetricsRecorder;
 import com.yulong.chatagent.mcp.runtime.McpRolloutPolicy;
 import com.yulong.chatagent.mcp.runtime.McpRolloutProperties;
@@ -70,9 +72,7 @@ class DashboardMcpFacadeServiceTest {
         McpRolloutProperties rolloutProperties = new McpRolloutProperties();
         rolloutProperties.setMode("AGENT_ALLOWLIST");
         rolloutProperties.setAllowedAgentIds(List.of("assistant-1"));
-        facadeService = new DashboardFacadeServiceImpl(
-                adminAccessService,
-                dashboardMapper,
+        DashboardMcpMetricsComposer mcpMetricsComposer = new DashboardMcpMetricsComposer(
                 featureFlag,
                 mcpServerRepository,
                 mcpToolCatalogRepository,
@@ -80,6 +80,11 @@ class DashboardMcpFacadeServiceTest {
                 metricsRecorder,
                 mcpAlertService,
                 new McpRolloutPolicy(rolloutProperties)
+        );
+        facadeService = new DashboardFacadeServiceImpl(
+                adminAccessService,
+                dashboardMapper,
+                mcpMetricsComposer
         );
     }
 

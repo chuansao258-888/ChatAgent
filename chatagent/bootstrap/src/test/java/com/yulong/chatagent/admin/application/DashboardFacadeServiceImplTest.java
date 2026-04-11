@@ -33,11 +33,14 @@ class DashboardFacadeServiceImplTest {
     @Mock
     private DashboardMapper dashboardMapper;
 
+    @Mock
+    private DashboardMcpMetricsComposer mcpMetricsComposer;
+
     private DashboardFacadeServiceImpl facadeService;
 
     @BeforeEach
     void setUp() {
-        facadeService = new DashboardFacadeServiceImpl(adminAccessService, dashboardMapper);
+        facadeService = new DashboardFacadeServiceImpl(adminAccessService, dashboardMapper, mcpMetricsComposer);
     }
 
     @Test

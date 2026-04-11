@@ -16,7 +16,11 @@ import com.yulong.chatagent.intent.model.IntentNodeStatus;
 import com.yulong.chatagent.intent.port.IntentKnowledgeBaseRepository;
 import com.yulong.chatagent.intent.port.IntentNodeRepository;
 import com.yulong.chatagent.mcp.application.McpCatalogSyncService;
+import com.yulong.chatagent.mcp.application.McpCredentialCipher;
+import com.yulong.chatagent.mcp.application.McpServerReferenceInspector;
+import com.yulong.chatagent.mcp.application.McpServerStatusMachine;
 import com.yulong.chatagent.mcp.application.McpServerTestService;
+import com.yulong.chatagent.mcp.application.McpToolNameNormalizer;
 import com.yulong.chatagent.mcp.runtime.McpRuntimeToolRegistry;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import com.yulong.chatagent.support.dto.McpServerDTO;
@@ -95,6 +99,17 @@ class McpServerAdminFacadeServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        McpServerReferenceInspector referenceInspector = new McpServerReferenceInspector(referenceQueryRepository);
+        McpServerDeleteHandler deleteHandler = new McpServerDeleteHandler(
+                mcpToolCatalogRepository,
+                mcpServerRepository,
+                referenceInspector,
+                mcpAlertService,
+                intentNodeRepository,
+                intentKnowledgeBaseRepository,
+                intentTreeCacheManager,
+                mcpRuntimeToolRegistry
+        );
         facadeService = new McpServerAdminFacadeServiceImpl(
                 adminAccessService,
                 mcpServerRepository,
@@ -102,15 +117,12 @@ class McpServerAdminFacadeServiceImplTest {
                 new McpEndpointValidator(new MockEnvironment()),
                 new McpCredentialCipher(BASE64_KEY, "v1"),
                 new McpServerStatusMachine(),
-                new McpServerReferenceInspector(referenceQueryRepository),
+                referenceInspector,
                 new McpToolNameNormalizer(),
                 mcpServerTestService,
                 mcpCatalogSyncService,
                 mcpRuntimeToolRegistry,
-                mcpAlertService,
-                intentNodeRepository,
-                intentKnowledgeBaseRepository,
-                intentTreeCacheManager
+                deleteHandler
         );
         when(adminAccessService.requireAdmin()).thenReturn(LoginUser.builder()
                 .userId("admin-1")
