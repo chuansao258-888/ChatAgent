@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.ChatSessionFile;
+import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -11,13 +11,13 @@ import java.util.List;
  */
 @Mapper
 public interface ChatSessionFileMapper {
-    int insert(ChatSessionFile chatSessionFile);
+    int insert(ChatSessionFileDTO chatSessionFile);
 
-    List<ChatSessionFile> selectBySessionId(String sessionId);
+    List<ChatSessionFileDTO> selectBySessionId(String sessionId);
 
-    ChatSessionFile selectById(String id);
+    ChatSessionFileDTO selectById(String id);
 
-    int updateById(ChatSessionFile chatSessionFile);
+    int updateById(ChatSessionFileDTO chatSessionFile);
 
     int deleteById(@Param("id") String id);
 }
