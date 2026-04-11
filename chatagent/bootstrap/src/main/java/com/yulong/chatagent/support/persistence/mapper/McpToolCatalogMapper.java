@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.McpToolCatalog;
+import com.yulong.chatagent.support.dto.McpToolCatalogDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -13,9 +13,9 @@ import java.util.List;
 @Mapper
 public interface McpToolCatalogMapper {
 
-    List<McpToolCatalog> selectByServerId(@Param("serverId") String serverId);
+    List<McpToolCatalogDTO> selectByServerId(@Param("serverId") String serverId);
 
-    int upsert(McpToolCatalog toolCatalog);
+    int upsert(McpToolCatalogDTO toolCatalog);
 
     int markMissingAsStale(@Param("serverId") String serverId,
                            @Param("activeRemoteOriginalNames") List<String> activeRemoteOriginalNames,

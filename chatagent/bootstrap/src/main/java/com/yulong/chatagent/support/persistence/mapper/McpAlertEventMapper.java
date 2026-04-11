@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.McpAlertEvent;
+import com.yulong.chatagent.support.dto.McpAlertEventDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -13,14 +13,14 @@ import java.util.List;
 @Mapper
 public interface McpAlertEventMapper {
 
-    int insert(McpAlertEvent alertEvent);
+    int insert(McpAlertEventDTO alertEvent);
 
-    int updateById(McpAlertEvent alertEvent);
+    int updateById(McpAlertEventDTO alertEvent);
 
-    McpAlertEvent selectOpenByServerAndType(@Param("serverId") String serverId,
-                                            @Param("alertType") String alertType);
+    McpAlertEventDTO selectOpenByServerAndType(@Param("serverId") String serverId,
+                                               @Param("alertType") String alertType);
 
-    List<McpAlertEvent> selectRecentOpen(@Param("limit") int limit);
+    List<McpAlertEventDTO> selectRecentOpen(@Param("limit") int limit);
 
     Long countOpen();
 

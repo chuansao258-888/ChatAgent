@@ -1,6 +1,6 @@
 package com.yulong.chatagent.support.persistence.mapper;
 
-import com.yulong.chatagent.support.persistence.entity.McpServer;
+import com.yulong.chatagent.support.dto.McpServerDTO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -13,15 +13,15 @@ import java.util.List;
 @Mapper
 public interface McpServerMapper {
 
-    List<McpServer> selectAll();
+    List<McpServerDTO> selectAll();
 
-    McpServer selectById(@Param("id") String id);
+    McpServerDTO selectById(@Param("id") String id);
 
-    McpServer selectBySlug(@Param("slug") String slug);
+    McpServerDTO selectBySlug(@Param("slug") String slug);
 
-    int insert(McpServer server);
+    int insert(McpServerDTO server);
 
-    int updateById(McpServer server);
+    int updateById(McpServerDTO server);
 
     int softDeleteById(@Param("id") String id,
                        @Param("deletedAt") LocalDateTime deletedAt,

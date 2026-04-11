@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yulong.chatagent.support.persistence.mapper.McpAlertEventMapper">
 
-    <resultMap id="McpAlertEventMap" type="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
+    <resultMap id="McpAlertEventMap" type="com.yulong.chatagent.support.dto.McpAlertEventDTO">
         <id property="id" column="id"/>
         <result property="serverId" column="server_id"/>
         <result property="serverSlug" column="server_slug"/>
@@ -19,7 +19,7 @@
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
+    <insert id="insert" parameterType="com.yulong.chatagent.support.dto.McpAlertEventDTO">
         INSERT INTO t_mcp_alert_event (
             id,
             server_id,
@@ -49,7 +49,7 @@
         )
     </insert>
 
-    <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.McpAlertEvent">
+    <update id="updateById" parameterType="com.yulong.chatagent.support.dto.McpAlertEventDTO">
         UPDATE t_mcp_alert_event
         SET server_id = CAST(#{serverId} AS uuid),
             server_slug = #{serverSlug},

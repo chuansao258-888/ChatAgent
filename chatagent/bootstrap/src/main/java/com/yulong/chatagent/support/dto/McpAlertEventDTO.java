@@ -3,8 +3,10 @@ package com.yulong.chatagent.support.dto;
 import com.yulong.chatagent.support.enums.McpAlertSeverity;
 import com.yulong.chatagent.support.enums.McpAlertStatus;
 import com.yulong.chatagent.support.enums.McpAlertType;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -13,6 +15,8 @@ import java.time.LocalDateTime;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class McpAlertEventDTO {
     private String id;
     private String serverId;
