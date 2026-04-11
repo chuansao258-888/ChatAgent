@@ -35,21 +35,26 @@ public class MyBatisKnowledgeDocumentEnhancementRepository implements KnowledgeD
 
     @Override
     public KnowledgeDocumentEnhancementDTO findByKnowledgeDocumentId(String knowledgeDocumentId) {
-        return toDto(mapper.selectByKnowledgeDocumentId(knowledgeDocumentId));
+        KnowledgeDocumentEnhancement entity = mapper.selectByKnowledgeDocumentId(knowledgeDocumentId);
+        if (entity == null) {
+            return null;
+        }
+        return buildDto(entity);
     }
 
     @Override
     public List<KnowledgeDocumentEnhancementDTO> findByKnowledgeDocumentIds(List<String> knowledgeDocumentIds) {
-        List<KnowledgeDocumentEnhancementDTO> results = new ArrayList<>();
-        for (KnowledgeDocumentEnhancement entity : mapper.selectByKnowledgeDocumentIds(knowledgeDocumentIds)) {
-            results.add(toDto(entity));
+        List<KnowledgeDocumentEnhancement> entities = mapper.selectByKnowledgeDocumentIds(knowledgeDocumentIds);
+        List<KnowledgeDocumentEnhancementDTO> results = new ArrayList<>(entities.size());
+        for (KnowledgeDocumentEnhancement entity : entities) {
+            results.add(buildDto(entity));
         }
         return results;
     }
 
     @Override
     public boolean saveOrUpdate(KnowledgeDocumentEnhancementDTO enhancement) {
-        return mapper.upsert(toEntity(enhancement)) > 0;
+        return mapper.upsert(buildEntity(enhancement)) > 0;
     }
 
     @Override
@@ -57,10 +62,7 @@ public class MyBatisKnowledgeDocumentEnhancementRepository implements KnowledgeD
         return mapper.deleteByKnowledgeDocumentId(knowledgeDocumentId) > 0;
     }
 
-    private KnowledgeDocumentEnhancementDTO toDto(KnowledgeDocumentEnhancement entity) {
-        if (entity == null) {
-            return null;
-        }
+    private KnowledgeDocumentEnhancementDTO buildDto(KnowledgeDocumentEnhancement entity) {
         try {
             return KnowledgeDocumentEnhancementDTO.builder()
                     .knowledgeDocumentId(entity.getKnowledgeDocumentId())
@@ -76,7 +78,7 @@ public class MyBatisKnowledgeDocumentEnhancementRepository implements KnowledgeD
         }
     }
 
-    private KnowledgeDocumentEnhancement toEntity(KnowledgeDocumentEnhancementDTO dto) {
+    private KnowledgeDocumentEnhancement buildEntity(KnowledgeDocumentEnhancementDTO dto) {
         try {
             return KnowledgeDocumentEnhancement.builder()
                     .knowledgeDocumentId(dto.getKnowledgeDocumentId())

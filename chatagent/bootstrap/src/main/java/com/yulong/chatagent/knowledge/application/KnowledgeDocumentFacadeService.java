@@ -2,6 +2,7 @@ package com.yulong.chatagent.knowledge.application;
 
 import com.yulong.chatagent.knowledge.model.response.GetKnowledgeDocumentsResponse;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
+import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface KnowledgeDocumentFacadeService {
@@ -14,9 +15,9 @@ public interface KnowledgeDocumentFacadeService {
 
     void deleteKnowledgeDocument(String knowledgeBaseId, String documentId);
 
-    com.yulong.chatagent.support.persistence.entity.KnowledgeDocument getKnowledgeDocument(String documentId);
+    KnowledgeDocumentDTO getKnowledgeDocument(String documentId);
 
-    void ingestKnowledgeDocument(com.yulong.chatagent.support.persistence.entity.KnowledgeDocument document);
+    void ingestKnowledgeDocument(KnowledgeDocumentDTO document);
 
     void markIngestionFailed(String documentId, String error);
 }
