@@ -1,5 +1,7 @@
 package com.yulong.chatagent.rag.parser;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
@@ -43,6 +45,7 @@ import java.util.function.Supplier;
 @Slf4j
 public class VlmVdpEngine implements VdpEngine {
 
+    private final PromptLoader promptLoader;
     private final ChatModelRouter chatModelRouter;
     private final ObjectMapper objectMapper;
     private final VlmVdpProperties properties;
@@ -51,29 +54,33 @@ public class VlmVdpEngine implements VdpEngine {
     private final MeterRegistry meterRegistry;
 
     @Autowired
-    public VlmVdpEngine(ChatModelRouter chatModelRouter,
+    public VlmVdpEngine(PromptLoader promptLoader,
+                        ChatModelRouter chatModelRouter,
                         ObjectMapper objectMapper,
                         VlmVdpProperties properties,
                         VdpResultCacheService vdpResultCacheService,
                         @Qualifier("vdpExecutor") Executor vdpExecutor,
                         ObjectProvider<MeterRegistry> meterRegistryProvider) {
-        this(chatModelRouter, objectMapper, properties, vdpResultCacheService, vdpExecutor, meterRegistryProvider.getIfAvailable());
+        this(promptLoader, chatModelRouter, objectMapper, properties, vdpResultCacheService, vdpExecutor, meterRegistryProvider.getIfAvailable());
     }
 
-    VlmVdpEngine(ChatModelRouter chatModelRouter,
+    VlmVdpEngine(PromptLoader promptLoader,
+                 ChatModelRouter chatModelRouter,
                  ObjectMapper objectMapper,
                  VlmVdpProperties properties,
                  VdpResultCacheService vdpResultCacheService,
                  Executor vdpExecutor) {
-        this(chatModelRouter, objectMapper, properties, vdpResultCacheService, vdpExecutor, (MeterRegistry) null);
+        this(promptLoader, chatModelRouter, objectMapper, properties, vdpResultCacheService, vdpExecutor, (MeterRegistry) null);
     }
 
-    VlmVdpEngine(ChatModelRouter chatModelRouter,
+    VlmVdpEngine(PromptLoader promptLoader,
+                 ChatModelRouter chatModelRouter,
                  ObjectMapper objectMapper,
                  VlmVdpProperties properties,
                  VdpResultCacheService vdpResultCacheService,
                  Executor vdpExecutor,
                  MeterRegistry meterRegistry) {
+        this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;
         this.objectMapper = objectMapper;
         this.properties = properties;
@@ -209,24 +216,9 @@ public class VlmVdpEngine implements VdpEngine {
         String languageHint = options == null || !StringUtils.hasText(options.languageHint())
                 ? "auto"
                 : options.languageHint().trim();
-        return """
-                You are a visual document parsing engine.
-
-                Analyze the attached image and return ONLY a JSON object with this schema:
-                {
-                  "markdown": "retrievable markdown content only",
-                  "interpretiveNote": "optional short note for the LLM only",
-                  "visualType": "IMAGE|TABLE|CHART|FORMULA"
-                }
-
-                Rules:
-                - Put only retrievable content in markdown.
-                - Do not add prefixes like "image description" or "analysis".
-                - Preserve visible text, tables, and formulas faithfully when possible.
-                - Use Markdown tables for tabular layouts and LaTeX-style inline formulas when useful.
-                - interpretiveNote is optional and must not duplicate markdown.
-                - language hint: %s
-                """.formatted(languageHint);
+        return promptLoader.render(PromptConstants.VLM_PARSE, Map.of(
+                "languageHint", languageHint
+        ));
     }
 
     private String executePrompt(Prompt prompt) {
@@ -322,7 +314,7 @@ public class VlmVdpEngine implements VdpEngine {
     private VdpPageResult degradedResult(String reason) {
         String placeholder = StringUtils.hasText(properties.getFailurePlaceholder())
                 ? properties.getFailurePlaceholder().trim()
-                : "[图像解析失败]";
+                : promptLoader.load(PromptConstants.FALLBACK_VLM_FAILURE);
         return new VdpPageResult(
                 0,
                 "",

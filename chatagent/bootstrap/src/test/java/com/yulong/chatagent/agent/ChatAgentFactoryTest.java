@@ -1,5 +1,6 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.routing.LLMService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
@@ -38,7 +39,7 @@ class ChatAgentFactoryTest {
 
         when(contextLoader.load("agent-1", "session-1", null, null)).thenReturn(context);
 
-        ChatAgentFactory factory = new ChatAgentFactory(llmService, contextLoader, messageBridge);
+        ChatAgentFactory factory = new ChatAgentFactory(TestPromptLoader.create(), llmService, contextLoader, messageBridge);
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
 

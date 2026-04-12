@@ -1,5 +1,7 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
@@ -15,6 +17,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -26,6 +29,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class IntentRouter {
 
+    private final PromptLoader promptLoader;
     private final IntentTreeCacheManager intentTreeCacheManager;
     private final ChatModelRouter chatModelRouter;
     private final double minimumScore;
@@ -33,12 +37,14 @@ public class IntentRouter {
     private final int clarificationCandidateCount;
     private final String classifierModel;
 
-    public IntentRouter(IntentTreeCacheManager intentTreeCacheManager,
+    public IntentRouter(PromptLoader promptLoader,
+                        IntentTreeCacheManager intentTreeCacheManager,
                         ChatModelRouter chatModelRouter,
                         @Value("${chatagent.intent.minimum-score:0.45}") double minimumScore,
                         @Value("${chatagent.intent.ambiguity-gap:0.2}") double ambiguityGap,
                         @Value("${chatagent.intent.clarification-candidates:2}") int clarificationCandidateCount,
                         @Value("${chatagent.intent.classifier-model:}") String classifierModel) {
+        this.promptLoader = promptLoader;
         this.intentTreeCacheManager = intentTreeCacheManager;
         this.chatModelRouter = chatModelRouter;
         this.minimumScore = minimumScore;
@@ -205,25 +211,11 @@ public class IntentRouter {
                 .map(n -> "- ID: " + n.getId() + ", Name: " + n.getName() + ", Description: " + (n.getDescription() == null ? "None" : n.getDescription()))
                 .collect(Collectors.joining("\n"));
 
-        String prompt = """
-                # Role
-                You are an enterprise AI assistant intent-classification expert. Choose the best matching intent from the provided candidate list based on the user's input.
-
-                # Context
-                Current path level: %s
-                User input: %s
-
-                # Candidates
-                %s
-
-                # Rules
-                1. You must choose the single best-matching ID from the list.
-                2. If none of the candidates match, return "NONE".
-                3. If the user input is ambiguous and you cannot choose between similar candidates, return "AMBIGUOUS".
-                4. Output only the matching ID or the keywords above. Do not add any explanation.
-
-                Result:
-                """.formatted(pathLabel == null || pathLabel.isBlank() ? "ROOT" : pathLabel, query, candidatesText);
+        String prompt = promptLoader.render(PromptConstants.INTENT_CLASSIFIER, Map.of(
+                "pathLevel", pathLabel == null || pathLabel.isBlank() ? "ROOT" : pathLabel,
+                "userInput", query,
+                "candidatesText", candidatesText
+        ));
 
         ChatClient chatClient = chatModelRouter.route(classifierModel);
         String content = chatClient.prompt(prompt)

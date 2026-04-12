@@ -1,6 +1,7 @@
 package com.yulong.chatagent.rag.ingestion;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.rag.ingestion.enhance.DocumentEnhancerProperties;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeIngestionContext;
 import com.yulong.chatagent.rag.ingestion.model.SessionIngestionContext;
@@ -18,6 +19,7 @@ class LlmDocumentEnhancerTest {
     @Test
     void shouldNeverEnhanceSessionPipeline() {
         LlmDocumentEnhancer enhancer = new LlmDocumentEnhancer(
+                TestPromptLoader.create(),
                 null,
                 new DocumentEnhancerProperties(),
                 new ObjectMapper()
@@ -38,7 +40,7 @@ class LlmDocumentEnhancerTest {
         properties.setMapWindowMaxChars(15);
         properties.setMaxKeywords(10);
         properties.setMaxQuestions(5);
-        LlmDocumentEnhancer enhancer = new LlmDocumentEnhancer(null, properties, new ObjectMapper()) {
+        LlmDocumentEnhancer enhancer = new LlmDocumentEnhancer(TestPromptLoader.create(), null, properties, new ObjectMapper()) {
             @Override
             DocMetaExtractResult runDocMetaExtract(String text) {
                 if (text.contains("window-two")) {

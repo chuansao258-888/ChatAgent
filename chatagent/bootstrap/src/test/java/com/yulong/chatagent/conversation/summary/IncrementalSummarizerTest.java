@@ -1,5 +1,6 @@
 package com.yulong.chatagent.conversation.summary;
 
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
@@ -45,6 +46,7 @@ class IncrementalSummarizerTest {
     @BeforeEach
     void setUp() {
         incrementalSummarizer = new IncrementalSummarizer(
+                TestPromptLoader.create(),
                 turnBasedContextExtractor,
                 summaryWatermarkService,
                 chatSessionSummaryRepository,

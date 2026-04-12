@@ -1,5 +1,7 @@
 package com.yulong.chatagent.rag.application;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.rag.model.CitationMetadata;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import org.springframework.stereotype.Component;
@@ -7,6 +9,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Renders structured retrieval hits into a stable prompt-friendly text block.
@@ -14,6 +17,12 @@ import java.util.List;
  */
 @Component
 public class RetrievalHitFormatter {
+
+    private final PromptLoader promptLoader;
+
+    public RetrievalHitFormatter(PromptLoader promptLoader) {
+        this.promptLoader = promptLoader;
+    }
 
     public String formatForPrompt(List<RetrievalHit> hits) {
         return formatWithCitations(hits).promptText();
@@ -49,12 +58,9 @@ public class RetrievalHitFormatter {
                     List.of()
             );
         }
-        String prompt = """
-                Use the following numbered evidence snippets when answering.
-                If you rely on a snippet, cite it inline with [n] using the matching number below.
-
-                %s
-                """.formatted(String.join("\n\n---\n\n", sections)).trim();
+        String prompt = promptLoader.render(PromptConstants.RAG_EVIDENCE_BLOCK, Map.of(
+                "evidenceSections", String.join("\n\n---\n\n", sections)
+        )).trim();
         return new FormattedRetrievalPrompt(prompt, List.copyOf(citations));
     }
 

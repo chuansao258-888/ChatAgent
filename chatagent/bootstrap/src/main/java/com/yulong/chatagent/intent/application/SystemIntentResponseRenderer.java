@@ -1,5 +1,7 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -9,13 +11,19 @@ import org.springframework.util.StringUtils;
 @Component
 public class SystemIntentResponseRenderer {
 
+    private final PromptLoader promptLoader;
+
+    public SystemIntentResponseRenderer(PromptLoader promptLoader) {
+        this.promptLoader = promptLoader;
+    }
+
     public String render(IntentResolution intentResolution, String userInput) {
         if (intentResolution == null) {
             return userInput;
         }
         String template = intentResolution.systemPromptOverride();
         if (!StringUtils.hasText(template)) {
-            return "这个问题已被配置为系统直答，但当前还没有设置回复模板。";
+            return promptLoader.load(PromptConstants.FALLBACK_SYSTEM_INTENT);
         }
         return template
                 .replace("{{userInput}}", userInput == null ? "" : userInput)

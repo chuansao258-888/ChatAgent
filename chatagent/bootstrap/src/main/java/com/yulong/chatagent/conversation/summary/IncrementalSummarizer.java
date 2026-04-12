@@ -1,5 +1,7 @@
 package com.yulong.chatagent.conversation.summary;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
@@ -32,6 +34,7 @@ public class IncrementalSummarizer {
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(?<!\\w)(?:[\\u00A5\\uFFE5$])?\\d+(?:\\.\\d{1,2})?(?!\\w)");
     private static final Pattern ORDER_PATTERN = Pattern.compile("\\b[A-Z]{2,}-?\\d{4,}\\b");
 
+    private final PromptLoader promptLoader;
     private final TurnBasedContextExtractor turnBasedContextExtractor;
     private final SummaryWatermarkService summaryWatermarkService;
     private final ChatSessionSummaryRepository chatSessionSummaryRepository;
@@ -39,12 +42,14 @@ public class IncrementalSummarizer {
     private final String summaryModel;
     private final int summaryMaxChars;
 
-    public IncrementalSummarizer(TurnBasedContextExtractor turnBasedContextExtractor,
+    public IncrementalSummarizer(PromptLoader promptLoader,
+                                 TurnBasedContextExtractor turnBasedContextExtractor,
                                  SummaryWatermarkService summaryWatermarkService,
                                  ChatSessionSummaryRepository chatSessionSummaryRepository,
                                  ChatModelRouter chatModelRouter,
                                  @Value("${chatagent.memory.summary-model:deepseek-chat}") String summaryModel,
                                  @Value("${chatagent.memory.summary-max-chars:500}") int summaryMaxChars) {
+        this.promptLoader = promptLoader;
         this.turnBasedContextExtractor = turnBasedContextExtractor;
         this.summaryWatermarkService = summaryWatermarkService;
         this.chatSessionSummaryRepository = chatSessionSummaryRepository;
@@ -107,26 +112,11 @@ public class IncrementalSummarizer {
     }
 
     private String buildPrompt(String existingSummary, List<AtomicConversationTurn> turns) {
-        return """
-                You are updating a rolling memory summary for an enterprise assistant conversation.
-
-                Rules:
-                1. Preserve durable facts, user preferences, commitments, dates, amounts, and identifiers.
-                2. Drop tool chatter, intermediate reasoning, and repeated phrasing.
-                3. Keep the summary under %d characters. If space is tight, switch to key-value fact listing.
-                4. Keep the summary concise and factual.
-                5. Output only the updated summary text.
-
-                Existing summary:
-                %s
-
-                New turns:
-                %s
-                """.formatted(
-                summaryMaxChars,
-                StringUtils.hasText(existingSummary) ? existingSummary : "(empty)",
-                formatTurns(turns)
-        );
+        return promptLoader.render(PromptConstants.SUMMARIZER_MEMORY, java.util.Map.of(
+                "summaryMaxChars", String.valueOf(summaryMaxChars),
+                "existingSummary", StringUtils.hasText(existingSummary) ? existingSummary : "(empty)",
+                "formattedTurns", formatTurns(turns)
+        ));
     }
 
     private String formatTurns(List<AtomicConversationTurn> turns) {

@@ -1,11 +1,14 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.intent.model.IntentKind;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import java.util.Map;
 import org.springframework.util.StringUtils;
 
 /**
@@ -15,11 +18,14 @@ import org.springframework.util.StringUtils;
 @Slf4j
 public class QueryRewriter {
 
+    private final PromptLoader promptLoader;
     private final ChatModelRouter chatModelRouter;
     private final String rewriteModel;
 
-    public QueryRewriter(ChatModelRouter chatModelRouter,
+    public QueryRewriter(PromptLoader promptLoader,
+                         ChatModelRouter chatModelRouter,
                          @Value("${chatagent.intent.rewrite-model:}") String rewriteModel) {
+        this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;
         this.rewriteModel = rewriteModel;
     }
@@ -37,22 +43,10 @@ public class QueryRewriter {
             return originalQuery.trim();
         }
 
-        String prompt = """
-                You are a search-query optimization expert. Rewrite the user's original input into a complete query that is better suited for semantic retrieval in the knowledge base, using the matched intent path as context.
-
-                # Rules
-                1. Expand pronouns such as "it", "this", or "the process" into the concrete business object when the intent path makes it clear.
-                2. Preserve all domain-specific terminology.
-                3. If the original input is already complete, keep it unchanged.
-                4. Use the context from the intent path to fill in omitted details.
-                5. Return only the rewritten query text with no explanation.
-
-                # Context
-                Matched intent path: %s
-                Original input: %s
-
-                Rewritten query:
-                """.formatted(intentResolution.pathLabel(), originalQuery);
+        String prompt = promptLoader.render(PromptConstants.INTENT_QUERY_REWRITE, Map.of(
+                "intentPath", intentResolution.pathLabel(),
+                "originalInput", originalQuery
+        ));
 
         try {
             ChatClient chatClient = chatModelRouter.route(rewriteModel);

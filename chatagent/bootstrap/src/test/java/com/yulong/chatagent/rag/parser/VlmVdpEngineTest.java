@@ -1,6 +1,7 @@
 package com.yulong.chatagent.rag.parser;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +63,7 @@ class VlmVdpEngineTest {
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenThrow(new RuntimeException("LLM unavailable"));
 
-        VlmVdpEngine engine = new VlmVdpEngine(chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
 
         VdpPageResult result = engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "zh", null));
 
@@ -85,7 +86,7 @@ class VlmVdpEngineTest {
                 }
                 """);
 
-        VlmVdpEngine engine = new VlmVdpEngine(chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
 
         VdpPageResult result = engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "zh", null));
 
@@ -109,6 +110,7 @@ class VlmVdpEngineTest {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
         VlmVdpEngine engine = new VlmVdpEngine(
+                TestPromptLoader.create(),
                 chatModelRouter,
                 new ObjectMapper(),
                 properties,
@@ -132,7 +134,7 @@ class VlmVdpEngineTest {
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("Here is the analysis of the image: this appears to be a table.");
 
-        VlmVdpEngine engine = new VlmVdpEngine(chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
 
         VdpPageResult result = engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "zh", null));
 
@@ -154,7 +156,7 @@ class VlmVdpEngineTest {
                 | A | 1 |
                 """);
 
-        VlmVdpEngine engine = new VlmVdpEngine(chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
 
         VdpPageResult result = engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "zh", null));
 
@@ -177,7 +179,7 @@ class VlmVdpEngineTest {
                 }
                 """);
 
-        VlmVdpEngine engine = new VlmVdpEngine(chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
         VdpOptions options = new VdpOptions(
                 false,
                 "zh",
@@ -216,6 +218,7 @@ class VlmVdpEngineTest {
                 """);
 
         VlmVdpEngine engine = new VlmVdpEngine(
+                TestPromptLoader.create(),
                 chatModelRouter,
                 new ObjectMapper(),
                 properties,

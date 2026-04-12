@@ -1,5 +1,7 @@
 package com.yulong.chatagent.rag.ingestion;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
@@ -39,13 +41,16 @@ public class LlmDocumentEnhancer implements DocumentEnhancer {
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
+    private final PromptLoader promptLoader;
     private final ChatModelRouter chatModelRouter;
     private final DocumentEnhancerProperties properties;
     private final ObjectMapper objectMapper;
 
-    public LlmDocumentEnhancer(ChatModelRouter chatModelRouter,
+    public LlmDocumentEnhancer(PromptLoader promptLoader,
+                               ChatModelRouter chatModelRouter,
                                DocumentEnhancerProperties properties,
                                ObjectMapper objectMapper) {
+        this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -142,12 +147,7 @@ public class LlmDocumentEnhancer implements DocumentEnhancer {
     private String runContextEnhance(String rawText) {
         ChatClient chatClient = chatModelRouter.route(properties.getModelId());
         String response = chatClient.prompt()
-                .system("""
-                        You are a document cleanup assistant for enterprise RAG ingestion.
-                        Rewrite the input text only to improve structure, readability, and retrieval quality.
-                        Preserve meaning, preserve important technical terms, and do not invent content.
-                        Return only the cleaned document text.
-                        """)
+                .system(promptLoader.load(PromptConstants.RAG_DOC_CLEANUP))
                 .user(rawText)
                 .call()
                 .content();
@@ -157,19 +157,7 @@ public class LlmDocumentEnhancer implements DocumentEnhancer {
     DocMetaExtractResult runDocMetaExtract(String text) {
         ChatClient chatClient = chatModelRouter.route(properties.getModelId());
         String response = chatClient.prompt()
-                .system("""
-                        You extract structured document metadata for enterprise RAG ingestion.
-                        Return only JSON with this shape:
-                        {
-                          "keywords": ["..."],
-                          "questions": ["..."],
-                          "metadata": {
-                            "doc_type": "policy|manual|code|invoice|other",
-                            "contains_pii": true|false
-                          }
-                        }
-                        Do not add explanations.
-                        """)
+                .system(promptLoader.load(PromptConstants.RAG_DOC_METADATA))
                 .user("""
                         Document:
                         %s

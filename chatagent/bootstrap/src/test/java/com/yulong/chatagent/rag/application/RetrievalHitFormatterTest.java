@@ -1,5 +1,6 @@
 package com.yulong.chatagent.rag.application;
 
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import com.yulong.chatagent.rag.model.RagSourceType;
 import org.junit.jupiter.api.Test;
@@ -10,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RetrievalHitFormatterTest {
 
-    private final RetrievalHitFormatter formatter = new RetrievalHitFormatter();
+    private final RetrievalHitFormatter formatter = new RetrievalHitFormatter(TestPromptLoader.create());
 
     @Test
     void shouldRenderStructuredPromptSections() {
@@ -32,7 +33,7 @@ class RetrievalHitFormatterTest {
 
         FormattedRetrievalPrompt rendered = formatter.formatWithCitations(hits);
 
-        assertThat(rendered.promptText()).contains("Use the following numbered evidence snippets when answering.");
+        assertThat(rendered.promptText()).contains("numbered evidence snippets when answering");
         assertThat(rendered.promptText()).contains("[1] Source: Employee Handbook.pdf [SESSION_FILE] chunk 2");
         assertThat(rendered.promptText()).contains("Section: chunk[2]");
         assertThat(rendered.promptText()).contains("Chunk Context:\nTravel reimbursement policy");

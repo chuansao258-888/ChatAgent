@@ -166,7 +166,7 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
                 .code(requireUniqueCode(normalizeCode(request == null ? null : request.getCode()), null))
                 .name(requireName(request == null ? null : request.getName()))
                 .description(normalizeNullableText(request == null ? null : request.getDescription()))
-                .systemPrompt(requireSystemPrompt(request == null ? null : request.getSystemPrompt()))
+                .systemPrompt(normalizeSystemPrompt(request == null ? null : request.getSystemPrompt()))
                 .model(requireModel(request == null ? null : request.getModel()))
                 .allowedTools(normalizeStringList(request == null ? null : request.getAllowedTools()))
                 .chatOptions(normalizeChatOptions(request == null ? null : request.getChatOptions()))
@@ -188,7 +188,7 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
                 .description(normalizeNullableText(request != null && request.getDescription() != null
                         ? request.getDescription()
                         : existing.getDescription()))
-                .systemPrompt(requireSystemPrompt(request != null && request.getSystemPrompt() != null
+                .systemPrompt(normalizeSystemPrompt(request != null && request.getSystemPrompt() != null
                         ? request.getSystemPrompt()
                         : existing.getSystemPrompt()))
                 .model(request != null && request.getModel() != null
@@ -277,11 +277,8 @@ public class AssistantTemplateFacadeServiceImpl implements AssistantTemplateFaca
         return name.trim();
     }
 
-    private String requireSystemPrompt(String systemPrompt) {
-        if (!StringUtils.hasText(systemPrompt)) {
-            throw new BizException("Template system prompt is required");
-        }
-        return systemPrompt.trim();
+    private String normalizeSystemPrompt(String systemPrompt) {
+        return systemPrompt == null ? "" : systemPrompt.trim();
     }
 
     private AgentDTO.ModelType requireModel(String modelName) {

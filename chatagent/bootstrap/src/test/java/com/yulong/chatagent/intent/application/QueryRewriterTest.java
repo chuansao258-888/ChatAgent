@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
@@ -31,7 +32,7 @@ class QueryRewriterTest {
 
     @BeforeEach
     void setUp() {
-        queryRewriter = new QueryRewriter(chatModelRouter, "rewrite-model");
+        queryRewriter = new QueryRewriter(TestPromptLoader.create(), chatModelRouter, "rewrite-model");
     }
 
     @Test

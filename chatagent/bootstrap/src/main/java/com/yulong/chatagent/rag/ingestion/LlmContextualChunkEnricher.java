@@ -1,5 +1,7 @@
 package com.yulong.chatagent.rag.ingestion;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
@@ -36,13 +38,16 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
+    private final PromptLoader promptLoader;
     private final ChatModelRouter chatModelRouter;
     private final ContextualChunkEnricherProperties properties;
     private final ObjectMapper objectMapper;
 
-    public LlmContextualChunkEnricher(ChatModelRouter chatModelRouter,
+    public LlmContextualChunkEnricher(PromptLoader promptLoader,
+                                      ChatModelRouter chatModelRouter,
                                       ContextualChunkEnricherProperties properties,
                                       ObjectMapper objectMapper) {
+        this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -80,13 +85,7 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
                         properties.getModelId());
 
                 String response = chatClient.prompt()
-                        .system("""
-                                You generate concise chunk-specific retrieval context.
-                                Given a whole document and one chunk from it, write a short context that situates the chunk within the document.
-                                Keep it factual, concise, and retrieval-oriented.
-                                Do not repeat the chunk verbatim.
-                                Return only the context text and nothing else.
-                                """)
+                        .system(promptLoader.load(PromptConstants.RAG_CHUNK_CTX_SYSTEM))
                         .user(buildUserPrompt(promptDocument, draft.content()))
                         .call()
                         .content();
@@ -155,19 +154,11 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
     }
 
     private String buildUserPrompt(String wholeDocument, String chunkContent) {
-        return """
-                <document>
-                %s
-                </document>
-                Here is the chunk we want to situate within the whole document for improving search retrieval:
-                <chunk>
-                %s
-                </chunk>
-                Please provide a short succinct context to situate this chunk within the overall document for retrieval.
-                Keep the context shorter than the chunk itself.
-                Keep the answer under %d characters.
-                Answer only with the succinct context.
-                """.formatted(wholeDocument, chunkContent, properties.getMaxContextChars());
+        return promptLoader.render(PromptConstants.RAG_CHUNK_CTX_USER, Map.of(
+                "document", wholeDocument,
+                "chunk", chunkContent,
+                "maxContextChars", String.valueOf(properties.getMaxContextChars())
+        ));
     }
 
     private String normalizeContext(String response, int chunkLength) {

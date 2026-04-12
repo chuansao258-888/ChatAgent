@@ -2,6 +2,7 @@ package com.yulong.chatagent.admin.application;
 
 import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.admin.model.request.InitializeAssistantFromTemplateRequest;
+import com.yulong.chatagent.admin.model.request.UpsertAssistantTemplateRequest;
 import com.yulong.chatagent.admin.model.response.InitializeAssistantFromTemplateResponse;
 import com.yulong.chatagent.admin.model.vo.AssistantTemplateVO;
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
@@ -106,6 +107,39 @@ class AssistantTemplateFacadeServiceImplTest {
 
         assertThat(response).hasSize(1);
         assertThat(response.get(0).getCode()).isEqualTo("hr");
+    }
+
+    @Test
+    void shouldAllowBlankSystemPromptForRuntimeDefaultFallback() {
+        when(adminAccessService.requireAdmin()).thenReturn(LoginUser.builder()
+                .userId("admin-1")
+                .role("admin")
+                .build());
+        when(assistantTemplateRepository.findByCode("general-purpose")).thenReturn(null);
+        when(assistantTemplateRepository.save(any(AssistantTemplateDTO.class))).thenReturn(true);
+
+        UpsertAssistantTemplateRequest request = new UpsertAssistantTemplateRequest();
+        request.setCode("general-purpose");
+        request.setName("General-purpose assistant");
+        request.setDescription("Uses runtime default prompt");
+        request.setSystemPrompt("   ");
+        request.setModel("glm-5.1");
+        request.setAllowedTools(List.of());
+        request.setIntentTree(List.of(
+                AssistantTemplateDTO.IntentTreeNodeTemplateDTO.builder()
+                        .code("general-domain")
+                        .nodeLevel(IntentNodeLevel.DOMAIN)
+                        .name("General")
+                        .enabled(true)
+                        .sortOrder(0)
+                        .build()
+        ));
+
+        facadeService.createTemplate(request);
+
+        ArgumentCaptor<AssistantTemplateDTO> templateCaptor = ArgumentCaptor.forClass(AssistantTemplateDTO.class);
+        verify(assistantTemplateRepository).save(templateCaptor.capture());
+        assertThat(templateCaptor.getValue().getSystemPrompt()).isEmpty();
     }
 
     @Test

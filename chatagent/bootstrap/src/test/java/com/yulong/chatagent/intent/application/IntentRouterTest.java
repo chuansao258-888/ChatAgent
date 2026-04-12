@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
@@ -35,7 +36,7 @@ class IntentRouterTest {
 
     @BeforeEach
     void setUp() {
-        intentRouter = new IntentRouter(intentTreeCacheManager, chatModelRouter, 0.45d, 0.2d, 2, "classifier-model");
+        intentRouter = new IntentRouter(TestPromptLoader.create(), intentTreeCacheManager, chatModelRouter, 0.45d, 0.2d, 2, "classifier-model");
     }
 
     @Test

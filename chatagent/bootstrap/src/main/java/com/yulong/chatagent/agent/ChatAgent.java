@@ -1,5 +1,7 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
@@ -39,6 +41,7 @@ public class ChatAgent {
     private String name;
     private String description;
     private String systemPrompt;
+    private PromptLoader promptLoader;
     private LLMService llmService;
     private AgentState agentState;
     private List<ToolCallback> availableTools;
@@ -61,6 +64,7 @@ public class ChatAgent {
                      String name,
                      String description,
                      String systemPrompt,
+                     PromptLoader promptLoader,
                      LLMService llmService,
                      Integer maxMessages,
                      List<Message> memory,
@@ -76,17 +80,18 @@ public class ChatAgent {
         this.name = name;
         this.description = description;
         this.systemPrompt = systemPrompt;
+        this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.availableTools = availableTools == null ? List.of() : List.copyOf(availableTools);
         this.sessionFileSummary = StringUtils.hasText(sessionFileSummary)
                 ? sessionFileSummary
-                : "No attached session files available";
+                : promptLoader.load(PromptConstants.FALLBACK_SESSION_FILES);
         this.sessionSummary = StringUtils.hasText(sessionSummary)
                 ? sessionSummary
-                : "No historical context summary available";
+                : promptLoader.load(PromptConstants.FALLBACK_SESSION_SUMMARY);
         this.userProfileSummary = StringUtils.hasText(userProfileSummary)
                 ? userProfileSummary
-                : "No persistent user profile available";
+                : promptLoader.load(PromptConstants.FALLBACK_USER_PROFILE);
         this.turnId = turnId;
         this.chatSessionId = chatSessionId;
         this.messageBridge = messageBridge;
@@ -110,6 +115,7 @@ public class ChatAgent {
                 .build();
         this.chatOptions = toolCallingChatOptions;
         this.thinkingEngine = new AgentThinkingEngine(
+                this.promptLoader,
                 this.llmService,
                 this.chatOptions,
                 this.availableTools,

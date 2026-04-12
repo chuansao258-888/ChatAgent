@@ -1,5 +1,7 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
@@ -21,6 +23,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -31,6 +34,7 @@ import java.util.stream.IntStream;
  */
 class AgentThinkingEngine {
 
+    private final PromptLoader promptLoader;
     private final LLMService llmService;
     private final ChatOptions chatOptions;
     private final List<ToolCallback> availableTools;
@@ -39,13 +43,15 @@ class AgentThinkingEngine {
     private final String turnId;
     private final AgentMessageBridge messageBridge;
 
-    AgentThinkingEngine(LLMService llmService,
+    AgentThinkingEngine(PromptLoader promptLoader,
+                        LLMService llmService,
                         ChatOptions chatOptions,
                         List<ToolCallback> availableTools,
                         String sessionFileSummary,
                         String userProfileSummary,
                         String turnId,
                         AgentMessageBridge messageBridge) {
+        this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.chatOptions = chatOptions;
         this.availableTools = availableTools;
@@ -64,16 +70,11 @@ class AgentThinkingEngine {
      */
     ChatResponse think(ChatMemory chatMemory, String chatSessionId) {
         long startTime = System.nanoTime();
-        String decisionPrompt = """
-                You are the agent decision module.
-                Decide the next action from the current conversation context.
-
-                Additional context:
-                - Attached session files: %s
-                - Persistent user profile: %s
-                - If context is missing, prefer searching the current chat session files first.
-                - When the user profile contains stable preferences, keep responses consistent with it.
-                """.formatted(this.sessionFileSummary, this.userProfileSummary);
+        Map<String, String> vars = Map.of(
+                "sessionFileSummary", this.sessionFileSummary,
+                "userProfileSummary", this.userProfileSummary
+        );
+        String decisionPrompt = promptLoader.render(PromptConstants.AGENT_DECISION_MODULE, vars);
 
         List<Message> promptMessages = sanitizePromptMessages(chatMemory.get(chatSessionId));
         Prompt prompt = buildPrompt(promptMessages, this.chatOptions);
@@ -135,17 +136,11 @@ class AgentThinkingEngine {
         }
 
         List<Message> finalPromptMessages = new ArrayList<>(promptMessages.size() + 1);
-        finalPromptMessages.add(new SystemMessage("""
-                You are the final answer module.
-                Write the user-facing answer from the current conversation context.
-                Do not emit tool-call JSON or internal planning text.
-
-                Additional context:
-                - Attached session files: %s
-                - Persistent user profile: %s
-                - If context is unavailable, be explicit about the limitation instead of inventing details.
-                - When the user profile contains stable preferences, keep responses consistent with it.
-                """.formatted(this.sessionFileSummary, this.userProfileSummary)));
+        Map<String, String> vars = Map.of(
+                "sessionFileSummary", this.sessionFileSummary,
+                "userProfileSummary", this.userProfileSummary
+        );
+        finalPromptMessages.add(new SystemMessage(promptLoader.render(PromptConstants.AGENT_FINAL_ANSWER, vars)));
         finalPromptMessages.addAll(promptMessages);
         return buildPrompt(finalPromptMessages, streamOptions);
     }

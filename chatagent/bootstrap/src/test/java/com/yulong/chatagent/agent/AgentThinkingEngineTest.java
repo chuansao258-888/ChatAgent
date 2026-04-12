@@ -1,5 +1,6 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
 import org.junit.jupiter.api.Test;
@@ -77,7 +78,7 @@ class AgentThinkingEngineTest {
                 eq(SESSION_ID),
                 eq(TURN_ID),
                 any(Prompt.class),
-                contains("agent decision module"),
+                contains("Decision Module"),
                 eq(List.of(tool)),
                 same(llmService)
         )).thenReturn(decision);
@@ -104,7 +105,7 @@ class AgentThinkingEngineTest {
                 eq(SESSION_ID),
                 eq(TURN_ID),
                 any(Prompt.class),
-                contains("agent decision module"),
+                contains("Decision Module"),
                 eq(List.of(tool)),
                 same(llmService)
         )).thenReturn(decision);
@@ -119,6 +120,7 @@ class AgentThinkingEngineTest {
 
     private AgentThinkingEngine engineWithTools(List<ToolCallback> tools) {
         return new AgentThinkingEngine(
+                TestPromptLoader.create(),
                 llmService,
                 DefaultToolCallingChatOptions.builder()
                         .internalToolExecutionEnabled(false)

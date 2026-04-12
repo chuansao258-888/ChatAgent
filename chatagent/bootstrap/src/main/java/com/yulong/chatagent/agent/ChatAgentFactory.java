@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.chat.routing.LLMService;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import org.springframework.stereotype.Component;
 
@@ -10,13 +11,16 @@ import org.springframework.stereotype.Component;
 @Component
 public class ChatAgentFactory {
 
+    private final PromptLoader promptLoader;
     private final LLMService llmService;
     private final AgentRuntimeContextLoader agentRuntimeContextLoader;
     private final AgentMessageBridge agentMessageBridge;
 
-    public ChatAgentFactory(LLMService llmService,
+    public ChatAgentFactory(PromptLoader promptLoader,
+                            LLMService llmService,
                             AgentRuntimeContextLoader agentRuntimeContextLoader,
                             AgentMessageBridge agentMessageBridge) {
+        this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.agentRuntimeContextLoader = agentRuntimeContextLoader;
         this.agentMessageBridge = agentMessageBridge;
@@ -54,6 +58,7 @@ public class ChatAgentFactory {
                 context.name(),
                 context.description(),
                 context.systemPrompt(),
+                promptLoader,
                 llmService,
                 context.maxMessages(),
                 context.memory(),

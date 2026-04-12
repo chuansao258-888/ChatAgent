@@ -22,5 +22,5 @@ public class VlmVdpProperties {
     private int corePoolSize = 1;
     private int maxPoolSize = 2;
     private int queueCapacity = 0;
-    private String failurePlaceholder = "[图像解析失败]";
+    private String failurePlaceholder = "";
 }

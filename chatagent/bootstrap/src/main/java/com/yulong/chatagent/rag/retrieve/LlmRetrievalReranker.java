@@ -1,5 +1,7 @@
 package com.yulong.chatagent.rag.retrieve;
 
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
@@ -30,13 +32,16 @@ public class LlmRetrievalReranker implements RetrievalReranker {
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {
     };
 
+    private final PromptLoader promptLoader;
     private final ChatModelRouter chatModelRouter;
     private final RerankerProperties properties;
     private final ObjectMapper objectMapper;
 
-    public LlmRetrievalReranker(ChatModelRouter chatModelRouter,
+    public LlmRetrievalReranker(PromptLoader promptLoader,
+                                ChatModelRouter chatModelRouter,
                                 RerankerProperties properties,
                                 ObjectMapper objectMapper) {
+        this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -57,13 +62,7 @@ public class LlmRetrievalReranker implements RetrievalReranker {
                     TraceContext.getTraceId(), properties.getModelId(), rerankCandidates.size());
 
             String response = chatClient.prompt()
-                    .system("""
-                            You are a retrieval reranker.
-                            Rank candidate chunks by how useful they are for answering the query.
-                            Prioritize direct relevance, exact technical terms, and chunks that contain the answer, not just background.
-                            Return only a JSON array of chunkIds in best-first order.
-                            Do not add explanations.
-                            """)
+                    .system(promptLoader.load(PromptConstants.RAG_RERANKER_SYSTEM))
                     .user(buildUserPrompt(queryText, rerankCandidates))
                     .call()
                     .content();

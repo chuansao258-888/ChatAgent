@@ -1,6 +1,7 @@
 package com.yulong.chatagent.rag.retrieve;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.rag.vector.milvus.model.MilvusSearchHit;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +26,7 @@ class LlmRetrievalRerankerTest {
     void setUp() {
         RerankerProperties properties = new RerankerProperties();
         properties.setMaxChunkChars(900);
-        reranker = new LlmRetrievalReranker(chatModelRouter, properties, new ObjectMapper());
+        reranker = new LlmRetrievalReranker(TestPromptLoader.create(), chatModelRouter, properties, new ObjectMapper());
     }
 
     @Test
