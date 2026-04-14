@@ -181,17 +181,15 @@ public class BgeHttpRetrievalReranker implements RetrievalReranker {
             }
 
             if (shouldFilterLowConfidence(rankedResults)) {
-                recordOutcome("filtered", sample, payloadChars, candidates.size(), rankedResults.size());
-                circuitBreaker.recordSuccess();
-                log.warn("BGE rerank filtered low-confidence result: traceId={}, modelId={}, topScore={}, threshold={}, breakerState={}",
+                log.warn("BGE rerank low-confidence (still applying ranking): traceId={}, modelId={}, topScore={}, threshold={}, breakerState={}",
                         TraceContext.getTraceId(), properties.getModelId(), rankedResults.get(0).score(), properties.getScoreThreshold(), circuitBreaker.getState());
-                return markAsFiltered(candidates);
             }
 
             List<MilvusSearchHit> reranked = applyRankingWithScores(candidates, rankedResults);
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
 
-            String outcome = attempts.get() > 1 ? "connect_retry_success" : "success";
+            String outcome = shouldFilterLowConfidence(rankedResults) ? "low_confidence"
+                    : attempts.get() > 1 ? "connect_retry_success" : "success";
             recordOutcome(outcome, sample, payloadChars, candidates.size(), rankedResults.size());
             circuitBreaker.recordSuccess();
 

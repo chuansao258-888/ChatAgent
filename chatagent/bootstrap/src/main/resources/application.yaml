@@ -105,7 +105,7 @@ rag:
       ready-probe-timeout-ms: ${CHATAGENT_RAG_RERANKER_READY_PROBE_TIMEOUT_MS:200}
       retry-connect-errors: ${CHATAGENT_RAG_RERANKER_RETRY_CONNECT_ERRORS:1}
       enable-confidence-filter: ${CHATAGENT_RAG_RERANKER_FILTER_ENABLED:true}
-      score-threshold: ${CHATAGENT_RAG_RERANKER_SCORE_THRESHOLD:0.15}
+      score-threshold: ${CHATAGENT_RAG_RERANKER_SCORE_THRESHOLD:0.08}
       failure-threshold: ${CHATAGENT_RAG_RERANKER_FAILURE_THRESHOLD:5}
       failure-rate-threshold-percent: ${CHATAGENT_RAG_RERANKER_FAILURE_RATE_THRESHOLD_PERCENT:50}
       minimum-request-volume: ${CHATAGENT_RAG_RERANKER_MIN_REQUEST_VOLUME:10}

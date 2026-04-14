@@ -36,7 +36,7 @@ public class RerankerProperties {
     private int readyProbeTimeoutMs = 200;
     private int retryConnectErrors = 1;
     private boolean enableConfidenceFilter = true;
-    private double scoreThreshold = 0.15d;
+    private double scoreThreshold = 0.08d;
 
     // Circuit breaker properties
     private int failureThreshold = 5;
