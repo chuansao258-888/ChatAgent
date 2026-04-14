@@ -12,12 +12,14 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,7 +38,10 @@ class IntentRouterTest {
 
     @BeforeEach
     void setUp() {
-        intentRouter = new IntentRouter(TestPromptLoader.create(), intentTreeCacheManager, chatModelRouter, 0.45d, 0.2d, 2, "classifier-model");
+        @SuppressWarnings("unchecked")
+        ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider = mock(ObjectProvider.class);
+        when(meterRegistryProvider.getIfAvailable()).thenReturn(null);
+        intentRouter = new IntentRouter(TestPromptLoader.create(), intentTreeCacheManager, chatModelRouter, 0.45d, 0.2d, 2, "classifier-model", meterRegistryProvider);
     }
 
     @Test

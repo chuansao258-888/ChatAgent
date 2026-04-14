@@ -16,6 +16,9 @@ import com.yulong.chatagent.rag.retrieve.SessionFileSimilaritySearcher;
 import com.yulong.chatagent.rag.vector.milvus.model.MilvusSearchHit;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
+import io.micrometer.core.instrument.MeterRegistry;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -25,10 +28,12 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Resolves which retrieval scopes are relevant for one chat session and merges the results.
  */
+@Slf4j
 @Component
 public class SearchScopeResolver {
 
@@ -42,6 +47,7 @@ public class SearchScopeResolver {
     private final RetrievalReranker retrievalReranker;
     private final int topK;
     private final int rrfK;
+    private final MeterRegistry meterRegistry;
 
     public SearchScopeResolver(ChatSessionRepository chatSessionRepository,
                                ChatSessionFileRepository chatSessionFileRepository,
@@ -52,7 +58,8 @@ public class SearchScopeResolver {
                                KnowledgeDocumentSignalService knowledgeDocumentSignalService,
                                RetrievalReranker retrievalReranker,
                                @Value("${rag.retrieval.top-k:3}") int topK,
-                               @Value("${rag.retrieval.rrf-k:60}") int rrfK) {
+                               @Value("${rag.retrieval.rrf-k:60}") int rrfK,
+                               ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this.chatSessionRepository = chatSessionRepository;
         this.chatSessionFileRepository = chatSessionFileRepository;
         this.agentKnowledgeBaseRepository = agentKnowledgeBaseRepository;
@@ -63,6 +70,7 @@ public class SearchScopeResolver {
         this.retrievalReranker = retrievalReranker;
         this.topK = topK;
         this.rrfK = rrfK;
+        this.meterRegistry = meterRegistryProvider.getIfAvailable();
     }
 
     public List<RetrievalHit> searchBySession(String chatSessionId, String queryText) {
@@ -76,16 +84,22 @@ public class SearchScopeResolver {
             return List.of();
         }
 
-        ChatSessionDTO chatSession = chatSessionRepository.findById(chatSessionId);
-        if (chatSession == null) {
-            return List.of();
+        long startMs = System.currentTimeMillis();
+        try {
+            ChatSessionDTO chatSession = chatSessionRepository.findById(chatSessionId);
+            if (chatSession == null) {
+                return List.of();
+            }
+
+            List<String> sessionFileIds = resolveSessionFileIds(chatSessionId);
+            List<MilvusSearchHit> sessionHits = sessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(sessionFileIds, queryText);
+            List<MilvusSearchHit> knowledgeBaseHits = resolveKnowledgeHits(chatSession, queryText, intentResolution);
+
+            return rerankAndLimit(queryText, fuseHits(knowledgeBaseHits, sessionHits));
+        } finally {
+            long durationMs = System.currentTimeMillis() - startMs;
+            recordTimer("chatagent.rag.retrieval.latency", durationMs);
         }
-
-        List<String> sessionFileIds = resolveSessionFileIds(chatSessionId);
-        List<MilvusSearchHit> sessionHits = sessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(sessionFileIds, queryText);
-        List<MilvusSearchHit> knowledgeBaseHits = resolveKnowledgeHits(chatSession, queryText, intentResolution);
-
-        return rerankAndLimit(queryText, fuseHits(knowledgeBaseHits, sessionHits));
     }
 
     private List<String> resolveSessionFileIds(String chatSessionId) {
@@ -298,6 +312,17 @@ public class SearchScopeResolver {
 
         private ScopedHit withFusedScore(double fusedScore) {
             return new ScopedHit(sourceType, hit, syntheticChunkId, fusedScore);
+        }
+    }
+
+    private void recordTimer(String name, long durationMs, String... tags) {
+        if (meterRegistry == null) {
+            return;
+        }
+        try {
+            meterRegistry.timer(name, tags).record(Math.max(durationMs, 0L), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.warn("Failed to record retrieval timer: name={}, error={}", name, e.getMessage());
         }
     }
 }

@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,6 +64,9 @@ class SearchScopeResolverTest {
 
     @BeforeEach
     void setUp() {
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(meterRegistryProvider.getIfAvailable()).thenReturn(null);
         searchScopeResolver = new SearchScopeResolver(
                 chatSessionRepository,
                 chatSessionFileRepository,
@@ -73,7 +77,8 @@ class SearchScopeResolverTest {
                 knowledgeDocumentSignalService,
                 retrievalReranker,
                 3,
-                60
+                60,
+                meterRegistryProvider
         );
         lenient().when(knowledgeDocumentSignalService.attachSignals(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
     }

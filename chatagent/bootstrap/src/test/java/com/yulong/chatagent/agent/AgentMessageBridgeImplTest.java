@@ -23,6 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,12 +42,16 @@ class AgentMessageBridgeImplTest {
     @BeforeEach
     void setUp() {
         currentTurnCitationHolder = new CurrentTurnCitationHolder();
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(meterRegistryProvider.getIfAvailable()).thenReturn(null);
         agentMessageBridge = new AgentMessageBridgeImpl(
                 sseService,
                 new ChatMessageConverter(new ObjectMapper()),
                 chatMessageFacadeService,
                 currentTurnCitationHolder,
-                new ChatRoutingProperties()
+                new ChatRoutingProperties(),
+                meterRegistryProvider
         );
         when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("msg-1").build());

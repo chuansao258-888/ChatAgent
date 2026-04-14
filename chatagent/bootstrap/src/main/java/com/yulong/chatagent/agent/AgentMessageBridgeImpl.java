@@ -14,6 +14,7 @@ import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.rag.model.CitationMetadata;
 import com.yulong.chatagent.sse.SseService;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -21,6 +22,7 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.Assert;
 import reactor.core.Disposable;
 
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -42,17 +45,20 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final CurrentTurnCitationHolder currentTurnCitationHolder;
     private final ChatRoutingProperties routingProperties;
+    private final MeterRegistry meterRegistry;
 
     public AgentMessageBridgeImpl(SseService sseService,
                                   ChatMessageConverter chatMessageConverter,
                                   ChatMessageFacadeService chatMessageFacadeService,
                                   CurrentTurnCitationHolder currentTurnCitationHolder,
-                                  ChatRoutingProperties routingProperties) {
+                                  ChatRoutingProperties routingProperties,
+                                  ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this.sseService = sseService;
         this.chatMessageConverter = chatMessageConverter;
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.currentTurnCitationHolder = currentTurnCitationHolder;
         this.routingProperties = routingProperties;
+        this.meterRegistry = meterRegistryProvider.getIfAvailable();
     }
 
     @Override
@@ -121,11 +127,17 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         AtomicReference<Disposable> streamHandle = new AtomicReference<>();
         AtomicBoolean terminal = new AtomicBoolean(false);
         Object contentLock = new Object();
+        long streamStartMs = System.currentTimeMillis();
+        AtomicLong firstContentTimeMs = new AtomicLong(0);
+        AtomicBoolean firstContentRecorded = new AtomicBoolean(false);
 
         StreamCallback sseAdapter = new StreamCallback() {
             @Override
             public void onContent(String content) {
                 if (terminal.get()) return;
+                if (firstContentRecorded.compareAndSet(false, true)) {
+                    firstContentTimeMs.set(System.currentTimeMillis());
+                }
                 ChatMessageVO snapshot;
                 synchronized (contentLock) {
                     fullContent.append(content);
@@ -243,6 +255,12 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 disposable.dispose();
             }
             sseAdapter.onError(e);
+        }
+
+        // Record SSE first-byte latency
+        if (firstContentTimeMs.get() > 0) {
+            long firstByteLatencyMs = firstContentTimeMs.get() - streamStartMs;
+            recordTimer("chatagent.sse.first_byte.latency", firstByteLatencyMs, "session", chatSessionId);
         }
 
         synchronized (contentLock) {
@@ -481,5 +499,16 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 .metadata(baseVo.getMetadata())
                 .seqNo(baseVo.getSeqNo())
                 .build();
+    }
+
+    private void recordTimer(String name, long durationMs, String... tags) {
+        if (meterRegistry == null) {
+            return;
+        }
+        try {
+            meterRegistry.timer(name, tags).record(Math.max(durationMs, 0L), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.warn("Failed to record SSE timer: name={}, error={}", name, e.getMessage());
+        }
     }
 }

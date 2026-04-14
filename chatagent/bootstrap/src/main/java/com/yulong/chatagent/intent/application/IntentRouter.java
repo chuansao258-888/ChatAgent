@@ -6,8 +6,10 @@ import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -36,6 +39,7 @@ public class IntentRouter {
     private final double ambiguityGap;
     private final int clarificationCandidateCount;
     private final String classifierModel;
+    private final MeterRegistry meterRegistry;
 
     public IntentRouter(PromptLoader promptLoader,
                         IntentTreeCacheManager intentTreeCacheManager,
@@ -43,7 +47,8 @@ public class IntentRouter {
                         @Value("${chatagent.intent.minimum-score:0.45}") double minimumScore,
                         @Value("${chatagent.intent.ambiguity-gap:0.2}") double ambiguityGap,
                         @Value("${chatagent.intent.clarification-candidates:2}") int clarificationCandidateCount,
-                        @Value("${chatagent.intent.classifier-model:}") String classifierModel) {
+                        @Value("${chatagent.intent.classifier-model:}") String classifierModel,
+                        ObjectProvider<MeterRegistry> meterRegistryProvider) {
         this.promptLoader = promptLoader;
         this.intentTreeCacheManager = intentTreeCacheManager;
         this.chatModelRouter = chatModelRouter;
@@ -51,6 +56,7 @@ public class IntentRouter {
         this.ambiguityGap = ambiguityGap;
         this.clarificationCandidateCount = Math.max(clarificationCandidateCount, 2);
         this.classifierModel = classifierModel;
+        this.meterRegistry = meterRegistryProvider.getIfAvailable();
     }
 
     public IntentRoutingResult route(String agentId, String query) {
@@ -58,62 +64,87 @@ public class IntentRouter {
     }
 
     public IntentRoutingResult route(String agentId, String query, String selectedNodeId) {
-        IntentTreeSnapshot snapshot = intentTreeCacheManager.loadActiveSnapshot(agentId);
-        if (snapshot.isEmpty()) {
-            return IntentRoutingResult.none();
-        }
-
-        List<IntentNodeDTO> path = new ArrayList<>();
-        IntentNodeDTO current = null;
-        if (StringUtils.hasText(selectedNodeId)) {
-            current = snapshot.findNode(selectedNodeId);
-            if (current == null) {
-                return IntentRoutingResult.none();
-            }
-            path.addAll(snapshot.pathTo(selectedNodeId));
-        }
-
-        while (true) {
-            List<IntentNodeDTO> candidates = current == null ? snapshot.rootNodes() : snapshot.childrenOf(current.getId());
-            if (candidates.isEmpty()) {
-                return current == null ? IntentRoutingResult.none() : IntentRoutingResult.resolved(buildResolution(snapshot, path));
+        long startMs = System.currentTimeMillis();
+        IntentRoutingResult result;
+        try {
+            IntentTreeSnapshot snapshot = intentTreeCacheManager.loadActiveSnapshot(agentId);
+            if (snapshot.isEmpty()) {
+                result = IntentRoutingResult.none();
+                return result;
             }
 
-            if (candidates.size() == 1 && shouldAutoDrill(snapshot, candidates.get(0))) {
-                current = candidates.get(0);
+            // Vagueness pre-check: very short queries cannot be meaningfully classified
+            if (isVagueQuery(query) && !StringUtils.hasText(selectedNodeId)) {
+                List<IntentNodeDTO> rootCandidates = snapshot.rootNodes();
+                if (!rootCandidates.isEmpty()) {
+                    result = IntentRoutingResult.clarification(topCandidates(rootCandidates), "");
+                    return result;
+                }
+            }
+
+            List<IntentNodeDTO> path = new ArrayList<>();
+            IntentNodeDTO current = null;
+            if (StringUtils.hasText(selectedNodeId)) {
+                current = snapshot.findNode(selectedNodeId);
+                if (current == null) {
+                    result = IntentRoutingResult.none();
+                    return result;
+                }
+                path.addAll(snapshot.pathTo(selectedNodeId));
+            }
+
+            while (true) {
+                List<IntentNodeDTO> candidates = current == null ? snapshot.rootNodes() : snapshot.childrenOf(current.getId());
+                if (candidates.isEmpty()) {
+                    result = current == null ? IntentRoutingResult.none() : IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                    return result;
+                }
+
+                if (candidates.size() == 1 && shouldAutoDrill(snapshot, candidates.get(0))) {
+                    current = candidates.get(0);
+                    if (path.isEmpty() || !current.getId().equals(path.get(path.size() - 1).getId())) {
+                        path.add(current);
+                    }
+                    continue;
+                }
+
+                RankedSelection selection = select(query, candidates, buildPathLabel(path));
+
+                if (selection.noneMatched()) {
+                    if (current != null && current.getIntentKind() != null) {
+                        result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                        return result;
+                    }
+                    result = IntentRoutingResult.none();
+                    return result;
+                }
+
+                if (selection.best() == null) {
+                    if (current != null && current.getIntentKind() != null) {
+                        result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                        return result;
+                    }
+                    result = IntentRoutingResult.clarification(topCandidates(candidates), buildPathLabel(path));
+                    return result;
+                }
+                if (selection.ambiguous()) {
+                    result = IntentRoutingResult.clarification(selection.topCandidates(), buildPathLabel(path));
+                    return result;
+                }
+
+                current = selection.best().node();
                 if (path.isEmpty() || !current.getId().equals(path.get(path.size() - 1).getId())) {
                     path.add(current);
                 }
-                continue;
-            }
 
-            RankedSelection selection = select(query, candidates, buildPathLabel(path));
-
-            if (selection.noneMatched()) {
-                if (current != null && current.getIntentKind() != null) {
-                    return IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                if (current.getIntentKind() != null || snapshot.childrenOf(current.getId()).isEmpty()) {
+                    result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                    return result;
                 }
-                return IntentRoutingResult.none();
             }
-
-            if (selection.best() == null) {
-                if (current != null && current.getIntentKind() != null) {
-                    return IntentRoutingResult.resolved(buildResolution(snapshot, path));
-                }
-                return IntentRoutingResult.clarification(topCandidates(candidates), buildPathLabel(path));
-            }
-            if (selection.ambiguous()) {
-                return IntentRoutingResult.clarification(selection.topCandidates(), buildPathLabel(path));
-            }
-
-            current = selection.best().node();
-            if (path.isEmpty() || !current.getId().equals(path.get(path.size() - 1).getId())) {
-                path.add(current);
-            }
-
-            if (current.getIntentKind() != null || snapshot.childrenOf(current.getId()).isEmpty()) {
-                return IntentRoutingResult.resolved(buildResolution(snapshot, path));
-            }
+        } finally {
+            long durationMs = System.currentTimeMillis() - startMs;
+            recordTimer("chatagent.intent.routing.latency", durationMs, "agent", agentId);
         }
     }
 
@@ -303,6 +334,19 @@ public class IntentRouter {
         return units;
     }
 
+    /**
+     * Returns true if the query is too short or generic for meaningful classification.
+     * Single or two-character queries (e.g., "制度", "流程", "申请") lack enough context
+     * for confident routing and should trigger clarification instead.
+     */
+    private boolean isVagueQuery(String query) {
+        if (!StringUtils.hasText(query)) {
+            return true;
+        }
+        String compact = normalize(query).replaceAll("\\s+", "");
+        return compact.length() <= 2 && !compact.matches(".*[a-zA-Z].*");
+    }
+
     private String normalize(String value) {
         if (!StringUtils.hasText(value)) {
             return "";
@@ -333,5 +377,16 @@ public class IntentRouter {
     }
 
     private record RankedSelection(ScoredNode best, boolean ambiguous, boolean noneMatched, List<IntentNodeDTO> topCandidates) {
+    }
+
+    private void recordTimer(String name, long durationMs, String... tags) {
+        if (meterRegistry == null) {
+            return;
+        }
+        try {
+            meterRegistry.timer(name, tags).record(Math.max(durationMs, 0L), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.warn("Failed to record intent routing timer: name={}, error={}", name, e.getMessage());
+        }
     }
 }
