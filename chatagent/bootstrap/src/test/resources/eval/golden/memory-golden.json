@@ -1,0 +1,180 @@
+[
+  {
+    "id": "mem-hr-001",
+    "domain": "hr",
+    "turns": [
+      {"role": "user", "content": "我有多少天年假", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "根据记录您有10天年假", "expectedSummaryMentions": null},
+      {"role": "user", "content": "用了几天", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已使用3天", "expectedSummaryMentions": ["年假", "10天", "3天"]},
+      {"role": "user", "content": "还剩多少", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "还剩7天年假", "expectedSummaryMentions": ["年假", "7天"]}
+    ],
+    "expectedEntities": ["年假", "10天", "3天", "7天"],
+    "expectedTopics": ["年假查询"]
+  },
+  {
+    "id": "mem-hr-002",
+    "domain": "hr",
+    "turns": [
+      {"role": "user", "content": "我这个月工资发了没", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "您3月份的工资已于4月5日发放，实发金额为¥12,580.00", "expectedSummaryMentions": ["工资", "3月", "¥12,580"]},
+      {"role": "user", "content": "为什么比上个月少了", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "比上个月少了¥1,200，原因是扣除了迟到罚款¥200和社保补缴¥1,000", "expectedSummaryMentions": ["¥1,200", "迟到罚款", "¥200", "社保补缴", "¥1,000"]},
+      {"role": "user", "content": "社保补缴是什么时候开始的", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "社保补缴从2026年1月起开始，政策编号SN-2026-0042，每月补缴¥1,000，共需补缴6个月", "expectedSummaryMentions": ["2026年1月", "SN-2026-0042", "¥1,000", "6个月"]},
+      {"role": "user", "content": "那下个月到手多少", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "预计下个月实发¥11,580.00，仍需扣除社保补缴¥1,000", "expectedSummaryMentions": ["¥11,580", "社保补缴", "¥1,000"]}
+    ],
+    "expectedEntities": ["工资", "3月", "¥12,580", "¥1,200", "迟到罚款", "¥200", "社保补缴", "¥1,000", "2026年1月", "SN-2026-0042", "6个月", "¥11,580"],
+    "expectedTopics": ["薪资查询", "社保补缴"]
+  },
+  {
+    "id": "mem-hr-003",
+    "domain": "hr",
+    "turns": [
+      {"role": "user", "content": "上个月加班了多少小时", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "您3月份累计加班36小时，其中工作日加班20小时，周末加班16小时", "expectedSummaryMentions": ["加班", "36小时", "工作日", "20小时", "周末", "16小时"]},
+      {"role": "user", "content": "加班费怎么算的", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "工作日加班按1.5倍计算，周末按2倍计算，您的加班费合计¥3,240", "expectedSummaryMentions": ["1.5倍", "2倍", "加班费", "¥3,240"]},
+      {"role": "user", "content": "什么时候发放加班费", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "加班费随次月工资一起发放，预计4月5日到账", "expectedSummaryMentions": ["次月工资", "4月5日"]},
+      {"role": "user", "content": "我可以选择调休吗", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "根据公司制度OT-2025-008，加班可在3个月内申请调休，您目前有36小时调休额度可用", "expectedSummaryMentions": ["调休", "OT-2025-008", "3个月", "36小时"]},
+      {"role": "user", "content": "那我想把周末的改成调休，工作日的要加班费", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已为您记录：周末16小时转为调休额度，工作日20小时按加班费计算为¥1,800，将在4月工资中发放", "expectedSummaryMentions": ["周末", "16小时", "调休", "工作日", "20小时", "¥1,800", "4月"]}
+    ],
+    "expectedEntities": ["加班", "36小时", "工作日", "20小时", "周末", "16小时", "1.5倍", "2倍", "¥3,240", "调休", "OT-2025-008", "¥1,800"],
+    "expectedTopics": ["加班查询", "加班费", "调休"]
+  },
+  {
+    "id": "mem-hr-004",
+    "domain": "hr",
+    "turns": [
+      {"role": "user", "content": "我的五险一金缴纳基数是多少", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "您的五险一金缴纳基数为¥15,000，个人缴纳部分合计¥1,650/月，公司缴纳部分合计¥3,750/月", "expectedSummaryMentions": ["五险一金", "¥15,000", "¥1,650", "¥3,750"]},
+      {"role": "user", "content": "公积金比例是多少", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "您的公积金缴存比例为12%，个人和公司各缴¥1,800/月", "expectedSummaryMentions": ["公积金", "12%", "¥1,800"]},
+      {"role": "user", "content": "医保报销比例呢", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "门诊报销比例70%，住院报销比例85%，年度报销上限¥300,000", "expectedSummaryMentions": ["门诊", "70%", "住院", "85%", "¥300,000"]},
+      {"role": "user", "content": "生育保险怎么用", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "生育保险可报销产检费用和分娩费用，产假期间享受生育津贴，标准为上年度月平均工资，您的情况约为¥13,800/月", "expectedSummaryMentions": ["生育保险", "产检", "分娩", "生育津贴", "¥13,800"]},
+      {"role": "user", "content": "可以查一下养老保险的累计缴纳月数吗", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "您的养老保险累计缴纳58个月，其中本公司缴纳22个月，前单位缴纳36个月", "expectedSummaryMentions": ["养老保险", "58个月", "22个月", "36个月"]}
+    ],
+    "expectedEntities": ["五险一金", "¥15,000", "¥1,650", "¥3,750", "公积金", "12%", "¥1,800", "70%", "85%", "¥300,000", "生育津贴", "¥13,800", "养老保险", "58个月"],
+    "expectedTopics": ["五险一金查询", "公积金", "医保", "生育保险", "养老保险"]
+  },
+  {
+    "id": "mem-fin-001",
+    "domain": "finance",
+    "turns": [
+      {"role": "user", "content": "我上个月出差上海的报销批了吗", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "您提交的上海出差报销单RB-2026-0315已通过部门审批，金额¥4,860，正在财务审核中", "expectedSummaryMentions": ["上海", "RB-2026-0315", "¥4,860"]},
+      {"role": "user", "content": "里面包含哪些费用", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "报销明细：机票¥1,580，酒店¥1,800（3晚），交通费¥680，餐费¥800", "expectedSummaryMentions": ["机票", "¥1,580", "酒店", "¥1,800", "3晚", "交通费", "¥680", "餐费", "¥800"]},
+      {"role": "user", "content": "什么时候能到账", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "财务审核预计3个工作日完成，款项将在审核通过后5个工作日内打入您的工资卡", "expectedSummaryMentions": ["3个工作日", "5个工作日", "工资卡"]},
+      {"role": "user", "content": "酒店发票抬头写错了怎么办", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "发票抬头有误可以联系酒店重新开具，或提交发票变更申请FIN-CORR-2026-0088，修改后重新上传即可", "expectedSummaryMentions": ["发票抬头", "FIN-CORR-2026-0088"]},
+      {"role": "user", "content": "好，那我先联系酒店", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "好的，酒店发票修改后请及时更新到报销单RB-2026-0315中，不影响其他已审批项", "expectedSummaryMentions": ["RB-2026-0315"]}
+    ],
+    "expectedEntities": ["上海", "RB-2026-0315", "¥4,860", "机票", "¥1,580", "酒店", "¥1,800", "3晚", "交通费", "¥680", "餐费", "¥800", "FIN-CORR-2026-0088"],
+    "expectedTopics": ["差旅报销", "发票修改"]
+  },
+  {
+    "id": "mem-fin-002",
+    "domain": "finance",
+    "turns": [
+      {"role": "user", "content": "帮我查一下发票INV-2026-0421的状态", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "发票INV-2026-0421，金额¥28,500，供应商为华信科技有限公司，当前状态：已验证通过", "expectedSummaryMentions": ["INV-2026-0421", "¥28,500", "华信科技", "已验证"]},
+      {"role": "user", "content": "这张发票对应哪个合同", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "对应采购合同PO-2026-0118，项目名称为ERP系统升级二期，合同总金额¥156,000", "expectedSummaryMentions": ["PO-2026-0118", "ERP系统升级二期", "¥156,000"]},
+      {"role": "user", "content": "合同还剩多少没付", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "合同已付¥127,500（含本次发票），剩余¥28,500待付，最后付款日期为2026年6月30日", "expectedSummaryMentions": ["已付", "¥127,500", "剩余", "¥28,500", "2026年6月30日"]},
+      {"role": "user", "content": "供应商联系人是谁", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "华信科技的对接人为李明，电话138-0013-8000，邮箱liming@huaxintech.com", "expectedSummaryMentions": ["李明", "138-0013-8000", "liming@huaxintech.com"]},
+      {"role": "user", "content": "下次付款需要什么流程", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "尾款支付需提交验收报告，经项目经理张伟签字确认后，提交财务部走付款审批流程", "expectedSummaryMentions": ["验收报告", "张伟", "付款审批"]},
+      {"role": "user", "content": "好的谢谢", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "不客气，如有其他财务问题随时联系，发票INV-2026-0421和合同PO-2026-0118的记录都已更新", "expectedSummaryMentions": ["INV-2026-0421", "PO-2026-0118"]}
+    ],
+    "expectedEntities": ["INV-2026-0421", "¥28,500", "华信科技", "PO-2026-0118", "ERP系统升级二期", "¥156,000", "¥127,500", "2026年6月30日", "李明", "张伟"],
+    "expectedTopics": ["发票查询", "合同付款", "供应商管理"]
+  },
+  {
+    "id": "mem-fin-003",
+    "domain": "finance",
+    "turns": [
+      {"role": "user", "content": "我想申请采购一批办公用品", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "请提供采购清单，包含物品名称、数量和预算金额，采购单号将由系统自动生成", "expectedSummaryMentions": ["采购", "清单"]},
+      {"role": "user", "content": "A4打印纸50箱，中性笔200支，文件夹100个，预计总费用¥3,200", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已创建采购申请PR-2026-0520，明细：A4打印纸50箱¥1,500，中性笔200支¥400，文件夹100个¥300，运费及杂项预计¥1,000，总计¥3,200", "expectedSummaryMentions": ["PR-2026-0520", "A4打印纸", "50箱", "¥1,500", "中性笔", "200支", "¥400", "文件夹", "100个", "¥300", "¥3,200"]},
+      {"role": "user", "content": "审批要多久", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "¥5,000以下的采购由部门经理直接审批，预计1-2个工作日完成", "expectedSummaryMentions": ["¥5,000", "部门经理", "1-2个工作日"]},
+      {"role": "user", "content": "之前3月份的采购到货了吗", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "3月份采购单PR-2026-0318已于3月25日到货并入库，仓库确认签收人为王芳", "expectedSummaryMentions": ["PR-2026-0318", "3月25日", "王芳"]},
+      {"role": "user", "content": "这次送到哪个仓库", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "默认配送至A栋仓库，如需变更请备注在PR-2026-0520的备注栏", "expectedSummaryMentions": ["A栋仓库", "PR-2026-0520"]}
+    ],
+    "expectedEntities": ["PR-2026-0520", "A4打印纸", "50箱", "¥1,500", "中性笔", "200支", "¥400", "文件夹", "100个", "¥3,200", "PR-2026-0318", "王芳", "A栋仓库"],
+    "expectedTopics": ["办公用品采购", "采购审批", "物流配送"]
+  },
+  {
+    "id": "mem-it-001",
+    "domain": "it",
+    "turns": [
+      {"role": "user", "content": "我的VPN连不上了", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "请问您使用的是哪个VPN客户端？报错信息是什么？", "expectedSummaryMentions": null},
+      {"role": "user", "content": "用的SecureConnect，提示错误码ERR-VPN-403", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "错误码ERR-VPN-403表示您的VPN证书已过期，您的证书有效期至2026年3月31日，需要重新申请", "expectedSummaryMentions": ["SecureConnect", "ERR-VPN-403", "证书过期", "2026年3月31日"]},
+      {"role": "user", "content": "怎么申请新证书", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "请在IT服务门户提交VPN证书续期申请，审批人为主管赵磊，通常1个工作日内处理完成", "expectedSummaryMentions": ["VPN证书续期", "赵磊", "1个工作日"]},
+      {"role": "user", "content": "申请提交了，工单号TK-VPN-20260410", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已跟踪工单TK-VPN-20260410，赵磊已收到通知，预计今天下午完成审批", "expectedSummaryMentions": ["TK-VPN-20260410", "赵磊"]},
+      {"role": "user", "content": "审批通过后怎么操作", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "审批通过后会收到邮件，下载新证书后导入SecureConnect即可，具体步骤：设置 > 证书管理 > 导入 > 选择下载的.p12文件", "expectedSummaryMentions": ["SecureConnect", "证书管理", ".p12"]}
+    ],
+    "expectedEntities": ["SecureConnect", "ERR-VPN-403", "2026年3月31日", "VPN证书续期", "赵磊", "TK-VPN-20260410", ".p12"],
+    "expectedTopics": ["VPN故障", "证书续期"]
+  },
+  {
+    "id": "mem-it-002",
+    "domain": "it",
+    "turns": [
+      {"role": "user", "content": "我需要申请项目文档库的编辑权限", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "请问您需要哪个项目文档库的权限？目前您拥有基础查看权限", "expectedSummaryMentions": null},
+      {"role": "user", "content": "智慧城市项目的Alpha版本文档库", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "智慧城市Alpha文档库路径为//docserver/projects/smartcity-alpha，当前权限为只读，申请编辑权限需要项目负责人陈晓燕审批", "expectedSummaryMentions": ["智慧城市", "Alpha", "smartcity-alpha", "只读", "陈晓燕"]},
+      {"role": "user", "content": "帮我提交申请", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已提交权限申请PERM-REQ-20260412-003，申请编辑权限，审批人为陈晓燕，预计处理时间2个工作日", "expectedSummaryMentions": ["PERM-REQ-20260412-003", "编辑权限", "陈晓燕", "2个工作日"]},
+      {"role": "user", "content": "顺便帮我把测试环境的权限也申请一下", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "测试环境权限需要另外提交申请，路径//testserver/smartcity-alpha，审批人为测试经理刘洋", "expectedSummaryMentions": ["testserver", "smartcity-alpha", "刘洋"]},
+      {"role": "user", "content": "一起申请了", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已提交PERM-REQ-20260412-004，测试环境编辑权限，审批人刘洋。两份申请均可在IT门户查看进度", "expectedSummaryMentions": ["PERM-REQ-20260412-004", "刘洋", "IT门户"]}
+    ],
+    "expectedEntities": ["智慧城市", "Alpha", "smartcity-alpha", "陈晓燕", "PERM-REQ-20260412-003", "刘洋", "PERM-REQ-20260412-004", "testserver"],
+    "expectedTopics": ["权限申请", "文档库"]
+  },
+  {
+    "id": "mem-admin-001",
+    "domain": "admin",
+    "turns": [
+      {"role": "user", "content": "帮我预订明天下午3点的会议室", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "请问需要多大的会议室？预计多少人参加？", "expectedSummaryMentions": null},
+      {"role": "user", "content": "6个人，需要投影设备", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "符合条件的有：A栋305（8人，带投影），B栋201（10人，带投影和视频设备），C栋102（6人，带投影），请问选哪个？", "expectedSummaryMentions": ["A栋305", "8人", "B栋201", "10人", "C栋102", "6人"]},
+      {"role": "user", "content": "B栋201吧，用多久", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已预订B栋201，时间4月14日15:00-16:00，会议号MTG-20260414-001，已同步到您的日历", "expectedSummaryMentions": ["B栋201", "4月14日", "15:00-16:00", "MTG-20260414-001"]},
+      {"role": "user", "content": "帮我发邮件通知参会人员", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "请提供参会人员邮箱地址", "expectedSummaryMentions": null},
+      {"role": "user", "content": "zhangwei@company.com, liuyan@company.com, chenxy@company.com, wangfang@company.com, liming@company.com", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "已发送会议通知邮件至5位参会人，主题：项目评审会-4月14日15:00 B栋201，包含会议号MTG-20260414-001和日历邀请", "expectedSummaryMentions": ["5位", "项目评审会", "B栋201", "MTG-20260414-001"]},
+      {"role": "user", "content": "能顺便订一下会议室的投影设备吗", "expectedSummaryMentions": null},
+      {"role": "assistant", "content": "B栋201自带投影设备，无需额外预订。如需其他设备如白板、HDMI转接头，可联系行政前台预留", "expectedSummaryMentions": ["B栋201", "投影设备", "行政前台"]}
+    ],
+    "expectedEntities": ["B栋201", "4月14日", "15:00-16:00", "MTG-20260414-001", "6人", "zhangwei@company.com", "liuyan@company.com", "chenxy@company.com", "wangfang@company.com", "liming@company.com"],
+    "expectedTopics": ["会议室预订", "邮件通知", "设备预约"]
+  }
+]
