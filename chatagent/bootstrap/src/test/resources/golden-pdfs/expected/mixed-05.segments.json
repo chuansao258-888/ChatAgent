@@ -1,0 +1,17 @@
+{
+  "documentId" : "mixed-05",
+  "expectedSegmentCount" : 2,
+  "expectedExtractionMode" : "PDF_VISUAL_ROUTED",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "VISUAL_TRACK",
+    "mustContain" : [ "Name", "Age", "Department" ],
+    "mustNotContain" : [ "[图像解析失败]" ],
+    "expectedVisualType" : "IMAGE"
+  }, {
+    "pageIndex" : 1,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "The", "employee", "directory" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  } ]
+}

@@ -1,0 +1,21 @@
+{
+  "documentId" : "mixed-03",
+  "expectedSegmentCount" : 3,
+  "expectedExtractionMode" : "PDF_VISUAL_ROUTED",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Annual", "Report", "Introduction" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  }, {
+    "pageIndex" : 1,
+    "expectedRoute" : "VISUAL_TRACK",
+    "mustNotContain" : [ "[图像解析失败]" ],
+    "expectedVisualType" : "IMAGE"
+  }, {
+    "pageIndex" : 2,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Department", "Budget", "Allocation" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  } ]
+}

@@ -1,0 +1,16 @@
+{
+  "documentId" : "scanned-04",
+  "expectedSegmentCount" : 2,
+  "expectedExtractionMode" : "OCR_REQUIRED",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "VISUAL_TRACK",
+    "mustNotContain" : [ "[图像解析失败]" ],
+    "expectedVisualType" : "IMAGE"
+  }, {
+    "pageIndex" : 1,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Product", "catalog", "item" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  } ]
+}

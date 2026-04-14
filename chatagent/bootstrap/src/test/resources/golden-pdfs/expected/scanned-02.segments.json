@@ -1,0 +1,11 @@
+{
+  "documentId" : "scanned-02",
+  "expectedSegmentCount" : 1,
+  "expectedExtractionMode" : "OCR_REQUIRED",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "VISUAL_TRACK",
+    "mustNotContain" : [ "[图像解析失败]" ],
+    "expectedVisualType" : "IMAGE"
+  } ]
+}

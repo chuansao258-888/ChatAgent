@@ -1,0 +1,11 @@
+{
+  "documentId" : "table-02",
+  "expectedSegmentCount" : 1,
+  "expectedExtractionMode" : "NATIVE_TEXT",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Name", "Department", "Role" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  } ]
+}

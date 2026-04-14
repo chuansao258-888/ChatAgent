@@ -1,0 +1,12 @@
+{
+  "documentId" : "table-04",
+  "expectedSegmentCount" : 1,
+  "expectedExtractionMode" : "PDF_VISUAL_ROUTED",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "VISUAL_TRACK",
+    "mustContain" : [ "ID|Name|Score", "Alice", "Bob" ],
+    "mustNotContain" : [ "[图像解析失败]" ],
+    "expectedVisualType" : "IMAGE"
+  } ]
+}

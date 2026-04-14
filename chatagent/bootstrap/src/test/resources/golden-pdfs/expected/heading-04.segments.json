@@ -1,0 +1,16 @@
+{
+  "documentId" : "heading-04",
+  "expectedSegmentCount" : 2,
+  "expectedExtractionMode" : "NATIVE_TEXT",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Chapter", "Project", "Overview" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  }, {
+    "pageIndex" : 1,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "This", "the", "end" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  } ]
+}

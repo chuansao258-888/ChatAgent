@@ -1,0 +1,16 @@
+{
+  "documentId" : "mixed-04",
+  "expectedSegmentCount" : 2,
+  "expectedExtractionMode" : "NATIVE_TEXT",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Quick", "status", "update" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  }, {
+    "pageIndex" : 1,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Migration", "Progress", "Report" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  } ]
+}

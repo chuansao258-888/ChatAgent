@@ -1,0 +1,17 @@
+{
+  "documentId" : "mixed-02",
+  "expectedSegmentCount" : 2,
+  "expectedExtractionMode" : "PDF_VISUAL_ROUTED",
+  "segments" : [ {
+    "pageIndex" : 0,
+    "expectedRoute" : "FAST_TRACK",
+    "mustContain" : [ "Staffing", "Plan", "The" ],
+    "mustNotContain" : [ "[图像解析失败]" ]
+  }, {
+    "pageIndex" : 1,
+    "expectedRoute" : "VISUAL_TRACK",
+    "mustContain" : [ "Team|Open|Filled", "Frontend", "Backend" ],
+    "mustNotContain" : [ "[图像解析失败]" ],
+    "expectedVisualType" : "IMAGE"
+  } ]
+}
