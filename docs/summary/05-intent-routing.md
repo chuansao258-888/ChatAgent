@@ -19,7 +19,7 @@ ConversationTurnPreparationService.prepare()
     ├── 检查待澄清状态 (Redis, 5分钟 TTL)
     │   └── ClarificationResolver.resolve() → 匹配用户回复
     │
-    ├── IntentRouter.route() → 层级路由
+    ├── IntentRouter.routeWithHistory() → 历史感知层级路由
     │   │
     │   ├── 加载快照 (Redis → DB, DefaultIntentTreeCacheManager)
     │   │
@@ -30,13 +30,17 @@ ConversationTurnPreparationService.prepare()
     │       │
     │       └── LLM 回退分类
     │           └── 返回 node ID / NONE / AMBIGUOUS
+    │           └── 路由失败时: 用上轮 intent leaf 拼接查询做二次路由
+    │               例: "需要部门经理审批吗" → "VPN申请 需要部门经理审批吗"
     │
     ├── 需要澄清 → PendingIntentResolutionStore.save()
     │   └── ClarificationResponseBuilder → 返回选项列表
     │
     ├── SYSTEM 意图 → SystemIntentResponseRenderer.render()
     │
-    └── KB/TOOL 意图 → QueryRewriter.rewrite()
+    └── 所有意图 → QueryRewriter.rewrite() + enforceAnchor()
+        ├── KB: LLM 改写 + 程序化锚点注入
+        ├── TOOL/SYSTEM: 程序化锚点注入 (无 LLM 调用)
         └── TurnPreparationResult.dispatch(resolution, rewrittenInput)
 ```
 
@@ -83,7 +87,7 @@ DOMAIN (领域) ─── 最顶层分类，如 "人事管理"
 
 **文件：** `application/IntentRouter.java`
 
-### 3.1 层级路由算法 (route, 第50-112行)
+### 3.1 层级路由算法 (route, 第66-149行)
 
 ```java
 route(agentId, query, selectedNodeId):
@@ -97,7 +101,26 @@ route(agentId, query, selectedNodeId):
        d. 多个候选 → select(query, candidates, pathLabel)
 ```
 
-### 3.2 两阶段分类策略 (select, 第134-191行)
+### 3.2 历史感知路由 (routeWithHistory)
+
+当无状态路由返回 CLARIFICATION/NONE 时，利用上一轮的意图解析结果做二次路由：
+
+```java
+routeWithHistory(agentId, query, previousResolution):
+    1. 第一轮: route(agentId, query) — 无状态路由
+    2. 如果路由失败且 previousResolution != null:
+       a. 提取上一轮路径的最深叶节点名称 (extractLeafName)
+       b. 拼接上下文查询: leafName + " " + query
+       c. 第二轮: route(agentId, contextQuery)
+       d. 如果二次路由成功 → 返回结果
+    3. 否则返回第一轮结果
+```
+
+**示例**: 多轮对话中用户说 "需要部门经理审批吗"，无状态路由无法判断意图。上一轮解析为 "VPN申请"，拼接为 "VPN申请 需要部门经理审批吗"，二次路由成功匹配 VPN申请 节点。
+
+**适用场景**: 仅在多轮对话中使用。首轮对话无历史，直接走无状态路由。生产中由 `ConversationTurnPreparationService` 传入上一轮 `IntentResolution`。
+
+### 3.3 两阶段分类策略 (select, 第171-228行)
 
 #### 阶段一：启发式评分 (score, 第241-276行)
 
@@ -171,17 +194,39 @@ resolve(userInput, candidates):
 
 **文件：** `application/QueryRewriter.java`
 
-仅对 KB 意图生效（TOOL 和 SYSTEM 返回原始查询）。
+对所有意图类型生效，分为两条路径：
+
+### 5.1 KB 意图：LLM 改写 + 程序化锚点注入
 
 ```
-rewrite(query, pathLabel):
-    1. 构建 Prompt，指导 LLM：
-       - 使用意图路径上下文扩展代词
-       - 保留领域术语
-       - 补充省略细节
-    2. LLM 调用成功 → 返回改写后的查询
+rewrite(query, intentResolution):
+    1. KB 意图：渲染 query-rewrite.md prompt (v3)
+       - 规则1 (检索锚点): 改写后必须包含意图路径最深层名称
+       - 规则2: 展开代词和省略引用
+       - 规则3: 保留领域术语不变
+    2. LLM 调用成功 → enforceAnchor(改写结果, pathLabel)
     3. LLM 调用失败 → 回退："{pathLabel} | {originalQuery}"
 ```
+
+### 5.2 TOOL/SYSTEM 意图：程序化锚点注入 (无 LLM 调用)
+
+```
+rewrite(query, intentResolution):
+    1. 非 KB 意图 → enforceAnchor(query.trim(), pathLabel)
+    2. 仅做确定性后处理，不调用 LLM
+```
+
+### 5.3 程序化锚点注入 (enforceAnchor)
+
+```java
+enforceAnchor(query, pathLabel):
+    leafName = extractLeafName(pathLabel)  // 取 " > " 后的最后一段
+    if (leafName != null && !query.contains(leafName)):
+        return leafName + " " + query      // 确定性前缀，不依赖 LLM
+    return query
+```
+
+**设计理由**: LLM 改写倾向精简表达，容易丢失或截断意图锚点（如 "社保公积金" 被缩写为 "公积金"）。`enforceAnchor` 作为确定性安全网，保证下游检索始终有主匹配信号。对所有 IntentKind 生效（KB/TOOL/SYSTEM），因为 TOOL 意图的工具调用也需要精确的意图上下文。
 
 ---
 
@@ -299,6 +344,20 @@ loadActiveSnapshot(agentId):
 - **不可变发布：** 发布后快照不可修改，保证路由一致性
 - **原子切换：** 版本切换通过更新 assistant 的 activeIntentVersion 实现
 - **自动缓存失效：** 版本号校验机制
+
+### 历史感知路由 (v4 新增)
+- **routeWithHistory()**: 无状态路由失败时，用上一轮 intent leaf 拼接查询做二次路由
+- **适用场景**: 多轮对话中的代词/省略查询（如 "需要审批吗" → "VPN申请 需要审批吗"）
+- **零侵入**: 不改路由 prompt 或树结构，仅在调用层增加 fallback 逻辑
+
+### 程序化锚点注入 (v4 新增)
+- **enforceAnchor()**: 确定性后处理，保证 rewritten query 包含 intent leaf name
+- **全类型覆盖**: KB/TOOL/SYSTEM 所有意图类型均生效
+- **LLM 安全网**: LLM 改写可能丢失或截断锚点（如 "社保公积金" → "公积金"），程序化注入兜底
+
+### Prompt 工程
+- **classifier.md v4**: 新增关键词提取规则 (Rule 6)，覆盖 "顺便问一下…", "还有…能…吗" 等对话包装句式
+- **query-rewrite.md v3**: 新增检索锚点强制规则 (Rule 1)，要求改写后必须包含意图路径最深层名称
 
 ### 查询改写
 - **意图上下文注入：** 利用意图路径扩展代词、补充省略信息

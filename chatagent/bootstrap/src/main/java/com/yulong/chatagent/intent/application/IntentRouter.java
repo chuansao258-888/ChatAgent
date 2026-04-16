@@ -63,6 +63,38 @@ public class IntentRouter {
         return route(agentId, query, null);
     }
 
+    /**
+     * History-aware routing: when the initial stateless routing fails (CLARIFICATION/NONE),
+     * retries with the previous intent's leaf name prepended to give the router
+     * the missing conversational context.
+     */
+    public IntentRoutingResult routeWithHistory(String agentId, String query,
+                                                 IntentResolution previousResolution) {
+        IntentRoutingResult firstPass = route(agentId, query);
+        if (!firstPass.hasResolution() && previousResolution != null) {
+            String leafName = extractLeafName(previousResolution.pathLabel());
+            if (StringUtils.hasText(leafName)) {
+                String contextQuery = leafName + " " + query;
+                IntentRoutingResult retry = route(agentId, contextQuery);
+                if (retry.hasResolution()) {
+                    log.debug("History-aware routing fallback resolved: query='{}', leaf='{}', path='{}'",
+                            query, leafName, retry.resolution().pathLabel());
+                    return retry;
+                }
+            }
+        }
+        return firstPass;
+    }
+
+    private String extractLeafName(String pathLabel) {
+        if (!StringUtils.hasText(pathLabel)) {
+            return null;
+        }
+        int idx = pathLabel.lastIndexOf('>');
+        String leaf = idx >= 0 ? pathLabel.substring(idx + 1).trim() : pathLabel.trim();
+        return leaf.isBlank() ? null : leaf;
+    }
+
     public IntentRoutingResult route(String agentId, String query, String selectedNodeId) {
         long startMs = System.currentTimeMillis();
         IntentRoutingResult result;

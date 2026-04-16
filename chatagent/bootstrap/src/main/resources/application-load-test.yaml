@@ -1,0 +1,46 @@
+spring:
+  ai:
+    deepseek:
+      api-key: REDACTED_API_KEY
+      base-url: http://127.0.0.1:1
+    zhipuai:
+      api-key: REDACTED_API_KEY
+      base-url: http://127.0.0.1:1/api/paas
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: false
+  datasource:
+    hikari:
+      maximum-pool-size: ${CHATAGENT_HIKARI_MAX_POOL:50}
+      minimum-idle: 10
+      connection-timeout: 10000
+
+server:
+  tomcat:
+    threads:
+      max: ${CHATAGENT_TOMCAT_MAX_THREADS:250}
+    max-connections: ${CHATAGENT_TOMCAT_MAX_CONNECTIONS:4096}
+    accept-count: 200
+
+chatagent:
+  mq:
+    dispatchers:
+      agent-run-enabled: true
+
+management:
+  health:
+    mail:
+      enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.yulong.chatagent: INFO
+    com.yulong.chatagent.conversation: WARN
+    com.yulong.chatagent.intent: WARN
+    com.yulong.chatagent.mq: WARN
+    com.yulong.chatagent.rag: WARN
+    org.springframework.amqp: WARN
+    org.springframework.web: WARN
+    org.springframework.mail: ERROR

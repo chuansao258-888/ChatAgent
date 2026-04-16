@@ -38,9 +38,10 @@ public class QueryRewriter {
             return originalQuery.trim();
         }
 
-        // Only KB intents need sophisticated rewriting for better retrieval.
+        // Only KB intents need LLM-based rewriting for retrieval optimization.
+        // All intents get programmatic anchor enforcement regardless of kind.
         if (intentResolution.kind() != IntentKind.KB) {
-            return originalQuery.trim();
+            return enforceAnchor(originalQuery.trim(), intentResolution.pathLabel());
         }
 
         String prompt = promptLoader.render(PromptConstants.INTENT_QUERY_REWRITE, Map.of(
@@ -54,7 +55,7 @@ public class QueryRewriter {
                     .call()
                     .content();
             if (StringUtils.hasText(rewritten)) {
-                return rewritten.trim();
+                return enforceAnchor(rewritten.trim(), intentResolution.pathLabel());
             }
             log.warn("Query rewriter returned blank content: path={}", intentResolution.pathLabel());
         } catch (Exception e) {
@@ -71,5 +72,27 @@ public class QueryRewriter {
             return originalQuery == null ? null : originalQuery.trim();
         }
         return intentResolution.pathLabel() + " | " + originalQuery.trim();
+    }
+
+    /**
+     * Guarantees the intent leaf name appears verbatim in the query text.
+     * If the leaf is absent, prepends it — this is a deterministic safety net
+     * that applies regardless of intent kind (KB, TOOL, SYSTEM).
+     */
+    private String enforceAnchor(String query, String pathLabel) {
+        String leafName = extractLeafName(pathLabel);
+        if (leafName != null && !query.contains(leafName)) {
+            return leafName + " " + query;
+        }
+        return query;
+    }
+
+    private String extractLeafName(String pathLabel) {
+        if (!StringUtils.hasText(pathLabel)) {
+            return null;
+        }
+        int idx = pathLabel.lastIndexOf('>');
+        String leaf = idx >= 0 ? pathLabel.substring(idx + 1).trim() : pathLabel.trim();
+        return leaf.isBlank() ? null : leaf;
     }
 }

@@ -3,11 +3,11 @@
     "id": "multi-hr-001",
     "domain": "hr",
     "turns": [
-      {"role": "user", "content": "请假流程是什么", "expectedIntentPath": "人事制度 > 考勤管理 > 请假流程", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "请假需要提前在系统中提交申请，选择假期类型、起止日期和事由，经直属上级审批后生效", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "那出差报销呢", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "user", "content": "请假流程是怎么走的", "expectedIntentPath": "人事制度 > 考勤管理 > 请假流程", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "请假需要提前在OA系统中提交申请，选择假期类型、起止日期和事由，经直属上级审批后生效", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "那差旅报销的流程呢", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": null, "isTopicSwitch": true},
       {"role": "assistant", "content": "差旅报销需要填写报销单，附上机票、酒店和交通发票，经部门经理和财务双重审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "需要哪些材料", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": "差旅报销", "isTopicSwitch": false}
+      {"role": "user", "content": "需要提交哪些材料", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": "差旅报销", "isTopicSwitch": false}
     ],
     "totalTurns": 5
   },
@@ -15,42 +15,42 @@
     "id": "multi-hr-002",
     "domain": "hr",
     "turns": [
-      {"role": "user", "content": "公司试用期多长", "expectedIntentPath": "人事制度 > 劳动合同 > 试用期规定", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "根据劳动合同，试用期一般为3个月，表现优秀可提前转正", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "转正后薪资有变化吗", "expectedIntentPath": "人事制度 > 薪酬管理 > 转正调薪", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "转正后薪资会调整为合同约定的正式薪资，通常会试用期薪资的1.1至1.2倍", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "它的标准是什么", "expectedIntentPath": "人事制度 > 薪酬管理 > 转正调薪", "expectedCoreference": "转正调薪", "isTopicSwitch": false},
-      {"role": "assistant", "content": "转正调薪标准参考岗位定级和市场薪资水平，由HR和部门经理共同评定", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "顺便问一下年假怎么算的", "expectedIntentPath": "人事制度 > 考勤管理 > 年假规定", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "工作满1年享有5天年假，满10年享有10天，满20年享有15天", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "公司的年假政策是什么样的", "expectedIntentPath": "人事制度 > 考勤管理 > 年假政策", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "工作满1年享有5天年假，满10年享有10天，满20年享有15天", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "它能结转到下一年吗", "expectedIntentPath": "人事制度 > 考勤管理 > 年假政策", "expectedCoreference": "年假政策", "isTopicSwitch": false},
+      {"role": "assistant", "content": "年假原则上当年内休完，未休部分最多可结转至次年3月31日前", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "顺便问一下加班制度是怎样的", "expectedIntentPath": "人事制度 > 考勤管理 > 加班制度", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "加班需提前申请，工作日加班按1.5倍计算加班费，周末2倍，法定节假日3倍，也可调休", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "那调休有什么规则", "expectedIntentPath": "人事制度 > 考勤管理 > 加班制度", "expectedCoreference": "加班制度", "isTopicSwitch": false}
     ],
-    "totalTurns": 8
+    "totalTurns": 7
   },
   {
     "id": "multi-hr-003",
     "domain": "hr",
     "turns": [
-      {"role": "user", "content": "我想了解一下公司的培训体系", "expectedIntentPath": "人事制度 > 培训发展 > 培训体系", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "公司培训体系包含新员工入职培训、岗位技能培训和管理能力培训三大板块", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "前面说的第一个板块具体有哪些内容", "expectedIntentPath": "人事制度 > 培训发展 > 新员工入职培训", "expectedCoreference": "新员工入职培训", "isTopicSwitch": false},
-      {"role": "assistant", "content": "新员工入职培训包含公司文化介绍、制度讲解、安全培训和部门轮岗，为期一周", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "那个是全脱产的吗", "expectedIntentPath": "人事制度 > 培训发展 > 新员工入职培训", "expectedCoreference": "新员工入职培训", "isTopicSwitch": false},
-      {"role": "assistant", "content": "是的，新员工入职培训期间为全脱产，不计入考勤，培训期间正常发放薪资", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "工资一般几号发放", "expectedIntentPath": "人事制度 > 薪酬福利 > 工资发放", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "工资每月15日发放上月薪资，遇节假日顺延至前一个工作日", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "工资条怎么查看", "expectedIntentPath": "人事制度 > 薪酬福利 > 工资发放", "expectedCoreference": "工资发放", "isTopicSwitch": false},
+      {"role": "assistant", "content": "登录OA系统-我的薪资模块即可查看最近12个月的工资条，也支持导出PDF", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "社保公积金是怎么缴纳的", "expectedIntentPath": "人事制度 > 薪酬福利 > 社保公积金", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "五险一金由公司和个人按比例缴纳，每月从工资中代扣，缴纳基数按上年度月均工资核定", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "公积金比例是多少", "expectedIntentPath": "人事制度 > 薪酬福利 > 社保公积金", "expectedCoreference": "社保公积金", "isTopicSwitch": false}
     ],
-    "totalTurns": 6
+    "totalTurns": 7
   },
   {
     "id": "multi-fin-001",
     "domain": "finance",
     "turns": [
-      {"role": "user", "content": "差旅报销的标准是什么", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销标准", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "差旅报销标准：一线城市住宿上限¥500/晚，二线城市¥350/晚，餐费¥100/天，交通费实报实销", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "如果超出了怎么办", "expectedIntentPath": "财务制度 > 报销管理 > 超标报销", "expectedCoreference": "差旅报销标准", "isTopicSwitch": false},
-      {"role": "assistant", "content": "超标部分需要填写超标说明，由部门总监审批，超过50%需财务总监加签", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "发票有什么要求", "expectedIntentPath": "财务制度 > 报销管理 > 发票规范", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "发票须为公司抬头的增值税普通发票或电子发票，开票日期在出差日期前后15天内有效", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "电子发票和纸质的一样吗", "expectedIntentPath": "财务制度 > 报销管理 > 发票规范", "expectedCoreference": "发票", "isTopicSwitch": false},
-      {"role": "assistant", "content": "电子发票与纸质发票具有同等效力，上传PDF文件即可，无需打印", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "差旅报销的流程是什么", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "出差结束后5个工作日内在OA系统提交差旅报销单，附上机票、酒店和交通发票，经部门经理和财务双重审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "住宿的标准是什么", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": "差旅报销", "isTopicSwitch": false},
+      {"role": "assistant", "content": "一线城市住宿上限¥500/晚，二线城市¥350/晚，其他城市¥250/晚", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "机票呢", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": "差旅报销", "isTopicSwitch": false},
+      {"role": "assistant", "content": "机票经济舱据实报销，公务舱需总监级以上审批，建议提前7天预订以降低成本", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "那日常打车费怎么报", "expectedIntentPath": "财务制度 > 报销管理 > 日常报销", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "日常打车费通过日常报销流程提交，需附上发票和用途说明，单次超过¥200需部门经理审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
     "totalTurns": 8
   },
@@ -58,12 +58,12 @@
     "id": "multi-fin-002",
     "domain": "finance",
     "turns": [
-      {"role": "user", "content": "采购申请怎么提交", "expectedIntentPath": "财务制度 > 采购管理 > 采购申请流程", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "采购申请怎么提交", "expectedIntentPath": "财务制度 > 采购管理 > 采购申请", "expectedCoreference": null, "isTopicSwitch": false},
       {"role": "assistant", "content": "采购申请需在OA系统中填写采购单，注明物品名称、数量、预算和用途，¥5,000以上需附加报价单", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "¥50,000以上的呢", "expectedIntentPath": "财务制度 > 采购管理 > 大额采购", "expectedCoreference": "采购申请", "isTopicSwitch": false},
-      {"role": "assistant", "content": "¥50,000以上需要走招标流程，至少收集三家供应商报价，由采购委员会评审", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "之前提到的那三家报价有什么要求", "expectedIntentPath": "财务制度 > 采购管理 > 大额采购", "expectedCoreference": "三家供应商报价", "isTopicSwitch": false},
-      {"role": "assistant", "content": "报价需为近30天内的有效报价，包含含税总价、交付周期和质保条款", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "审批流程是怎样的", "expectedIntentPath": "财务制度 > 采购管理 > 采购申请", "expectedCoreference": "采购申请", "isTopicSwitch": false},
+      {"role": "assistant", "content": "¥5,000以下部门经理审批，¥5,000-¥50,000财务总监加签，¥50,000以上总经理审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "供应商需要什么资质", "expectedIntentPath": "财务制度 > 采购管理 > 采购申请", "expectedCoreference": "采购申请", "isTopicSwitch": false},
+      {"role": "assistant", "content": "合格供应商需提供营业执照、税务登记证和近1年的合作案例，年合作额超¥100万的需签订框架协议", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
     "totalTurns": 6
   },
@@ -71,12 +71,12 @@
     "id": "multi-fin-003",
     "domain": "finance",
     "turns": [
-      {"role": "user", "content": "预算编制的流程是怎样的", "expectedIntentPath": "财务制度 > 预算管理 > 预算编制流程", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "年度预算编制流程：各部门10月提交预算草案，财务部11月汇总审核，12月报管理层审批，次年1月下达执行", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "预算超支怎么处理", "expectedIntentPath": "财务制度 > 预算管理 > 预算调整", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "预算超支10%以内由部门总监审批，10%-20%需CFO审批，超过20%需总经理办公会决议", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "同一个项目可以分多次申请调整吗", "expectedIntentPath": "财务制度 > 预算管理 > 预算调整", "expectedCoreference": "预算调整", "isTopicSwitch": false},
-      {"role": "assistant", "content": "同一项目年度内最多调整3次，每次调整需说明原因并提供最新的支出预测", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "办公用品的日常报销怎么做", "expectedIntentPath": "财务制度 > 报销管理 > 日常报销", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "办公用品报销需在OA系统提交日常报销单，附上发票和领用记录，经部门行政审批后打款", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "发票需要什么格式", "expectedIntentPath": "财务制度 > 报销管理 > 日常报销", "expectedCoreference": "日常报销", "isTopicSwitch": false},
+      {"role": "assistant", "content": "发票须为公司抬头的增值税普通发票或电子发票，金额需与报销单一致", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "那差旅费是怎么报销的", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "差旅费单独走差旅报销流程，需按出差审批单中的行程据实报销", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
     "totalTurns": 6
   },
@@ -84,27 +84,25 @@
     "id": "multi-it-001",
     "domain": "it",
     "turns": [
-      {"role": "user", "content": "怎么重置邮箱密码", "expectedIntentPath": "IT服务 > 账号管理 > 邮箱密码重置", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "邮箱密码重置可通过自助门户完成，或拨打IT服务热线400-800-1234由人工处理", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "自助门户在哪", "expectedIntentPath": "IT服务 > 账号管理 > 自助门户", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "自助门户地址为portal.company.com，使用域账号登录后选择密码管理即可", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "域账号也忘了怎么办", "expectedIntentPath": "IT服务 > 账号管理 > 域账号恢复", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "域账号遗忘需携带工牌到IT服务台（A栋1楼）现场核实身份后重置", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "它的工作时间是什么", "expectedIntentPath": "IT服务 > 账号管理 > 域账号恢复", "expectedCoreference": "IT服务台", "isTopicSwitch": false},
-      {"role": "assistant", "content": "IT服务台工作时间为周一至周五 8:30-18:00，紧急问题可拨打7x24小时热线400-800-1234", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "我想申请开通VPN", "expectedIntentPath": "IT服务 > VPN申请", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "请在自助门户提交VPN申请，选择用途和使用时长，经部门经理审批后10分钟内自动开通", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "需要部门经理审批吗", "expectedIntentPath": "IT服务 > VPN申请", "expectedCoreference": "VPN申请", "isTopicSwitch": false},
+      {"role": "assistant", "content": "是的，所有VPN申请都需要直属部门经理审批，特殊账号还需要CTO审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "那系统权限怎么申请", "expectedIntentPath": "IT服务 > 权限申请", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "系统权限申请同样在自助门户提交，选择目标系统、权限级别和申请理由，经系统Owner和数据Owner双重审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
-    "totalTurns": 8
+    "totalTurns": 6
   },
   {
     "id": "multi-it-002",
     "domain": "it",
     "turns": [
-      {"role": "user", "content": "怎么申请一台新电脑", "expectedIntentPath": "IT服务 > 设备管理 > 电脑申领", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "新员工入职由HR统一提交设备申请，在职员工更换需提交IT设备更换单，说明更换原因", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "我的电脑太慢了想换一台", "expectedIntentPath": "IT服务 > 设备管理 > 电脑申领", "expectedCoreference": "电脑申领", "isTopicSwitch": false},
-      {"role": "assistant", "content": "电脑使用超过3年可申请更换，您的电脑SN-PC-2022-1089已使用4年，符合更换条件", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "能选配置吗", "expectedIntentPath": "IT服务 > 设备管理 > 设备配置标准", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "标准配置为i7处理器/16GB内存/512GB固态，开发岗位可申请升级到32GB内存", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "怎么申请生产数据库权限", "expectedIntentPath": "IT服务 > 权限申请", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "生产数据库权限需在自助门户提交权限申请，选择目标数据库和操作类型，经DBA和安全团队审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "需要填什么理由", "expectedIntentPath": "IT服务 > 权限申请", "expectedCoreference": "权限申请", "isTopicSwitch": false},
+      {"role": "assistant", "content": "理由需明确具体业务场景、数据范围和使用期限，模糊理由会被直接拒绝", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "另外VPN要怎么办", "expectedIntentPath": "IT服务 > VPN申请", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "VPN申请入口在自助门户同一位置，选择VPN申请类别即可，流程更简化", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
     "totalTurns": 6
   },
@@ -112,14 +110,14 @@
     "id": "multi-mixed-001",
     "domain": "mixed",
     "turns": [
-      {"role": "user", "content": "我要出差去深圳，需要办什么手续", "expectedIntentPath": "人事制度 > 出差管理 > 出差申请", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "出差需在OA系统提交出差申请，注明出差目的地、时间和事由，经直属上级审批", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "差旅费怎么报销", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "深圳属于一线城市，住宿上限¥500/晚，餐费¥100/天，交通费实报实销", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "那边的VPN能用吗", "expectedIntentPath": "IT服务 > 网络安全 > VPN使用", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "出差期间可正常使用公司VPN，确保客户端版本为3.2以上即可", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "前面说的住宿标准能提高吗", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销标准", "expectedCoreference": "住宿上限¥500/晚", "isTopicSwitch": false},
-      {"role": "assistant", "content": "住宿标准可申请上浮20%，需在报销时附上书面说明并由部门总监签字", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "我要出差去深圳，请假流程是什么", "expectedIntentPath": "人事制度 > 考勤管理 > 请假流程", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "出差不需要请假，直接在OA提交出差申请单即可，若涉及延期可申请调休", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "那差旅报销怎么弄", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "出差返回后5个工作日内提交差旅报销单，附机票酒店发票，深圳按一线城市标准报销", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "出差期间VPN能用吗", "expectedIntentPath": "IT服务 > VPN申请", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "出差期间可正常使用公司VPN访问内网系统，如未开通请在自助门户申请", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "前面说的住宿标准是多少", "expectedIntentPath": "财务制度 > 报销管理 > 差旅报销", "expectedCoreference": "差旅报销", "isTopicSwitch": true},
+      {"role": "assistant", "content": "深圳属于一线城市，住宿上限¥500/晚，可申请上浮20%但需部门总监签字", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
     "totalTurns": 8
   },
@@ -127,17 +125,15 @@
     "id": "multi-mixed-002",
     "domain": "mixed",
     "turns": [
-      {"role": "user", "content": "下周有个客户来访需要安排接待", "expectedIntentPath": "行政管理 > 接待管理 > 客户来访", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "请提供客户来访人数、日期和接待级别，行政部将安排会议室、茶歇和用餐", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "3个人，周二上午10点到，VIP级别", "expectedIntentPath": "行政管理 > 接待管理 > VIP接待", "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "assistant", "content": "已安排VIP接待方案：A栋大会议室，精美茶歇，午餐预订公司对面酒店中餐厅", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "需要给客户开通临时WiFi吗", "expectedIntentPath": "IT服务 > 网络管理 > 访客WiFi", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "访客WiFi可自动申请，填写来访人员信息后系统生成临时账号，有效期1天", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "临时账号能访问我们内部系统吗", "expectedIntentPath": "IT服务 > 网络管理 > 访客权限", "expectedCoreference": "临时账号", "isTopicSwitch": false},
-      {"role": "assistant", "content": "访客WiFi仅提供外网访问，如需展示内部系统需使用访客演示账号，请提前联系IT申请", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
-      {"role": "user", "content": "午餐费用走什么科目", "expectedIntentPath": "财务制度 > 费用管理 > 业务招待费", "expectedCoreference": null, "isTopicSwitch": true},
-      {"role": "assistant", "content": "客户接待用餐走业务招待费科目，需保留发票和用餐人员清单，单次上限¥2,000", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
+      {"role": "user", "content": "加班费是怎么算的", "expectedIntentPath": "人事制度 > 考勤管理 > 加班制度", "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "assistant", "content": "工作日加班1.5倍，周末2倍，法定节假日3倍，也可选择调休替代加班费", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "加班期间的打车费能报吗", "expectedIntentPath": "财务制度 > 报销管理 > 日常报销", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "晚上22点后加班打车费可通过日常报销，需提供加班审批单和打车发票", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "如果要采购零食补给呢", "expectedIntentPath": "财务制度 > 采购管理 > 采购申请", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "加班零食可走采购申请流程，金额在¥500以内由部门经理审批即可", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false},
+      {"role": "user", "content": "还有权限申请能顺便提吗", "expectedIntentPath": "IT服务 > 权限申请", "expectedCoreference": null, "isTopicSwitch": true},
+      {"role": "assistant", "content": "权限申请与报销和采购无关，需单独在自助门户提交权限申请流程", "expectedIntentPath": null, "expectedCoreference": null, "isTopicSwitch": false}
     ],
-    "totalTurns": 10
+    "totalTurns": 8
   }
 ]
