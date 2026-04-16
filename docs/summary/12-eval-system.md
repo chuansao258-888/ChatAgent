@@ -953,6 +953,7 @@ mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-contextual-enric
 # Response quality LLM-judge eval (~2 min, requires DeepSeek API + full Spring context)
 mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-response-quality \
   -Dtest=ResponseQualityEvalTest
+# Optional only; not required for the current resume dataset:
 # Full run (100 queries): add -Deval.smoke=false
 
 # Reranker fallback chain latency eval (~30 sec, no infra)
@@ -1501,7 +1502,7 @@ Units: ms. 999 concurrent Auth-register / Create-session / Open-SSE / Close-SSE 
 | Stale Claim Recovery | 25 | 25 | 0 | 25 | 25 | 0 | 1 | Yes |
 | Cleanup | 25 | 5 | 0 | 0 | 0 | 0 | 1 | Yes |
 
-**Finding**: the outbox poller preserves the core at-least-once contract under deterministic failure and concurrency: retryable rows are not lost, terminal failures stop at the configured max attempts, stale claims are reclaimed, and four concurrent pollers produce zero duplicate successful publishes. Remaining gap: this still does not validate PostgreSQL `FOR UPDATE SKIP LOCKED`, RabbitMQ publisher confirms, or broker TTL/DLQ behavior under real network and broker conditions.
+**Finding**: the outbox poller preserves the core at-least-once contract under deterministic failure and concurrency: retryable rows are not lost, terminal failures stop at the configured max attempts, stale claims are reclaimed, and four concurrent pollers produce zero duplicate successful publishes. For the current resume-facing delivery, this deterministic outbox harness plus the Gatling full-stack PG/Redis/RabbitMQ run is sufficient; further split-out broker-level Testcontainers scenarios are treated as optional hardening, not required remaining work.
 
 ### 8.17 Contextual Enrichment ROI A/B Eval
 
@@ -1534,7 +1535,7 @@ Units: ms. 999 concurrent Auth-register / Create-session / Open-SSE / Close-SSE 
 | direct | 16 | 0.9769 | 0.9769 | 0.0000 |
 | coreference | 11 | 0.8301 | 0.8301 | 0.0000 |
 
-**Finding**: delta is zero across all metrics. The leaf name alone is such a strong lexical signal that adding the domain-path prefix and category description does not change ranking under character-overlap + bigram-Jaccard scoring. This is expected: contextual enrichment is designed to improve vector embedding quality (by giving the embedder more semantic context for chunk disambiguation), not lexical matching. The real value of `LlmContextualChunkEnricher` would show in dense retrieval with BGE-M3 embeddings, where short chunks with identical keywords but different contexts would otherwise receive similar embeddings. A proper A/B test requires ingesting the same documents with and without enrichment into Milvus and comparing dense retrieval quality — this lexical proxy confirms the baseline is already strong (NDCG@3=0.917) and that enrichment doesn't degrade lexical retrieval.
+**Finding**: delta is zero across all metrics. The leaf name alone is such a strong lexical signal that adding the domain-path prefix and category description does not change ranking under character-overlap + bigram-Jaccard scoring. This is expected: contextual enrichment is designed to improve vector embedding quality (by giving the embedder more semantic context for chunk disambiguation), not lexical matching. The real value of `LlmContextualChunkEnricher` would show in dense retrieval with BGE-M3 embeddings, where short chunks with identical keywords but different contexts would otherwise receive similar embeddings. A dense Milvus/BGE A/B would be the next scientific validation step, but it is not needed for the current resume dataset; this lexical proxy confirms the baseline is already strong (NDCG@3=0.917) and that enrichment does not degrade lexical retrieval.
 
 ### 8.18 Response Quality LLM-Judge Eval
 
@@ -1563,7 +1564,7 @@ Units: ms. 999 concurrent Auth-register / Create-session / Open-SSE / Close-SSE 
 | comparison | 5 | 1.00 | 0.90 | 0.68 | 20% |
 | multi-hop | 5 | 1.00 | 1.00 | 0.58 | 0% |
 
-**Finding**: faithfulness is perfect (1.0) because answers are generated strictly from provided context with explicit "don't fabricate" instructions, and the judge confirms all claims are context-supported. Relevancy is high (0.925) with slight drops in temporal queries (some LLM responses tangent into general policy rather than addressing specific time-bound questions). Containment is moderate (0.7375) because the golden fragments use exact phrasing while the LLM often paraphrases or restructures the same information — this is a known limitation of string-match containment metrics. Factual queries achieve the highest containment (0.93) because they tend to produce direct quotes. Multi-hop queries have the lowest containment (0.58) because the LLM synthesizes across multiple documents and rarely preserves the exact golden fragment wording. Full-run mode (100 queries) can be enabled with `-Deval.smoke=false`.
+**Finding**: faithfulness is perfect (1.0) because answers are generated strictly from provided context with explicit "don't fabricate" instructions, and the judge confirms all claims are context-supported. Relevancy is high (0.925) with slight drops in temporal queries (some LLM responses tangent into general policy rather than addressing specific time-bound questions). Containment is moderate (0.7375) because the golden fragments use exact phrasing while the LLM often paraphrases or restructures the same information — this is a known limitation of string-match containment metrics. Factual queries achieve the highest containment (0.93) because they tend to produce direct quotes. Multi-hop queries have the lowest containment (0.58) because the LLM synthesizes across multiple documents and rarely preserves the exact golden fragment wording. The 100-query full-run mode remains available via `-Deval.smoke=false`, but the 20-query smoke run is accepted as sufficient for the current resume closeout.
 
 ---
 
@@ -1606,3 +1607,19 @@ Builds a 4-domain enterprise intent tree (HR, Finance, IT, Admin) with 23 nodes 
 > - Transactional outbox reliability eval: 2092 seeded rows across delivery, retry, terminal failure, stale-claim, cleanup, and four-poller competition scenarios — 100% pass rate and 0 duplicate successful publishes
 > - Contextual enrichment ROI A/B eval: 27 golden retrieval queries over paired control/treatment corpora showed no lexical-regression from enrichment (Hit@1 85.19%, Hit@3 96.30%, MRR 0.9105, NDCG@3 0.9171 unchanged), clarifying that dense Milvus/BGE embedding A/B is the right next step for semantic ROI.
 > - Response quality LLM-judge eval: 20-query DeepSeek smoke run with synthetic perfect-retrieval context reached Faithfulness 1.0000, Answer Relevancy 0.9250, Answer Containment 0.7375, and exposed paraphrase-sensitive containment gaps in temporal/comparison/multi-hop answers.
+
+---
+
+## 11. Delivery Closure
+
+**Closed on**: 2026-04-17
+
+The resume-facing evaluation deliverable is complete. The current dataset already covers retrieval quality, reranking lift, latency baseline, circuit-breaker recovery, intent routing, multi-turn/coreference behavior, memory summarization, query rewrite A/B, tool calling, MQ chaos, session locks, Gatling full-stack load, transactional outbox reliability, PDF extraction quality, reranker fallback latency, contextual enrichment ROI proxy, and LLM-judge response quality.
+
+No mandatory evaluation work remains for the current resume package. The following are explicitly deferred as optional research/hardening items and are not planned for this closeout:
+
+- ResponseQuality full mode with 100 queries (`-Deval.smoke=false`)
+- Dense Milvus/BGE contextual-enrichment A/B with paired control/treatment indexes
+- True LLM-in-the-loop Gatling load test including external DeepSeek/ZhipuAI latency and rate limits
+- Further optimization of the remaining multi-turn edge failures
+- Additional split-out live MQ Testcontainers suites beyond the current outbox, MQ-chaos, and Gatling PG/Redis/RabbitMQ evidence
