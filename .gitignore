@@ -31,6 +31,8 @@ Thumbs.db
 ui/.chrome-profile/
 
 data/milvus/
+data/rabbitmq/
+data/documents/
 
 # MinerU model weights (2GB+, download separately)
 tools/mineru/models/
