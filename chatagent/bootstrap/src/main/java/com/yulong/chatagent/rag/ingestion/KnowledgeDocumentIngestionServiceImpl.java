@@ -92,13 +92,6 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
                     parseResult.getQualityLevel(),
                     parseResult.getDiagnostics(),
                     parseResult.getWarnings());
-            if ("OCR_REQUIRED".equalsIgnoreCase(parseResult.getExtractionMode())) {
-                clearIndexedContent(documentId);
-                purgeDocumentSignalsQuietly(documentId, "ocr_pending");
-                markOcrPending(knowledgeDocument);
-                publishOcrPending(knowledgeBaseId, knowledgeDocument);
-                return;
-            }
             if (parseResult.getQualityLevel() == QualityLevel.REJECTED) {
                 clearIndexedContent(documentId);
                 purgeDocumentSignalsQuietly(documentId, "rejected");
@@ -240,15 +233,6 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
         knowledgeDocumentStatusSseService.publishStatusUpdated(knowledgeDocument);
     }
 
-    private void markOcrPending(KnowledgeDocumentDTO knowledgeDocument) {
-        knowledgeDocument.setParseStatus("PARSING_OCR_PENDING");
-        knowledgeDocument.setFailedReason(null);
-        knowledgeDocument.setIndexedAt(null);
-        knowledgeDocument.setUpdatedAt(LocalDateTime.now());
-        knowledgeDocumentRepository.update(knowledgeDocument);
-        knowledgeDocumentStatusSseService.publishStatusUpdated(knowledgeDocument);
-    }
-
     private void markFailure(KnowledgeDocumentDTO knowledgeDocument, String errorMessage) {
         knowledgeDocument.setParseStatus("FAILED");
         knowledgeDocument.setFailedReason(errorMessage);
@@ -261,11 +245,6 @@ public class KnowledgeDocumentIngestionServiceImpl implements KnowledgeDocumentI
     private void clearIndexedContent(String documentId) {
         knowledgeChunkRepository.deleteByKnowledgeDocumentId(documentId);
         knowledgeBaseMilvusIndexer.deleteByKnowledgeDocumentId(documentId);
-    }
-
-    private void publishOcrPending(String knowledgeBaseId, KnowledgeDocumentDTO knowledgeDocument) {
-        log.info("Knowledge document queued for OCR fallback: knowledgeBaseId={}, documentId={}, filename={}",
-                knowledgeBaseId, knowledgeDocument.getId(), knowledgeDocument.getOriginalFilename());
     }
 
     private void purgeDocumentSignalsQuietly(String documentId, String reason) {

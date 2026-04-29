@@ -677,7 +677,7 @@ class PdfDocumentParserTest {
     }
 
     @Test
-    void shouldMarkPdfAsOcrRequiredWhenVisualTrackFailsWithoutNativeFallback() throws Exception {
+    void shouldKeepVisualRoutedModeWhenVisualTrackFailsWithoutNativeFallback() throws Exception {
         StubVdpEngine vdpEngine = new StubVdpEngine(List.of(
                 new VdpPageResult(
                         0,
@@ -696,8 +696,8 @@ class PdfDocumentParserTest {
 
         ParseResult result = parser.parse(pdfBytes, "application/pdf", Map.of());
 
-        assertThat(result.getExtractionMode()).isEqualTo("OCR_REQUIRED");
-        assertThat(result.getQualityLevel()).isEqualTo(QualityLevel.LOW);
+        assertThat(result.getExtractionMode()).isEqualTo("PDF_VISUAL_ROUTED");
+        assertThat(result.getQualityLevel()).isEqualTo(QualityLevel.REJECTED);
         assertThat(result.getSegments()).hasSize(1);
         assertThat(result.getSegments().get(0).text()).isEmpty();
         assertThat(result.getSegments().get(0).metadata())
@@ -708,7 +708,28 @@ class PdfDocumentParserTest {
     }
 
     @Test
-    void shouldRecordOcrRequiredMetric() throws Exception {
+    void shouldKeepLowQualityResultWhenVisualTrackFallsBackToSparseNativeText() throws Exception {
+        StubVdpEngine vdpEngine = new StubVdpEngine(List.of(
+                new VdpPageResult(
+                        0,
+                        "",
+                        VdpPageStatus.DEGRADED,
+                        Map.of("visualType", "IMAGE", "interpretiveNote", "empty")
+                )
+        ));
+        PdfDocumentParser parser = new PdfDocumentParser(vdpEngine, Runnable::run, 150, 80, 2, 2, 5000L, 120000L, 144f);
+
+        ParseResult result = parser.parse(createPdf("A1 B2 C3"), "application/pdf", Map.of());
+
+        assertThat(result.getExtractionMode()).isEqualTo("PDF_VISUAL_ROUTED");
+        assertThat(result.getQualityLevel()).isEqualTo(QualityLevel.LOW);
+        assertThat(result.getSegments()).hasSize(1);
+        assertThat(result.getSegments().get(0).text()).contains("A1 B2 C3");
+        assertThat(result.getWarnings()).contains("Low extraction quality; visual-track recovery produced insufficient content");
+    }
+
+    @Test
+    void shouldRecordVisualPageDegradedMetricWithoutOcrMetric() throws Exception {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         StubVdpEngine vdpEngine = new StubVdpEngine(List.of(
                 new VdpPageResult(0, "", VdpPageStatus.DEGRADED, Map.of("visualType", "IMAGE", "interpretiveNote", "empty"))
@@ -730,10 +751,6 @@ class PdfDocumentParserTest {
 
         parser.parse(createPdf(""), "application/pdf", Map.of());
 
-        assertThat(meterRegistry.get("vdp.document.ocr_required")
-                .tags("pipelineSource", "KNOWLEDGE")
-                .counter()
-                .count()).isEqualTo(1.0d);
         assertThat(meterRegistry.get("vdp.page.degraded")
                 .tags("engineId", "stub-page")
                 .counter()

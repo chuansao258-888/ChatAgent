@@ -338,28 +338,20 @@ public class PdfDocumentParser implements DocumentParser {
             boolean visualTrackUnrecoverable = visualTrackPageCount > 0
                     && visualSuccessPageCount == 0
                     && totalChars < Math.max(200, 150);
-            boolean ocrCandidate = totalChars == 0
-                    || (charsPerPage < 50 && pageCount >= 2 && visualTrackPageCount == 0)
-                    || visualTrackUnrecoverable;
-            QualityLevel qualityLevel = assessQuality(totalChars, charsPerPage, fileSizeBytes);
-            extractionMode = qualityLevel == QualityLevel.LOW && ocrCandidate
-                    ? "OCR_REQUIRED"
-                    : (visualTrackPageCount > 0 ? "PDF_VISUAL_ROUTED" : "NATIVE_TEXT");
-
-            if ("OCR_REQUIRED".equals(extractionMode)) {
-                VdpMetricsSupport.increment(
-                        meterRegistry,
-                        "vdp.document.ocr_required",
-                        "pipelineSource",
-                        VdpMetricsSupport.pipelineSourceTag(pipelineSource)
-                );
-            }
+            boolean extractionInsufficient = charsPerPage < 50 && pageCount >= 2 && visualTrackPageCount == 0;
+            boolean noRecoverableText = totalChars == 0;
+            QualityLevel assessedQualityLevel = assessQuality(totalChars, charsPerPage, fileSizeBytes);
+            QualityLevel qualityLevel = assessedQualityLevel == QualityLevel.LOW && noRecoverableText
+                    ? QualityLevel.REJECTED
+                    : assessedQualityLevel;
+            extractionMode = visualTrackPageCount > 0 ? "PDF_VISUAL_ROUTED" : "NATIVE_TEXT";
 
             Map<String, Object> diagnostics = new LinkedHashMap<>();
             diagnostics.put("totalChars", totalChars);
             diagnostics.put("pageCount", pageCount);
             diagnostics.put("charsPerPage", charsPerPage);
-            diagnostics.put("ocrCandidate", ocrCandidate);
+            diagnostics.put("extractionInsufficient", extractionInsufficient);
+            diagnostics.put("noRecoverableText", noRecoverableText);
             diagnostics.put("visualTrackPageCount", visualTrackPageCount);
             diagnostics.put("fastTrackPageCount", Math.max(0, pageCount - visualTrackPageCount));
             diagnostics.put("visualTrackPages", visualTrackPages);
@@ -380,8 +372,12 @@ public class PdfDocumentParser implements DocumentParser {
                     visualFailedPageCount);
 
             List<String> warnings = new ArrayList<>();
-            if (qualityLevel == QualityLevel.LOW) {
-                warnings.add(ocrCandidate ? "Low extraction quality; OCR required" : "Low extraction quality");
+            if (qualityLevel == QualityLevel.REJECTED && noRecoverableText) {
+                warnings.add("Extraction produced no recoverable text");
+            } else if (qualityLevel == QualityLevel.LOW) {
+                warnings.add(visualTrackUnrecoverable
+                        ? "Low extraction quality; visual-track recovery produced insufficient content"
+                        : "Low extraction quality");
             }
             if (visualDegradedPageCount > 0) {
                 warnings.add("Visual-track degraded on %d page(s)".formatted(visualDegradedPageCount));

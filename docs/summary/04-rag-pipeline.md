@@ -175,7 +175,7 @@ initializeContext
 
 摄取失败时不会留下半套索引：
 
-- 解析 `OCR_REQUIRED` 会进入 OCR pending 状态。
+- 解析质量无法恢复时会标记 `QualityLevel.REJECTED`，不再进入 OCR pending 状态。
 - `QualityLevel.REJECTED` 会标记 rejected。
 - 异常会 `markFailed`，并尽量清理旧 chunk 和 Milvus 索引。
 

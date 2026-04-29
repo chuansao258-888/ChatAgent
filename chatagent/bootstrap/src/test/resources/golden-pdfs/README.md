@@ -58,7 +58,7 @@ The matching expected output is `expected/<category>-<nn>.segments.json`.
 |---|---|---|
 | `documentId` | yes | Matches PDF filename without extension |
 | `expectedSegmentCount` | no | If set, asserts exact segment count |
-| `expectedExtractionMode` | no | One of `NATIVE_TEXT`, `PDF_VISUAL_ROUTED`, `OCR_REQUIRED` |
+| `expectedExtractionMode` | no | One of `NATIVE_TEXT`, `PDF_VISUAL_ROUTED` |
 | `segments[].pageIndex` | yes | 0-based page index |
 | `segments[].expectedRoute` | no | `FAST_TRACK` or `VISUAL_TRACK` |
 | `segments[].mustContain` | no | Substrings that must appear in the page segment text |

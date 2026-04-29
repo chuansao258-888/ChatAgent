@@ -140,9 +140,11 @@ public class FileIngestionService {
                 .build();
     }
 
-    private boolean supportsMarkdownIngestion(SessionIngestionContext context) {
-        return "md".equals(context.getFileExtension()) || "markdown".equals(context.getFileExtension());
-    }
+    // 旧 Markdown 专用分支判断已停用：当前摄取流程统一由 DocumentParserSelector
+    // 根据文件前缀、扩展名、MIME 和 pipeline source 选择 parser。
+    // private boolean supportsMarkdownIngestion(SessionIngestionContext context) {
+    //     return "md".equals(context.getFileExtension()) || "markdown".equals(context.getFileExtension());
+    // }
 
     private LoadedDocumentSource fetchSource(SessionIngestionContext context) throws Exception {
         String storagePath = context.getSessionFile().getStoragePath();
@@ -233,15 +235,10 @@ public class FileIngestionService {
     }
 
     private boolean shouldRejectParseResult(ParseResult parseResult) {
-        return "OCR_REQUIRED".equalsIgnoreCase(parseResult.getExtractionMode())
-                || parseResult.getQualityLevel() == QualityLevel.REJECTED;
+        return parseResult.getQualityLevel() == QualityLevel.REJECTED;
     }
 
     private void handleRejectedParseResult(SessionIngestionContext context, ParseResult parseResult) {
-        if ("OCR_REQUIRED".equalsIgnoreCase(parseResult.getExtractionMode())) {
-            handleRejected(context, "Session file requires OCR and session uploads do not support asynchronous OCR fallback");
-            return;
-        }
         handleRejected(context, firstWarningOrDefault(parseResult, "Session file was rejected by the parser quality gate"));
     }
 
