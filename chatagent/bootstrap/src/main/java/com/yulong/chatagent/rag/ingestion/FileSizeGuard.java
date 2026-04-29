@@ -7,7 +7,7 @@ import com.yulong.chatagent.rag.parser.FileRejectedException;
  */
 public final class FileSizeGuard {
 
-    static final long MAX_FILE_BYTES = 30L * 1024 * 1024;
+    public static final long MAX_FILE_BYTES = 30L * 1024 * 1024;
 
     private FileSizeGuard() {
     }

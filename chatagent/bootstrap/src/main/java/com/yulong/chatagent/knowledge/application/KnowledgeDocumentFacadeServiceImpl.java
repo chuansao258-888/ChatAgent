@@ -14,6 +14,7 @@ import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.outbox.OutboxEventPublisher;
 import com.yulong.chatagent.mq.outbox.event.KnowledgeIngestTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
+import com.yulong.chatagent.rag.ingestion.FileSizeGuard;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.parser.DetectedFileType;
 import com.yulong.chatagent.rag.parser.FileTypeDetector;
@@ -160,6 +161,7 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
         if (file == null || file.isEmpty()) {
             throw new BizException("Uploaded file is empty");
         }
+        validateKnowledgeUploadSize(file);
         validateKnowledgeUpload(file);
         String incomingContentHash = sha256(file);
         if (shouldSkipReplacement(existingDocument, incomingContentHash)) {
@@ -236,6 +238,12 @@ public class KnowledgeDocumentFacadeServiceImpl implements KnowledgeDocumentFaca
             return false;
         }
         return "COMPLETED".equalsIgnoreCase(existingDocument.getParseStatus());
+    }
+
+    private void validateKnowledgeUploadSize(MultipartFile file) {
+        if (file.getSize() > FileSizeGuard.MAX_FILE_BYTES) {
+            throw new BizException("Knowledge document file size cannot exceed 30MB");
+        }
     }
 
     private void scheduleIngestionAfterCommit(String knowledgeBaseId,

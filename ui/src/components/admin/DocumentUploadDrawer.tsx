@@ -8,6 +8,9 @@ import {
 } from "../../api/admin.ts";
 import type { KnowledgeDocumentVO } from "../../types/admin.ts";
 
+const MAX_KNOWLEDGE_DOCUMENT_BYTES = 30 * 1024 * 1024;
+const MAX_KNOWLEDGE_DOCUMENT_LABEL = "30MB";
+
 interface DocumentUploadDrawerProps {
   open: boolean;
   knowledgeBaseId: string;
@@ -26,6 +29,12 @@ export default function DocumentUploadDrawer({
   const [submitting, setSubmitting] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
 
+  const isFileTooLarge = (file: File) => file.size > MAX_KNOWLEDGE_DOCUMENT_BYTES;
+
+  const warnFileTooLarge = (filename: string) => {
+    message.warning(`${filename} exceeds the ${MAX_KNOWLEDGE_DOCUMENT_LABEL} limit.`);
+  };
+
   useEffect(() => {
     if (!open) {
       setFileList([]);
@@ -36,6 +45,10 @@ export default function DocumentUploadDrawer({
     const file = fileList[0]?.originFileObj;
     if (!file) {
       message.warning("Choose one file to continue.");
+      return;
+    }
+    if (isFileTooLarge(file)) {
+      warnFileTooLarge(file.name);
       return;
     }
 
@@ -86,7 +99,13 @@ export default function DocumentUploadDrawer({
             <Upload.Dragger
               multiple={false}
               maxCount={1}
-              beforeUpload={() => false}
+              beforeUpload={(file) => {
+                if (isFileTooLarge(file)) {
+                  warnFileTooLarge(file.name);
+                  return Upload.LIST_IGNORE;
+                }
+                return false;
+              }}
               fileList={fileList}
               onChange={({ fileList: nextFileList }) => {
                 setFileList(nextFileList.slice(-1));
@@ -99,7 +118,7 @@ export default function DocumentUploadDrawer({
               <p className="ant-upload-text">Click or drag a file here</p>
               <p className="ant-upload-hint">
                 Markdown, PDF, Word, or text files can go through the same
-                ingestion flow.
+                ingestion flow. Maximum size: {MAX_KNOWLEDGE_DOCUMENT_LABEL}.
               </p>
             </Upload.Dragger>
           </Form.Item>

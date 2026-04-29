@@ -1,461 +1,792 @@
-# RAG 检索增强生成模块 (com.yulong.chatagent.rag)
+# RAG 检索增强生成模块
 
-## 模块概述
+## 0. 模块定位
 
-RAG 模块是 ChatAgent 的**知识引擎**，实现了完整的文档摄取 (Ingestion) 和检索 (Retrieval) 流水线。支持多种文档格式的解析（PDF/Markdown/Tika/图片）、智能分块、上下文增强、向量化存储（Milvus）、混合检索（稠密 + BM25 稀疏）和重排序（BGE/LLM），是项目中代码量最大、复杂度最高的模块。
+这个模块负责 ChatAgent 的知识检索增强生成，也就是把用户上传的会话文件、后台知识库文档，转成可检索的 chunk；再在 Agent 需要知识时，把相关证据检索出来，格式化成 tool response，并把引用元数据挂到最终 assistant 消息上。
 
-**核心代码路径：** `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/`
+它位于 `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag`，向上被 `SessionFileTools.knowledgeQuery(...)` 调用，向下连接文档存储、解析器、LLM 增强、Ollama embedding、Milvus、BM25、RRF 和 reranker。
+
+它的职责不是：
+
+- 不负责 Agent ReAct 循环，那是 [02-agent-runtime.md](02-agent-runtime.md)。
+- 不负责判断本轮是不是 KB 意图，那是 [05-intent-routing.md](05-intent-routing.md)。
+- 不负责模型首包探测和路由，那是 [01-llm-routing.md](01-llm-routing.md)。
+- 不负责前端消息如何流式展示，那是 `AgentMessageBridgeImpl` 所在的 Agent runtime。
+
+它真正负责的是：
+
+- 会话附件摄取：上传文件 -> 解析 -> 分块 -> 向量化 -> 写入 `chat_file_chunk`。
+- 知识库文档摄取：后台文档 -> 解析 -> LLM 文档增强 -> 分块 -> chunk 上下文增强 -> 写入 `chat_knowledge_chunk`。
+- PDF 双轨解析：文本质量好走 PDFBox fast-track，扫描/低质量页走 VDP visual-track。
+- 混合检索：dense embedding + BM25 sparse，两路结果用 RRF 融合。
+- 范围控制：会话文件只查当前 session，知识库受 Agent 绑定和意图路由 scoped KB 约束。
+- 重排序：BGE HTTP reranker 优先，失败后降级到 LLM/Noop，并有熔断保护。
+- 引用闭环：`promptText` 给模型，`citations` 暂存到 `CurrentTurnCitationHolder`，最终消息确认后写入 metadata。
+
+核心路径：
+
+| 类型 | 文件 |
+|---|---|
+| Agent 工具入口 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/tools/SessionFileTools.java` |
+| RAG 应用门面 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/application/RagService.java` |
+| 检索范围编排 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/SearchScopeResolver.java` |
+| 会话文件摄取 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/FileIngestionService.java` |
+| 知识库文档摄取 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/KnowledgeDocumentIngestionServiceImpl.java` |
+| 文件类型检测 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/parser/FileTypeDetector.java` |
+| 解析器选择 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/parser/DocumentParserSelector.java` |
+| PDF 主解析器 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/parser/PdfDocumentParser.java` |
+| PDF 质量路由 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/parser/PdfQualityRouter.java` |
+| VDP 引擎路由 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/parser/VdpEngineRouter.java` |
+| 分块路由 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/SegmentAwareChunkerRouter.java` |
+| 普通文本分块 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/PlainTextChunker.java` |
+| Markdown 结构分块 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/StructureAwareMarkdownChunker.java` |
+| 文档级增强 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/LlmDocumentEnhancer.java` |
+| chunk 上下文增强 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/ingestion/LlmContextualChunkEnricher.java` |
+| 会话文件混合检索 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/SessionFileSimilaritySearcher.java` |
+| 知识库混合检索 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/KnowledgeBaseSimilaritySearcher.java` |
+| BGE 重排序 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/BgeHttpRetrievalReranker.java` |
+| 重排序熔断器 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/RerankerCircuitBreaker.java` |
+| 知识文档信号 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/retrieve/KnowledgeDocumentSignalService.java` |
+| 引用格式化 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/application/RetrievalHitFormatter.java` |
+| Milvus 会话文件索引 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/vector/milvus/DefaultMilvusIndexService.java` |
+| Milvus 知识库索引 | `chatagent/bootstrap/src/main/java/com/yulong/chatagent/rag/vector/milvus/DefaultKnowledgeBaseMilvusIndexService.java` |
+
+一句话概括：
+
+> RAG pipeline 是 ChatAgent 的“知识证据流水线”：摄取阶段把文档加工成可检索 chunk，检索阶段在 session/KB scope 内用 dense + BM25 找证据、RRF 融合、rerank 排序，最后把证据文本交给模型，把结构化 citations 交给消息 metadata。
+
+---
+
+## 图解总览（先看图，再读代码）
+
+### 图 1：RAG 摄取与检索全景
+
+<img src="assets/04-rag-pipeline/01-rag-pipeline-overview.png" alt="RAG 摄取与检索流水线总览" width="100%">
+
+看这张图时先抓两条主线：
+
+- 摄取线：文件先被解析、增强、分块、向量化，最后写入 Milvus 双 collection。
+- 检索线：Agent 调 `knowledgeQuery` 后，RAG 同时查会话文件和知识库，再融合、重排、格式化。
+
+再抓三个边界：
+
+- `IntentResolution` 只约束知识库检索范围，不会阻止当前会话附件检索。
+- `RerankerCircuitBreaker` 保护的是重排序服务，重排失败不会让整轮 RAG 失败。
+- `CurrentTurnCitationHolder` 存的是引用元数据，不是给模型看的证据正文。
 
 ---
 
 ## 1. 总体架构
 
+这个模块可以按 5 条主链路理解：
+
+1. Agent 工具链：模型调用 `SessionFileSearchTool`，后端执行 `knowledgeQuery(query)`。
+2. 摄取链：文件进入 `FileIngestionService` 或 `KnowledgeDocumentIngestionServiceImpl`，被解析、增强、分块、入库和索引。
+3. 解析链：`DocumentParserSelector` 根据文件类型和 pipeline source 选择 PDF、Markdown、Tika 或 Image 解析器。
+4. 检索链：`SearchScopeResolver` 解析 scope，分别检索会话文件和知识库，再 RRF 融合。
+5. 输出链：`RetrievalHitFormatter` 生成 `promptText + citations`，模型只看到证据文本，前端最终看到结构化引用。
+
+### 1.1 生产主入口在哪里
+
+生产 Agent runtime 不是直接调向量库，而是从工具开始：
+
+```text
+- AgentThinkingEngine
+   -> 模型决定调用 SessionFileSearchTool
+      -> SessionFileTools.knowledgeQuery(query)
+         -> RagService.similaritySearchBySession(sessionId, query, intentResolution)
+            -> SearchScopeResolver.searchBySession(...)
 ```
-═══════════════════ 摄取流水线 (Ingestion) ═══════════════════
 
-文件上传 → FileSizeGuard(30MB) → FileTypeDetector → DocumentParserSelector
-                                                          │
-                    ┌─────────────────────────────────────┤
-                    │                                     │
-                    ▼                                     ▼
-            ┌──────────────┐                    ┌────────────────┐
-            │ PDF 解析器    │                    │ 其他解析器     │
-            │ (质量路由+VDP)│                    │ (MD/Tika/Image)│
-            └──────┬───────┘                    └───────┬────────┘
-                    │                                     │
-                    └──────────────┬──────────────────────┘
-                                   ▼
-                          ParseResult + ParseSegments
-                                   │
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼              ▼
-            文档增强          智能分块        块级上下文增强
-          (LlmDocument      (SegmentAware    (LlmContextual
-          Enhancer)         ChunkerRouter)   ChunkEnricher)
-                    │              │              │
-                    └──────────────┼──────────────┘
-                                   ▼
-                          Embedding (Ollama bge-m3)
-                                   │
-                                   ▼
-                          Milvus 向量存储 (双 Collection)
+`SessionFileTools.knowledgeQuery(...)` 有一个很重要的安全边界：
 
-═══════════════════ 检索流水线 (Retrieval) ═══════════════════
+- 模型只传 `query`。
+- `sessionId` 从 `CurrentChatSessionHolder` 取。
+- `turnId` 从 `CurrentTurnHolder` 取。
+- `intentResolution` 从 `CurrentIntentResolutionHolder` 取。
 
-用户查询 → Embedding → Milvus 混合搜索 (Dense + BM25)
-                                        │
-                              ┌─────────┼─────────┐
-                              ▼                   ▼
-                    会话文件搜索              知识库搜索
-                    (SessionFile)            (KnowledgeBase)
-                              │                   │
-                              └────────┬──────────┘
-                                       ▼
-                                RRF 融合排序
-                                       │
-                                       ▼
-                            重排序 (BGE/LLM/Noop)
-                            └─ 熔断器保护
-                            └─ 置信度过滤
-                                       │
-                                       ▼
-                            格式化 + 引用追踪
-                                       │
-                                       ▼
-                            返回给 Agent 使用
+所以模型不能通过工具参数伪造 `sessionId` 去查别人的会话文件，也不能自己绕过意图路由指定知识库范围。
+
+### 1.2 RAG 模块的两个输入池
+
+| 输入池 | 生命周期 | 摄取服务 | Milvus collection | 检索范围 |
+|---|---|---|---|---|
+| 会话附件 | 跟随 chat session | `FileIngestionService` | `chat_file_chunk` | 当前 session 已绑定文件 |
+| 知识库文档 | 后台长期维护 | `KnowledgeDocumentIngestionServiceImpl` | `chat_knowledge_chunk` | Agent 绑定 KB + intent scoped KB |
+
+这两个池子检索时会合并，但它们的权限边界不同：
+
+- 会话文件边界来自 `chat_session_file` 关系。
+- 知识库边界来自 Agent 默认绑定、知识库 active 状态和意图路由 scope。
+
+### 1.3 为什么检索链里有多次 RRF
+
+RRF 是 Reciprocal Rank Fusion。当前代码里有三处使用：
+
+| 位置 | 融合对象 |
+|---|---|
+| `SessionFileSimilaritySearcher` | 会话文件 dense hits + BM25 hits |
+| `KnowledgeBaseSimilaritySearcher` | 知识库 dense hits + BM25 hits |
+| `SearchScopeResolver` | 会话文件 candidates + 知识库 candidates |
+
+公式都是：
+
+```text
+rrfScore = 1 / (rrfK + rank + 1)
 ```
+
+这里的重点是：RRF 用排名位置融合，不直接比较 dense cosine 分数和 BM25 分数。这样两类分数尺度不同也没关系。
 
 ---
 
-## 2. 文档解析流水线
+## 2. 摄取流水线
 
-### 2.1 DocumentParserSelector (解析器选择器)
+> 图解：整体关系见上方 [图 1：RAG 摄取与检索全景](assets/04-rag-pipeline/01-rag-pipeline-overview.png)。
 
-**文件：** `parser/DocumentParserSelector.java`
+### 2.1 会话文件摄取：FileIngestionService
 
-```java
-selectParser(prefix, filename, mimeType, pipelineSource):
-    1. FileTypeDetector.detect() → DetectedFileType
-    2. 被拒绝的文件类型 → 抛 FileRejectedException
-    3. 遍历所有 DocumentParser Bean：
-       - 过滤 supports(detectedFileType)
-       - 按 getSelectionPriority() 排序
-       - 取第一个匹配
-    4. 无匹配 → 回退到 Tika
+`FileIngestionService.ingest(...)` 是会话附件的异步摄取入口。主流程可以压缩成：
+
+```text
+initializeContext
+  -> fetchSource
+  -> parseDocument
+  -> quality gate
+  -> enhanceDocument
+  -> chunkDocument
+  -> enrichChunks
+  -> build FileChunkDTO
+  -> persistChunks
+  -> markCompleted
 ```
 
-### 2.2 FileTypeDetector (文件类型检测)
+关键代码阶段：
 
-**文件：** `parser/FileTypeDetector.java`
+| 阶段 | 方法 | 作用 |
+|---|---|---|
+| 初始化 | `initializeContext(...)` | 创建 `SessionIngestionContext` |
+| 读取源 | `fetchSource(...)` | 文件大小检查、读取 prefix、选择 parser |
+| 解析 | `parseDocument(...)` | 得到 `ParseResult + ParseSegment` |
+| 增强 | `enhanceDocument(...)` | 调 `DocumentEnhancer`，会话文件通常走 Noop 或轻量策略 |
+| 分块 | `chunkDocument(...)` | 调 `DocumentChunker` |
+| chunk 增强 | `enrichChunks(...)` | 调 `ChunkEnricher` |
+| 持久化 | `persistChunks(...)` | DB 删除旧 chunk、保存新 chunk、Milvus upsert |
+| 完成 | `markCompleted(...)` | `parseStatus = COMPLETED` |
 
-三层检测：Apache Tika magic-byte + 扩展名 + MIME 类型
+摄取失败时不会留下半套索引：
 
-| 类型 | 处理 |
-|------|------|
-| 图片 | SESSION 管道接受，KNOWLEDGE 管道拒绝 |
-| 拒绝扩展名 | .exe, .dll, .zip, .mp3, .mp4, .xls 等 |
-| 支持扩展名 | .md, .markdown, .txt, .pdf, .doc, .docx |
-| 二进制校验 | 强二进制 MIME 与声明扩展名不匹配则拒绝 |
+- 解析 `OCR_REQUIRED` 会进入 OCR pending 状态。
+- `QualityLevel.REJECTED` 会标记 rejected。
+- 异常会 `markFailed`，并尽量清理旧 chunk 和 Milvus 索引。
 
-### 2.3 FileSizeGuard (文件大小防护)
+### 2.2 知识库文档摄取：KnowledgeDocumentIngestionServiceImpl
 
-**文件：** `ingestion/FileSizeGuard.java`
+知识库摄取和会话文件很像，但多了长期知识管理需要的东西：
 
-- 硬限制：30MB
-- 在 `readBytes()` 之前检查，防止 OOM
-
-### 2.4 PdfDocumentParser — PDF 解析核心 (535行)
-
-**文件：** `parser/PdfDocumentParser.java`
-
-这是最复杂的解析器，包含 7 个内部协作者：
-
-| 协作者 | 职责 |
-|--------|------|
-| `PdfQualityRouter` | 逐页质量评估和路由决策 |
-| `PdfPageTextExtractor` | 通过 PDFBox 提取文本 |
-| `PdfVdpDispatcher` | 视觉轨道页面分发到 VDP 引擎 |
-| `PdfSegmentAssembler` | 组装最终 ParseSegment 列表 |
-| `PdfPageRenderer` | 渲染 PDF 页面为图片 (可配置DPI，默认120) |
-| `PdfVdpCache` | 缓存渲染的页面图片 |
-| `PdfVdpBatchPlanner` | 决定批量还是逐页分发 |
-
-**质量路由流程 (extractPages, 第298-416行)：**
-```
-1. PDFBox 提取所有页面文本
-2. TextCleanupUtil 清洗文本
-3. 逐页 qualityRouter.decideRoute():
-   - 文本密度高 → Fast-Track（原生提取）
-   - 文本密度低/扫描件 → Visual-Track（渲染为图片 → VDP 解析）
-4. Visual-Track 页面异步分发到 VDP 引擎
-5. segmentAssembler 组装结果
+```text
+loadSource
+  -> parseDocument
+  -> build KnowledgeIngestionContext
+  -> LlmDocumentEnhancer
+  -> DocumentChunker
+  -> ChunkEnricher
+  -> build KnowledgeChunkDTO
+  -> delete old chunks + delete old Milvus
+  -> save chunks + upsert Milvus
+  -> saveOrUpdate KnowledgeDocumentSignal
+  -> markCompleted + SSE status
 ```
 
-**质量评估 (assessQuality, 第457-471行)：**
+和会话文件相比，知识库文档有三点更重：
 
-| 等级 | 条件 |
-|------|------|
-| `LOW` | 0字符 / <200字符且>1MB / <30字符每页 |
-| `HIGH` | >=80字符每页 |
-| `MEDIUM` | 介于 LOW 和 HIGH 之间 |
+- 会保存文档级 `keywords/questions`，后面 `KnowledgeDocumentSignalService` 会在 rerank 前注入这些信号。
+- 会发布 `KnowledgeDocumentStatusSseService` 状态更新，后台管理页面可以看到解析/索引状态。
+- 失败会抛 `RetryableKnowledgeDocumentIngestionException`，便于任务重试。
 
-### 2.5 VDP 引擎 (Visual Document Processing)
+### 2.3 FileSizeGuard：先挡大文件
 
-**VdpEngineRouter** (`parser/VdpEngineRouter.java`) 根据模式和管道来源选择引擎：
+`FileSizeGuard.guardBeforeRead(...)` 在 `readBytes()` 或 `openInputStream()` 前执行。
 
-| 引擎 | 模式 | 说明 |
-|------|------|------|
-| `VlmVdpEngine` | PAGE_IMAGE | 单页 VLM（视觉语言模型），如 gpt-4o-mini/Qwen-VL |
-| `MinerUVdpEngine` | PDF_PAGE_BATCH | 批量 PDF，调用外部 MinerU HTTP 服务 |
-| `NoopVdpEngine` | - | 降级回退，返回占位文本 |
+它的作用很朴素但很重要：
 
-**VlmVdpEngine** (`parser/VlmVdpEngine.java`)：
-- 通过 ChatModelRouter 将页面图片发送给视觉语言模型
-- SHA-256 内容摘要缓存，避免重复处理
-- JSON 响应解析，带非 JSON 回退恢复
-- 仅支持 `PAGE_IMAGE` 模式
+- 防止超大文件进内存导致 OOM。
+- 让失败尽早发生，避免解析器和 VDP 浪费资源。
+- 当前硬限制在文档里可以记成 30MB。
 
-**MinerUVdpEngine** (`parser/MinerUVdpEngine.java`)：
-- 提交 PDF 到 `/tasks` 端点（Multipart 上传）
-- 轮询状态直到完成
-- 获取结果并规范化为逐页 Markdown
-- 支持 text、headers、tables、images、charts、equations、code 等内容类型
-- 仅支持 `PDF_PAGE_BATCH` 模式
+### 2.4 摄取上下文：为什么有 Session 和 Knowledge 两套 Context
 
-### 2.6 其他解析器
+`SessionIngestionContext` 和 `KnowledgeIngestionContext` 都继承或复用 `BaseIngestionContext` 的思路，但它们携带的业务归属不同：
 
-| 解析器 | 文件类型 | 产出 |
-|--------|---------|------|
-| `MarkdownDocumentParser` | .md/.markdown | 单个 FULL segment |
-| `TikaDocumentParser` | 其他所有格式 | 单个 FULL segment（TextCleanupUtil 清洗后） |
-| `ImageDocumentParser` | 图片 | 单个 FIGURE segment（VLM 转录后） |
+| Context | 关键归属 |
+|---|---|
+| `SessionIngestionContext` | `sessionId`、`sessionFile`、文件扩展名、parse result |
+| `KnowledgeIngestionContext` | `knowledgeBaseId`、`documentId`、文件扩展名、parse result、文档增强元数据 |
+
+这让后续 `DocumentEnhancer`、`ChunkEnricher`、Indexer 不需要重新查询“这个 chunk 属于谁”。
 
 ---
 
-## 3. 智能分块 (Chunking)
+## 3. 文档解析流水线
 
-### 3.1 SegmentAwareChunkerRouter (分块策略路由)
+### 3.1 DocumentParserSelector：统一入口
 
-**文件：** `ingestion/SegmentAwareChunkerRouter.java`
+解析器选择发生在 `DocumentParserSelector.selectParser(...)`：
 
-根据主导 segment 类型选择分块策略：
+```text
+prefix + filename + mimeType + pipelineSource
+  -> FileTypeDetector.detect(...)
+  -> rejected type 抛 FileRejectedException
+  -> 遍历 DocumentParser Bean
+  -> supports(detectedFileType)
+  -> 按 getSelectionPriority 排序
+  -> 取第一个匹配
+  -> 无匹配回退 Tika
+```
 
-| SegmentType | 分块策略 |
-|-------------|---------|
-| `FULL` | Markdown 检测 → StructureAwareMarkdownChunker / PlainTextChunker |
-| `PAGE` | 自定义页面合并：累积到 targetChars(1200)，不超过 maxChars(1800) |
-| `FIGURE` | 每个 segment 独立分块 |
-| `TABLE` / `SECTION` | 文本拼接 → PlainTextChunker |
+`pipelineSource` 很关键：
 
-### 3.2 PlainTextChunker (固定大小分块)
+- `SESSION`：会话附件允许图片进入 VLM 解析。
+- `KNOWLEDGE`：知识库更严格，某些临时/图片/二进制类型会拒绝或进入更保守路径。
 
-**文件：** `ingestion/PlainTextChunker.java`
+### 3.2 FileTypeDetector：不是只看扩展名
 
-| 参数 | 值 |
-|------|-----|
-| targetChars | 1200 |
-| maxChars | 1500 |
-| minChars | 500 |
-| overlapChars | 150 |
+`FileTypeDetector` 综合三类信号：
 
-**边界查找优先级 (findChunkEnd)：** 双换行 → 单换行 → 中文句号 → 英文句号 → 空格
+| 信号 | 作用 |
+|---|---|
+| magic bytes / Tika 检测 | 判断真实二进制类型 |
+| 文件扩展名 | 用户上传文件名提示 |
+| MIME type | 浏览器或存储层声明类型 |
 
-### 3.3 StructureAwareMarkdownChunker (结构感知分块)
+这样可以防止：
 
-**文件：** `ingestion/StructureAwareMarkdownChunker.java`
+- `.pdf` 实际是可执行文件。
+- MIME type 声明和真实内容不匹配。
+- 压缩包、音视频、Excel 等不支持类型进入解析链路。
 
-两遍分块：
-1. **行级分类：** HEADING / CODE / ATOMIC（图片/链接）/ PARAGRAPH
-2. **块级打包：** 按标题层级分组，贪心打包（maxChars=1800, minChars=600）
-3. **小尾合并：** 过小的尾部 chunk 合并回前一个
+### 3.3 四类主解析器
+
+| 解析器 | 适用文件 | 输出特点 |
+|---|---|---|
+| `PdfDocumentParser` | PDF | 多页 `ParseSegment`，可能混合文本页和 VDP 页 |
+| `MarkdownDocumentParser` | `.md/.markdown` | 保留 Markdown 结构 |
+| `TikaDocumentParser` | doc/docx/txt 等通用文本 | 清洗后的 `FULL` segment |
+| `ImageDocumentParser` | 图片 | VLM 转录成 `FIGURE` segment |
+
+所有解析器最后都要产出 `ParseResult`。后续分块层只看 `ParseSegment`，不关心原文件来自 PDF 还是 Markdown。
+
+### 3.4 PdfDocumentParser：PDF 双轨解析
+
+PDF 是最复杂的输入，因为它可能是：
+
+- 原生文本 PDF。
+- 扫描件。
+- 文本和图片混排。
+- 表格/图片/公式密集文档。
+
+当前 PDF 解析可以理解为：
+
+```text
+PDFBox 提取页面文本
+  -> TextCleanupUtil 清洗
+  -> PdfQualityRouter 逐页决定 route
+     -> fast-track: 直接使用文本
+     -> visual-track: PdfPageRenderer 渲染页面图片
+          -> PdfVdpDispatcher
+             -> VdpEngineRouter
+                -> VlmVdpEngine / MinerUVdpEngine / NoopVdpEngine
+  -> PdfSegmentAssembler 合并 ParseSegment
+```
+
+### 3.5 VDP 引擎：视觉文档处理
+
+VDP 是 Visual Document Processing，用来处理低质量或扫描类页面。
+
+| 引擎 | 模式 | 典型用途 |
+|---|---|---|
+| `VlmVdpEngine` | `PAGE_IMAGE` | 单页图片发给视觉语言模型转录 |
+| `MinerUVdpEngine` | `PDF_PAGE_BATCH` | 批量 PDF 交给外部 MinerU 服务 |
+| `NoopVdpEngine` | fallback | VDP 不可用时返回降级结果 |
+
+这里要注意：VDP 是解析兜底，不是检索兜底。它发生在摄取阶段，目的是尽量把扫描页变成文本 segment。
 
 ---
 
-## 4. 文档增强 (Document Enhancement)
+## 4. 分块与增强
 
-### 4.1 LlmDocumentEnhancer (文档级增强)
+### 4.1 SegmentAwareChunkerRouter：按 segment 类型选策略
 
-**文件：** `ingestion/LlmDocumentEnhancer.java`
+`SegmentAwareChunkerRouter` 是分块入口。它不直接按文件类型分块，而是看解析后的 `SegmentType`：
 
-仅对 Knowledge 管道生效（Session 文件生命周期短，不增强）。
+| SegmentType | 策略 |
+|---|---|
+| `FULL` | 判断是否 Markdown，再走结构分块或普通文本分块 |
+| `PAGE` | 页面合并分块，控制 target/max chars |
+| `FIGURE` | 通常每个图像转录结果独立成块 |
+| `TABLE / SECTION` | 合并文本后走普通文本分块 |
 
-| 模式 | 触发条件 | 操作 |
-|------|---------|------|
-| `short_full` | 单 FULL segment + 字符数 < shortDocCharLimit + 质量≥MEDIUM | CONTEXT_ENHANCE (LLM重写) + DOC_META_EXTRACT (关键词/问题提取) |
-| `meta_only` | 多 segment 或大文档 | Map-Reduce 元数据提取 (Top 10 关键词, Top 5 问题) |
+这层设计的好处是：PDF、Markdown、Tika 只要产出相同类型的 segment，就能复用同一套 chunk 策略。
 
-**幻觉检测 (passesLengthGuard)：** 增强后文本长度 < 原文 0.5 倍（过度压缩）或 > 2.0 倍（幻觉膨胀）则拒绝。
+### 4.2 PlainTextChunker：朴素但稳定
 
-### 4.2 LlmContextualChunkEnricher (块级上下文增强)
+`PlainTextChunker` 做固定大小文本分块，边界优先级大致是：
 
-**文件：** `ingestion/LlmContextualChunkEnricher.java`
+```text
+双换行 -> 单换行 -> 中文句号 -> 英文句号 -> 空格 -> 硬切
+```
 
-Anthropic 风格的上下文检索增强：
-1. 将整个文档（截断到 maxDocumentChars）+ 单个 chunk 发送给 LLM
-2. LLM 返回一段上下文描述，将 chunk 定位在文档中
-3. `retrievalText = contextText + chunkContent`
-4. 此 enriched retrievalText 用于 embedding、BM25 和重排序
+它的目标不是语义最优，而是稳定、可预测、不会把 chunk 切得太碎或太长。
+
+### 4.3 StructureAwareMarkdownChunker：保结构
+
+Markdown 分块先识别行类型：
+
+- heading
+- code block
+- atomic block，比如图片/链接
+- paragraph
+
+再按标题层级打包。这样能尽量保证：
+
+- 标题和正文不被拆散。
+- 代码块不被切开。
+- 小尾巴 chunk 合并回前一个 chunk。
+
+### 4.4 LlmDocumentEnhancer：文档级增强
+
+`LlmDocumentEnhancer` 主要服务知识库管道。它做的是文档级增强，而不是每个 chunk 的上下文增强。
+
+典型输出包括：
+
+- 增强后的 segments。
+- 文档 keywords。
+- 文档 questions。
+- enhancer metadata。
+- cache key。
+
+这些 signals 之后会被 `KnowledgeDocumentSignalService.saveOrUpdate(...)` 保存，检索时再补回候选 hit 里，帮助 reranker 判断相关性。
+
+### 4.5 LlmContextualChunkEnricher：chunk 上下文增强
+
+`LlmContextualChunkEnricher` 做的是 Anthropic 风格 contextual retrieval：
+
+```text
+整个文档摘要/截断文本 + 当前 chunk
+  -> LLM 生成 contextText
+  -> retrievalText = contextText + chunkContent
+  -> embedding / BM25 / rerank 使用 retrievalText
+```
+
+为什么要这样做？
+
+- 单个 chunk 可能缺主语、章节背景或表格上下文。
+- 加上 `contextText` 后，embedding 和 BM25 更容易匹配用户问题。
+- 最终给模型时也能显示 `Chunk Context`，帮助回答更稳。
 
 ---
 
-## 5. 向量存储 (Milvus)
+## 5. Milvus 双 Collection
 
-### 5.1 双 Collection 架构
+### 5.1 两套索引服务
 
-| Collection | 用途 | 管理类 |
-|-----------|------|--------|
-| `chat_file_chunk` | 会话附件文件 | `DefaultMilvusIndexService` |
-| `chat_knowledge_chunk` | 知识库文档 | `DefaultKnowledgeBaseMilvusIndexService` |
+| Collection | 管理类 | 业务来源 |
+|---|---|---|
+| `chat_file_chunk` | `DefaultMilvusIndexService` | 会话附件 |
+| `chat_knowledge_chunk` | `DefaultKnowledgeBaseMilvusIndexService` | 后台知识库 |
 
-**统一 Schema 模式：**
-- 主键：`chunk_id` (VarChar 64)
-- 稠密向量：`embedding` (FloatVector, 默认 1024 维)
-- BM25：`bm25_text` (VarChar + analyzer) + `bm25_sparse` (SparseFloatVector)
-- 文本字段：`content`, `context_text`, `retrieval_text` (VarChar 65535)
+两套 collection 结构相似，但 scope 字段不同：
 
-### 5.2 混合搜索
+- 会话文件索引围绕 `sessionId/sessionFileId` 查询。
+- 知识库索引围绕 `knowledgeBaseId/documentId` 查询。
 
-每个 Collection 同时支持：
-- **稠密搜索：** `FloatVec` 在 `embedding` 字段上的向量相似度
-- **BM25 稀疏搜索：** `EmbeddedText` 在 `bm25_sparse` 字段上的全文检索
-- **RRF 融合：** 将稠密和稀疏结果合并
+### 5.2 一条 chunk 存什么
+
+可以把 Milvus 中一条 chunk document 理解成：
+
+| 字段 | 作用 |
+|---|---|
+| `chunk_id` | 主键 |
+| `embedding` | dense vector |
+| `bm25_text / bm25_sparse` | BM25 稀疏检索 |
+| `content` | 原始 chunk 正文 |
+| `context_text` | LLM 生成或解析得到的上下文 |
+| `retrieval_text` | 检索用文本，通常是 context + content |
+| `document_id/document_name` | 引用和回填 |
+| `section_path/chunk_index` | 定位来源位置 |
+
+### 5.3 为什么 DB 和 Milvus 都要写
+
+DB 保存业务实体，Milvus 保存检索索引：
+
+- DB 用于后台管理、状态、审计和重建索引。
+- Milvus 用于高性能向量/稀疏搜索。
+
+摄取时通常是“删旧再写新”：
+
+```text
+delete old DB chunks
+  -> save new DB chunks
+  -> delete old Milvus vectors
+  -> upsert new Milvus vectors
+```
+
+这样同一个文件重新上传或重新解析时，不会混入旧 chunk。
 
 ---
 
 ## 6. 检索流程
 
-### 6.1 SearchScopeResolver (检索编排器)
+### 6.1 SearchScopeResolver：检索编排器
 
-**文件：** `SearchScopeResolver.java`
+`SearchScopeResolver.searchBySession(...)` 是检索阶段最重要的类。
 
+主流程：
+
+```text
+chatSessionId + queryText + intentResolution
+  -> find chatSession
+  -> resolveSessionFileIds(chatSessionId)
+  -> SessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(...)
+  -> resolveKnowledgeHits(chatSession, queryText, intentResolution)
+  -> fuseHits(knowledgeBaseHits, sessionHits)
+  -> attachKnowledgeSignalsForKnowledgeBaseHits(...)
+  -> retrievalReranker.rerank(...)
+  -> topK RetrievalHit
 ```
-searchBySession(sessionId, query, intentResolution):
-    1. 加载会话 → 解析附件文件 ID 列表
-    2. 搜索会话文件 Collection (SessionFileSimilaritySearcher)
-    3. 解析知识库命中：
-       - 有 IntentResolution + kind=KB → 搜索范围知识库
-       - 范围搜索为空 + scopePolicy=FALLBACK_ALLOWED → 扩展到所有 Agent KB
-       - 无 IntentResolution → 搜索所有 Agent KB
-    4. RRF 融合两个来源的命中结果
-    5. 附加知识库信号 (关键词/问题)
-    6. 重排序 + TopK 截断
+
+这里有一个容易误解的点：
+
+> `SearchScopeResolver` 不是只查 session file。它会同时查会话附件和知识库，只是知识库会被 intent scope 约束。
+
+### 6.2 知识库范围解析
+
+`resolveKnowledgeHits(...)` 的逻辑可以按三种情况记：
+
+| 情况 | 行为 |
+|---|---|
+| `intentResolution == null` | 查 Agent 默认绑定知识库 |
+| 非 KB 意图 | 不查知识库，只保留会话文件检索 |
+| KB 意图 | 先查 scoped KB；没命中且允许 fallback 时，再查 Agent 默认池中非 scoped KB |
+
+这个设计的意图是：
+
+- 普通聊天不要被知识库污染。
+- KB 意图要优先尊重意图路由识别到的知识库范围。
+- scoped KB 没结果时，是否 fallback 由 `ScopePolicy` 决定。
+
+### 6.3 会话文件检索
+
+`SessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(...)`：
+
+```text
+queryText
+  -> OllamaEmbeddingClient.embed(queryText)
+  -> Milvus dense search by sessionFileIds
+  -> Milvus BM25 search by sessionFileIds
+  -> RRF fuse dense + BM25
+  -> 返回 candidates
 ```
 
-### 6.2 RRF 融合算法 (fuseHits)
+`searchBySessionFileIds(...)` 是较完整的便捷入口，会继续 rerank 并转成 `RetrievalHit`；但生产主链路在 `SearchScopeResolver` 中使用的是 candidate 入口，因为还要和知识库 candidates 合并。
+
+### 6.4 知识库检索
+
+`KnowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(...)` 和会话文件检索模式一致：
+
+```text
+queryText
+  -> embedding
+  -> dense search by knowledgeBaseIds
+  -> BM25 search by knowledgeBaseIds
+  -> RRF fuse
+  -> 返回 candidates
+```
+
+不同之处在于：
+
+- 知识库候选后面会补 `KnowledgeDocumentSignal`。
+- 知识库检索必须先经过 active KB 过滤。
+- scope 由 Agent 绑定和 intent scoped KB 共同决定。
+
+### 6.5 跨来源融合
+
+`SearchScopeResolver.fuseHits(...)` 会把两路 candidates 放进同一个 map：
+
+```text
+addHitsByRrf(KNOWLEDGE_BASE, knowledgeBaseHits)
+addHitsByRrf(SESSION_FILE, sessionHits)
+sort by fused score desc
+```
+
+注意它的 key 包含 `sourceType/sourceId/documentId/chunkIndex/sectionPath`。这避免会话文件和知识库里同名文档被误合并。
+
+### 6.6 topK 是最终证据数量，不是召回数量
+
+当前默认配置里常见两个 K：
+
+| 配置 | 含义 |
+|---|---|
+| `rag.retrieval.candidate-k` | Milvus dense/BM25 各自召回候选数量 |
+| `rag.retrieval.top-k` | rerank 后最终给模型的证据数量 |
+
+也就是说，`topK=3` 不表示只从 Milvus 查 3 条。通常会先召回更多候选，再融合、重排，最后截断。
+
+---
+
+## 7. 重排序与降级
+
+### 7.1 RetrievalReranker 抽象
+
+重排序实现有三类：
+
+| 实现 | 作用 |
+|---|---|
+| `BgeHttpRetrievalReranker` | 首选，通过外部 BGE rerank 服务打分 |
+| `LlmRetrievalReranker` | 降级，用 LLM 对候选排序 |
+| `NoopRetrievalReranker` | 最终兜底，保持 RRF 顺序 |
+
+主链路中调用的是 `RetrievalReranker.rerank(queryText, candidates)`，上层不关心具体是谁完成重排。
+
+### 7.2 BgeHttpRetrievalReranker 的保护策略
+
+BGE reranker 是外部 HTTP 服务，所以它有几层保护：
+
+- `RerankerCircuitBreaker`：失败率过高进入 OPEN，直接跳过外部请求。
+- HALF_OPEN readiness probe：半开时先探活。
+- retry：请求失败可重试。
+- fallback 标记：失败时返回原候选顺序，并标记 `scoreType="fallback"`。
+- 专用连接池：避免 reranker 慢请求拖垮主 HTTP 资源。
+
+这意味着 reranker 失败不会让 `knowledgeQuery` 抛异常。最坏情况是：
+
+```text
+Milvus candidates
+  -> RRF 顺序保留
+  -> scoreType=fallback
+  -> RetrievalHitFormatter 仍然能生成证据
+```
+
+### 7.3 置信度过滤
+
+BGE rerank 后如果 top score 太低，会进入 filtered 语义。
+
+`RetrievalHitFormatter` 对 `scoreType="filtered"` 的处理是：
+
+- 不把该命中放进 promptText。
+- 结构化 citations 可能保留在内部结果中。
+- 如果所有命中都 filtered，则返回 “No relevant attached session-file content found.”，并不给模型不可靠证据。
+
+这个设计比直接返回低质量证据更安全：模型宁可说没找到，也不要根据弱相关 chunk 编答案。
+
+---
+
+## 8. 引用闭环
+
+### 8.1 RetrievalHitFormatter：双输出
+
+`RetrievalHitFormatter.formatWithCitations(...)` 返回：
 
 ```java
-score = 1.0 / (rrfK + rank + 1)    // rrfK 默认 60
-// 两个来源中出现的同一 chunk 累加分数
+FormattedRetrievalPrompt(
+    String promptText,
+    List<CitationMetadata> citations
+)
 ```
 
-### 6.3 SessionFileSimilaritySearcher / KnowledgeBaseSimilaritySearcher
+两者职责不同：
 
-两个搜索器使用相同模式：
+| 输出 | 去向 | 用途 |
+|---|---|---|
+| `promptText` | tool response | 给 LLM 阅读的证据块 |
+| `citations` | `CurrentTurnCitationHolder` | 最终 assistant message metadata |
+
+### 8.2 promptText 长什么样
+
+每个命中会被格式化成稳定编号：
+
+```text
+[1] Source: xxx.pdf [SESSION_FILE] chunk 0
+Section: chunk[0]
+Chunk Context:
+...
+Chunk Content:
+...
 ```
-1. OllamaEmbeddingClient.embed(query) → 查询向量
-2. Milvus 稠密搜索
-3. Milvus BM25 稀疏搜索
-4. RRF 融合
-5. 返回候选命中列表
+
+然后模板 `RAG_EVIDENCE_BLOCK` 会追加引用规则，提醒模型回答时使用实际出现的 `[n]`。
+
+### 8.3 citations 什么时候写入消息
+
+`SessionFileTools.knowledgeQuery(...)` 里只是：
+
+```text
+currentTurnCitationHolder.put(sessionId, turnId, formatted.citations())
 ```
+
+真正写入 assistant 消息 metadata 的时机在 Agent runtime：
+
+- `streamFinalResponse`：最终回答一定保留，所以可以 `take` citations。
+- `streamDecisionResponse`：先 `peek`，如果没有 tool call、临时 assistant 升级为最终回答，才 `take`。
+- 如果决策流最后产生 tool call，临时 assistant 会 rollback，citations 不应被提前消费。
+
+所以 citations 不是“工具一执行就展示”，而是“最终回答确认保留后再绑定”。
 
 ---
 
-## 7. 重排序 (Reranking)
+## 9. 和 Agent Runtime 的接缝
 
-### 7.1 重排序链
+### 9.1 knowledgeQuery 是 RAG 和 Agent 的交界点
 
-```
-BgeHttpRetrievalReranker (首选)
-    │ 熔断器保护
-    │ 置信度过滤
-    │ 专用连接池
-    ▼
-LlmRetrievalReranker (降级)
-    │ 通过 LLM 排序
-    ▼
-NoopRetrievalReranker (最终降级)
-    │ 保持 RRF 融合顺序
-    ▼
-返回结果
-```
+`knowledgeQuery(query)` 做 5 件事：
 
-### 7.2 BgeHttpRetrievalReranker (BGE 重排序器)
+1. 从 Holder 取 `sessionId/turnId/intentResolution`。
+2. 调 `ragService.similaritySearchBySession(...)`。
+3. 用 `CurrentTurnKnowledgeHitHolder.recordRetrievalResult(...)` 记录本轮是否检索命中。
+4. 用 `RetrievalHitFormatter.formatWithCitations(...)` 生成证据文本和引用元数据。
+5. 把 citations 放进 `CurrentTurnCitationHolder`，返回 `promptText` 给模型。
 
-**文件：** `retrieve/BgeHttpRetrievalReranker.java`
+它返回的是 tool response，不是直接给用户看的最终回答。
 
-激活条件：`rag.retrieval.reranker.provider=bge-http`
+### 9.2 knowledgeHit 的语义
 
-**熔断器保护 (第125-129行)：**
-- 每次调用前检查 `circuitBreaker.allowRequest()`
-- OPEN 状态 → 直接返回候选，标记为 fallback
-- HALF_OPEN → 先运行就绪探测
+`CurrentTurnKnowledgeHitHolder` 记录的是：
 
-**专用连接池 (第92-109行)：** 独立的 `ConnectionProvider` (名称 `reranker-pool`)，避免与其他 HTTP 流量干扰。
+> 本轮是否尝试过知识检索，以及检索是否命中。
 
-**连接错误重试 (第214-237行)：** 最多重试 `retryConnectErrors` 次（默认1次）。
+这和“最终回答是否采用知识”不是一回事。
 
-### 7.3 RerankerCircuitBreaker (重排序熔断器)
+常见语义：
 
-**文件：** `retrieve/RerankerCircuitBreaker.java`
+- 没有调用 RAG 工具：默认不把它当成知识缺失。
+- 调用了 RAG 工具且返回空：`knowledgeHit = false`。
+- 多次调用只要有一次命中：`knowledgeHit = true`。
 
-滑动窗口熔断器，10 个桶 × 10 秒 = 100 秒窗口：
+### 9.3 为什么非 KB 意图仍然可能查会话文件
 
-| 状态 | 行为 |
-|------|------|
-| CLOSED | 正常通过 |
-| OPEN | 拒绝所有请求，等待 openStateMs (默认30秒) |
-| HALF_OPEN | 允许 halfOpenProbeCount (默认1) 个探测请求 |
+`SearchScopeResolver` 对非 KB 意图只关闭知识库检索：
 
-**触发条件（全部满足）：**
-- 总请求数 >= minimumRequestVolume (10)
-- 失败数 >= failureThreshold (5)
-- 失败率 >= failureRateThresholdPercent (50%)
-
-### 7.4 置信度过滤 (Confidence Filtering)
-
-**BgeHttpRetrievalReranker 中的实现：**
-
-```
-1. 重排序完成后，检查 Top-1 的分数
-2. 如果 Top-1 分数 < scoreThreshold (默认 0.15)
-   → 所有候选标记为 scoreType="filtered"
-3. RetrievalHitFormatter 中：
-   - filtered 的命中从 LLM Prompt 中排除
-   - 但仍保留在引用列表中供 UI 显示
+```text
+非 KB 意图
+  -> knowledgeBaseHits = []
+  -> sessionHits 仍然按当前 session 文件检索
 ```
 
-**设计原则：** 置信度过滤只影响 `scoreType == reranker` 的结果，严格不影响检索/回退路径的分数。
-
-### 7.5 知识库信号注入
-
-**KnowledgeDocumentSignalService** 在重排序前为知识库命中附加信号：
-- 从 Redis MGET 加载文档关键词和问题（延迟预算 < 20ms）
-- Redis 未命中则回退到数据库并回填 Redis
-- Fail-open：Redis/数据库都不可用时不影响检索
+原因是会话附件通常是用户当前对话上下文的一部分，而知识库是长期全局知识源。前者可以作为局部上下文，后者需要更严格的意图边界。
 
 ---
 
-## 8. 引用追踪
+## 10. 配置速览
 
-### 8.1 RetrievalHitFormatter
+RAG 相关配置分散在 `application.yaml` 的 `rag.*` 下，常见维度包括：
 
-**文件：** `application/RetrievalHitFormatter.java`
+| 配置方向 | 典型字段 |
+|---|---|
+| 检索数量 | `rag.retrieval.top-k`、`rag.retrieval.candidate-k`、`rag.retrieval.rrf-k` |
+| Milvus | collection 名、向量维度、索引参数、BM25 analyzer |
+| Embedding | Ollama base URL、模型名、维度 |
+| Reranker | BGE endpoint、模型名、timeout、score threshold、熔断参数 |
+| 文档增强 | 是否启用、短文档阈值、LLM 提示词/缓存 |
+| chunk 增强 | 是否启用、最大文档字符数、并发/超时 |
+| VDP | VLM/MinerU/Noop 路由、缓存、DPI、批量策略 |
 
-```
-formatWithCitations():
-    1. 遍历命中，转换为 CitationMetadata
-    2. 跳过 scoreType="filtered" 的命中（不加入 Prompt）
-    3. 为包含的命中生成编号块：
-       [1] 来源标签 > 章节路径
-       上下文: ...
-       内容: ...
-    4. 返回 FormattedRetrievalPrompt：
-       - promptText: 组装的证据块 + 引用指令
-       - citations: 所有 CitationMetadata（含 filtered 的）
-```
+读配置时要区分：
 
-### 8.2 CitationMetadata
-
-**文件：** `model/CitationMetadata.java`
-
-与 RetrievalHit 镜像的字段 + 额外的 `snippet` 字段（截断到180字符）和 `isFallback` 标志。
-
-引用元数据通过 `CurrentTurnCitationHolder` 在工具执行期间暂存，最终附加到助手消息的 `metadata` JSONB 字段中。
+- candidate-k 控召回池大小。
+- top-k 控最终给模型的证据条数。
+- reranker threshold 控低置信证据是否进入 prompt。
+- VDP 配置只影响摄取，不影响已经入库的 chunk 检索。
 
 ---
 
-## 9. 摄取流程详解
+## 11. 当前生产路径里哪些代码最重要
 
-### 9.1 FileIngestionService (会话文件管道)
+如果你只看主线，推荐按这个顺序读：
 
-**文件：** `ingestion/FileIngestionService.java`
+1. `SessionFileTools.knowledgeQuery(...)`
+2. `RagService.similaritySearchBySession(...)`
+3. `SearchScopeResolver.searchBySession(...)`
+4. `SearchScopeResolver.resolveKnowledgeHits(...)`
+5. `SessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(...)`
+6. `KnowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(...)`
+7. `SearchScopeResolver.fuseHits(...)` 和 `rerankAndLimit(...)`
+8. `BgeHttpRetrievalReranker.rerank(...)`
+9. `RetrievalHitFormatter.formatWithCitations(...)`
+10. `CurrentTurnCitationHolder` 在 `AgentMessageBridgeImpl` 里的消费逻辑
 
-```
-ingest() (异步 @Async):
-    1. initializeContext() → SessionIngestionContext
-    2. fetchSource():
-       → FileSizeGuard.guardBeforeRead() [拒绝>30MB]
-       → DocumentParserSelector.selectParser() [类型检测+选择]
-    3. parseDocument() → ParseResult + segments
-    4. 拒绝 OCR_REQUIRED 或 REJECTED 质量
-    5. enhanceDocument() → LlmDocumentEnhancer (知识库专用)
-    6. chunkDocument() → SegmentAwareChunkerRouter
-    7. enrichChunks() → LlmContextualChunkEnricher
-    8. buildFileChunks() → 创建 FileChunkDTO
-    9. persistChunks():
-       → 删除旧 chunks
-       → 保存新 chunks 到 DB
-       → Milvus upsert (embed → chunk mapper → index service)
-   10. markCompleted()
-```
+摄取链建议另起一轮读：
+
+1. `FileIngestionService.ingest(...)`
+2. `KnowledgeDocumentIngestionServiceImpl.ingestSync(...)`
+3. `DocumentParserSelector.selectParser(...)`
+4. `FileTypeDetector.detect(...)`
+5. `PdfDocumentParser.parse(...)`
+6. `PdfQualityRouter`
+7. `VdpEngineRouter`
+8. `SegmentAwareChunkerRouter.chunk(...)`
+9. `LlmDocumentEnhancer.enhance(...)`
+10. `LlmContextualChunkEnricher.enrich(...)`
+11. `SessionFileMilvusIndexer` / `KnowledgeBaseMilvusIndexer`
 
 ---
 
-## 10. 技术亮点总结
+## 12. 常见易混点
 
-### 高性能
-- **混合检索：** Dense + BM25 稀疏，RRF 融合，取长补短
-- **原始 SSE 解析：** ProviderDirectStreamSupport 绕过 Spring AI
-- **重排序信号热路径：** Redis MGET < 20ms 延迟预算
+### 12.1 `RagService` 和 `SearchScopeResolver` 谁更核心
 
-### 高可用
-- **重排序降级链：** BGE HTTP → LLM Reranker → Noop (保持 RRF 顺序)
-- **RerankerCircuitBreaker：** 滑动窗口熔断器保护
-- **Fail-Open 设计：** 信号服务、缓存等非关键路径故障不影响主流程
-- **重排序专用连接池：** 隔离故障域
+`RagService` 是门面，方便 Agent 工具依赖一个稳定入口。
 
-### PDF 解析
-- **双轨道路由：** Fast-Track (原生提取) + Visual-Track (VLM/MinerU)
-- **三种 VDP 引擎：** VLM / MinerU / Noop 降级
-- **质量评估四级：** HIGH / MEDIUM / LOW / REJECTED
+真正决定“查哪里、怎么融合、怎么 rerank”的是 `SearchScopeResolver`。
 
-### 智能分块
-- **Segment 感知路由：** 根据 ParseSegment 类型选择最佳分块策略
-- **结构感知 Markdown 分块：** 保持标题层级、代码块完整性
-- **Anthropic 风格上下文增强：** 块级 LLM 上下文注入
+### 12.2 `searchBySessionFileIds` 和 `searchCandidateHitsBySessionFileIds` 区别
 
-### 置信度过滤
-- **Agent 隔离：** 低分证据不进入 Prompt，模型不会基于不可靠信息回答
-- **UI 透明：** 过滤的引用仍保留在 UI 中，用户可见
-- **分数隔离原则：** 只影响 reranker 分数，不影响检索/回退路径
+- `searchBySessionFileIds(...)`：完整搜索，自己 rerank 后返回 `RetrievalHit`。
+- `searchCandidateHitsBySessionFileIds(...)`：只返回 dense + BM25 + RRF 后的 Milvus candidates。
+
+生产主链路用 candidate 入口，因为还要跟知识库候选合并后统一 rerank。
+
+### 12.3 `content/contextText/retrievalText` 的区别
+
+| 字段 | 作用 |
+|---|---|
+| `content` | 原始 chunk 正文，最终证据主体 |
+| `contextText` | chunk 的上下文说明 |
+| `retrievalText` | 检索用文本，通常拼了 context 和 content |
+
+如果 `content` 为空，部分转换逻辑会退回使用 `retrievalText`。
+
+### 12.4 `promptText` 和 `citations` 不要混
+
+- `promptText` 给模型看。
+- `citations` 给前端/数据库看。
+
+模型回答里的 `[1]` 要和 `citations[0]` 对齐，所以 `RetrievalHitFormatter` 必须稳定编号。
+
+### 12.5 filtered 和 fallback 不是一回事
+
+| scoreType | 含义 |
+|---|---|
+| `filtered` | reranker 判断置信度低，不进入 prompt |
+| `fallback` | reranker 不可用或失败，保留 RRF 顺序 |
+| `retrieval` | 没有 reranker 分数，使用检索阶段分数 |
+| `reranker` | 使用 reranker 结果 |
+
+filtered 是“不要给模型看”；fallback 是“服务降级但仍可用”。
+
+### 12.6 VDP 和 Reranker 都有降级，但位置不同
+
+- VDP 降级发生在摄取阶段：解析 PDF/图片时用。
+- Reranker 降级发生在检索阶段：候选已经召回后用。
+
+不要把这两个故障域混在一起。
+
+### 12.7 知识库 signals 是辅助重排，不是直接证据
+
+`KnowledgeDocumentSignalService` 保存的是文档级 keywords/questions。
+
+它们用于帮助 reranker 理解候选文档，但最终 evidence block 还是来自 chunk 的 `content/contextText`。
+
+---
+
+## 13. 一句话总复习
+
+> RAG pipeline 的主心智模型是“两段式”：摄取阶段把不同格式文档统一成带上下文的 chunk 并写入 Milvus；检索阶段在当前 session 和意图允许的 KB 范围内召回 dense/BM25 候选，RRF 融合、rerank 排序，再把 `promptText` 交给模型、把 `citations` 交给最终消息。
