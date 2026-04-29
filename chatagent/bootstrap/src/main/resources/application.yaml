@@ -230,7 +230,7 @@ chatagent:
         cache-ttl-minutes: ${CHATAGENT_RAG_DOCUMENT_SIGNAL_CACHE_TTL_MINUTES:30}
     ingestion:
       document-enhancer:
-        enabled: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_ENABLED:false}
+        enabled: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_ENABLED:true}
         model-id: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MODEL:}
         prompt-version: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_PROMPT_VERSION:v2}
         short-doc-char-limit: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_SHORT_DOC_CHAR_LIMIT:12000}
