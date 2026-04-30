@@ -7,7 +7,7 @@ Upgrade `StructureAwareMarkdownChunker` from regex-based line scanning to an AST
 The upgraded chunker should:
 
 - Preserve original Markdown content in `KnowledgeChunkDraft.content`.
-- Add heading context to `KnowledgeChunkDraft.embeddingText` for better retrieval.
+- Add heading context to structured metadata so index assemblers can build retrieval text consistently.
 - Store structured heading metadata, not only a flattened `sectionPath`.
 - Avoid splitting code fences, GFM tables, lists, blockquotes, and other atomic Markdown blocks whenever practical.
 - Keep the public `StructureAwareMarkdownChunker.chunk(String markdownText)` API unchanged.
@@ -20,7 +20,7 @@ Current flow:
 FULL ParseSegment
   -> SegmentAwareChunkerRouter.looksLikeMarkdown(text)
   -> StructureAwareMarkdownChunker.chunk(text)
-  -> KnowledgeChunkDraft(content, metadata, embeddingText)
+  -> KnowledgeChunkDraft(content, metadata)
 ```
 
 Current Markdown chunker behavior:
@@ -28,14 +28,14 @@ Current Markdown chunker behavior:
 - Uses regex and line scanning.
 - Recognizes heading, code fence, atomic image/link, and paragraph.
 - Stores `sectionPath` as a flattened string such as `A / B / C`.
-- Uses `content` as `embeddingText`.
+- Uses `content` directly for retrieval unless metadata adds more context later in the pipeline.
 
 Current weaknesses:
 
 - `sectionPath` loses heading levels.
 - Heading titles containing ` / ` become ambiguous.
 - Tables, lists, blockquotes, and HTML blocks are not represented as first-class block types.
-- `embeddingText` does not include heading context unless the heading text is already inside the chunk.
+- Retrieval text does not include heading context unless the heading text is already inside the chunk.
 - Long or nested Markdown structures are handled with coarse character ranges.
 
 ## 3. Dependency Decision
@@ -120,7 +120,7 @@ Keep `sectionPath` for display compatibility, but treat `sectionHeadings` as the
 The service retries transient failures three times.
 ```
 
-`embeddingText` should include heading context:
+The index-time retrieval text should include heading context:
 
 ```text
 Section: Operations > Reliability > Retry Policy
@@ -236,8 +236,8 @@ content
 metadata
   JSON metadata with chunk strategy and section structure.
 
-embeddingText
-  Retrieval text with section breadcrumb plus content.
+retrievalText
+  Built at index time from context metadata, section breadcrumb, page metadata, and content.
 ```
 
 `SegmentAwareChunkerRouter.attachSegmentMetadata(...)` should preserve Markdown metadata and append only source segment/page metadata.
@@ -249,7 +249,7 @@ Add or update tests for:
 1. H1/H2/H3 headings produce structured `sectionHeadings`.
 2. Heading titles containing ` / ` do not break structured metadata.
 3. `content` does not include synthetic `Section:` prefix.
-4. `embeddingText` includes `Section: A > B > C`.
+4. Index-time retrieval text includes `Section: A > B > C`.
 5. Fenced code blocks are not split.
 6. GFM tables are recognized as `table` blocks and not split when reasonable.
 7. Lists are packed as list blocks.
@@ -262,7 +262,7 @@ Add or update tests for:
 
 1. Add focused tests for the target behavior.
 2. Replace the internal block segmentation in `StructureAwareMarkdownChunker` with flexmark AST traversal.
-3. Add structured heading metadata and heading-aware `embeddingText`.
+3. Add structured heading metadata and index-time heading-aware retrieval text.
 4. Preserve and adapt block packing, oversized handling, and small chunk compaction.
 5. Verify `SegmentAwareChunkerRouter` metadata attachment does not overwrite Markdown metadata.
 6. Run focused chunker tests and RAG parser/ingestion tests.

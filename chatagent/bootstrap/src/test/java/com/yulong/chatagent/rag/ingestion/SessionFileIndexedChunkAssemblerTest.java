@@ -76,7 +76,10 @@ class SessionFileIndexedChunkAssemblerTest {
         assertThat(document.documentName()).isEqualTo("faq.md");
         assertThat(document.sectionPath()).isEqualTo("Remote Access");
         assertThat(document.contextText()).isNull();
-        assertThat(document.retrievalText()).isEqualTo("VPN access requires MFA.");
+        assertThat(document.retrievalText()).isEqualTo(String.join(
+                System.lineSeparator() + System.lineSeparator(),
+                "Section: Remote Access",
+                "VPN access requires MFA."));
         assertThat(document.enabled()).isTrue();
     }
 }

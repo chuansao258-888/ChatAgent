@@ -337,20 +337,42 @@ VDP 是 Visual Document Processing，用来处理低质量或扫描类页面。
 
 它的目标不是语义最优，而是稳定、可预测、不会把 chunk 切得太碎或太长。
 
-### 4.3 StructureAwareMarkdownChunker：保结构
+### 4.3 StructureAwareMarkdownChunker：AST 结构分块
 
-Markdown 分块先识别行类型：
+Markdown 分块使用 flexmark AST 解析，而不是只靠正则逐行扫描。它会先把文档解析成结构块：
 
 - heading
-- code block
-- atomic block，比如图片/链接
 - paragraph
+- list
+- table
+- code block
+- blockquote
+- html
+- thematic break
 
-再按标题层级打包。这样能尽量保证：
+然后按 heading 维护结构化标题路径。`sectionPath` 仍保留为便于展示的字符串，比如 `A / B / C`；同时 metadata 里会保存更清晰的结构：
 
-- 标题和正文不被拆散。
-- 代码块不被切开。
-- 小尾巴 chunk 合并回前一个 chunk。
+```json
+{
+  "sectionTitle": "C",
+  "sectionLevel": 3,
+  "sectionHeadings": [
+    {"level": 1, "title": "A"},
+    {"level": 2, "title": "B"},
+    {"level": 3, "title": "C"}
+  ]
+}
+```
+
+chunk 的 `content` 保留原始 Markdown 正文；标题上下文不再写进 chunk 内容，而是进入 metadata。后续索引阶段会统一用 metadata + content 组装检索文本：
+
+```text
+Section: A > B > C
+
+原始 chunk 正文...
+```
+
+这样既不污染引用展示，又能让向量检索捕捉章节语义。代码块、表格、列表、引用块会尽量作为原子结构保留；如果单个块过长，才会按自然边界拆分，并在 metadata 中标记 `splitOversizedBlock=true`。
 
 ### 4.4 LlmDocumentEnhancer：文档级增强
 

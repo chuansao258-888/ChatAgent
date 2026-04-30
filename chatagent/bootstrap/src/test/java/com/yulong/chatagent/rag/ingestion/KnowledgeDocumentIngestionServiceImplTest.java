@@ -127,7 +127,7 @@ class KnowledgeDocumentIngestionServiceImplTest {
                 Map.of("doc_type", "policy", "contains_pii", false),
                 "cache-1"
         );
-        List<KnowledgeChunkDraft> drafts = List.of(new KnowledgeChunkDraft("carry over rules", "{}", "carry over rules"));
+        List<KnowledgeChunkDraft> drafts = List.of(new KnowledgeChunkDraft("carry over rules", "{}"));
 
         when(documentStorageService.fileExists("knowledge/doc-1")).thenReturn(true);
         when(documentStorageService.getFileSize("knowledge/doc-1")).thenReturn((long) Files.size(storedFile));
@@ -172,8 +172,7 @@ class KnowledgeDocumentIngestionServiceImplTest {
                 .build();
         List<KnowledgeChunkDraft> drafts = List.of(new KnowledgeChunkDraft(
                 "chunk\u0000-body",
-                "{\"raw\":\"meta\u0000data\"}",
-                "chunk body"
+                "{\"raw\":\"meta\u0000data\"}"
         ));
 
         when(documentStorageService.fileExists("knowledge/doc-null")).thenReturn(true);

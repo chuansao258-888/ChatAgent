@@ -76,7 +76,10 @@ class KnowledgeBaseIndexedChunkAssemblerTest {
         assertThat(document.documentName()).isEqualTo("security.md");
         assertThat(document.sectionPath()).isEqualTo("Security / Remote Access");
         assertThat(document.contextText()).isNull();
-        assertThat(document.retrievalText()).isEqualTo("VPN access requires MFA for all employees.");
+        assertThat(document.retrievalText()).isEqualTo(String.join(
+                System.lineSeparator() + System.lineSeparator(),
+                "Section: Security / Remote Access",
+                "VPN access requires MFA for all employees."));
         assertThat(document.enabled()).isTrue();
     }
 }

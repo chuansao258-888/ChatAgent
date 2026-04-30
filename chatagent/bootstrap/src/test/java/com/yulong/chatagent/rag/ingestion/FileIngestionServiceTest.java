@@ -145,8 +145,7 @@ class FileIngestionServiceTest {
                 .build();
         List<KnowledgeChunkDraft> drafts = List.of(new KnowledgeChunkDraft(
                 "hello\u0000world",
-                "{\"trace\":\"ab\u0000cd\"}",
-                "hello world"
+                "{\"trace\":\"ab\u0000cd\"}"
         ));
 
         when(documentStorageService.getFileSize(sessionFile.getStoragePath())).thenReturn(64L);

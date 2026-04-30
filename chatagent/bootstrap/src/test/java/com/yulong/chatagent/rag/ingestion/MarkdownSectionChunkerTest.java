@@ -25,7 +25,6 @@ class MarkdownSectionChunkerTest {
         assertThat(drafts).hasSize(1);
         KnowledgeChunkDraft draft = drafts.get(0);
         assertThat(draft.content()).isEqualTo("Install\nStep one\nStep two");
-        assertThat(draft.embeddingText()).isEqualTo(draft.content());
 
         JsonNode metadata = objectMapper.readTree(draft.metadata());
         assertThat(metadata.get("title").asText()).isEqualTo("Install");

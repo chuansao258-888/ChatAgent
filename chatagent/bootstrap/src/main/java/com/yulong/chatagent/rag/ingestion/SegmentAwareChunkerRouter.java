@@ -170,7 +170,7 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
             drafts.addAll(attachSegmentMetadata(markdownChunker.chunk(text), sourceSegments, SegmentType.PAGE));
             return;
         }
-        drafts.add(new KnowledgeChunkDraft(text, buildPageMetadata(text, sourceSegments), text));
+        drafts.add(new KnowledgeChunkDraft(text, buildPageMetadata(text, sourceSegments)));
     }
 
     private List<KnowledgeChunkDraft> attachSegmentMetadata(List<KnowledgeChunkDraft> drafts,
@@ -188,7 +188,7 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
             if (sourceSegments != null && sourceSegments.size() == 1) {
                 metadata.putAll(sourceSegments.get(0).metadata());
             }
-            result.add(new KnowledgeChunkDraft(draft.content(), writeMetadata(metadata), draft.embeddingText()));
+            result.add(new KnowledgeChunkDraft(draft.content(), writeMetadata(metadata)));
         }
         return result;
     }
@@ -225,7 +225,7 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
             Map<String, Object> metadata = parseMetadata(draft.metadata());
             metadata.put("chunkIndex", i);
             metadata.put("contentLength", draft.content() == null ? 0 : draft.content().length());
-            reindexed.add(new KnowledgeChunkDraft(draft.content(), writeMetadata(metadata), draft.embeddingText()));
+            reindexed.add(new KnowledgeChunkDraft(draft.content(), writeMetadata(metadata)));
         }
         return reindexed;
     }

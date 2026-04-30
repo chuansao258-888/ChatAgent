@@ -25,9 +25,8 @@ import java.util.Map;
 /**
  * Chunk-level contextualizer inspired by Anthropic contextual retrieval.
  *
- * <p>Each qualifying chunk receives a short chunk-specific context string, and the resulting
- * {@code retrievalText = contextText + chunkContent} is stored back into chunk metadata for
- * dense, BM25, and rerank stages.</p>
+ * <p>Each qualifying chunk receives a short chunk-specific context string. Retrieval text is
+ * assembled later from chunk metadata and content by the index document assembler.</p>
  */
 @Component
 @Primary
@@ -59,12 +58,6 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
             return drafts;
         }
 
-        String wholeDocument = resolveWholeDocument(context);
-        if (!StringUtils.hasText(wholeDocument)) {
-            return drafts;
-        }
-
-        String promptDocument = truncate(wholeDocument, properties.getMaxDocumentChars());
         ChatClient chatClient = chatModelRouter.route(properties.getModelId());
         List<KnowledgeChunkDraft> enriched = new ArrayList<>(drafts.size());
         int contextualizedCount = 0;
@@ -84,9 +77,11 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
                         draft.content() == null ? 0 : draft.content().length(),
                         properties.getModelId());
 
+                Map<String, Object> metadata = parseMetadata(draft.metadata());
+                String chunkContext = buildChunkContext(metadata);
                 String response = chatClient.prompt()
                         .system(promptLoader.load(PromptConstants.RAG_CHUNK_CTX_SYSTEM))
-                        .user(buildUserPrompt(promptDocument, draft.content()))
+                        .user(buildUserPrompt(chunkContext, draft.content()))
                         .call()
                         .content();
 
@@ -96,19 +91,13 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
                     continue;
                 }
 
-                // Retrieval text becomes the shared source for dense embeddings, BM25 text, and
-                // downstream reranking.
-                String retrievalText = contextText + System.lineSeparator() + System.lineSeparator() + draft.content();
-                Map<String, Object> metadata = parseMetadata(draft.metadata());
                 metadata.put("contextText", contextText);
-                metadata.put("retrievalText", retrievalText);
                 metadata.put("chunkEnrichment", "contextual_retrieval");
                 metadata.put("contextModelId", properties.getModelId());
 
                 enriched.add(new KnowledgeChunkDraft(
                         draft.content(),
-                        writeMetadata(metadata),
-                        retrievalText
+                        writeMetadata(metadata)
                 ));
                 contextualizedCount++;
                 log.info("Contextual chunk enrichment completed: sourceId={}, chunkIndex={}, contextLength={}, durationMs={}",
@@ -139,10 +128,6 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
                 && contextualizedCount < properties.getMaxChunksPerFile();
     }
 
-    private String resolveWholeDocument(BaseIngestionContext context) {
-        return context.resolveDocumentPrefix(properties.getMaxDocumentChars());
-    }
-
     private String resolveContextOwnerId(BaseIngestionContext context) {
         if (context instanceof SessionIngestionContext sessionContext) {
             return sessionContext.getSessionFile() == null ? null : sessionContext.getSessionFile().getId();
@@ -153,12 +138,40 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
         return null;
     }
 
-    private String buildUserPrompt(String wholeDocument, String chunkContent) {
+    private String buildUserPrompt(String chunkContext, String chunkContent) {
         return promptLoader.render(PromptConstants.RAG_CHUNK_CTX_USER, Map.of(
-                "document", wholeDocument,
+                "chunkContext", StringUtils.hasText(chunkContext) ? chunkContext : "No explicit structural metadata is available.",
                 "chunk", chunkContent,
                 "maxContextChars", String.valueOf(properties.getMaxContextChars())
         ));
+    }
+
+    private String buildChunkContext(Map<String, Object> metadata) {
+        List<String> parts = new ArrayList<>();
+        String sectionPath = metadataString(metadata, "sectionPath");
+        if (!StringUtils.hasText(sectionPath)) {
+            sectionPath = metadataString(metadata, "headingPath");
+        }
+        if (!StringUtils.hasText(sectionPath)) {
+            sectionPath = metadataString(metadata, "title");
+        }
+        if (StringUtils.hasText(sectionPath)) {
+            parts.add("Section: " + sectionPath);
+        }
+        String pageLabel = resolvePageLabel(metadata);
+        if (StringUtils.hasText(pageLabel)) {
+            parts.add(pageLabel);
+        }
+        return String.join(System.lineSeparator(), parts);
+    }
+
+    private String resolvePageLabel(Map<String, Object> metadata) {
+        String pageStart = metadataString(metadata, "pageStart");
+        String pageEnd = metadataString(metadata, "pageEnd");
+        if (StringUtils.hasText(pageStart) && StringUtils.hasText(pageEnd)) {
+            return pageStart.equals(pageEnd) ? "Page: " + pageStart : "Pages: " + pageStart + "-" + pageEnd;
+        }
+        return null;
     }
 
     private String normalizeContext(String response, int chunkLength) {
@@ -181,13 +194,6 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
         return normalized;
     }
 
-    private String truncate(String text, int maxChars) {
-        if (!StringUtils.hasText(text) || text.length() <= maxChars) {
-            return text;
-        }
-        return text.substring(0, maxChars);
-    }
-
     private Map<String, Object> parseMetadata(String metadataJson) {
         if (!StringUtils.hasText(metadataJson)) {
             return new LinkedHashMap<>();
@@ -206,5 +212,10 @@ public class LlmContextualChunkEnricher implements ChunkEnricher {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialize contextual chunk metadata", e);
         }
+    }
+
+    private String metadataString(Map<String, Object> metadata, String key) {
+        Object value = metadata == null ? null : metadata.get(key);
+        return value == null ? null : String.valueOf(value);
     }
 }

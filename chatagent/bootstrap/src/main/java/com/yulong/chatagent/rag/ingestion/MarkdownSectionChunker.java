@@ -36,8 +36,7 @@ public class MarkdownSectionChunker {
 
             drafts.add(new KnowledgeChunkDraft(
                     chunkContent,
-                    buildMetadata(title, body),
-                    chunkContent
+                    buildMetadata(title, body)
             ));
         }
         return drafts;

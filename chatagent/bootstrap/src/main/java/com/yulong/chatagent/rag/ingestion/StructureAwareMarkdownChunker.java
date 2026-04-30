@@ -1,8 +1,23 @@
 package com.yulong.chatagent.rag.ingestion;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vladsch.flexmark.ast.BlockQuote;
+import com.vladsch.flexmark.ast.BulletList;
+import com.vladsch.flexmark.ast.FencedCodeBlock;
+import com.vladsch.flexmark.ast.Heading;
+import com.vladsch.flexmark.ast.HtmlBlock;
+import com.vladsch.flexmark.ast.IndentedCodeBlock;
+import com.vladsch.flexmark.ast.OrderedList;
+import com.vladsch.flexmark.ast.Paragraph;
+import com.vladsch.flexmark.ast.ThematicBreak;
+import com.vladsch.flexmark.ext.tables.TableBlock;
+import com.vladsch.flexmark.ext.tables.TablesExtension;
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.util.ast.Document;
+import com.vladsch.flexmark.util.ast.Node;
+import com.vladsch.flexmark.util.data.MutableDataSet;
 import com.yulong.chatagent.rag.ingestion.model.KnowledgeChunkDraft;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,13 +26,13 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
- * Markdown chunker that respects headings, code fences, and atomic blocks before packing blocks
- * into retrieval-sized chunks.
+ * Markdown chunker backed by flexmark AST. It keeps original Markdown as chunk content,
+ * and stores structured heading metadata for index-time retrieval text assembly.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,10 +41,9 @@ public class StructureAwareMarkdownChunker {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
-    private static final Pattern HEADING = Pattern.compile("^#{1,6}\\s+.*$");
-    private static final Pattern CODE_FENCE = Pattern.compile("^```.*$");
-    private static final Pattern ATOMIC_IMAGE = Pattern.compile("^!\\[[^]]*]\\([^)]+\\)(?:\\s*\"[^\"]*\")?\\s*$");
-    private static final Pattern ATOMIC_LINK = Pattern.compile("^\\[[^]]+]\\([^)]+\\)\\s*$");
+    private static final Parser MARKDOWN_PARSER = Parser.builder(new MutableDataSet()
+            .set(Parser.EXTENSIONS, List.of(TablesExtension.create())))
+            .build();
 
     private final ObjectMapper objectMapper;
 
@@ -45,37 +59,38 @@ public class StructureAwareMarkdownChunker {
     @Value("${chatagent.rag.chunk.markdown.overlap-chars:0}")
     private int overlapChars;
 
-    /**
-     * Chunks markdown in two passes:
-     * 1. segment markdown into structure-aware blocks
-     * 2. pack blocks into size-bounded chunks
-     */
     public List<KnowledgeChunkDraft> chunk(String markdownText) {
         if (!StringUtils.hasText(markdownText)) {
             return List.of();
         }
 
         String normalizedMarkdown = normalizeLineEndings(markdownText);
-        List<Block> blocks = segmentToBlocks(normalizedMarkdown);
+        List<MarkdownBlock> blocks = parseBlocks(normalizedMarkdown);
         if (blocks.isEmpty()) {
-            return List.of(buildDraft(normalizedMarkdown.trim(), List.of("paragraph"), 0, null));
+            return List.of(buildDraft(
+                    normalizedMarkdown.trim(),
+                    List.of("paragraph"),
+                    0,
+                    List.of(),
+                    Map.of()
+            ));
         }
 
-        List<ChunkRange> ranges = packBlocksToChunks(blocks);
+        List<ChunkSlice> slices = packBlocksToChunks(blocks, normalizedMarkdown);
         List<KnowledgeChunkDraft> drafts = new ArrayList<>();
         String overlapPrefix = "";
 
-        for (int index = 0; index < ranges.size(); index++) {
-            ChunkRange range = ranges.get(index);
-            String body = normalizedMarkdown.substring(range.start(), range.end()).trim();
+        for (int index = 0; index < slices.size(); index++) {
+            ChunkSlice slice = slices.get(index);
+            String body = normalizedMarkdown.substring(slice.start(), slice.end()).trim();
             if (!StringUtils.hasText(body)) {
                 continue;
             }
-
             String content = overlapPrefix.isEmpty() ? body : overlapPrefix + body;
-            List<String> blockKinds = collectBlockKinds(blocks, range.start(), range.end());
-            drafts.add(buildDraft(content, blockKinds, index, range.sectionPath()));
-
+            List<HeadingInfo> headings = mostSpecificHeadings(slice.blocks());
+            List<String> blockKinds = collectBlockKinds(slice.blocks());
+            Map<String, Object> extraMetadata = slice.extraMetadata();
+            drafts.add(buildDraft(content, blockKinds, index, headings, extraMetadata));
             overlapPrefix = overlapChars > 0 ? tailByChars(body, overlapChars) : "";
         }
 
@@ -86,22 +101,290 @@ public class StructureAwareMarkdownChunker {
         return markdownText.replace("\r\n", "\n").replace('\r', '\n');
     }
 
-    private KnowledgeChunkDraft buildDraft(String content, List<String> blockKinds, int chunkIndex, String sectionPath) {
+    private List<MarkdownBlock> parseBlocks(String markdownText) {
+        Document document = MARKDOWN_PARSER.parse(markdownText);
+        List<MarkdownBlock> blocks = new ArrayList<>();
+        List<HeadingInfo> headingPath = new ArrayList<>();
+
+        for (Node node = document.getFirstChild(); node != null; node = node.getNext()) {
+            int start = Math.max(0, node.getChars().getStartOffset());
+            int end = Math.min(markdownText.length(), node.getChars().getEndOffset());
+            if (end <= start) {
+                continue;
+            }
+
+            BlockKind kind = blockKind(node);
+            if (kind == BlockKind.HEADING && node instanceof Heading heading) {
+                headingPath = updateHeadingPath(headingPath, heading.getLevel(), heading.getText().toString());
+            }
+            List<HeadingInfo> blockHeadings = List.copyOf(headingPath);
+            boolean atomic = kind == BlockKind.CODE_BLOCK
+                    || kind == BlockKind.TABLE
+                    || kind == BlockKind.LIST
+                    || kind == BlockKind.BLOCKQUOTE;
+            blocks.add(new MarkdownBlock(kind, start, end, blockHeadings, atomic));
+        }
+
+        return blocks;
+    }
+
+    private BlockKind blockKind(Node node) {
+        if (node instanceof Heading) {
+            return BlockKind.HEADING;
+        }
+        if (node instanceof FencedCodeBlock || node instanceof IndentedCodeBlock) {
+            return BlockKind.CODE_BLOCK;
+        }
+        if (node instanceof TableBlock) {
+            return BlockKind.TABLE;
+        }
+        if (node instanceof BulletList || node instanceof OrderedList) {
+            return BlockKind.LIST;
+        }
+        if (node instanceof BlockQuote) {
+            return BlockKind.BLOCKQUOTE;
+        }
+        if (node instanceof HtmlBlock) {
+            return BlockKind.HTML;
+        }
+        if (node instanceof ThematicBreak) {
+            return BlockKind.THEMATIC_BREAK;
+        }
+        if (node instanceof Paragraph) {
+            return BlockKind.PARAGRAPH;
+        }
+        return BlockKind.OTHER;
+    }
+
+    private List<HeadingInfo> updateHeadingPath(List<HeadingInfo> currentPath, int level, String title) {
+        List<HeadingInfo> updated = new ArrayList<>(currentPath == null ? List.of() : currentPath);
+        String normalizedTitle = title == null ? "" : title.trim();
+        if (level <= 0 || !StringUtils.hasText(normalizedTitle)) {
+            return updated;
+        }
+        while (updated.size() >= level) {
+            updated.remove(updated.size() - 1);
+        }
+        updated.add(new HeadingInfo(level, normalizedTitle));
+        return updated;
+    }
+
+    private List<ChunkSlice> packBlocksToChunks(List<MarkdownBlock> blocks, String markdownText) {
+        List<Section> sections = splitIntoSections(blocks);
+        List<ChunkSlice> slices = new ArrayList<>();
+        for (Section section : sections) {
+            slices.addAll(packSectionBlocks(section, markdownText));
+        }
+        return slices;
+    }
+
+    private List<Section> splitIntoSections(List<MarkdownBlock> blocks) {
+        List<Section> sections = new ArrayList<>();
+        List<MarkdownBlock> current = new ArrayList<>();
+        List<HeadingInfo> currentHeadings = List.of();
+
+        for (MarkdownBlock block : blocks) {
+            if (block.kind() == BlockKind.HEADING && !current.isEmpty()) {
+                sections.add(new Section(current, currentHeadings));
+                current = new ArrayList<>();
+            }
+            currentHeadings = block.headingPath();
+            current.add(block);
+        }
+
+        if (!current.isEmpty()) {
+            sections.add(new Section(current, currentHeadings));
+        }
+        return sections;
+    }
+
+    private List<ChunkSlice> packSectionBlocks(Section section, String markdownText) {
+        List<MarkdownBlock> sectionBlocks = section.blocks();
+        List<ChunkSlice> slices = new ArrayList<>();
+        int index = 0;
+
+        while (index < sectionBlocks.size()) {
+            MarkdownBlock first = sectionBlocks.get(index);
+            if (blockLength(first) > maxChars) {
+                slices.addAll(splitOversizedBlock(first, markdownText));
+                index++;
+                continue;
+            }
+
+            int chunkStart = first.start();
+            int chunkEnd = first.end();
+            int currentSize = chunkEnd - chunkStart;
+            List<MarkdownBlock> chunkBlocks = new ArrayList<>();
+            chunkBlocks.add(first);
+
+            int next = index + 1;
+            while (next < sectionBlocks.size()) {
+                MarkdownBlock block = sectionBlocks.get(next);
+                int expandedSize = block.end() - chunkStart;
+
+                if (expandedSize <= maxChars) {
+                    chunkEnd = block.end();
+                    currentSize = expandedSize;
+                    chunkBlocks.add(block);
+                    next++;
+                    continue;
+                }
+
+                if (currentSize < minChars) {
+                    chunkEnd = block.end();
+                    chunkBlocks.add(block);
+                    next++;
+                }
+                break;
+            }
+
+            slices.add(new ChunkSlice(chunkStart, chunkEnd, List.copyOf(chunkBlocks), Map.of()));
+            index = next;
+        }
+
+        if (slices.size() >= 2) {
+            ChunkSlice last = slices.get(slices.size() - 1);
+            if (last.end() - last.start() < Math.min(minChars, targetChars / 2)) {
+                ChunkSlice previous = slices.get(slices.size() - 2);
+                if (last.end() - previous.start() <= maxChars * 2) {
+                    List<MarkdownBlock> mergedBlocks = new ArrayList<>(previous.blocks());
+                    mergedBlocks.addAll(last.blocks());
+                    slices.set(slices.size() - 2, new ChunkSlice(
+                            previous.start(),
+                            last.end(),
+                            List.copyOf(mergedBlocks),
+                            mergeMetadata(previous.extraMetadata(), last.extraMetadata())
+                    ));
+                    slices.remove(slices.size() - 1);
+                }
+            }
+        }
+
+        return slices;
+    }
+
+    private List<ChunkSlice> splitOversizedBlock(MarkdownBlock block, String markdownText) {
+        int oversizedLimit = Math.max(maxChars, maxChars * 2);
+        if (block.atomic() && blockLength(block) <= oversizedLimit) {
+            return List.of(new ChunkSlice(block.start(), block.end(), List.of(block), Map.of()));
+        }
+
+        List<ChunkSlice> slices = new ArrayList<>();
+        String text = markdownText.substring(block.start(), block.end());
+        List<TextRange> ranges = splitTextByNaturalBoundaries(text, maxChars);
+        for (TextRange range : ranges) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("splitOversizedBlock", true);
+            metadata.put("oversizedBlockKind", block.kind().metadataName());
+            slices.add(new ChunkSlice(
+                    block.start() + range.start(),
+                    block.start() + range.end(),
+                    List.of(block),
+                    metadata
+            ));
+        }
+        return slices;
+    }
+
+    private List<TextRange> splitTextByNaturalBoundaries(String text, int limit) {
+        List<TextRange> ranges = new ArrayList<>();
+        if (!StringUtils.hasText(text)) {
+            return ranges;
+        }
+        int start = 0;
+        while (start < text.length()) {
+            int candidateEnd = Math.min(start + limit, text.length());
+            int end = findNaturalEnd(text, start, candidateEnd);
+            if (end <= start) {
+                end = candidateEnd;
+            }
+            ranges.add(new TextRange(start, end));
+            start = end;
+        }
+        return ranges;
+    }
+
+    private int findNaturalEnd(String text, int start, int candidateEnd) {
+        if (candidateEnd >= text.length()) {
+            return text.length();
+        }
+        int minEnd = Math.min(start + Math.max(120, minChars / 2), text.length());
+        for (String boundary : List.of("\n\n", "\n", "。", "！", "？", ".", "!", "?")) {
+            int pos = text.lastIndexOf(boundary, candidateEnd - 1);
+            if (pos >= minEnd) {
+                return pos + boundary.length();
+            }
+        }
+        int pos = text.lastIndexOf(' ', candidateEnd - 1);
+        return pos >= minEnd ? pos : candidateEnd;
+    }
+
+    private KnowledgeChunkDraft buildDraft(String content,
+                                           List<String> blockKinds,
+                                           int chunkIndex,
+                                           List<HeadingInfo> headings,
+                                           Map<String, Object> extraMetadata) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("chunkStrategy", "structure_aware_markdown");
+        metadata.put("chunkStrategy", "markdown_ast");
         metadata.put("blockKinds", blockKinds);
         metadata.put("contentLength", content.length());
         metadata.put("chunkIndex", chunkIndex);
-        if (StringUtils.hasText(sectionPath)) {
-            metadata.put("sectionPath", sectionPath);
+        addHeadingMetadata(metadata, headings);
+        if (extraMetadata != null) {
+            metadata.putAll(extraMetadata);
         }
-        return new KnowledgeChunkDraft(content, writeMetadata(metadata), content);
+        return new KnowledgeChunkDraft(content, writeMetadata(metadata));
     }
 
-    /**
-     * Merges tiny tail chunks back into neighbors so that headings, badges, or short image/link
-     * sections do not become low-value standalone chunks.
-     */
+    private void addHeadingMetadata(Map<String, Object> metadata, List<HeadingInfo> headings) {
+        if (headings == null || headings.isEmpty()) {
+            return;
+        }
+        HeadingInfo leaf = headings.get(headings.size() - 1);
+        metadata.put("sectionPath", headingPath(headings, " / "));
+        metadata.put("sectionTitle", leaf.title());
+        metadata.put("sectionLevel", leaf.level());
+        List<Map<String, Object>> structuredHeadings = new ArrayList<>(headings.size());
+        for (HeadingInfo heading : headings) {
+            structuredHeadings.add(Map.of(
+                    "level", heading.level(),
+                    "title", heading.title()
+            ));
+        }
+        metadata.put("sectionHeadings", structuredHeadings);
+    }
+
+    private String headingPath(List<HeadingInfo> headings, String delimiter) {
+        return headings.stream()
+                .map(HeadingInfo::title)
+                .filter(StringUtils::hasText)
+                .reduce((left, right) -> left + delimiter + right)
+                .orElse("");
+    }
+
+    private List<HeadingInfo> mostSpecificHeadings(List<MarkdownBlock> blocks) {
+        List<HeadingInfo> result = List.of();
+        if (blocks == null) {
+            return result;
+        }
+        for (MarkdownBlock block : blocks) {
+            if (block.headingPath() != null && block.headingPath().size() >= result.size()) {
+                result = block.headingPath();
+            }
+        }
+        return result;
+    }
+
+    private List<String> collectBlockKinds(List<MarkdownBlock> blocks) {
+        LinkedHashSet<String> kinds = new LinkedHashSet<>();
+        if (blocks != null) {
+            for (MarkdownBlock block : blocks) {
+                kinds.add(block.kind().metadataName());
+            }
+        }
+        return List.copyOf(kinds);
+    }
+
     private List<KnowledgeChunkDraft> compactSmallDrafts(List<KnowledgeChunkDraft> drafts) {
         if (drafts.size() < 2) {
             return reindexDrafts(drafts);
@@ -133,40 +416,33 @@ public class StructureAwareMarkdownChunker {
         return reindexDrafts(mergedDrafts);
     }
 
-    private int contentLength(KnowledgeChunkDraft draft) {
-        return draft == null || draft.content() == null ? 0 : draft.content().length();
-    }
-
     private KnowledgeChunkDraft mergeDrafts(KnowledgeChunkDraft left, KnowledgeChunkDraft right) {
         String mergedContent = left.content().trim() + "\n\n" + right.content().trim();
+        List<HeadingInfo> headings = mergeHeadings(left.metadata(), right.metadata());
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("chunkStrategy", "structure_aware_markdown");
+        metadata.put("chunkStrategy", "markdown_ast");
         metadata.put("blockKinds", mergeBlockKinds(left.metadata(), right.metadata()));
         metadata.put("contentLength", mergedContent.length());
         metadata.put("mergedSmallChunk", true);
-        String sectionPath = mergeSectionPath(left.metadata(), right.metadata());
-        if (StringUtils.hasText(sectionPath)) {
-            metadata.put("sectionPath", sectionPath);
-        }
-        return new KnowledgeChunkDraft(mergedContent, writeMetadata(metadata), mergedContent);
+        addHeadingMetadata(metadata, headings);
+        return new KnowledgeChunkDraft(mergedContent, writeMetadata(metadata));
     }
 
     private List<String> mergeBlockKinds(String leftMetadata, String rightMetadata) {
-        List<String> blockKinds = new ArrayList<>();
+        LinkedHashSet<String> blockKinds = new LinkedHashSet<>();
         addBlockKinds(blockKinds, leftMetadata);
         addBlockKinds(blockKinds, rightMetadata);
-        return blockKinds;
+        return List.copyOf(blockKinds);
     }
 
-    private void addBlockKinds(List<String> blockKinds, String metadataJson) {
+    private void addBlockKinds(LinkedHashSet<String> blockKinds, String metadataJson) {
         try {
             Map<String, Object> metadata = parseMetadata(metadataJson);
             Object value = metadata.get("blockKinds");
             if (value instanceof List<?> values) {
                 for (Object item : values) {
-                    String kind = String.valueOf(item);
-                    if (!blockKinds.contains(kind)) {
-                        blockKinds.add(kind);
+                    if (item != null) {
+                        blockKinds.add(String.valueOf(item));
                     }
                 }
             }
@@ -174,11 +450,34 @@ public class StructureAwareMarkdownChunker {
         }
     }
 
-    private Map<String, Object> parseMetadata(String metadataJson) throws JsonProcessingException {
-        if (!StringUtils.hasText(metadataJson)) {
-            return Map.of();
+    private List<HeadingInfo> mergeHeadings(String leftMetadata, String rightMetadata) {
+        List<HeadingInfo> left = parseHeadings(leftMetadata);
+        List<HeadingInfo> right = parseHeadings(rightMetadata);
+        return right.size() >= left.size() ? right : left;
+    }
+
+    private List<HeadingInfo> parseHeadings(String metadataJson) {
+        try {
+            Map<String, Object> metadata = parseMetadata(metadataJson);
+            Object value = metadata.get("sectionHeadings");
+            if (!(value instanceof List<?> values)) {
+                return List.of();
+            }
+            List<HeadingInfo> headings = new ArrayList<>();
+            for (Object item : values) {
+                if (!(item instanceof Map<?, ?> map)) {
+                    continue;
+                }
+                Object levelValue = map.get("level");
+                Object titleValue = map.get("title");
+                if (levelValue instanceof Number number && titleValue != null && StringUtils.hasText(titleValue.toString())) {
+                    headings.add(new HeadingInfo(number.intValue(), titleValue.toString()));
+                }
+            }
+            return headings;
+        } catch (Exception ignored) {
+            return List.of();
         }
-        return objectMapper.readValue(metadataJson, MAP_TYPE);
     }
 
     private List<KnowledgeChunkDraft> reindexDrafts(List<KnowledgeChunkDraft> drafts) {
@@ -191,16 +490,48 @@ public class StructureAwareMarkdownChunker {
             } catch (Exception e) {
                 metadata = new LinkedHashMap<>();
             }
-            metadata.put("chunkStrategy", "structure_aware_markdown");
+            metadata.put("chunkStrategy", "markdown_ast");
             metadata.put("contentLength", contentLength(draft));
             metadata.put("chunkIndex", i);
             reindexedDrafts.add(new KnowledgeChunkDraft(
                     draft.content(),
-                    writeMetadata(metadata),
-                    draft.embeddingText()
+                    writeMetadata(metadata)
             ));
         }
         return reindexedDrafts;
+    }
+
+    private int blockLength(MarkdownBlock block) {
+        return block == null ? 0 : Math.max(0, block.end() - block.start());
+    }
+
+    private int contentLength(KnowledgeChunkDraft draft) {
+        return draft == null || draft.content() == null ? 0 : draft.content().length();
+    }
+
+    private String tailByChars(String text, int count) {
+        if (count <= 0 || text.length() <= count) {
+            return text;
+        }
+        return text.substring(text.length() - count);
+    }
+
+    private Map<String, Object> mergeMetadata(Map<String, Object> left, Map<String, Object> right) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (left != null) {
+            merged.putAll(left);
+        }
+        if (right != null) {
+            merged.putAll(right);
+        }
+        return merged;
+    }
+
+    private Map<String, Object> parseMetadata(String metadataJson) throws JsonProcessingException {
+        if (!StringUtils.hasText(metadataJson)) {
+            return Map.of();
+        }
+        return objectMapper.readValue(metadataJson, MAP_TYPE);
     }
 
     private String writeMetadata(Map<String, Object> metadata) {
@@ -211,264 +542,40 @@ public class StructureAwareMarkdownChunker {
         }
     }
 
-    private List<String> collectBlockKinds(List<Block> blocks, int start, int end) {
-        List<String> kinds = new ArrayList<>();
-        for (Block block : blocks) {
-            if (block.end() <= start || block.start() >= end) {
-                continue;
-            }
-            String kind = block.kind().name().toLowerCase();
-            if (!kinds.contains(kind)) {
-                kinds.add(kind);
-            }
-        }
-        return kinds;
-    }
-
-    private List<ChunkRange> packBlocksToChunks(List<Block> blocks) {
-        List<Section> sections = splitIntoSections(blocks);
-        List<ChunkRange> ranges = new ArrayList<>();
-        for (Section section : sections) {
-            ranges.addAll(packSectionBlocks(section));
-        }
-        return ranges;
-    }
-
-    private List<Section> splitIntoSections(List<Block> blocks) {
-        List<Section> sections = new ArrayList<>();
-        List<Block> current = new ArrayList<>();
-        List<String> headingPath = new ArrayList<>();
-        String currentSectionPath = null;
-
-        for (Block block : blocks) {
-            // A heading starts a new semantic section, so downstream chunks do not cross section
-            // boundaries by default.
-            if (block.kind() == BlockKind.HEADING && !current.isEmpty()) {
-                sections.add(new Section(current, currentSectionPath));
-                current = new ArrayList<>();
-            }
-            if (block.kind() == BlockKind.HEADING) {
-                currentSectionPath = updateHeadingPath(headingPath, block);
-            }
-            current.add(block);
-        }
-
-        if (!current.isEmpty()) {
-            sections.add(new Section(current, currentSectionPath));
-        }
-        return sections;
-    }
-
-    private List<ChunkRange> packSectionBlocks(Section section) {
-        List<Block> sectionBlocks = section.blocks();
-        List<ChunkRange> ranges = new ArrayList<>();
-        int index = 0;
-
-        while (index < sectionBlocks.size()) {
-            int chunkStart = sectionBlocks.get(index).start();
-            int chunkEnd = sectionBlocks.get(index).end();
-            int currentSize = chunkEnd - chunkStart;
-
-            int next = index + 1;
-            while (next < sectionBlocks.size()) {
-                Block block = sectionBlocks.get(next);
-                int expandedSize = block.end() - chunkStart;
-
-                if (expandedSize <= maxChars) {
-                    chunkEnd = block.end();
-                    currentSize = expandedSize;
-                    next++;
-                    continue;
-                }
-
-                if (currentSize < minChars) {
-                    chunkEnd = block.end();
-                    next++;
-                }
-                break;
-            }
-
-            ranges.add(new ChunkRange(chunkStart, chunkEnd, section.sectionPath()));
-            index = next;
-        }
-
-        if (ranges.size() >= 2) {
-            ChunkRange last = ranges.get(ranges.size() - 1);
-            if (last.end() - last.start() < Math.min(minChars, targetChars / 2)) {
-                ChunkRange previous = ranges.get(ranges.size() - 2);
-                if (last.end() - previous.start() <= maxChars * 2) {
-                    ranges.set(ranges.size() - 2, new ChunkRange(previous.start(), last.end(), previous.sectionPath()));
-                    ranges.remove(ranges.size() - 1);
-                }
-            }
-        }
-
-        return ranges;
-    }
-
-    /**
-     * Converts raw markdown into structural blocks that can be packed without splitting code
-     * fences, headings, or atomic media/link rows.
-     */
-    private List<Block> segmentToBlocks(String text) {
-        List<Block> blocks = new ArrayList<>();
-        int length = text.length();
-        int position = 0;
-
-        boolean inFence = false;
-        int fenceStart = -1;
-        boolean inParagraph = false;
-        int paragraphStart = -1;
-
-        while (position < length) {
-            int lineEnd = indexOfNewline(text, position);
-            int lineEndWithNewline = lineEnd < length && text.charAt(lineEnd) == '\n' ? lineEnd + 1 : lineEnd;
-            String line = text.substring(position, lineEnd);
-            String trimmed = trimRight(line);
-
-            if (!inFence && CODE_FENCE.matcher(trimmed).matches()) {
-                if (inParagraph) {
-                    blocks.add(new Block(BlockKind.PARAGRAPH, paragraphStart, position));
-                    inParagraph = false;
-                }
-                inFence = true;
-                fenceStart = position;
-                position = lineEndWithNewline;
-                continue;
-            }
-
-            if (inFence) {
-                if (CODE_FENCE.matcher(trimmed).matches()) {
-                    blocks.add(new Block(BlockKind.CODE, fenceStart, lineEndWithNewline));
-                    inFence = false;
-                }
-                position = lineEndWithNewline;
-                continue;
-            }
-
-            if (trimmed.isEmpty()) {
-                if (inParagraph) {
-                    blocks.add(new Block(BlockKind.PARAGRAPH, paragraphStart, position));
-                    inParagraph = false;
-                }
-                position = lineEndWithNewline;
-                continue;
-            }
-
-            if (HEADING.matcher(trimmed).matches()) {
-                if (inParagraph) {
-                    blocks.add(new Block(BlockKind.PARAGRAPH, paragraphStart, position));
-                    inParagraph = false;
-                }
-                blocks.add(new Block(BlockKind.HEADING, position, lineEndWithNewline, headingLevel(trimmed), headingTitle(trimmed)));
-                position = lineEndWithNewline;
-                continue;
-            }
-
-            if (ATOMIC_IMAGE.matcher(trimmed).matches() || ATOMIC_LINK.matcher(trimmed).matches()) {
-                if (inParagraph) {
-                    blocks.add(new Block(BlockKind.PARAGRAPH, paragraphStart, position));
-                    inParagraph = false;
-                }
-                blocks.add(new Block(BlockKind.ATOMIC, position, lineEndWithNewline));
-                position = lineEndWithNewline;
-                continue;
-            }
-
-            if (!inParagraph) {
-                inParagraph = true;
-                paragraphStart = position;
-            }
-            position = lineEndWithNewline;
-        }
-
-        if (inFence) {
-            blocks.add(new Block(BlockKind.CODE, fenceStart, length));
-        } else if (inParagraph) {
-            blocks.add(new Block(BlockKind.PARAGRAPH, paragraphStart, length));
-        }
-
-        return blocks;
-    }
-
-    private String updateHeadingPath(List<String> headingPath, Block heading) {
-        if (heading.headingLevel() == null || !StringUtils.hasText(heading.headingTitle())) {
-            return headingPath.isEmpty() ? null : String.join(" / ", headingPath);
-        }
-        while (headingPath.size() >= heading.headingLevel()) {
-            headingPath.remove(headingPath.size() - 1);
-        }
-        headingPath.add(heading.headingTitle());
-        return String.join(" / ", headingPath);
-    }
-
-    private int headingLevel(String headingLine) {
-        int level = 0;
-        while (level < headingLine.length() && headingLine.charAt(level) == '#') {
-            level++;
-        }
-        return level;
-    }
-
-    private String headingTitle(String headingLine) {
-        return headingLine.substring(headingLevel(headingLine)).trim();
-    }
-
-    private int indexOfNewline(String text, int fromIndex) {
-        int newline = text.indexOf('\n', fromIndex);
-        return newline < 0 ? text.length() : newline;
-    }
-
-    private String trimRight(String text) {
-        int end = text.length();
-        while (end > 0 && Character.isWhitespace(text.charAt(end - 1)) && text.charAt(end - 1) != '\n' && text.charAt(end - 1) != '\r') {
-            end--;
-        }
-        return text.substring(0, end);
-    }
-
-    private String tailByChars(String text, int count) {
-        if (count <= 0 || text.length() <= count) {
-            return text;
-        }
-        return text.substring(text.length() - count);
-    }
-
-    private String mergeSectionPath(String leftMetadata, String rightMetadata) {
-        String leftPath = metadataString(leftMetadata, "sectionPath");
-        if (StringUtils.hasText(leftPath)) {
-            return leftPath;
-        }
-        String rightPath = metadataString(rightMetadata, "sectionPath");
-        return StringUtils.hasText(rightPath) ? rightPath : null;
-    }
-
-    private String metadataString(String metadataJson, String key) {
-        try {
-            Map<String, Object> metadata = parseMetadata(metadataJson);
-            Object value = metadata.get(key);
-            return value == null ? null : String.valueOf(value);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     private enum BlockKind {
-        HEADING,
-        CODE,
-        ATOMIC,
-        PARAGRAPH
-    }
+        HEADING("heading"),
+        PARAGRAPH("paragraph"),
+        LIST("list"),
+        TABLE("table"),
+        CODE_BLOCK("code_block"),
+        BLOCKQUOTE("blockquote"),
+        HTML("html"),
+        THEMATIC_BREAK("thematic_break"),
+        OTHER("other");
 
-    private record Block(BlockKind kind, int start, int end, Integer headingLevel, String headingTitle) {
-        private Block(BlockKind kind, int start, int end) {
-            this(kind, start, end, null, null);
+        private final String metadataName;
+
+        BlockKind(String metadataName) {
+            this.metadataName = metadataName;
+        }
+
+        private String metadataName() {
+            return metadataName;
         }
     }
 
-    private record Section(List<Block> blocks, String sectionPath) {
+    private record HeadingInfo(int level, String title) {
     }
 
-    private record ChunkRange(int start, int end, String sectionPath) {
+    private record MarkdownBlock(BlockKind kind, int start, int end, List<HeadingInfo> headingPath, boolean atomic) {
+    }
+
+    private record Section(List<MarkdownBlock> blocks, List<HeadingInfo> headingPath) {
+    }
+
+    private record ChunkSlice(int start, int end, List<MarkdownBlock> blocks, Map<String, Object> extraMetadata) {
+    }
+
+    private record TextRange(int start, int end) {
     }
 }

@@ -103,7 +103,34 @@ public class KnowledgeBaseIndexedChunkAssembler {
         if (StringUtils.hasText(retrievalText)) {
             return retrievalText;
         }
-        return content;
+
+        List<String> parts = new ArrayList<>();
+        addIfPresent(parts, metadataString(metadata, "contextText"));
+        String sectionPath = resolveSectionPath(metadata);
+        if (StringUtils.hasText(sectionPath)) {
+            parts.add("Section: " + sectionPath);
+        }
+        String pageLabel = resolvePageLabel(metadata);
+        if (StringUtils.hasText(pageLabel)) {
+            parts.add(pageLabel);
+        }
+        addIfPresent(parts, content);
+        return String.join(System.lineSeparator() + System.lineSeparator(), parts);
+    }
+
+    private String resolvePageLabel(Map<String, Object> metadata) {
+        String pageStart = metadataString(metadata, "pageStart");
+        String pageEnd = metadataString(metadata, "pageEnd");
+        if (StringUtils.hasText(pageStart) && StringUtils.hasText(pageEnd)) {
+            return pageStart.equals(pageEnd) ? "Page: " + pageStart : "Pages: " + pageStart + "-" + pageEnd;
+        }
+        return null;
+    }
+
+    private void addIfPresent(List<String> parts, String value) {
+        if (StringUtils.hasText(value)) {
+            parts.add(value);
+        }
     }
 
     private Map<String, Object> parseMetadata(String metadataJson) {

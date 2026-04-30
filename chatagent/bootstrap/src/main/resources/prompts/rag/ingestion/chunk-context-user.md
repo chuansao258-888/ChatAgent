@@ -1,17 +1,17 @@
 <!-- version: v2 -->
 <!-- path: prompts/rag/ingestion/chunk-context-user.md -->
 
-<document>
-{{document}}
-</document>
+<chunk_context>
+{{chunkContext}}
+</chunk_context>
 
-Here is the chunk we want to situate within the whole document for improving search retrieval:
+Here is the chunk we want to contextualize for improving search retrieval:
 
 <chunk>
 {{chunk}}
 </chunk>
 
-Please provide a short, succinct context to situate this chunk within the overall document for retrieval purposes.
+Please provide a short, succinct context based on the structural metadata and chunk content.
 
 # Constraints
 

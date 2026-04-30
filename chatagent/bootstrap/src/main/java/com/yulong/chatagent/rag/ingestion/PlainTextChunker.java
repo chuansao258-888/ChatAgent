@@ -54,7 +54,7 @@ public class PlainTextChunker {
                 continue;
             }
             String metadata = buildMetadata(chunkText, chunks.size());
-            chunks.add(new KnowledgeChunkDraft(chunkText, metadata, chunkText));
+            chunks.add(new KnowledgeChunkDraft(chunkText, metadata));
             if (end == normalizedText.length()) {
                 break;
             }

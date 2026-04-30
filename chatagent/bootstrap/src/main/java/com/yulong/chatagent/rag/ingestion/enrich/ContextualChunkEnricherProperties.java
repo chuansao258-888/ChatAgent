@@ -11,7 +11,6 @@ public class ContextualChunkEnricherProperties {
 
     private boolean enabled = false;
     private String modelId;
-    private int maxDocumentChars = 12_000;
     private int maxChunksPerFile = 12;
     private int minChunkChars = 160;
     private int maxContextChars = 600;
