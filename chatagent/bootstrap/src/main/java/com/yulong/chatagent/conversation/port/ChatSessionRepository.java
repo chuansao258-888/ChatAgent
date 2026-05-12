@@ -42,6 +42,12 @@ public interface ChatSessionRepository {
      */
     boolean save(ChatSessionDTO chatSession);
 
+    Long allocateNextTurnSeq(String sessionId);
+
+    Long findLastCompletedTurnSeq(String sessionId);
+
+    Long advanceCompletedTurnSeq(String sessionId);
+
     /**
      * Updates an existing session.
      *

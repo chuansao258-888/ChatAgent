@@ -6,19 +6,22 @@ import org.springframework.ai.tool.ToolCallback;
 import java.util.List;
 
 /**
- * Immutable runtime payload required to instantiate a {@link ChatAgent}.
+ * 创建 {@link ChatAgent} 所需的不可变运行时快照。
+ * <p>
+ * 这个 record 是 Agent 启动包：上游 loader 把配置、记忆、摘要和工具都整理好，
+ * 工厂只需要把它原样传给 ChatAgent 构造器。
  *
- * @param agentId agent identifier
- * @param name agent display name
- * @param description agent description
- * @param systemPrompt resolved system prompt
- * @param model target model name
- * @param maxMessages memory window size
- * @param memory restored chat memory
- * @param toolCallbacks runtime tool callbacks
- * @param sessionFileSummary summarized attached session files
- * @param sessionSummary historical context summary (L2 memory)
- * @param userProfileSummary persistent user profile summary (L3 memory)
+ * @param agentId Agent 配置 ID
+ * @param name Agent 展示名称
+ * @param description Agent 描述
+ * @param systemPrompt 已拼装完成的系统提示词
+ * @param model 目标模型名称
+ * @param maxMessages 运行期消息窗口大小
+ * @param memory 从数据库恢复出的 L1 短期记忆
+ * @param toolCallbacks 本轮可用工具回调
+ * @param sessionFileSummary 会话附件摘要
+ * @param sessionSummary L2 历史摘要
+ * @param userProfileSummary L3 用户画像摘要
  */
 public record AgentRuntimeContext(
         String agentId,

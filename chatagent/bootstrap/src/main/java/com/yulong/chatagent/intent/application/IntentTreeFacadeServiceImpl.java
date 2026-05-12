@@ -35,12 +35,23 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Back-office intent-tree management for draft CRUD, publish, and version switching.
+ * 意图树后台编排服务。
+ *
+ * 这里可以理解成「意图树编辑器」的应用层：
+ * 1. draft(version = 0) 用于后台编辑，可以反复增删改；
+ * 2. publish 时复制成不可变的 PUBLISHED 版本，供运行时路由读取；
+ * 3. activeIntentVersion 记录当前线上生效版本；
+ * 4. 每次发布/切换版本后刷新 IntentTreeCacheManager，避免运行时继续读旧快照。
  */
 @Service
 @RequiredArgsConstructor
 public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
 
+    /**
+     * 约定 version = 0 永远表示草稿树。
+     *
+     * 已发布版本从 1 开始递增，所以运行时只会读取 version > 0 的 PUBLISHED 节点。
+     */
     private static final int DRAFT_VERSION = 0;
 
     private final InternalAssistantService internalAssistantService;
@@ -52,6 +63,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
     @Override
     public GetIntentTreeResponse getIntentTree() {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
+        // 后台编辑页展示的是草稿节点，同时带上当前 active version 和历史版本列表。
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         Map<String, List<String>> knowledgeBaseIdsByNodeId = loadKnowledgeBaseIdsByNodeId(draftNodes);
         return new GetIntentTreeResponse(
@@ -69,6 +81,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         IntentNodeDTO parent = resolveParent(request.getParentId(), draftNodes);
+        // 创建时先校验层级关系，避免后台保存出运行时无法正确逐层路由的结构。
         validateNodePlacement(null, parent, request.getNodeLevel(), draftNodes);
 
         LocalDateTime now = LocalDateTime.now();
@@ -103,6 +116,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         AgentDTO assistant = internalAssistantService.getRequiredAssistant();
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         IntentNodeDTO existing = requireDraftNode(nodeId, assistant.getId(), draftNodes);
+        // PATCH 语义：请求里没传的字段沿用已有值；传了 parent/level 时才尝试移动节点。
         String targetParentId = request.getParentId() != null ? emptyToNull(request.getParentId()) : existing.getParentId();
         IntentNodeLevel targetNodeLevel = request.getNodeLevel() != null ? request.getNodeLevel() : existing.getNodeLevel();
         IntentNodeDTO parent = resolveParent(targetParentId, draftNodes, nodeId);
@@ -150,6 +164,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         }
 
         if (updated.getIntentKind() != IntentKind.KB) {
+            // 节点从 KB 改成 TOOL/SYSTEM 后，原先的知识库绑定已经没有意义，需要清理。
             intentKnowledgeBaseRepository.deleteByIntentNodeIds(List.of(nodeId));
         }
     }
@@ -161,6 +176,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         List<IntentNodeDTO> draftNodes = loadDraftNodes(assistant.getId());
         requireDraftNode(nodeId, assistant.getId(), draftNodes);
 
+        // 删除不是只删单个节点，而是按 parentId 关系收集整棵子树，连同绑定一起删。
         List<String> subtreeIds = collectSubtreeIds(nodeId, draftNodes);
         intentKnowledgeBaseRepository.deleteByIntentNodeIds(subtreeIds);
         if (!intentNodeRepository.deleteByIds(subtreeIds)) {
@@ -177,6 +193,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
             throw new BizException("Only KB intent nodes can bind knowledge bases");
         }
 
+        // 绑定前要求知识库存在且 ACTIVE，避免运行时命中一个不可检索/已下线的知识库。
         List<String> requestedIds = normalizeList(request == null ? null : request.getKnowledgeBaseIds());
         List<String> activeIds = knowledgeBaseRepository.filterActiveIds(requestedIds);
         if (requestedIds.size() != activeIds.size()) {
@@ -215,6 +232,8 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         LocalDateTime now = LocalDateTime.now();
         Map<String, String> publishedIdByDraftId = new LinkedHashMap<>();
         for (IntentNodeDTO draftNode : draftNodes) {
+            // 发布时重新生成节点 id，而不是复用 draft id。
+            // 这样 draft 后续继续编辑时，不会影响已经发布出去的历史 snapshot。
             publishedIdByDraftId.put(draftNode.getId(), UUID.randomUUID().toString());
         }
 
@@ -222,6 +241,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
                 .map(draftNode -> IntentNodeDTO.builder()
                         .id(publishedIdByDraftId.get(draftNode.getId()))
                         .agentId(draftNode.getAgentId())
+                        // parentId 也必须映射成发布节点的新 id，保证发布版本内部自洽。
                         .parentId(draftNode.getParentId() == null ? null : publishedIdByDraftId.get(draftNode.getParentId()))
                         .version(nextVersion)
                         .status(IntentNodeStatus.PUBLISHED)
@@ -247,6 +267,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
                 draftNodes.stream().map(IntentNodeDTO::getId).toList()
         );
         if (!draftBindings.isEmpty()) {
+            // 知识库绑定表存的是 intentNodeId，所以发布节点换 id 后，绑定关系也要复制一份。
             List<IntentKnowledgeBaseDTO> publishedBindings = draftBindings.stream()
                     .map(binding -> IntentKnowledgeBaseDTO.builder()
                             .id(UUID.randomUUID().toString())
@@ -263,6 +284,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         if (!internalAssistantService.updateActiveIntentVersion(nextVersion)) {
             throw new BizException("Failed to switch active intent version");
         }
+        // 让下一轮会话准备阶段读到新版本；否则 Redis TTL 内可能继续使用旧 snapshot。
         intentTreeCacheManager.refreshActiveSnapshot(assistant.getId());
         return nextVersion;
     }
@@ -286,6 +308,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         if (!internalAssistantService.updateActiveIntentVersion(version)) {
             throw new BizException("Failed to activate intent version: " + version);
         }
+        // 切版本时也刷新 active snapshot，因为 cache key 只按 agentId 存 active。
         intentTreeCacheManager.refreshActiveSnapshot(assistant.getId());
     }
 
@@ -304,6 +327,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
     }
 
     private List<IntentNodeDTO> loadDraftNodes(String agentId) {
+        // 草稿树固定存 version = 0；后台所有 CRUD 都围绕这个版本操作。
         return intentNodeRepository.findByAgentIdAndVersion(agentId, DRAFT_VERSION);
     }
 
@@ -315,6 +339,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         for (IntentKnowledgeBaseDTO binding : intentKnowledgeBaseRepository.findByIntentNodeIds(
                 nodes.stream().map(IntentNodeDTO::getId).toList()
         )) {
+            // 一个 KB intent 可以绑定多个知识库，所以这里按 nodeId 聚合成 List。
             knowledgeBaseIdsByNodeId.computeIfAbsent(binding.getIntentNodeId(), ignored -> new ArrayList<>())
                     .add(binding.getKnowledgeBaseId());
         }
@@ -378,6 +403,12 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         return parent;
     }
 
+    /**
+     * 校验意图树的结构约束。
+     *
+     * 运行时 IntentRouter 是按 DOMAIN -> CATEGORY -> TOPIC 逐层向下打分的，
+     * 所以后台必须保证树的层级清晰，否则路由时 childrenOf/current path 会失去语义。
+     */
     private void validateNodePlacement(IntentNodeDTO existingNode,
                                        IntentNodeDTO parent,
                                        IntentNodeLevel targetLevel,
@@ -402,6 +433,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
         }
 
         if (existingNode != null && parent != null) {
+            // 移动节点时不能把它挂到自己的子孙节点下面，否则 parentId 链路会形成环。
             Set<String> descendantIds = new LinkedHashSet<>(collectSubtreeIds(existingNode.getId(), draftNodes));
             if (descendantIds.contains(parent.getId())) {
                 throw new BizException("Intent node cannot be moved under its own descendant");
@@ -412,6 +444,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
     private List<String> collectSubtreeIds(String rootNodeId, List<IntentNodeDTO> draftNodes) {
         Map<String, List<String>> childrenByParentId = new LinkedHashMap<>();
         for (IntentNodeDTO draftNode : draftNodes) {
+            // 数据库存的是扁平 id + parent_id，这里临时聚合成 parent -> children 的索引。
             childrenByParentId.computeIfAbsent(emptyToNull(draftNode.getParentId()), ignored -> new ArrayList<>())
                     .add(draftNode.getId());
         }
@@ -426,6 +459,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
                 queue.addLast(childId);
             }
         }
+        // 这里返回 id 列表即可；真正的级联删除依赖 deleteByIds，不依赖顺序。
         subtreeIds.sort(Comparator.reverseOrder());
         return subtreeIds;
     }
@@ -446,6 +480,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
 
     private IntentKind resolveIntentKind(IntentNodeLevel nodeLevel, IntentKind intentKind) {
         if (nodeLevel != IntentNodeLevel.TOPIC) {
+            // 非叶子节点只承担分类，不代表最终处理类型。
             return null;
         }
         if (intentKind == null) {
@@ -461,8 +496,10 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
             return null;
         }
         if (intentKind == IntentKind.KB) {
+            // KB 意图允许配置是否 fallback 到全局知识库；默认允许，避免绑定缺失时完全不可答。
             return scopePolicy == null ? com.yulong.chatagent.intent.model.ScopePolicy.FALLBACK_ALLOWED : scopePolicy;
         }
+        // TOOL/SYSTEM 不走知识库检索，scopePolicy 固定为 STRICT，避免运行时误以为可以扩散检索范围。
         return com.yulong.chatagent.intent.model.ScopePolicy.STRICT;
     }
 

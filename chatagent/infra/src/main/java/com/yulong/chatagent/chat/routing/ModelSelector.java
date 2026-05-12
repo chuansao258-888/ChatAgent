@@ -17,14 +17,22 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ModelSelector {
 
+    // YAML 绑定后的静态路由配置。
     private final ChatRoutingProperties properties;
+    // 普通 ChatClient 注册表；select 最终必须拿到可调用的 ChatClient。
     private final ChatClientRegistry chatClientRegistry;
+    // 判断候选模型能否参与 deepThinking 路由。
     private final ModelCapabilityResolver capabilityResolver;
+    // 管理运行时临时开关/优先级覆盖，避免每次都改 YAML。
     private final RoutingRuntimeOverridesStore runtimeOverridesStore;
 
     public List<ModelTarget> selectChatCandidates(boolean deepThinking) {
+        // deepThinking 请求优先使用 deepThinkingModel；普通请求使用 defaultModel。
+        // 这个 firstChoice 后面会被移动到候选列表第一位。
         String firstChoiceId = resolveFirstChoice(deepThinking);
 
+        // 先应用运行时 override，再过滤可用性，最后按 priority 排序。
+        // collect 到 ArrayList 是为了后续 promoteFirstChoice 能 remove/add。
         List<ChatRoutingProperties.CandidateConfig> ordered = configuredCandidates().stream()
                 .filter(c -> isUsableCandidate(c, deepThinking))
                 .sorted(Comparator.comparing(
@@ -38,6 +46,7 @@ public class ModelSelector {
         // 断路器 tryAcquire 由 RoutingLLMService 在真正调用模型前延迟执行，避免批量 HALF_OPEN 泄露。
         List<ModelTarget> targets = ordered.stream()
                 .filter(c -> {
+                    // 候选配置必须能在 ChatClientRegistry 中找到对应客户端，否则不能实际调用。
                     if (!chatClientRegistry.supports(c.getSpringClientKey())) {
                         log.warn("Model [{}] spring-client-key [{}] not found in registry",
                                 c.getId(), c.getSpringClientKey());
@@ -45,6 +54,7 @@ public class ModelSelector {
                     }
                     return true;
                 })
+                // CandidateConfig 只是配置；ModelTarget = 配置 + 真正可调用的 ChatClient。
                 .map(c -> new ModelTarget(c.getId(), c, chatClientRegistry.getRequired(c.getSpringClientKey())))
                 .collect(Collectors.toList());
         log.info("Model candidates selected: deepThinking={}, firstChoice={}, models={}",
@@ -55,6 +65,7 @@ public class ModelSelector {
     }
 
     private String resolveFirstChoice(boolean deepThinking) {
+        // deepThinking=true 时，如果显式配置了 deepThinkingModel，就让它成为首选。
         if (deepThinking && properties.getDeepThinkingModel() != null
                 && !properties.getDeepThinkingModel().isBlank()) {
             return properties.getDeepThinkingModel();
@@ -63,15 +74,18 @@ public class ModelSelector {
     }
 
     private List<ChatRoutingProperties.CandidateConfig> configuredCandidates() {
+        // candidates 为空时返回空列表，避免上层 NPE。
         if (properties.getCandidates() == null) {
             return Collections.emptyList();
         }
+        // 每次选择候选时动态应用 runtime override，保证管理端修改能即时影响路由。
         return properties.getCandidates().stream()
                 .map(runtimeOverridesStore::apply)
                 .toList();
     }
 
     private boolean isUsableCandidate(ChatRoutingProperties.CandidateConfig candidate, boolean deepThinking) {
+        // 这里只做静态/无副作用判断；健康状态由 RoutingLLMService 真正发起调用前处理。
         if (candidate == null) {
             return false;
         }
@@ -84,6 +98,7 @@ public class ModelSelector {
                     candidate.getId(), candidate.getSpringClientKey());
             return false;
         }
+        // deepThinking 请求不能选不支持 thinking 的模型。
         if (deepThinking && !capabilityResolver.supportsThinking(candidate)) {
             log.debug("Model [{}] skipped because supportsThinking resolved to false", candidate.getId());
             return false;
@@ -92,6 +107,7 @@ public class ModelSelector {
     }
 
     private void promoteFirstChoice(List<ChatRoutingProperties.CandidateConfig> ordered, String firstChoiceId) {
+        // 将默认模型/深度思考模型提升到第一位，但不破坏其他候选原有 priority 顺序。
         if (!StringUtils.hasText(firstChoiceId)) {
             return;
         }

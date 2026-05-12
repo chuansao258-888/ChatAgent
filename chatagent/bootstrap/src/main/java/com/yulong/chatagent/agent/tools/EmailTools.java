@@ -5,7 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Optional tool for asynchronous email delivery.
+ * 可选邮件发送工具。
+ * <p>
+ * 工具方法只负责参数校验和提交异步发送，真正的邮件发送由 EmailService 在后台处理。
  */
 @Slf4j
 @Component
@@ -33,13 +35,14 @@ public class EmailTools implements Tool {
     }
 
     /**
-     * Validates arguments and schedules an asynchronous email send.
+     * 校验邮件参数并提交异步发送任务。
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "sendEmail",
             description = "Send an email asynchronously. Required arguments: to, subject, and content."
     )
     public String sendEmail(String to, String subject, String content) {
+        // 工具描述不能替代后端校验；模型传入的参数始终按不可信输入处理。
         if (to == null || to.trim().isEmpty()) {
             return "Error: recipient email address cannot be empty.";
         }

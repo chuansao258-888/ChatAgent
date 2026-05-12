@@ -9,7 +9,6 @@ import com.yulong.chatagent.knowledge.application.KnowledgeDocumentFacadeService
 import com.yulong.chatagent.knowledge.model.request.UpsertKnowledgeBaseRequest;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
-import com.yulong.chatagent.rag.application.RagService;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import com.yulong.chatagent.rag.retrieve.KnowledgeBaseSimilaritySearcher;
@@ -66,9 +65,6 @@ class RerankerAbEvalTest {
 
     @Autowired
     private KnowledgeDocumentIngestionService ingestionService;
-
-    @Autowired
-    private RagService ragService;
 
     @Autowired
     private KnowledgeBaseSimilaritySearcher kbSearcher;
@@ -152,10 +148,10 @@ class RerankerAbEvalTest {
             Set<String> relevantDocIds = resolveDocIds(q.expectedLectureShortNames);
             Map<String, Integer> grades = resolveGrades(q.relevanceGrades);
 
-            // --- Arm A: BGE (full pipeline via RagService) ---
+            // --- Arm A: BGE (full pipeline via KnowledgeBaseSimilaritySearcher) ---
             List<String> bgeDocIds;
             try {
-                List<RetrievalHit> bgeHits = ragService.similaritySearchByKnowledgeBaseIds(allKbIds, q.query);
+                List<RetrievalHit> bgeHits = kbSearcher.searchByKnowledgeBaseIds(allKbIds, q.query);
                 bgeDocIds = bgeHits.stream().map(RetrievalHit::documentId).toList();
             } catch (Exception e) {
                 System.out.println("    BGE retrieval FAILED: " + e.getMessage());

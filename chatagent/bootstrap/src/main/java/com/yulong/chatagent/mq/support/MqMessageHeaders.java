@@ -6,10 +6,12 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * Canonical RabbitMQ header names plus helper methods for writing and validating the identity chain.
+ * MQ header 契约。
+ *
+ * outbox.headers、RabbitMQ MessageProperties.headers、consumer 读取 identity，
+ * 都统一走这里，避免各处手写 header 名称导致字段缺失或拼写不一致。
  */
 public final class MqMessageHeaders {
 
@@ -23,15 +25,17 @@ public final class MqMessageHeaders {
     public static final String FIRST_PUBLISHED_AT = "x-first-published-at";
     public static final String RETRY_COUNT = "x-retry-count";
 
-    private static final Set<String> IMMUTABLE_HEADERS = Set.of(
-            EVENT_ID,
-            IDEMPOTENCY_KEY,
-            TRACE_ID,
-            TASK_TYPE,
-            ORIGINAL_EXCHANGE,
-            ORIGINAL_ROUTING_KEY,
-            FIRST_PUBLISHED_AT
-    );
+    // 旧 header 改写保护入口已停用：当前 MQ 重试路径直接使用 MqMessageIdentity
+    // 重建规范 header，不再逐个判断 headerName 是否不可变。
+    // private static final Set<String> IMMUTABLE_HEADERS = Set.of(
+    //         EVENT_ID,
+    //         IDEMPOTENCY_KEY,
+    //         TRACE_ID,
+    //         TASK_TYPE,
+    //         ORIGINAL_EXCHANGE,
+    //         ORIGINAL_ROUTING_KEY,
+    //         FIRST_PUBLISHED_AT
+    // );
 
     private MqMessageHeaders() {
     }
@@ -43,6 +47,7 @@ public final class MqMessageHeaders {
         if (identity == null) {
             throw new IllegalArgumentException("MqMessageIdentity must not be null");
         }
+        // apply 用于直接构建 MQ Message；outbox 场景会先 toMap 再序列化到数据库。
         toMap(identity).forEach(properties::setHeader);
     }
 
@@ -51,6 +56,7 @@ public final class MqMessageHeaders {
             throw new IllegalArgumentException("MqMessageIdentity must not be null");
         }
         Map<String, Object> headers = new LinkedHashMap<>();
+        // eventId/traceId 用来串日志；idempotencyKey/taskType 用来做幂等锁。
         headers.put(EVENT_ID, identity.eventId());
         headers.put(IDEMPOTENCY_KEY, identity.idempotencyKey());
         headers.put(TRACE_ID, identity.traceId());
@@ -60,6 +66,7 @@ public final class MqMessageHeaders {
         }
         headers.put(ORIGINAL_EXCHANGE, identity.originalExchange());
         headers.put(ORIGINAL_ROUTING_KEY, identity.originalRoutingKey());
+        // firstPublishedAt 保留第一次发布的时间，不随 retry 改变，方便排查消息年龄。
         headers.put(FIRST_PUBLISHED_AT, identity.firstPublishedAt().toString());
         headers.put(RETRY_COUNT, identity.retryCount());
         return headers;
@@ -76,6 +83,7 @@ public final class MqMessageHeaders {
         if (headers == null) {
             throw new IllegalArgumentException("MQ headers must not be null");
         }
+        // 这里会做完整校验，坏 header 会尽早失败，而不是进入业务处理后才出现隐性问题。
         return new MqMessageIdentity(
                 getRequiredText(headers, EVENT_ID),
                 getRequiredText(headers, IDEMPOTENCY_KEY),
@@ -89,9 +97,9 @@ public final class MqMessageHeaders {
         );
     }
 
-    public static boolean isImmutable(String headerName) {
-        return IMMUTABLE_HEADERS.contains(headerName);
-    }
+    // public static boolean isImmutable(String headerName) {
+    //     return IMMUTABLE_HEADERS.contains(headerName);
+    // }
 
     private static String getRequiredText(Map<String, ?> headers, String headerName) {
         Object value = headers.get(headerName);
@@ -118,6 +126,7 @@ public final class MqMessageHeaders {
             }
         }
         if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+            // RabbitMQ header 经过不同客户端/序列化路径后，数字可能变成 String，这里兼容两种形态。
             int parsed = Integer.parseInt(stringValue.trim());
             if (parsed >= 0) {
                 return parsed;

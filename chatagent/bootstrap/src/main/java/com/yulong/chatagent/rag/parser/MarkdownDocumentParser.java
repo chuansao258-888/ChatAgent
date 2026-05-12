@@ -17,6 +17,11 @@ import java.util.stream.Collectors;
 @Component
 public class MarkdownDocumentParser implements DocumentParser {
 
+    private static final Map<String, Object> MARKDOWN_METADATA = Map.of(
+            "contentFormat", "MARKDOWN",
+            "parserType", ParserType.MARKDOWN.getType()
+    );
+
     @Override
     public String getParserType() {
         return ParserType.MARKDOWN.getType();
@@ -30,7 +35,7 @@ public class MarkdownDocumentParser implements DocumentParser {
 
         String text = new String(content, StandardCharsets.UTF_8);
         return ParseResult.builder()
-                .segments(List.of(new ParseSegment(text, 0, SegmentType.FULL, Map.of())))
+                .segments(List.of(new ParseSegment(text, 0, SegmentType.FULL, MARKDOWN_METADATA)))
                 .parserType(ParserType.MARKDOWN.getType())
                 .build();
     }
@@ -45,7 +50,7 @@ public class MarkdownDocumentParser implements DocumentParser {
                     .lines()
                     .collect(Collectors.joining("\n"));
             return ParseResult.builder()
-                    .segments(List.of(new ParseSegment(text, 0, SegmentType.FULL, Map.of())))
+                    .segments(List.of(new ParseSegment(text, 0, SegmentType.FULL, MARKDOWN_METADATA)))
                     .parserType(ParserType.MARKDOWN.getType())
                     .build();
         } catch (Exception e) {

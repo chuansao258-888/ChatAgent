@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.conversation.event.ChatEventProcessor;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.exception.ClientException;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
@@ -20,7 +21,10 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 /**
- * MQ-backed consumer for the staged {@code agent.run} migration.
+ * {@code agent.run} 的 MQ 消费者。
+ * <p>
+ * 它负责把 RabbitMQ 消息反序列化成 AgentRunTaskPayload，获取重试/锁等基础能力后，
+ * 最终交给 ChatEventProcessor 运行 Agent。
  */
 @Component
 @Slf4j
@@ -30,17 +34,20 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     private final ObjectMapper objectMapper;
     private final ChatAgentMqProperties properties;
     private final ChatEventProcessor chatEventProcessor;
+    private final ChatSessionRepository chatSessionRepository;
 
     public AgentRunTaskListener(ObjectMapper objectMapper,
                                 ChatAgentMqProperties properties,
                                 RabbitMqMessagePublisher rabbitMqMessagePublisher,
                                 DistributedLockManager distributedLockManager,
                                 LockWatchdog lockWatchdog,
-                                ChatEventProcessor chatEventProcessor) {
+                                ChatEventProcessor chatEventProcessor,
+                                ChatSessionRepository chatSessionRepository) {
         super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.chatEventProcessor = chatEventProcessor;
+        this.chatSessionRepository = chatSessionRepository;
     }
 
     @RabbitListener(
@@ -48,6 +55,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
             containerFactory = "agentRunListenerContainerFactory"
     )
     public void handle(Message message, Channel channel) throws IOException {
+        // 公共消费、ACK/NACK、重试和锁逻辑都在 AbstractRetryingMqConsumer 中。
         consume(message, channel);
     }
 
@@ -68,6 +76,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
 
     @Override
     protected boolean isRetryable(Exception exception) {
+        // 参数错误和客户端错误通常重试也不会恢复，直接进入终态失败处理。
         return !(exception instanceof IllegalArgumentException || exception instanceof ClientException);
     }
 
@@ -77,14 +86,35 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     }
 
     @Override
+    protected TaskReadiness checkReadiness(AgentRunTaskPayload payload, MqMessageIdentity identity) {
+        if (payload == null || payload.turnSeq() == null || payload.turnSeq() <= 0L) {
+            // 兼容没有 turnSeq 的旧 payload：只依赖 session exec lock，不做顺序闸门。
+            return TaskReadiness.proceed();
+        }
+        // lastCompletedTurnSeq 是“这个 session 已经完整跑完的最后一轮”。
+        // 当前 turn 必须刚好等于 lastCompleted + 1，才允许执行。
+        Long lastCompleted = chatSessionRepository.findLastCompletedTurnSeq(payload.sessionId());
+        long completedSeq = lastCompleted == null ? 0L : lastCompleted;
+        if (payload.turnSeq() <= completedSeq) {
+            // 小于等于 lastCompleted 说明这条消息已经处理过，重复投递直接跳过。
+            return TaskReadiness.skip("turn sequence already completed");
+        }
+        if (payload.turnSeq() > completedSeq + 1) {
+            // 大于 lastCompleted + 1 说明前面的 turn 还没完成，延迟重投以保护会话内顺序。
+            return TaskReadiness.waitRequired("waiting for previous turn sequence");
+        }
+        return TaskReadiness.proceed();
+    }
+
+    @Override
     protected void processTask(AgentRunTaskPayload payload, MqMessageIdentity identity) {
         ChatEvent event = payload.toChatEvent();
-        
-        // Rollback any partial output if this is a retry OR a forced rollback (e.g. from DLQ replay)
+
+        // 重试或人工 DLQ replay 前先清理本 turn 的旧输出，避免用户看到重复 assistant/tool 消息。
         if (identity.retryCount() > 0 || payload.forceRollback()) {
             chatEventProcessor.rollbackTurn(event.getSessionId(), event.getTurnId());
         }
-        
+
         chatEventProcessor.process(event);
         log.info("Agent run task processed: eventId={}, turnId={}, sessionId={}",
                 identity.eventId(), event.getTurnId(), event.getSessionId());
@@ -104,10 +134,12 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                                           MqMessageIdentity identity,
                                           Exception exception) {
         if (payload == null) {
+            // payload 都无法解析时，没有 session/turn 可用于补发用户可见消息，只能记录日志。
             log.warn("Skipping fallback assistant message because agent.run payload could not be deserialized: eventId={}",
                     identity.eventId());
             return;
         }
+        // 重试耗尽后仍要通知前端结束 loading，并给用户一条明确失败消息。
         chatEventProcessor.publishFailure(payload.toChatEvent(), exception);
     }
 }

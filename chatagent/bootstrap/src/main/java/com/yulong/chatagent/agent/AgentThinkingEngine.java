@@ -30,7 +30,11 @@ import java.util.stream.IntStream;
 
 @Slf4j
 /**
- * Encapsulates the model-thinking phase of the agent loop.
+ * ReAct 循环里的“思考阶段”封装。
+ * <p>
+ * 这个类只负责把当前记忆、系统提示词和工具定义交给 LLM，让模型决定下一步：
+ * 直接输出最终答案，或返回一组工具调用。真正执行工具的逻辑在
+ * {@link AgentToolExecutionEngine} 中完成。
  */
 class AgentThinkingEngine {
 
@@ -62,11 +66,11 @@ class AgentThinkingEngine {
     }
 
     /**
-     * Invokes the chat model with current memory and available tool callbacks.
+     * 调用模型完成一次决策。
      *
-     * @param chatMemory chat memory store
-     * @param chatSessionId chat session identifier
-     * @return raw model response for the current step
+     * @param chatMemory 当前 Agent 的窗口记忆
+     * @param chatSessionId 当前会话 ID
+     * @return 本轮模型输出，可能包含 tool calls，也可能已经是最终文本
      */
     ChatResponse think(ChatMemory chatMemory, String chatSessionId) {
         long startTime = System.nanoTime();
@@ -76,9 +80,12 @@ class AgentThinkingEngine {
         );
         String decisionPrompt = promptLoader.render(PromptConstants.AGENT_DECISION_MODULE, vars);
 
+        // 历史消息里如果存在不完整的 tool_call/tool_response 序列，部分模型会直接拒绝请求。
+        // 因此在组装 Prompt 前先清洗一遍，只保留格式完整的上下文片段。
         List<Message> promptMessages = sanitizePromptMessages(chatMemory.get(chatSessionId));
         Prompt prompt = buildPrompt(promptMessages, this.chatOptions);
 
+        // 没有可用工具时无需做“工具决策”，直接走最终答案流，减少一次不必要的路由判断。
         if (this.availableTools.isEmpty()) {
             log.info("No tools available for this turn. Streaming final response directly.");
             ChatResponse finalResponse = streamFinalAnswer(chatSessionId, buildFinalAnswerPrompt(promptMessages));
@@ -90,6 +97,8 @@ class AgentThinkingEngine {
             return finalResponse;
         }
 
+        // 单次路由流：同一次模型调用既实时推送给前端，又缓冲出完整 ChatResponse。
+        // 如果最终发现 tool_call，前端会回滚临时文本；如果没有 tool_call，这次流就是最终答案。
         BufferedStreamingResponse decision = this.messageBridge.streamDecisionResponse(
                 chatSessionId,
                 turnId,
@@ -105,6 +114,7 @@ class AgentThinkingEngine {
         List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
 
         if (toolCalls != null && !toolCalls.isEmpty()) {
+            // 工具调用决策也要落库，这样下一轮模型能看到“assistant 请求了哪些工具”。
             this.messageBridge.persistAndPublish(chatSessionId, turnId, output);
             logToolCalls(toolCalls);
         } else {
@@ -121,10 +131,8 @@ class AgentThinkingEngine {
     }
 
     private ChatResponse streamFinalAnswer(String chatSessionId, Prompt prompt) {
-        // This is the final-answer stream seam for Phase 6. ChatAgent.step()
-        // only observes whether the returned ChatResponse has tool calls, so
-        // the streaming pass must live inside think() after the tool decision
-        // branch instead of being bolted onto the orchestrator later.
+        // ChatAgent.step() 只看返回的 ChatResponse 是否包含 tool_call。
+        // 因此最终答案的流式输出也放在 think() 内完成，再包装成一个普通 ChatResponse 返回。
         String finalContent = this.messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, this.llmService);
         return new ChatResponse(List.of(new Generation(new AssistantMessage(finalContent))));
     }
@@ -132,6 +140,7 @@ class AgentThinkingEngine {
     private Prompt buildFinalAnswerPrompt(List<Message> promptMessages) {
         ChatOptions streamOptions = this.chatOptions.copy();
         if (streamOptions instanceof ToolCallingChatOptions toolOptions) {
+            // 最终答案阶段必须清空工具，否则模型可能再次选择 tool_call，打破“无工具分支”的语义。
             toolOptions.setToolCallbacks(List.of());
         }
 
@@ -153,6 +162,8 @@ class AgentThinkingEngine {
     }
 
     private List<Message> sanitizePromptMessages(List<Message> messages) {
+        // Spring AI / OpenAI 风格的工具消息要求严格成对：
+        // assistant(tool_calls) 后面必须跟对应的 tool_response，孤立工具消息会被跳过。
         if (messages == null || messages.isEmpty()) {
             return List.of();
         }
@@ -174,6 +185,7 @@ class AgentThinkingEngine {
 
                 ToolSequenceResult toolSequenceResult = collectToolSequence(messages, i, assistantMessage);
                 if (toolSequenceResult.messages().isEmpty()) {
+                    // assistant 已要求工具但后续没有完整 tool_response 时，整组跳过，避免污染 Prompt。
                     log.warn("Skip incomplete assistant tool-call sequence before prompt assembly at index={}, toolCalls={}",
                             i, toolCalls.size());
                     i = toolSequenceResult.lastConsumedIndex();
@@ -193,6 +205,7 @@ class AgentThinkingEngine {
     private ToolSequenceResult collectToolSequence(List<Message> messages,
                                                    int assistantIndex,
                                                    AssistantMessage assistantMessage) {
+        // 从 assistant 的 tool_call 开始向后收集连续 tool_response，并校验 call id 是否能全部对上。
         List<Message> sequence = new ArrayList<>();
         sequence.add(assistantMessage);
 

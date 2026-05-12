@@ -22,41 +22,7 @@ import static org.mockito.Mockito.when;
 
 class RoutingLLMServiceTest {
 
-    @Test
-    void syncRoutingShouldNotApplyFirstPacketTimeoutToFullResponse() {
-        ChatRoutingProperties properties = new ChatRoutingProperties();
-        properties.setFirstPacketTimeoutSeconds(0);
-        ModelSelector selector = mock(ModelSelector.class);
-        ModelHealthStore healthStore = mock(ModelHealthStore.class);
-        ChatClient chatClient = mock(ChatClient.class);
-        ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
-        ChatClient.CallResponseSpec responseSpec = mock(ChatClient.CallResponseSpec.class);
-        ChatResponse chatResponse = new ChatResponse(List.of(new Generation(new AssistantMessage("ok"))));
-
-        when(selector.selectChatCandidates(false))
-                .thenReturn(List.of(new ModelTarget("deepseek-chat", null, chatClient)));
-        when(healthStore.tryAcquire("deepseek-chat"))
-                .thenReturn(new ModelHealthStore.CallPermit(true, 0L));
-        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
-        when(requestSpec.system(anyString())).thenReturn(requestSpec);
-        when(requestSpec.toolCallbacks(any(ToolCallback[].class))).thenReturn(requestSpec);
-        doAnswer(invocation -> {
-            Thread.sleep(100L);
-            return responseSpec;
-        }).when(requestSpec).call();
-        when(responseSpec.chatClientResponse())
-                .thenReturn(new ChatClientResponse(chatResponse, Map.of()));
-
-        RoutingLLMService service = new RoutingLLMService(
-                selector,
-                healthStore,
-                properties,
-                new RoutingPromptFactory(new ModelCapabilityResolver(mock(ChatModelProviderRegistry.class))),
-                mock(ProviderDirectStreamSupport.class));
-
-        ChatResponse response = service.chatWithRouting(new Prompt("hello"), "system", List.of());
-
-        assertThat(response).isSameAs(chatResponse);
-        verify(healthStore).markSuccess("deepseek-chat", 0L);
-    }
+    // 旧同步路由入口 chatWithRouting 已停用。
+    // 原测试 syncRoutingShouldNotApplyFirstPacketTimeoutToFullResponse 只覆盖 ChatClient.call() 同步路径，
+    // 当前 Agent runtime 主线已经改为 streamDecisionWithRouting / streamChat，因此这里不再保留可执行测试。
 }

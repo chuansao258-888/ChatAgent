@@ -22,6 +22,12 @@ public interface ChatSessionMapper {
 
     List<ChatSession> selectByAgentIdAndUserId(@Param("agentId") String agentId, @Param("userId") String userId);
 
+    Long allocateNextTurnSeq(@Param("id") String id);
+
+    Long selectLastCompletedTurnSeq(@Param("id") String id);
+
+    Long advanceCompletedTurnSeq(@Param("id") String id);
+
     int deleteById(String id);
 
     int updateById(ChatSession chatSession);

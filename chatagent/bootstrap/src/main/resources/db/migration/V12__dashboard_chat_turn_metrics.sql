@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS t_chat_turn_metric (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
+    session_id VARCHAR(64) NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES t_user(id) ON DELETE CASCADE,
     turn_id VARCHAR(64) NOT NULL,
     agent_id UUID REFERENCES agent(id) ON DELETE SET NULL,

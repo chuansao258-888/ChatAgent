@@ -4,13 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Normalized parser output for the segment-native parser pipeline.
@@ -50,15 +48,17 @@ public class ParseResult {
         return result;
     }
 
-    public String getFullText() {
-        if (segments == null || segments.isEmpty()) {
-            return "";
-        }
-        return segments.stream()
-                .map(ParseSegment::text)
-                .filter(StringUtils::hasText)
-                .collect(Collectors.joining("\n\n"));
-    }
+    // getFullText 是旧测试/诊断便捷入口，生产摄取主链消费结构化 segments。
+    // 测试侧现在直接按 segments 拼接，避免模型对象暴露非主链 API。
+    // public String getFullText() {
+    //     if (segments == null || segments.isEmpty()) {
+    //         return "";
+    //     }
+    //     return segments.stream()
+    //             .map(ParseSegment::text)
+    //             .filter(StringUtils::hasText)
+    //             .collect(Collectors.joining("\n\n"));
+    // }
 
     public int totalChars() {
         if (segments != null && !segments.isEmpty()) {
@@ -67,7 +67,9 @@ public class ParseResult {
         return 0;
     }
 
-    public boolean isMultiSegment() {
-        return segments != null && segments.size() > 1;
-    }
+    // 旧便捷判断已停用：当前摄取流程直接使用 segments/totalChars，
+    // 没有独立依赖“是否多段”的分支。
+    // public boolean isMultiSegment() {
+    //     return segments != null && segments.size() > 1;
+    // }
 }

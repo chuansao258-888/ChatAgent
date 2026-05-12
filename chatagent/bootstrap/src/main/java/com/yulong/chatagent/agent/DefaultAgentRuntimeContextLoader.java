@@ -24,7 +24,10 @@ import java.util.Locale;
 import java.util.List;
 
 /**
- * Default runtime-context loader that assembles all data needed to run an agent.
+ * 默认 Agent 运行时上下文加载器。
+ * <p>
+ * 它是 Agent 启动前的“装配台”：读取 Agent 定义、恢复 L1 记忆、解析 L2/L3 摘要、
+ * 根据意图筛选工具，并把这些信息拼成最终系统提示词。
  */
 @Component
 @Slf4j
@@ -64,14 +67,18 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                     String chatSessionId,
                                     IntentResolution intentResolution,
                                     String rewrittenInput) {
+        // 1. 读取静态 Agent 配置，包括模型、系统提示词、工具 allowlist 和 chatOptions。
         AgentDefinition definition = agentDefinitionLoader.load(agentId);
         AgentDTO agentConfig = definition.config();
+        // 2. 恢复短期记忆和各类摘要；这些内容会同时影响 Prompt 和后续上下文窗口。
         List<Message> memory = agentMemoryLoader.load(chatSessionId, agentConfig);
         String sessionFileSummary = sessionFileSummaryResolver.resolve(agentConfig, chatSessionId);
         String sessionSummary = sessionSummaryResolver.resolve(chatSessionId);
         String userProfileSummary = userProfileSummaryResolver.resolve(chatSessionId);
+        // 3. 工具列表要结合 Agent 配置和意图结果动态收窄，避免模型看到不该使用的工具。
         List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig, intentResolution);
-        
+
+        // 4. 系统提示词是最终喂给模型的“运行合同”，包含身份、历史摘要、意图边界和工具策略。
         String resolvedSystemPrompt = buildSystemPrompt(
                 agentConfig.getSystemPrompt(), 
                 sessionSummary, 
@@ -109,17 +116,17 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                      List<ToolCallback> toolCallbacks) {
         StringBuilder builder = new StringBuilder();
 
-        // 1. Base System Prompt
+        // 1. 基础系统提示词：优先使用 Agent 配置，否则回退到默认模板。
         String effectivePrompt = StringUtils.hasText(baseSystemPrompt) ? baseSystemPrompt.trim() : promptLoader.load(PromptConstants.AGENT_DEFAULT_SYSTEM);
         builder.append(effectivePrompt).append("\n\n");
 
-        // 2. [Historical Context Summary] (L2 Memory)
+        // 2. L2 历史摘要：补充已经滑出 L1 窗口的长对话背景。
         if (StringUtils.hasText(sessionSummary) && !sessionSummary.contains("No historical context summary available")) {
             builder.append("[Historical Context Summary]\n")
                     .append(sessionSummary).append("\n\n");
         }
 
-        // 3. [Intent Routing Context]
+        // 3. 意图路由上下文：把本轮意图、知识库范围和工具范围显式写进系统提示词。
         if (intentResolution != null) {
             boolean hasScopedKnowledgeBases = !intentResolution.scopedKbIds().isEmpty();
             boolean hasNarrowedTools = !intentResolution.allowedTools().isEmpty();
@@ -140,7 +147,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
             appendIntentBoundaryInstructions(builder, hasScopedKnowledgeBases, hasNarrowedTools);
         }
 
-        // 4. [Session Context] (Files & Knowledge Bases & User Profile)
+        // 4. 会话上下文：附件摘要和用户画像让模型知道“当前会话有什么材料”和“用户长期偏好”。
         builder.append("[Session Context]\n");
         if (StringUtils.hasText(sessionFileSummary)) {
             builder.append("- Assets: ").append(sessionFileSummary).append("\n");
@@ -159,6 +166,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     }
 
     private void appendToolStrategyGuidance(StringBuilder builder, List<ToolCallback> toolCallbacks) {
+        // 只有存在工具时才追加工具策略，避免无工具 Agent 被无关规则干扰。
         if (toolCallbacks == null || toolCallbacks.isEmpty()) {
             return;
         }
@@ -166,6 +174,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     }
 
     private void appendLatestTurnGuidance(StringBuilder builder, List<Message> memory) {
+        // 用户如果追问“你怎么知道的/依据是什么”，模型应解释上一轮依据，而不是盲目重新检索。
         if (!isPriorAnswerBasisFollowUp(memory)) {
             return;
         }
@@ -173,6 +182,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     }
 
     private boolean isPriorAnswerBasisFollowUp(List<Message> memory) {
+        // 从最近一条用户消息判断是否是“追问上一答复依据”的问题。
         if (memory == null || memory.isEmpty()) {
             return false;
         }
@@ -236,6 +246,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     private void appendIntentBoundaryInstructions(StringBuilder builder,
                                                   boolean hasScopedKnowledgeBases,
                                                   boolean hasNarrowedTools) {
+        // 工具或知识库被意图路由收窄时，要把边界写进系统提示词，减少越界调用。
         if (hasNarrowedTools) {
             builder.append(promptLoader.load(PromptConstants.AGENT_INTENT_BOUNDARY_NARROWED)).append("\n");
             if (hasScopedKnowledgeBases) {
@@ -263,6 +274,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     }
 
     private boolean hasMcpTools(List<ToolCallback> toolCallbacks) {
+        // MCP 工具来自外部服务，只有出现 mcp_ 工具时才追加额外安全提示。
         if (toolCallbacks == null || toolCallbacks.isEmpty()) {
             return false;
         }

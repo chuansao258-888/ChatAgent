@@ -19,7 +19,10 @@ import java.util.stream.Collectors;
 
 @Slf4j
 /**
- * Encapsulates the tool-execution phase of the agent loop.
+ * ReAct 循环里的“行动阶段”封装。
+ * <p>
+ * 模型只会产出 tool_call 描述；这里负责调用 Spring AI 的工具执行器，
+ * 得到 tool_response 后再把完整对话历史写回 Agent 记忆。
  */
 class AgentToolExecutionEngine {
 
@@ -43,21 +46,24 @@ class AgentToolExecutionEngine {
     }
 
     /**
-     * Executes model-requested tool calls and appends tool responses back into memory.
+     * 执行模型请求的工具调用，并把工具响应写回短期记忆。
      *
-     * @param chatMemory chat memory store
-     * @param chatSessionId chat session identifier
-     * @param chatResponse last model response
-     * @return {@code true} when a terminate tool response signals that the run should stop
+     * @param chatMemory 当前 Agent 的窗口记忆
+     * @param chatSessionId 当前会话 ID
+     * @param chatResponse 上一步模型输出
+     * @return 如果工具响应里出现 terminate，返回 {@code true} 让外层循环停止
      */
     boolean execute(ChatMemory chatMemory, String chatSessionId, ChatResponse chatResponse) {
         Assert.notNull(chatResponse, "Last chat client response cannot be null");
 
+        // 没有工具调用时不做任何事；正常情况下外层 step() 已经挡住这个分支。
         if (!chatResponse.hasToolCalls()) {
             return false;
         }
 
         long startTime = System.nanoTime();
+        // ToolCallingManager 需要当前完整历史和 chatOptions，才能把 assistant tool_call
+        // 与实际工具回调匹配起来，并生成规范化后的 conversationHistory。
         Prompt prompt = Prompt.builder()
                 .messages(chatMemory.get(chatSessionId))
                 .chatOptions(this.chatOptions)
@@ -65,9 +71,12 @@ class AgentToolExecutionEngine {
 
         ToolExecutionResult toolExecutionResult = this.toolCallingManager.executeToolCalls(prompt, chatResponse);
 
+        // 采用“全量替换”而不是手动 append：Spring AI 返回的 history 已经保证
+        // assistant tool_call 与 tool_response 的顺序和配对关系正确。
         chatMemory.clear(chatSessionId);
         chatMemory.add(chatSessionId, toolExecutionResult.conversationHistory());
 
+        // 当前实现约定最后一条就是本轮工具响应消息，后续会逐个响应落库并推给前端。
         ToolResponseMessage toolResponseMessage = (ToolResponseMessage) toolExecutionResult
                 .conversationHistory()
                 .get(toolExecutionResult.conversationHistory().size() - 1);
@@ -86,12 +95,14 @@ class AgentToolExecutionEngine {
                 collect);
         this.messageBridge.persistAndPublish(chatSessionId, turnId, toolResponseMessage);
 
+        // terminate 工具目前虽可能被禁用，但保留这个终止协议，方便未来重新开放。
         return toolResponseMessage.getResponses()
                 .stream()
                 .anyMatch(resp -> resp.name().equals("terminate"));
     }
 
     private List<ToolCallback> sanitizeToolCallbacks(List<ToolCallback> availableTools) {
+        // 过滤掉没有工具定义或没有名称的 callback，避免 ToolCallingManager 初始化时报错。
         if (availableTools == null || availableTools.isEmpty()) {
             return List.of();
         }

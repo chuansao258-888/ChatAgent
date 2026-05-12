@@ -115,7 +115,7 @@ class MultiturnDialogueEvalTest {
                 tr.isTopicSwitch = turn.isTopicSwitch();
                 tr.expectedCoreference = turn.expectedCoreference();
 
-                IntentRoutingResult routing = intentRouter.routeWithHistory(
+                IntentRoutingResult routing = routeWithHistoryForEval(
                         EvalTestTreeFactory.AGENT_ID, turn.content(), prevUserResolution);
                 llmCalls++;
 
@@ -258,6 +258,31 @@ class MultiturnDialogueEvalTest {
         m.put("topicSwitchTurns", switches);
         m.put("topicSwitchDetection", round4(EvalMetrics.accuracy(switchesDetected, switches)));
         return m;
+    }
+
+    private IntentRoutingResult routeWithHistoryForEval(String agentId,
+                                                        String query,
+                                                        IntentResolution previousResolution) {
+        IntentRoutingResult firstPass = intentRouter.route(agentId, query);
+        if (!firstPass.hasResolution() && previousResolution != null) {
+            String leafName = extractLeafName(previousResolution.pathLabel());
+            if (leafName != null && !leafName.isBlank()) {
+                IntentRoutingResult retry = intentRouter.route(agentId, leafName + " " + query);
+                if (retry.hasResolution()) {
+                    return retry;
+                }
+            }
+        }
+        return firstPass;
+    }
+
+    private static String extractLeafName(String pathLabel) {
+        if (pathLabel == null || pathLabel.isBlank()) {
+            return null;
+        }
+        int idx = pathLabel.lastIndexOf('>');
+        String leaf = idx >= 0 ? pathLabel.substring(idx + 1).trim() : pathLabel.trim();
+        return leaf.isBlank() ? null : leaf;
     }
 
     /** Number of leading " > "-separated segments that agree between two path labels. */

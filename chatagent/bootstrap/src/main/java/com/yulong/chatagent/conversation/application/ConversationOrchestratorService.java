@@ -27,11 +27,16 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Coordinates one user turn from the conversation entrypoint.
+ * 单轮用户输入的会话编排器。
  * <p>
- * This service is intentionally placed above message CRUD so that turn-level
- * concerns such as validation, session checks, event dispatch, and later
- * planning/retrieval steps can evolve without polluting the message facade.
+ * 这是 conversation 模块最核心的主服务，位于：
+ * <ul>
+ *     <li>上游同步 HTTP 入口；</li>
+ *     <li>下游异步 Agent runtime；</li>
+ *     <li>中间的意图准备、direct reply 分流和事件派发。</li>
+ * </ul>
+ * 它做的不是“生成回答”，而是把一次用户输入稳定地组织成一个 turn：
+ * 校验请求、保存用户消息、验证上下文一致性、执行 prepare，然后决定是直接回复还是派发 ChatEvent。
  */
 @Service
 @Slf4j
@@ -66,13 +71,16 @@ public class ConversationOrchestratorService {
     }
 
     /**
-     * Handles one user input turn and starts the downstream conversation flow.
+     * 处理一次用户输入，并启动后续对话流程。
      *
-     * @param request user message creation request
-     * @return response describing the created user-side message record
+     * @param request 用户消息创建请求
+     * @return 已创建的用户侧消息记录
      */
     @Transactional
     public CreateChatMessageResponse handleUserTurn(CreateChatMessageRequest request) {
+        // 这里的事务只覆盖“入口编排”这段同步链路：
+        // 用户消息落库、最近历史读取、prepare 判断、构造 direct reply 或 ChatEvent。
+        // 真正耗时的 Agent 运行通常发生在事务外的异步线程里。
         validateRequest(request);
         ConversationTurnContext turnContext = buildTurnContext(request);
         verifyTurnContext(turnContext);
@@ -81,6 +89,7 @@ public class ConversationOrchestratorService {
     }
 
     private void validateRequest(CreateChatMessageRequest request) {
+        // 对话入口只接受 USER 消息；assistant/tool/system 消息只能由后端运行时创建。
         Assert.notNull(request, "CreateChatMessageRequest must not be null");
         Assert.hasText(request.getSessionId(), "SessionId must not be empty");
         Assert.hasText(request.getContent(), "Content must not be empty");
@@ -95,22 +104,30 @@ public class ConversationOrchestratorService {
     }
 
     private ConversationTurnContext buildTurnContext(CreateChatMessageRequest request) {
+        // turnId 是整轮对话的稳定关联键，后续 assistant/tool 消息、SSE、metrics 都靠它串起来。
         CreateChatMessageRequest normalizedRequest = normalizeRequest(request);
 
         ChatSessionVO chatSession = chatSessionFacadeService.getChatSession(normalizedRequest.getSessionId());
         String resolvedAgentId = requireAgentId(chatSession, normalizedRequest.getSessionId());
+        Long turnSeq = chatSessionRepository.allocateNextTurnSeq(normalizedRequest.getSessionId());
+        if (turnSeq == null || turnSeq <= 0L) {
+            throw new BizException("Failed to allocate turn sequence for session: " + normalizedRequest.getSessionId());
+        }
+        CreateChatMessageRequest sequencedRequest = withTurnSeq(normalizedRequest, turnSeq);
 
-        CreateChatMessageResponse createdMessage = chatMessageFacadeService.createChatMessage(normalizedRequest);
-        List<ChatMessageDTO> recentHistory = loadRecentHistory(normalizedRequest.getSessionId());
+        // 先保存用户消息，再读取最近历史，确保当前输入也进入 Agent 的 L1 记忆候选。
+        CreateChatMessageResponse createdMessage = chatMessageFacadeService.createChatMessage(sequencedRequest);
+        List<ChatMessageDTO> recentHistory = loadRecentHistory(sequencedRequest.getSessionId());
 
-        log.info("Conversation turn context built: sessionId={}, agentId={}, userMessageId={}, recentHistorySize={}",
-                normalizedRequest.getSessionId(),
+        log.info("Conversation turn context built: sessionId={}, agentId={}, userMessageId={}, turnSeq={}, recentHistorySize={}",
+                sequencedRequest.getSessionId(),
                 resolvedAgentId,
                 createdMessage.getChatMessageId(),
+                turnSeq,
                 recentHistory.size());
 
         return new ConversationTurnContext(
-                normalizedRequest,
+                sequencedRequest,
                 chatSession,
                 createdMessage,
                 recentHistory
@@ -118,6 +135,7 @@ public class ConversationOrchestratorService {
     }
 
     private void verifyTurnContext(ConversationTurnContext turnContext) {
+        // 如果保存后读回的最近历史不包含当前用户消息，Agent 会拿不到最新输入，必须立即失败。
         boolean containsCreatedMessage = turnContext.recentHistory().stream()
                 .anyMatch(message -> turnContext.createdUserMessage().getChatMessageId().equals(message.getId()));
         if (!containsCreatedMessage) {
@@ -127,15 +145,18 @@ public class ConversationOrchestratorService {
 
     private void prepareAndDispatchTurn(ConversationTurnContext turnContext) {
         String resolvedAgentId = requireAgentId(turnContext.session(), turnContext.request().getSessionId());
+        // 意图准备会做分类、查询改写和澄清判断。澄清类结果会直接回复，不进入 Agent runtime。
         TurnPreparationResult preparationResult = conversationTurnPreparationService.prepare(
                 resolvedAgentId,
                 turnContext.request().getSessionId(),
                 turnContext.request().getContent()
         );
         if (preparationResult.isDirectReply()) {
+            // 直接回复通常来自系统澄清或路由层决策，仍然要落库并推 SSE，前端体验保持一致。
             persistAndPushDirectReply(
                     turnContext.request().getSessionId(),
                     turnContext.request().getTurnId(),
+                    turnContext.request().getTurnSeq(),
                     preparationResult.directReply()
             );
             conversationTurnCompletionPublisher.publishCompletedTurn(
@@ -145,11 +166,15 @@ public class ConversationOrchestratorService {
             return;
         }
 
+        // 非直接回复时，这一层并不直接调用 ChatAgent.run()。
+        // 它只把本轮最小运行快照包装成 ChatEvent，交给后续异步执行链处理。
+        // 这样同步入口线程可以尽快返回，前端后续主要通过 SSE 接收结果。
         chatEventDispatcher.dispatch(
                 new ChatEvent(
                         resolvedAgentId,
                         turnContext.request().getSessionId(),
                         turnContext.request().getTurnId(),
+                        turnContext.request().getTurnSeq(),
                         turnContext.createdUserMessage().getChatMessageId(),
                         turnContext.request().getContent(),
                         turnContext.historySize(),
@@ -160,11 +185,17 @@ public class ConversationOrchestratorService {
         );
     }
 
-    private void persistAndPushDirectReply(String sessionId, String turnId, String content) {
+    private void persistAndPushDirectReply(String sessionId, String turnId, Long turnSeq, String content) {
+        // direct reply 由编排层直接产生，不经过 Agent runtime，也不存在 token 级流式过程。
+        // 但为了让前端协议统一，仍然要：
+        // 1. 持久化一条 ASSISTANT 消息；
+        // 2. 发送 AI_GENERATED_CONTENT；
+        // 3. 发送 AI_DONE。
         CreateChatMessageResponse savedMessage = chatMessageFacadeService.createChatMessage(
                 CreateChatMessageRequest.builder()
                         .sessionId(sessionId)
                         .turnId(turnId)
+                        .turnSeq(turnSeq)
                         .role(ChatMessageDTO.RoleType.ASSISTANT)
                         .content(content)
                         .build()
@@ -174,6 +205,7 @@ public class ConversationOrchestratorService {
                 .id(savedMessage.getChatMessageId())
                 .sessionId(sessionId)
                 .turnId(turnId)
+                .turnSeq(turnSeq)
                 .role(ChatMessageDTO.RoleType.ASSISTANT)
                 .content(content)
                 .build();
@@ -194,10 +226,13 @@ public class ConversationOrchestratorService {
     }
 
     private List<ChatMessageDTO> loadRecentHistory(String sessionId) {
+        // recent history 只取最近窗口，供后续上下文检查和 Agent memory 候选使用，
+        // 这里不做完整会话历史加载。
         return chatMessageFacadeService.getChatMessagesBySessionIdRecently(sessionId, RECENT_HISTORY_LIMIT);
     }
 
     private CreateChatMessageRequest normalizeRequest(CreateChatMessageRequest request) {
+        // 前端可以传入 turnId；没有传时后端生成，保证一次用户输入有唯一 turn。
         String turnId = request.getTurnId();
         if (turnId == null || turnId.isBlank()) {
             turnId = UUID.randomUUID().toString();
@@ -207,8 +242,20 @@ public class ConversationOrchestratorService {
         return CreateChatMessageRequest.builder()
                 .sessionId(request.getSessionId().trim())
                 .turnId(turnId)
+                .turnSeq(null)
                 .role(request.getRole())
                 .content(request.getContent().trim())
+                .metadata(request.getMetadata())
+                .build();
+    }
+
+    private CreateChatMessageRequest withTurnSeq(CreateChatMessageRequest request, Long turnSeq) {
+        return CreateChatMessageRequest.builder()
+                .sessionId(request.getSessionId())
+                .turnId(request.getTurnId())
+                .turnSeq(turnSeq)
+                .role(request.getRole())
+                .content(request.getContent())
                 .metadata(request.getMetadata())
                 .build();
     }
@@ -225,6 +272,8 @@ public class ConversationOrchestratorService {
     }
 
     private String resolveSessionUserId(String sessionId) {
+        // userId 对会话编排层来说不是强依赖，但进入异步 Agent 执行后，
+        // toolContext、审计、指标等场景都可能需要它，因此这里尽量提前补齐。
         ChatSessionDTO chatSession = chatSessionRepository.findById(sessionId);
         return chatSession == null ? null : chatSession.getUserId();
     }

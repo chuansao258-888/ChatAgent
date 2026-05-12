@@ -23,7 +23,15 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
- * Shared retry, lock, and logging workflow for MQ task consumers.
+ * MQ consumer 的通用模板。
+ *
+ * AgentRunTaskListener 和 KnowledgeIngestTaskListener 都复用这套流程：
+ * 1. 从 header 读取 MqMessageIdentity；
+ * 2. 用 task lock 做幂等去重；
+ * 3. 需要时用 session exec lock 保证同一 session 串行执行；
+ * 4. 启动 watchdog 续租；
+ * 5. 调用子类真正处理业务；
+ * 6. 成功 ack，失败按 retry/DLQ 策略处理。
  */
 @Slf4j
 public abstract class AbstractRetryingMqConsumer<T> {
@@ -48,10 +56,12 @@ public abstract class AbstractRetryingMqConsumer<T> {
     protected final void consume(Message message, Channel channel) throws IOException {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         MqMessageIdentity identity = MqMessageHeaders.read(message.getMessageProperties());
+        // traceId 从 MQ header 透传到当前线程日志，方便串起 outbox -> consumer -> runtime。
         TraceContext.setTraceId(identity.traceId());
         try {
             MqTaskLockAcquisition acquisition;
             try {
+                // 第一把锁：task lock。key = taskType + idempotencyKey，用于识别同一个业务任务的重复投递。
                 acquisition = distributedLockManager.tryAcquire(identity, ownerId);
             } catch (Exception acquisitionException) {
                 ChatAgentMqProperties.RedisFailurePolicy policy =
@@ -68,22 +78,22 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 return;
             }
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.WAIT_REQUIRED) {
-                requeueWithDelay(
-                        originalMessage(message, identity),
-                        channel,
-                        deliveryTag,
-                        identity,
-                        "task lock is already RUNNING"
-                );
+                // 已有同一个任务处于 RUNNING。
+                // 这里 ack 掉当前重复消息，不让它继续重投；真正的那条消息会负责完成/失败状态。
+                log.info("MQ task skipped because an equivalent task is already RUNNING: taskType={}, eventId={}, idempotencyKey={}",
+                        identity.taskType(), identity.eventId(), identity.idempotencyKey());
+                channel.basicAck(deliveryTag, false);
                 return;
             }
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.DUPLICATE) {
+                // COMPLETED 等终态说明这个业务任务已经处理过，重复消息直接 ack。
                 log.info("MQ task skipped as duplicate: taskType={}, eventId={}, state={}",
                         identity.taskType(), identity.eventId(), acquisition.existingState());
                 channel.basicAck(deliveryTag, false);
                 return;
             }
             MqTaskLockLease taskLease = acquisition.lease();
+            // 第二把锁：session execution lock。它不是幂等锁，而是保证同一 session 同时只跑一个 Agent。
             SessionAcquireResult sessionAcquireResult = acquireSessionExecLockOrHandle(
                     message,
                     channel,
@@ -108,10 +118,31 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                     MqTaskLockLease lease,
                                     MqSessionExecLockLease sessionLease) throws IOException {
         T payload = null;
+        // try-with-resources 确保无论成功/异常/return，最后都会 close watchdog registration，
+        // close 内部会 future.cancel(false)，停止后续续租任务。
         try (LockWatchdog.Registration ignored =
                      (lease == null && sessionLease == null) ? (() -> {
                      }) : lockWatchdog.watch(lease, sessionLease)) {
             payload = deserializePayload(message);
+            TaskReadiness readiness = checkReadiness(payload, identity);
+            if (readiness.outcome() == TaskReadinessOutcome.WAIT) {
+                // readiness WAIT 表示“当前不是不能处理，而是前置条件还没满足”，例如前一个 turn 未完成。
+                // 释放 task lock 后延迟重投，让它稍后重新竞争。
+                safeReleaseTaskLockForWait(identity, lease);
+                requeueWithDelay(originalMessage(message, identity), channel, deliveryTag, identity, readiness.reason());
+                return;
+            }
+            if (readiness.outcome() == TaskReadinessOutcome.SKIP) {
+                // readiness SKIP 表示已经没必要处理，例如对应业务状态已完成。
+                if (lease != null) {
+                    distributedLockManager.markCompleted(lease);
+                }
+                channel.basicAck(deliveryTag, false);
+                log.info("MQ task skipped after readiness check: taskType={}, eventId={}, reason={}",
+                        identity.taskType(), identity.eventId(), readiness.reason());
+                return;
+            }
+            // 真正的业务处理由子类实现：agent.run 会进 ChatEventProcessor，ingest 会跑文档入库。
             processTask(payload, identity);
             if (lease != null) {
                 distributedLockManager.markCompleted(lease);
@@ -139,6 +170,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                         MqSessionExecLockLease sessionLease,
                                         Exception exception) throws IOException {
         if (identity.retryCount() >= maxRetryCount()) {
+            // consumer retry 已耗尽：标记 Redis FAILED，然后 reject(false) 让 RabbitMQ 投到 DLQ。
             safeMarkFailed(lease, exception);
             runFailureHook(() -> onRetriesExhausted(payload, identity, exception), "retry-exhausted");
             log.warn("MQ task retries exhausted, sending to DLQ: taskType={}, eventId={}, retryCount={}",
@@ -150,6 +182,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
         if (lease != null) {
             boolean released;
             try {
+                // 投递到 retry queue 前必须释放 RUNNING 锁，否则重试消息回来后会被自己挡住。
                 released = distributedLockManager.releaseRunning(lease);
             } catch (Exception releaseException) {
                 log.warn("Failed to release RUNNING lock before retry handoff, requeueing original: taskType={}, eventId={}",
@@ -166,6 +199,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
         }
         MqMessageIdentity retryIdentity = identity.withRetryCount(identity.retryCount() + 1);
         try {
+            // 显式发布到 retry exchange；retry queue TTL 到期后会死信回原主队列。
             rabbitMqMessagePublisher.publish(
                     retryExchange(),
                     retryRoutingKey(),
@@ -191,6 +225,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                        MqMessageIdentity identity,
                                        MqTaskLockLease lease,
                                        Exception exception) throws IOException {
+        // 非重试异常直接进入终局失败：Redis 记 FAILED，RabbitMQ 进 DLQ。
         safeMarkFailed(lease, exception);
         runFailureHook(() -> onTerminalFailure(payload, identity, exception), "terminal-failure");
         log.warn("MQ task rejected as terminal failure: taskType={}, eventId={}, error={}",
@@ -213,6 +248,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
     }
 
     protected Message buildRetryMessage(Message originalMessage, MqMessageIdentity retryIdentity) {
+        // 当前实现只更新 retry-count header，其余 identity 字段保持不变。
         return MessageBuilder.fromMessage(originalMessage)
                 .setHeader(MqMessageHeaders.RETRY_COUNT, retryIdentity.retryCount())
                 .build();
@@ -227,6 +263,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
     }
 
     protected boolean requiresSessionExecutionLock(MqMessageIdentity identity) {
+        // 有 sessionId 的任务才需要串行化；知识库 ingestion 这类无会话任务不拿 session lock。
         return StringUtils.hasText(identity.sessionId());
     }
 
@@ -259,6 +296,10 @@ public abstract class AbstractRetryingMqConsumer<T> {
 
     protected abstract void processTask(T payload, MqMessageIdentity identity) throws Exception;
 
+    protected TaskReadiness checkReadiness(T payload, MqMessageIdentity identity) {
+        return TaskReadiness.proceed();
+    }
+
     protected void onRetriesExhausted(T payload, MqMessageIdentity identity, Exception exception) {
     }
 
@@ -277,6 +318,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
             MqSessionExecLockAcquisition acquisition =
                     distributedLockManager.acquireSessionExecLock(identity.sessionId(), ownerId);
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.WAIT_REQUIRED) {
+                // 同一个 session 已有 Agent 正在跑。这里不能并发执行，否则消息落库/上下文读取会乱序。
                 safeReleaseTaskLockForWait(identity, taskLease);
                 requeueWithDelay(originalMessage, channel, deliveryTag, identity, "session execution lock is busy");
                 return new SessionAcquireResult(true, null);
@@ -304,6 +346,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                   MqMessageIdentity identity,
                                   String reason) throws IOException {
         try {
+            // 延迟重投不是 basicNack(requeue=true) 立刻回队尾，而是进入 retry queue 等一段时间再回来。
             rabbitMqMessagePublisher.publish(
                     retryExchange(),
                     retryRoutingKey(),
@@ -321,6 +364,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
     }
 
     private Message originalMessage(Message message, MqMessageIdentity identity) {
+        // WAIT 分支不是业务失败，所以 retryCount 不增加，只按当前 identity 原样重投。
         return buildRetryMessage(message, identity);
     }
 
@@ -329,6 +373,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
             return;
         }
         try {
+            // WAIT 不是完成也不是失败，必须释放 RUNNING 状态，否则后续重投永远拿不到锁。
             if (!distributedLockManager.releaseRunning(lease)) {
                 log.warn("Failed to release task lock before wait requeue: taskType={}, eventId={}",
                         identity.taskType(), identity.eventId());
@@ -357,6 +402,29 @@ public abstract class AbstractRetryingMqConsumer<T> {
     @FunctionalInterface
     private interface FailureHook {
         void run() throws Exception;
+    }
+
+    protected enum TaskReadinessOutcome {
+        // 可以执行。
+        PROCEED,
+        // 暂时不能执行，延迟重投。
+        WAIT,
+        // 不需要执行，标记完成并 ack。
+        SKIP
+    }
+
+    protected record TaskReadiness(TaskReadinessOutcome outcome, String reason) {
+        static TaskReadiness proceed() {
+            return new TaskReadiness(TaskReadinessOutcome.PROCEED, "ready");
+        }
+
+        static TaskReadiness waitRequired(String reason) {
+            return new TaskReadiness(TaskReadinessOutcome.WAIT, reason);
+        }
+
+        static TaskReadiness skip(String reason) {
+            return new TaskReadiness(TaskReadinessOutcome.SKIP, reason);
+        }
     }
 
     private record SessionAcquireResult(boolean handled, MqSessionExecLockLease lease) {

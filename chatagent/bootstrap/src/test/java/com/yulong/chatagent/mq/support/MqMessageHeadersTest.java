@@ -29,8 +29,7 @@ class MqMessageHeadersTest {
         MqMessageHeaders.apply(properties, identity);
 
         assertThat(MqMessageHeaders.read(properties)).isEqualTo(identity);
-        assertThat(MqMessageHeaders.isImmutable(MqMessageHeaders.EVENT_ID)).isTrue();
-        assertThat(MqMessageHeaders.isImmutable(MqMessageHeaders.RETRY_COUNT)).isFalse();
+        // isImmutable 是旧 header 改写保护入口，生产代码不再调用，主类中已停用。
     }
 
     @Test

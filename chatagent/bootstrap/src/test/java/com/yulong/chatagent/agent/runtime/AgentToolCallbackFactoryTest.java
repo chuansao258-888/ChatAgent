@@ -75,7 +75,11 @@ class AgentToolCallbackFactoryTest {
     void shouldInheritAgentDefaultPoolWhenIntentIsAbsentUnderIntentNarrowingMode() {
         ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
         when(toolFacadeService.getFixedTools()).thenReturn(List.of(fixedTool("TerminateTool")));
-        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(optionalTool("toolA"), optionalTool("toolB")));
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(
+                optionalTool("toolA"),
+                optionalTool("toolB"),
+                optionalTool("toolC")
+        ));
 
         AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
                 toolFacadeService,
@@ -222,7 +226,10 @@ class AgentToolCallbackFactoryTest {
     void shouldGrantIntentToolsWhenAgentDefaultPoolIsEmpty() {
         ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
         when(toolFacadeService.getFixedTools()).thenReturn(List.of(fixedTool("TerminateTool")));
-        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(optionalTool("toolB")));
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(
+                optionalTool("toolA"),
+                optionalTool("toolB")
+        ));
 
         AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
                 toolFacadeService,
@@ -238,6 +245,56 @@ class AgentToolCallbackFactoryTest {
 
         assertThat(callbackNames(callbacks))
                 .containsExactlyInAnyOrder("TerminateTool", "toolB");
+    }
+
+    @Test
+    void shouldNotOpenAllToolsWhenIntentIntersectionIsEmpty() {
+        ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
+        when(toolFacadeService.getFixedTools()).thenReturn(List.of(fixedTool("TerminateTool")));
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(
+                optionalTool("toolA"),
+                optionalTool("toolB")
+        ));
+
+        AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
+                toolFacadeService,
+                rolloutPolicy("ALL"),
+                IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING
+        );
+        AgentDTO agent = AgentDTO.builder()
+                .id("assistant-1")
+                .allowedTools(List.of("toolA"))
+                .build();
+
+        List<ToolCallback> callbacks = factory.create(agent, resolution(IntentKind.TOOL, List.of("toolB"), List.of()));
+
+        assertThat(callbackNames(callbacks))
+                .containsExactly("TerminateTool");
+    }
+
+    @Test
+    void shouldHideSessionFileSearchToolWhenAgentDefaultPoolIsEmptyButOptionalToolsExist() {
+        ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
+        when(toolFacadeService.getFixedTools()).thenReturn(List.of(
+                fixedTool("TerminateTool"),
+                fixedTool("SessionFileSearchTool")
+        ));
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(optionalTool("toolA")));
+
+        AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
+                toolFacadeService,
+                rolloutPolicy("ALL"),
+                IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING
+        );
+        AgentDTO agent = AgentDTO.builder()
+                .id("assistant-1")
+                .allowedTools(List.of())
+                .build();
+
+        List<ToolCallback> callbacks = factory.create(agent, null);
+
+        assertThat(callbackNames(callbacks))
+                .containsExactlyInAnyOrder("TerminateTool", "toolA");
     }
 
     @Test

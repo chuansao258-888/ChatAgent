@@ -22,6 +22,10 @@ public class ChatSession {
     // JSON string
     private String metadata;
 
+    private Long nextTurnSeq;
+
+    private Long lastCompletedTurnSeq;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

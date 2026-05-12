@@ -30,7 +30,6 @@ import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,7 +88,7 @@ class KnowledgeIngestTaskListenerTest {
     }
 
     @Test
-    void shouldDelayWaitRequiredMessage() throws Exception {
+    void shouldAckInFlightDuplicateWhenTaskLockIsRunning() throws Exception {
         KnowledgeIngestTaskListener listener = newListener(new ChatAgentMqProperties());
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
@@ -97,7 +96,7 @@ class KnowledgeIngestTaskListenerTest {
 
         listener.handle(buildMessage(0, false), channel);
 
-        verify(rabbitMqMessagePublisher).publish(eq("retry.direct"), eq("retry.ingest"), any(), anyString());
+        verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
         verify(channel).basicAck(7L, false);
         verify(knowledgeDocumentRepository, never()).findById(anyString());
         verify(knowledgeDocumentIngestionService, never()).ingestSync(anyString(), any());

@@ -28,6 +28,7 @@ class AgentRunTaskPayloadTest {
         AgentRunTaskPayload payload = objectMapper.readValue(legacyJson, AgentRunTaskPayload.class);
 
         assertThat(payload.userId()).isEmpty();
+        assertThat(payload.turnSeq()).isNull();
         assertThat(payload.forceRollback()).isFalse();
         assertThat(payload.toChatEvent().getUserId()).isEmpty();
     }

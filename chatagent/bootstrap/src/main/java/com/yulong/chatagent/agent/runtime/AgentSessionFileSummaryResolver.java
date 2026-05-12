@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Builds a compact summary of files attached to the current chat session.
+ * 构建当前会话附件和绑定知识库的轻量摘要。
+ * <p>
+ * 这份摘要不会替代 RAG 检索，只是让模型在系统提示词里知道“有哪些材料可查”。
  */
 @Component
 public class AgentSessionFileSummaryResolver {
@@ -37,20 +39,22 @@ public class AgentSessionFileSummaryResolver {
     }
 
     /**
-     * Produces a human-readable list of attached session files for one agent run.
+     * 为一次 Agent 运行生成 prompt 友好的资源列表。
      *
-     * @param agentConfig persisted agent configuration
-     * @param chatSessionId current chat session identifier
-     * @return prompt-friendly session-file summary
+     * @param agentConfig Agent 配置
+     * @param chatSessionId 当前会话 ID
+     * @return 附件和知识库摘要
      */
     public String resolve(AgentDTO agentConfig, String chatSessionId) {
         List<String> sections = new ArrayList<>();
 
+        // 会话附件是用户当前上传的资料。
         String sessionFileSummary = resolveAttachedSessionFiles(agentConfig, chatSessionId);
         if (StringUtils.hasText(sessionFileSummary)) {
             sections.add("Attached session files: " + sessionFileSummary);
         }
 
+        // 绑定知识库是 Agent 长期可检索的资料范围。
         String knowledgeBaseSummary = resolveBoundKnowledgeBases(chatSessionId);
         if (StringUtils.hasText(knowledgeBaseSummary)) {
             sections.add("Bound knowledge bases: " + knowledgeBaseSummary);
@@ -63,6 +67,7 @@ public class AgentSessionFileSummaryResolver {
     }
 
     private String resolveAttachedSessionFiles(AgentDTO agentConfig, String chatSessionId) {
+        // 只列出文件名，不把正文塞进系统提示词；正文内容通过 SessionFileSearchTool 检索。
         if (!StringUtils.hasText(chatSessionId)) {
             return "";
         }
@@ -80,6 +85,7 @@ public class AgentSessionFileSummaryResolver {
     }
 
     private String resolveBoundKnowledgeBases(String chatSessionId) {
+        // 从会话找到绑定的 Agent，再查 Agent 绑定的 ACTIVE 知识库名称。
         ChatSessionDTO session = chatSessionRepository.findById(chatSessionId);
         if (session == null || !StringUtils.hasText(session.getAgentId())) {
             return "";

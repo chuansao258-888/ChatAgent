@@ -9,6 +9,7 @@ import lombok.Data;
 public class CreateChatMessageRequest {
     private String sessionId;
     private String turnId;
+    private Long turnSeq;
     private ChatMessageDTO.RoleType role;
     private String content;
     private ChatMessageDTO.MetaData metadata;

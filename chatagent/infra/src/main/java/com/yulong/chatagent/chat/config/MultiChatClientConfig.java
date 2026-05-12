@@ -18,6 +18,9 @@ import java.lang.reflect.Field;
  * Declares named {@link ChatClient} beans for every supported chat model.
  *
  * <p>The bean names are used as routing keys by {@code ChatModelRouter}.</p>
+ *
+ * <p>中文说明：这里把多个具体模型注册成不同名字的 ChatClient Bean。
+ * chat.routing.candidates[].spring-client-key 最终就是拿这些 Bean 名称去 ChatClientRegistry 查。</p>
  */
 public class MultiChatClientConfig {
     /**
@@ -29,6 +32,7 @@ public class MultiChatClientConfig {
      */
     @Bean("deepseek-chat")
     public ChatClient deepSeekChatClient(DeepSeekChatModel deepSeekChatModel) {
+        // 直接包装 Spring AI 自动配置出来的默认 DeepSeekChatModel。
         return ChatClient.create(deepSeekChatModel);
     }
 
@@ -44,11 +48,13 @@ public class MultiChatClientConfig {
     @Bean("deepseek-reasoner")
     public ChatClient deepSeekReasonerChatClient(DeepSeekChatModel deepSeekChatModel,
                                                   ObservationRegistry observationRegistry) {
+        // 复用自动配置模型里的 DeepSeekApi，避免重新读取 api-key/base-url/webClient 等底层配置。
         DeepSeekApi deepSeekApi = extractField(deepSeekChatModel, "deepSeekApi", DeepSeekApi.class);
         DeepSeekChatOptions options = DeepSeekChatOptions.builder()
                 .model("deepseek-reasoner")
                 .maxTokens(8192)
                 .build();
+        // 新建一个默认 model=deepseek-reasoner 的 DeepSeekChatModel，再包装成独立 ChatClient Bean。
         DeepSeekChatModel reasonerModel = DeepSeekChatModel.builder()
                 .deepSeekApi(deepSeekApi)
                 .defaultOptions(options)
@@ -65,6 +71,7 @@ public class MultiChatClientConfig {
      */
     @Bean("glm-4.6")
     public ChatClient zhiPuAiChatClient(ZhiPuAiChatModel zhiPuAiChatModel) {
+        // 直接包装 Spring AI 自动配置出来的默认智谱模型。
         return ChatClient.create(zhiPuAiChatModel);
     }
 
@@ -78,6 +85,7 @@ public class MultiChatClientConfig {
      */
     @Bean("glm-5.1")
     public ChatClient glm51ChatClient(ZhiPuAiChatModel zhiPuAiChatModel) {
+        // 复用自动配置模型里的 ZhiPuAiApi，避免重复配置鉴权和 base-url。
         ZhiPuAiApi zhiPuAiApi = extractField(zhiPuAiChatModel, "zhiPuAiApi", ZhiPuAiApi.class);
         ZhiPuAiChatOptions options = ZhiPuAiChatOptions.builder()
                 .model("glm-5.1")
@@ -85,6 +93,7 @@ public class MultiChatClientConfig {
                 .topP(0.85)
                 .maxTokens(4096)
                 .build();
+        // 基于同一个 ZhiPuAiApi 新建 glm-5.1 模型实例，暴露为独立 Bean。
         ZhiPuAiChatModel glm51Model = new ZhiPuAiChatModel(zhiPuAiApi, options);
         return ChatClient.create(glm51Model);
     }
@@ -92,6 +101,8 @@ public class MultiChatClientConfig {
     @SuppressWarnings("SameParameterValue")
     private static <T> T extractField(Object target, String fieldName, Class<T> type) {
         try {
+            // 反射读取 Spring AI 模型里的私有 API 字段，例如 deepSeekApi / zhiPuAiApi。
+            // 这样新建派生模型时能复用自动配置好的底层客户端。
             Field field = target.getClass().getDeclaredField(fieldName);
             field.setAccessible(true);
             return type.cast(field.get(target));

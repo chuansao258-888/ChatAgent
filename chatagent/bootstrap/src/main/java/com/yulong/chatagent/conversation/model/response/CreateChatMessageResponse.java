@@ -8,4 +8,5 @@ import lombok.Data;
 public class CreateChatMessageResponse {
     private String chatMessageId;
     private String turnId;
+    private Long turnSeq;
 }

@@ -32,7 +32,12 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * Small operational surface for MQ rollout support until broader observability tooling lands.
+ * MQ 运维后台服务。
+ *
+ * 这不是业务主链，而是给管理员排查/救援用：
+ * 1. 查看 outbox 当前 pending/claimed/sent/failed 状态；
+ * 2. 查看 retry queue / DLQ 深度；
+ * 3. 从 DLQ 拉取消息并 replay 回原始 exchange/routingKey。
  */
 @Service
 @Slf4j
@@ -61,6 +66,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
                                                         Integer limit) {
         adminAccessService.requireAdmin();
         int normalizedLimit = normalizeLimit(limit, DEFAULT_LIMIT);
+        // 支持按 eventId/idempotencyKey/status 过滤，方便从日志里的身份链反查 outbox。
         List<MqOutbox> records = outboxRepository.findRecent(
                 trimToNull(eventId),
                 trimToNull(idempotencyKey),
@@ -68,10 +74,12 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
                 normalizedLimit
         );
         return GetMqOutboxRetryResponse.builder()
+                // outbox 状态是“投递 RabbitMQ 之前”的状态，不等同于 consumer 处理状态。
                 .pendingCount(outboxRepository.countByStatus("PENDING"))
                 .claimedCount(outboxRepository.countByStatus("CLAIMED"))
                 .sentCount(outboxRepository.countByStatus("SENT"))
                 .failedCount(outboxRepository.countByStatus("FAILED"))
+                // 队列深度用于判断消息是否堆积：retry 队列深度高说明短期失败多，DLQ 高说明终局失败多。
                 .retryAgentQueueDepth(queueDepth(properties.getQueues().getRetryAgent10s()))
                 .retryIngestQueueDepth(queueDepth(properties.getQueues().getRetryIngest30s()))
                 .dlqQueueDepth(queueDepth(properties.getQueues().getChatDlq()))
@@ -83,6 +91,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
     public ReplayDlqMessagesResponse replayDlqMessages(ReplayDlqMessagesRequest request) {
         adminAccessService.requireAdmin();
         int limit = normalizeLimit(request == null ? null : request.getLimit(), 10);
+        // 默认把 retryCount 清零，让 replay 后重新拥有完整 consumer retry 机会。
         boolean resetRetryCount = request == null || request.getResetRetryCount() == null
                 || request.getResetRetryCount();
 
@@ -90,6 +99,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
             DefaultMessagePropertiesConverter converter = new DefaultMessagePropertiesConverter();
             int count = 0;
             while (count < limit) {
+                // basicGet 是管理端主动拉取 DLQ；autoAck=false，所以成功 replay 后必须手动 ack 原 DLQ 消息。
                 GetResponse response = channel.basicGet(properties.getQueues().getChatDlq(), false);
                 if (response == null) {
                     break;
@@ -109,7 +119,8 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
                     
                     Message replayMessage = buildReplayMessage(message, replayIdentity);
                     
-                    // If this is an agent run task, ensure we signal a forced rollback upon replay
+                    // agent.run replay 前会强制标记 forceRollback：
+                    // consumer 再处理时会先清理本 turn 已写出的旧 assistant/tool 消息，避免重复输出。
                     if (properties.getRoutingKeys().getAgentRun().equals(replayIdentity.originalRoutingKey())) {
                         AgentRunTaskPayload payload = objectMapper.readValue(message.getBody(), AgentRunTaskPayload.class);
                         AgentRunTaskPayload forcedPayload = payload.withForceRollback(true);
@@ -119,6 +130,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
                     }
 
                     rabbitMqMessagePublisher.publish(
+                            // originalExchange/originalRoutingKey 来自初始 identity，确保 replay 回到原主队列。
                             replayIdentity.originalExchange(),
                             replayIdentity.originalRoutingKey(),
                             replayMessage,
@@ -131,6 +143,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
                             replayIdentity.originalExchange(),
                             replayIdentity.originalRoutingKey());
                 } catch (Exception e) {
+                    // replay 失败时把 DLQ 原消息放回队列，避免运维操作导致消息丢失。
                     channel.basicNack(deliveryTag, false, true);
                     throw new BizException("DLQ replay failed after " + count + " messages: " + e.getMessage());
                 }
@@ -146,6 +159,8 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
     }
 
     private Message buildReplayMessage(Message originalMessage, MqMessageIdentity replayIdentity) {
+        // replay 不重新生成 eventId/idempotencyKey，只调整 retryCount。
+        // 这样 Redis task lock 仍能识别它是同一个业务任务。
         return MessageBuilder.fromMessage(originalMessage)
                 .setHeader(MqMessageHeaders.RETRY_COUNT, replayIdentity.retryCount())
                 .build();
@@ -153,6 +168,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
 
     private GetMqOutboxRetryResponse.OutboxRecord toRecord(MqOutbox outbox) {
         Map<String, Object> headers = parseHeaders(outbox.getHeaders());
+        // headers 里保存了真正的 MQ 身份链，outbox 表面字段只保存 exchange/routingKey/status 等投递信息。
         MqMessageIdentity identity = MqMessageHeaders.fromMap(headers);
         return GetMqOutboxRetryResponse.OutboxRecord.builder()
                 .id(outbox.getId())
@@ -180,6 +196,7 @@ public class MqAdminFacadeServiceImpl implements MqAdminFacadeService {
     private long queueDepth(String queueName) {
         Properties queueProperties = amqpAdmin.getQueueProperties(queueName);
         if (queueProperties == null) {
+            // 队列不存在或 RabbitMQ 不可见时，后台展示为 0，避免管理接口直接报错。
             return 0L;
         }
         Object value = queueProperties.get(QUEUE_MESSAGE_COUNT);

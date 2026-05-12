@@ -8,7 +8,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Fixed-size plain-text chunker with overlap and simple natural-boundary backtracking.
@@ -42,8 +45,9 @@ public class PlainTextChunker {
         int start = 0;
         String normalizedText = text.trim();
         List<KnowledgeChunkDraft> chunks = new ArrayList<>();
+        int chunkLimit = chunkLimit();
         while (start < normalizedText.length()) {
-            int candidateEnd = Math.min(start + targetChars, normalizedText.length());
+            int candidateEnd = Math.min(start + chunkLimit, normalizedText.length());
             int end = findChunkEnd(normalizedText, start, candidateEnd);
             if (end <= start) {
                 break;
@@ -53,7 +57,7 @@ public class PlainTextChunker {
                 start = end;
                 continue;
             }
-            String metadata = buildMetadata(chunkText, chunks.size());
+            String metadata = buildMetadata(chunkText, chunks.size(), start, end);
             chunks.add(new KnowledgeChunkDraft(chunkText, metadata));
             if (end == normalizedText.length()) {
                 break;
@@ -66,6 +70,14 @@ public class PlainTextChunker {
 
         }
         return chunks;
+    }
+
+    private int chunkLimit() {
+        int desiredLimit = Math.max(1, targetChars);
+        if (maxChars > 0) {
+            return Math.min(maxChars, desiredLimit);
+        }
+        return desiredLimit;
     }
 
     /**
@@ -129,11 +141,13 @@ public class PlainTextChunker {
     /**
      * Stores just enough metadata to explain how a plain-text chunk was produced.
      */
-    private String buildMetadata(String chunkText, int chunkIndex) {
+    private String buildMetadata(String chunkText, int chunkIndex, int sourceStart, int sourceEnd) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("chunkStrategy", "plain_text");
         map.put("contentLength", chunkText.length());
         map.put("chunkIndex", chunkIndex);
+        map.put("sourceStart", sourceStart);
+        map.put("sourceEnd", sourceEnd);
         try {
             return objectMapper.writeValueAsString(map);
         } catch (JsonProcessingException e) {

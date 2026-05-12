@@ -18,6 +18,10 @@ public class ChatSessionDTO {
 
     private MetaData metadata;
 
+    private Long nextTurnSeq;
+
+    private Long lastCompletedTurnSeq;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

@@ -30,6 +30,8 @@ public interface ChatMessageRepository {
 
     Long findMaxSeqNoBySessionId(String sessionId);
 
+    Long findTurnSeqBySessionIdAndTurnId(String sessionId, String turnId);
+
     long countTurnsBySessionId(String sessionId);
 
     /**
@@ -73,5 +75,7 @@ public interface ChatMessageRepository {
      * @return true if the operation completed successfully
      */
     boolean deleteBySessionIdAndTurnIdAndRoles(String sessionId, String turnId, List<String> roles);
+
+    boolean markTurnCompleted(String sessionId, String turnId);
 
 }

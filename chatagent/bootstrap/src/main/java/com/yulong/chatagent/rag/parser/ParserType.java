@@ -28,7 +28,22 @@ public enum ParserType {
     /**
      * Specialized parser for PDF sources.
      */
-    PDFBOX("PDFBox");
+    PDFBOX("PDFBox"),
+
+    /**
+     * Specialized parser for Word .docx sources.
+     */
+    WORD("Word"),
+
+    /**
+     * Specialized parser for PowerPoint .pptx sources.
+     */
+    POWERPOINT("PowerPoint"),
+
+    /**
+     * Specialized parser for spreadsheet .xlsx sources.
+     */
+    SPREADSHEET("Spreadsheet");
 
     /**
      * Stable parser type name used by the selector.

@@ -20,7 +20,7 @@
         )
         VALUES
         (
-            CAST(#{sessionId} AS uuid),
+            #{sessionId},
             CAST(#{userId} AS uuid),
             #{turnId},
             CAST(#{agentId} AS uuid),

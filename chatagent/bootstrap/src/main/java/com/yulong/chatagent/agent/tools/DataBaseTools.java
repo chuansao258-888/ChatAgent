@@ -10,7 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Optional tool for running read-only SQL queries against PostgreSQL.
+ * 可选数据库查询工具。
+ * <p>
+ * 该工具只允许执行 SELECT，避免模型通过工具做写入、删除或 DDL 操作。
  */
 @Component
 @Slf4j
@@ -38,10 +40,10 @@ public class DataBaseTools implements Tool {
     }
 
     /**
-     * Executes one SELECT query and returns a formatted table-like response.
+     * 执行一条只读 SELECT，并返回 Markdown 风格的表格文本。
      *
-     * @param sql select query to run
-     * @return formatted query result or an error message
+     * @param sql 待执行 SQL
+     * @return 格式化查询结果或错误信息
      */
     @org.springframework.ai.tool.annotation.Tool(
             name = "databaseQuery",
@@ -49,6 +51,7 @@ public class DataBaseTools implements Tool {
     )
     public String query(String sql) {
         try {
+            // 运行时再次做只读校验，不能只依赖工具描述约束模型行为。
             String trimmedSql = sql.trim().toUpperCase();
             if (!trimmedSql.startsWith("SELECT")) {
                 log.warn("Rejected non-SELECT query: {}", sql);
@@ -65,6 +68,7 @@ public class DataBaseTools implements Tool {
                     return resultRows;
                 }
 
+                // 先扫描列名和数据宽度，再组装等宽表格，方便模型后续读取结果。
                 List<String> columnNames = new ArrayList<>();
                 List<Integer> columnWidths = new ArrayList<>();
                 for (int i = 1; i <= columnCount; i++) {

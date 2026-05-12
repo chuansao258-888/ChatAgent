@@ -24,7 +24,7 @@
             created_at,
             updated_at
         FROM chat_session_summary
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
     </select>
 
     <insert id="insert" parameterType="com.yulong.chatagent.support.dto.ChatSessionSummaryDTO">
@@ -37,7 +37,7 @@
             created_at,
             updated_at
         ) VALUES (
-            CAST(#{sessionId} AS uuid),
+            #{sessionId},
             #{lastSeqNo},
             #{summary},
             CAST(#{anchoredEntitiesJson} AS jsonb),
@@ -54,12 +54,12 @@
             anchored_entities = CAST(#{anchoredEntitiesJson} AS jsonb),
             version = version + 1,
             updated_at = NOW()
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
           AND version = #{version}
     </update>
 
     <delete id="deleteBySessionId">
         DELETE FROM chat_session_summary
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
     </delete>
 </mapper>

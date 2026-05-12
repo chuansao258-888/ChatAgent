@@ -56,19 +56,15 @@ public class DocumentParserSelector {
                 .orElse(fallbackParser);
     }
 
-    /**
-     * Returns all registered parser strategies.
-     */
-    public List<DocumentParser> getAllStrategies() {
-        return List.copyOf(strategies);
-    }
+    // 旧诊断入口已停用：当前生产路径只通过 select/selectParser 解析具体文件，
+    // 没有管理端或健康检查读取 parser 策略列表。
+    // public List<DocumentParser> getAllStrategies() {
+    //     return List.copyOf(strategies);
+    // }
 
-    /**
-     * Returns all registered parser type identifiers.
-     */
-    public List<String> getAvailableTypes() {
-        return strategies.stream()
-                .map(DocumentParser::getParserType)
-                .toList();
-    }
+    // public List<String> getAvailableTypes() {
+    //     return strategies.stream()
+    //             .map(DocumentParser::getParserType)
+    //             .toList();
+    // }
 }

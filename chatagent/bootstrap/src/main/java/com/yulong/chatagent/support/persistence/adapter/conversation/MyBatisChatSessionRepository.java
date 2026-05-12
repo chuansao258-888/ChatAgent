@@ -51,6 +51,21 @@ public class MyBatisChatSessionRepository implements ChatSessionRepository {
     }
 
     @Override
+    public Long allocateNextTurnSeq(String sessionId) {
+        return chatSessionMapper.allocateNextTurnSeq(sessionId);
+    }
+
+    @Override
+    public Long findLastCompletedTurnSeq(String sessionId) {
+        return chatSessionMapper.selectLastCompletedTurnSeq(sessionId);
+    }
+
+    @Override
+    public Long advanceCompletedTurnSeq(String sessionId) {
+        return chatSessionMapper.advanceCompletedTurnSeq(sessionId);
+    }
+
+    @Override
     public boolean update(ChatSessionDTO chatSession) {
         return chatSessionMapper.updateById(toEntity(chatSession)) > 0;
     }

@@ -20,7 +20,13 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * Polls the transactional outbox and publishes claimed rows to RabbitMQ with confirm semantics.
+ * Outbox 扫描发布器。
+ *
+ * 它是“数据库 outbox”和“RabbitMQ”之间的桥：
+ * 1. 定时 claim 一批到期的 PENDING/过期 CLAIMED 记录；
+ * 2. 根据 outbox.payload + outbox.headers 还原 MQ Message；
+ * 3. 使用 publisher confirm 确认 RabbitMQ 真正接收；
+ * 4. 成功标记 SENT，失败则更新 retryCount/nextRetryAt。
  */
 @Component
 @Slf4j
@@ -49,6 +55,7 @@ public class OutboxPollingPublisher {
     @Scheduled(fixedDelayString = "${chatagent.mq.outbox.poll-interval-ms:2000}")
     public void publishDueRows() {
         LocalDateTime now = LocalDateTime.now();
+        // claimBatch 会把记录从 PENDING 改成 CLAIMED，并写 claimedBy，避免多个实例重复发布同一行。
         for (MqOutbox outbox : outboxRecordService.claimBatch(claimedBy, now)) {
             try {
                 rabbitMqMessagePublisher.publish(
@@ -58,6 +65,8 @@ public class OutboxPollingPublisher {
                         outbox.getId()
                 );
                 if (!outboxRecordService.markSent(outbox)) {
+                    // publish 已经成功，但 markSent 发生乐观锁冲突。
+                    // 此时不能简单重试发布，否则可能重复投递；所以异步把该行标记为 DISCARDED。
                     log.error("Outbox markSent conflict detected after successful publish, scheduling discard: id={}", outbox.getId());
                     outboxRecordService.scheduleDiscardedConflict(outbox);
                     continue;
@@ -65,6 +74,8 @@ public class OutboxPollingPublisher {
                 log.info("Outbox row published successfully: id={}, exchange={}, routingKey={}",
                         outbox.getId(), outbox.getExchange(), outbox.getRoutingKey());
             } catch (Exception e) {
+                // 只有“没确认投递成功”的异常才走 outbox publish retry。
+                // 如果 RabbitMQ 已经 ack，就不应该把同一条 outbox 再发布一次。
                 log.warn("Outbox publish failed: id={}, exchange={}, routingKey={}, error={}",
                         outbox.getId(), outbox.getExchange(), outbox.getRoutingKey(), e.getMessage());
                 outboxRecordService.markPublishFailure(outbox, abbreviateError(e), LocalDateTime.now());
@@ -74,6 +85,7 @@ public class OutboxPollingPublisher {
 
     @Scheduled(fixedDelayString = "${chatagent.mq.outbox.cleanup-interval-ms:86400000}")
     public void cleanupSentRows() {
+        // SENT 行只用于审计/排查，保留一段时间后可以清理，避免 outbox 表无限增长。
         LocalDateTime cutoff = LocalDateTime.now().minusDays(properties.getOutbox().getCleanupRetentionDays());
         int deleted = outboxRecordService.cleanupOlderSentRows(cutoff);
         if (deleted > 0) {
@@ -83,11 +95,12 @@ public class OutboxPollingPublisher {
 
     private Message buildMessage(MqOutbox outbox) throws Exception {
         Map<String, Object> headers = objectMapper.readValue(outbox.getHeaders(), MAP_TYPE);
-        // Validate the persisted header contract before we hand the payload back to RabbitMQ.
+        // 投递前校验 header 契约，提前发现坏数据；否则 consumer 端才报错会更难追。
         MqMessageHeaders.fromMap(headers);
         MessageProperties properties = new MessageProperties();
         properties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
         properties.setContentEncoding(StandardCharsets.UTF_8.name());
+        // headers 会成为 RabbitMQ MessageProperties 的 header，consumer 通过它恢复 MqMessageIdentity。
         headers.forEach(properties::setHeader);
         return MessageBuilder.withBody(outbox.getPayload().getBytes(StandardCharsets.UTF_8))
                 .andProperties(properties)

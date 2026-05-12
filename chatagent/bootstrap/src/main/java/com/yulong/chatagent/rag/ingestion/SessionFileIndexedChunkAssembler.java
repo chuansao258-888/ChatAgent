@@ -92,7 +92,16 @@ public class SessionFileIndexedChunkAssembler {
         }
 
         String title = metadataString(metadata, "title");
-        return StringUtils.hasText(title) ? title : null;
+        if (StringUtils.hasText(title)) {
+            return title;
+        }
+
+        String slideTitle = metadataString(metadata, "slideTitle");
+        if (StringUtils.hasText(slideTitle)) {
+            return slideTitle;
+        }
+
+        return null;
     }
 
     private String resolveRetrievalText(String content, Map<String, Object> metadata) {
@@ -103,16 +112,59 @@ public class SessionFileIndexedChunkAssembler {
 
         List<String> parts = new ArrayList<>();
         addIfPresent(parts, metadataString(metadata, "contextText"));
+
         String sectionPath = resolveSectionPath(metadata);
         if (StringUtils.hasText(sectionPath)) {
             parts.add("Section: " + sectionPath);
         }
-        String pageLabel = resolvePageLabel(metadata);
-        if (StringUtils.hasText(pageLabel)) {
-            parts.add(pageLabel);
+
+        String docType = metadataString(metadata, "docType");
+        String locationLabel = resolveLocationLabel(metadata, docType);
+        if (StringUtils.hasText(locationLabel)) {
+            parts.add(locationLabel);
         }
+
         addIfPresent(parts, content);
         return String.join(System.lineSeparator() + System.lineSeparator(), parts);
+    }
+
+    private String resolveLocationLabel(Map<String, Object> metadata, String docType) {
+        if ("powerpoint".equals(docType)) {
+            return resolveSlideLabel(metadata);
+        }
+        if ("spreadsheet".equals(docType)) {
+            return resolveSheetLabel(metadata);
+        }
+        return resolvePageLabel(metadata);
+    }
+
+    private String resolveSlideLabel(Map<String, Object> metadata) {
+        String slideNumber = metadataString(metadata, "slideNumber");
+        if (slideNumber == null) {
+            String pageStart = metadataString(metadata, "pageStart");
+            String pageEnd = metadataString(metadata, "pageEnd");
+            if (StringUtils.hasText(pageStart) && StringUtils.hasText(pageEnd)) {
+                return pageStart.equals(pageEnd) ? "Slide: " + pageStart : "Slides: " + pageStart + "-" + pageEnd;
+            }
+            return null;
+        }
+        String slideEnd = metadataString(metadata, "slideEnd");
+        if (StringUtils.hasText(slideEnd) && !slideNumber.equals(slideEnd)) {
+            return "Slides: " + slideNumber + "-" + slideEnd;
+        }
+        return "Slide: " + slideNumber;
+    }
+
+    private String resolveSheetLabel(Map<String, Object> metadata) {
+        String sheetName = metadataString(metadata, "sheetName");
+        String range = metadataString(metadata, "range");
+        if (StringUtils.hasText(sheetName) && StringUtils.hasText(range)) {
+            return "Sheet: " + sheetName + "  Range: " + range;
+        }
+        if (StringUtils.hasText(sheetName)) {
+            return "Sheet: " + sheetName;
+        }
+        return null;
     }
 
     private String resolvePageLabel(Map<String, Object> metadata) {

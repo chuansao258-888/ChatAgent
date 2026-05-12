@@ -10,32 +10,39 @@
         <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
         <result property="title" column="title" jdbcType="VARCHAR"/>
         <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
+        <result property="nextTurnSeq" column="next_turn_seq" jdbcType="BIGINT"/>
+        <result property="lastCompletedTurnSeq" column="last_completed_turn_seq" jdbcType="BIGINT"/>
         <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
         <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
     </resultMap>
 
     <sql id="Base_Column_List">
         id,user_id,agent_id,title,
-        metadata,created_at,updated_at
+        metadata,next_turn_seq,last_completed_turn_seq,created_at,updated_at
     </sql>
 
-    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSession"
-            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+    <insert id="insert" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSession">
         INSERT INTO chat_session
         (
+            id,
             user_id,
             agent_id,
             title,
             metadata,
+            next_turn_seq,
+            last_completed_turn_seq,
             created_at,
             updated_at
         )
         VALUES
             (
+                #{id},
                 CAST(#{userId} AS uuid),
                 CAST(#{agentId} AS uuid),
                 #{title},
                 CAST(#{metadata} AS jsonb),
+                COALESCE(#{nextTurnSeq}, 1),
+                COALESCE(#{lastCompletedTurnSeq}, 0),
                 #{createdAt},
                 #{updatedAt}
             )
@@ -48,10 +55,12 @@
             agent_id,
             title,
             metadata::text AS metadata,
+            next_turn_seq,
+            last_completed_turn_seq,
             created_at,
             updated_at
         FROM chat_session
-        WHERE id = CAST(#{id} AS uuid)
+        WHERE id = #{id}
     </select>
 
     <select id="selectByUserId" resultMap="BaseResultMap">
@@ -61,6 +70,8 @@
             agent_id,
             title,
             metadata::text AS metadata,
+            next_turn_seq,
+            last_completed_turn_seq,
             created_at,
             updated_at
         FROM chat_session
@@ -75,6 +86,8 @@
             agent_id,
             title,
             metadata::text AS metadata,
+            next_turn_seq,
+            last_completed_turn_seq,
             created_at,
             updated_at
         FROM chat_session
@@ -84,7 +97,7 @@
     </select>
 
     <delete id="deleteById">
-        DELETE FROM chat_session WHERE id = CAST(#{id} AS uuid)
+        DELETE FROM chat_session WHERE id = #{id}
     </delete>
 
     <update id="updateById" parameterType="com.yulong.chatagent.support.persistence.entity.ChatSession">
@@ -102,8 +115,51 @@
             <if test="metadata != null">
                 metadata = CAST(#{metadata} AS jsonb),
             </if>
+            <if test="nextTurnSeq != null">
+                next_turn_seq = #{nextTurnSeq},
+            </if>
+            <if test="lastCompletedTurnSeq != null">
+                last_completed_turn_seq = #{lastCompletedTurnSeq},
+            </if>
             updated_at = NOW()
         </set>
-        WHERE id = CAST(#{id} AS uuid)
+        WHERE id = #{id}
     </update>
+
+    <select id="allocateNextTurnSeq" resultType="java.lang.Long">
+        UPDATE chat_session
+        SET next_turn_seq = next_turn_seq + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+        RETURNING next_turn_seq - 1
+    </select>
+
+    <select id="selectLastCompletedTurnSeq" resultType="java.lang.Long">
+        SELECT last_completed_turn_seq
+        FROM chat_session
+        WHERE id = #{id}
+    </select>
+
+    <select id="advanceCompletedTurnSeq" resultType="java.lang.Long">
+        UPDATE chat_session cs
+        SET last_completed_turn_seq = COALESCE(
+                (
+                    SELECT MAX(candidate.turn_seq)
+                    FROM (
+                        SELECT cm.turn_seq,
+                               cm.turn_seq - ROW_NUMBER() OVER (ORDER BY cm.turn_seq) AS continuity_key
+                        FROM chat_message cm
+                        WHERE cm.session_id = cs.id
+                          AND cm.role = 'USER'
+                          AND cm.turn_completed = TRUE
+                          AND cm.turn_seq &gt; cs.last_completed_turn_seq
+                    ) candidate
+                    WHERE candidate.continuity_key = cs.last_completed_turn_seq
+                ),
+                cs.last_completed_turn_seq
+            ),
+            updated_at = NOW()
+        WHERE cs.id = #{id}
+        RETURNING last_completed_turn_seq
+    </select>
 </mapper>

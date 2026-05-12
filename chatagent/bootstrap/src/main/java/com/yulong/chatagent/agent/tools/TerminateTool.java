@@ -1,9 +1,8 @@
 package com.yulong.chatagent.agent.tools;
 
-// Temporarily disabled: model was calling terminate prematurely instead of
-// responding to the user or invoking the relevant tool. The agent loop already
-// terminates naturally when the model produces a response without tool calls,
-// so this explicit exit path is redundant and error-prone.
+// 当前暂时禁用：模型曾经倾向于过早调用 terminate，而不是继续回答用户或调用正确工具。
+// Agent 循环已经可以在“模型输出不含 tool_call”时自然结束，所以显式终止工具目前收益不大，
+// 反而容易导致任务未完成就被提前截断。代码保留在这里，方便未来按配置重新开放。
 //
 // @Component
 // public class TerminateTool implements Tool {

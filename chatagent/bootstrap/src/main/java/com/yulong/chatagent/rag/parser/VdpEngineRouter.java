@@ -84,9 +84,11 @@ public class VdpEngineRouter {
         return engine;
     }
 
-    public boolean supportsBatchDispatch(PipelineSource source) {
-        return doResolveForBatch(source) != null;
-    }
+    // 旧便捷判断已停用：当前生产路径直接调用 resolveForBatch(source)，
+    // 返回 null 就表示不走批量 VDP 分发。
+    // public boolean supportsBatchDispatch(PipelineSource source) {
+    //     return doResolveForBatch(source) != null;
+    // }
 
     private VdpEngine doResolveForPageImage() {
         VdpEngine preferred = findPreferred(properties.getPreferredPageImageEngine(), VdpMode.PAGE_IMAGE);

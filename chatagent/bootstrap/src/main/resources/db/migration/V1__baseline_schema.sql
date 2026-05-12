@@ -36,11 +36,13 @@ CREATE TABLE agent (
 );
 
 CREATE TABLE chat_session (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id VARCHAR(64) PRIMARY KEY,
     user_id UUID NOT NULL,
     agent_id UUID,
     title TEXT,
     metadata JSONB,
+    next_turn_seq BIGINT NOT NULL DEFAULT 1,
+    last_completed_turn_seq BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT fk_chat_session_user FOREIGN KEY (user_id) REFERENCES t_user (id),
@@ -49,10 +51,12 @@ CREATE TABLE chat_session (
 
 CREATE TABLE chat_message (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID NOT NULL,
+    session_id VARCHAR(64) NOT NULL,
+    turn_seq BIGINT,
     role TEXT NOT NULL,
     content TEXT,
     metadata JSONB,
+    turn_completed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT chat_message_session_id_fkey FOREIGN KEY (session_id) REFERENCES chat_session (id)
@@ -60,7 +64,7 @@ CREATE TABLE chat_message (
 
 CREATE TABLE chat_session_file (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID NOT NULL,
+    session_id VARCHAR(64) NOT NULL,
     filename VARCHAR(500) NOT NULL,
     original_filename VARCHAR(500) NOT NULL,
     mime_type VARCHAR(255) NOT NULL,

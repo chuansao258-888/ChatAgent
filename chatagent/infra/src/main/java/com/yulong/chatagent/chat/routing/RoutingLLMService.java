@@ -21,11 +21,17 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class RoutingLLMService implements LLMService {
 
+    // 负责把 YAML/override 里的候选模型筛选、排序并绑定成 ModelTarget。
     private final ModelSelector modelSelector;
+    // 负责模型级熔断、HALF_OPEN 探针许可和健康状态更新。
     private final ModelHealthStore healthStore;
+    // 路由超时、首包探测和健康阈值等配置。
     private final ChatRoutingProperties properties;
+    // 根据目标模型重建 Prompt，注入工具和 thinking 参数。
     private final RoutingPromptFactory promptFactory;
+    // 优先使用厂商原始 SSE 通道；不可用时回退到 ReactiveStreamAdapter。
     private final ProviderDirectStreamSupport providerDirectStreamSupport;
+    // 指标组件可选注入；默认 no-op，避免指标系统缺失影响业务。
     private RoutingMetrics routingMetrics = RoutingMetrics.noop();
 
     public RoutingLLMService(ModelSelector modelSelector,
@@ -42,75 +48,23 @@ public class RoutingLLMService implements LLMService {
 
     @Autowired(required = false)
     void setRoutingMetrics(RoutingMetrics routingMetrics) {
+        // 允许没有 MeterRegistry 的环境正常启动。
         if (routingMetrics != null) {
             this.routingMetrics = routingMetrics;
         }
     }
 
-    // ========== 同步路径（Agent Loop think 用）==========
+    // ========== 同步路径（已停用）==========
 
-    @Override
-    public ChatResponse chatWithRouting(Prompt prompt, String systemPrompt, List<ToolCallback> tools) {
-        List<ModelTarget> targets = modelSelector.selectChatCandidates(false);
-        if (targets.isEmpty()) {
-            throw new RuntimeException("无可用大模型候选");
-        }
-        List<ToolCallback> safeTools = tools == null ? List.of() : tools;
-
-        log.info("LLM_SYNC candidates selected: models={}, toolCount={}",
-                targets.stream().map(ModelTarget::id).toList(),
-                safeTools.size());
-        Throwable lastError = null;
-        boolean attempted = false;
-        for (int i = 0; i < targets.size(); i++) {
-            ModelTarget target = targets.get(i);
-            // 延迟求值：在真正发起调用前才扣减断路器状态
-            ModelHealthStore.CallPermit permit = healthStore.tryAcquire(target.id());
-            if (!permit.allowed()) {
-                log.info("LLM_SYNC candidate skipped by circuit: model={}, attempt={}/{}",
-                        target.id(), i + 1, targets.size());
-                routingMetrics.recordCircuitDecision(target.id(), "skipped_sync");
-                continue;
-            }
-
-            long attemptStartNs = System.nanoTime();
-            try {
-                attempted = true;
-                Prompt runtimePrompt = promptFactory.create(prompt, systemPrompt, safeTools, target, false);
-                log.info("LLM_SYNC attempt started: model={}, attempt={}/{}, probeGeneration={}",
-                        target.id(), i + 1, targets.size(), permit.generation());
-                // 工具调用可能会耗时较长，依赖底层 read-timeout，移除人为短超时。
-                ChatResponse response = target.chatClient()
-                        .prompt(runtimePrompt)
-                        .call()
-                        .chatClientResponse()
-                        .chatResponse();
-
-                healthStore.markSuccess(target.id(), permit.generation());
-                long durationMs = elapsedMs(attemptStartNs);
-                log.info("LLM_SYNC attempt succeeded: model={}, attempt={}/{}, durationMs={}, hasToolCalls={}",
-                        target.id(), i + 1, targets.size(), durationMs,
-                        response != null && response.hasToolCalls());
-                routingMetrics.recordAttempt("sync", target.id(), "success", durationMs, i + 1 < targets.size());
-                return response;
-            } catch (Exception e) {
-                healthStore.markFailure(target.id(), permit.generation());
-                lastError = e;
-                long durationMs = elapsedMs(attemptStartNs);
-                log.warn("LLM_SYNC attempt failed: model={}, attempt={}/{}, durationMs={}, fallbackAvailable={}, errorType={}, error={}",
-                        target.id(), i + 1, targets.size(), durationMs, i + 1 < targets.size(),
-                        e.getClass().getSimpleName(), e.getMessage());
-                routingMetrics.recordAttempt("sync", target.id(), "failure", durationMs, i + 1 < targets.size());
-            }
-        }
-        if (!attempted) {
-            throw new RuntimeException("所有候选模型同步调用均被断路器跳过");
-        }
-        throw new RuntimeException("所有候选模型同步调用均失败", lastError);
-    }
+    // chatWithRouting 是旧的同步路由入口：它会直接调用 ChatClient.call() 并返回 ChatResponse。
+    // 当前 Agent runtime 已统一改成流式路径：
+    // - 决策阶段走 streamDecisionWithRouting，边推流边由 StreamingDecisionCollector 收集 ChatResponse；
+    // - 最终回答阶段走 streamChat，由调用方的 StreamCallback 落库和推送 SSE。
+    // 因此同步入口先从接口和实现中注释掉，避免阅读 02-agent-runtime 主线时产生干扰。
 
     @Override
     public BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt, List<ToolCallback> tools) {
+        // 没有外部 callback 时，只使用内部 collector 收集流式结果。
         return streamDecisionWithRouting(prompt, systemPrompt, tools, NoopStreamCallback.INSTANCE);
     }
 
@@ -119,7 +73,9 @@ public class RoutingLLMService implements LLMService {
                                                                String systemPrompt,
                                                                List<ToolCallback> tools,
                                                                StreamCallback callback) {
+        // collector 把流式事件重新拼成 BufferedStreamingResponse。
         StreamingDecisionCollector collector = new StreamingDecisionCollector();
+        // TeeStreamCallback 会把同一份流式事件同时发给 collector 和外部 callback。
         Disposable disposable = routeAndStream(
                 prompt,
                 systemPrompt,
@@ -128,15 +84,18 @@ public class RoutingLLMService implements LLMService {
                 new TeeStreamCallback(collector, callback == null ? NoopStreamCallback.INSTANCE : callback));
 
         try {
+            // 总等待时间至少要比首包超时多 5 秒，否则首包刚成功后可能没有时间等完整流。
             long timeoutSeconds = Math.max(
                     properties.getStreamTotalTimeoutSeconds(),
                     properties.getFirstPacketTimeoutSeconds() + 5L);
             if (!collector.await(timeoutSeconds, TimeUnit.SECONDS)) {
+                // collector 超时说明整条流没有正常 complete/error，取消上游避免泄露连接。
                 disposeQuietly(disposable);
                 throw new RuntimeException("流式决策超时: " + timeoutSeconds + "s");
             }
             return collector.toResponse();
         } catch (InterruptedException e) {
+            // 恢复中断标记，并取消上游流。
             Thread.currentThread().interrupt();
             disposeQuietly(disposable);
             throw new RuntimeException("等待流式决策被中断", e);
@@ -147,14 +106,24 @@ public class RoutingLLMService implements LLMService {
 
     @Override
     public Disposable streamChat(Prompt prompt, boolean deepThinking, StreamCallback callback) {
+        // 真实聊天流不额外传 systemPrompt/tools，直接走首包探测总控。
         return routeAndStream(prompt, null, deepThinking, List.of(), callback);
     }
 
+    /**
+     * 首包探测的总控方法。
+     *
+     * <p>它按候选顺序尝试模型：发起流式请求后等待首包；
+     * 首包成功就 commit 缓冲事件并返回当前流的 Disposable；
+     * 首包失败/超时就取消当前流、标记失败并尝试下一个候选。</p>
+     */
     private Disposable routeAndStream(Prompt prompt,
                                       String systemPrompt,
                                       boolean deepThinking,
                                       List<ToolCallback> tools,
                                       StreamCallback callback) {
+        // 先只做静态选择：enabled、thinking 能力、ChatClient 是否存在。
+        // 健康状态会在真正准备发起调用前通过 tryAcquire 延迟判断。
         List<ModelTarget> targets = modelSelector.selectChatCandidates(deepThinking);
         if (targets.isEmpty()) {
             callback.onError(new RuntimeException("无可用大模型候选"));
@@ -174,6 +143,7 @@ public class RoutingLLMService implements LLMService {
 
         for (int i = 0; i < targets.size(); i++) {
             ModelTarget target = targets.get(i);
+            // 在真正调用模型之前才申请断路器许可，避免批量消耗 HALF_OPEN 探针名额。
             ModelHealthStore.CallPermit permit = healthStore.tryAcquire(target.id());
             if (!permit.allowed()) {
                 log.info("{} candidate skipped by circuit: model={}, attempt={}/{}",
@@ -182,6 +152,7 @@ public class RoutingLLMService implements LLMService {
                 continue;
             }
 
+            // awaiter 只负责等待首个有效事件；wrapper 负责拦截回调、缓存首包前事件并通知 awaiter。
             FirstPacketAwaiter awaiter = new FirstPacketAwaiter();
             ProbeBufferingCallback wrapper = new ProbeBufferingCallback(callback, awaiter, healthStore, target.id());
 
@@ -191,10 +162,13 @@ public class RoutingLLMService implements LLMService {
             Disposable disposable;
             try {
                 attempted = true;
+                // 每个候选模型都要重新生成 Prompt，避免厂商 options/tools/thinking 混用。
                 Prompt runtimePrompt = promptFactory.create(prompt, systemPrompt, safeTools, target, deepThinking);
+                // 优先尝试原始厂商 SSE；如果 provider binding 不存在或不可用，就回退到 ChatClient.stream()。
                 disposable = providerDirectStreamSupport.submit(target, runtimePrompt, wrapper)
                         .orElseGet(() -> ReactiveStreamAdapter.submit(target.chatClient(), runtimePrompt, wrapper));
             } catch (Exception e) {
+                // 提交流式请求本身失败，还没进入首包等待，也要记一次失败并切下一个候选。
                 healthStore.markFailure(target.id(), permit.generation());
                 lastError = e;
                 long latencyMs = elapsedMs(attemptStartNs);
@@ -207,6 +181,7 @@ public class RoutingLLMService implements LLMService {
 
             FirstPacketAwaiter.Result result;
             try {
+                // 等待首包：wrapper 收到 onSignal/onContent/onThinking/onToolCalls 会唤醒 awaiter。
                 result = awaiter.await(properties.getFirstPacketTimeoutSeconds(), TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -219,22 +194,27 @@ public class RoutingLLMService implements LLMService {
                 long latencyMs = elapsedMs(attemptStartNs);
                 log.info("{} first-packet probe succeeded: model={}, attempt={}/{}, latencyMs={}",
                         label, target.id(), i + 1, targets.size(), latencyMs);
+                // 首包成功后才把 wrapper 缓存的事件真正转发给下游。
+                // 这样失败候选在探测期间吐出的内容不会提前污染前端/collector。
                 wrapper.commit();
                 healthStore.markSuccess(target.id(), permit.generation());
                 routingMetrics.recordAttempt("stream_first_packet", target.id(), "success", latencyMs, i + 1 < targets.size());
+                // 返回当前流的 Disposable，后续由调用方控制取消。
                 return disposable;
             }
 
+            // 首包失败/超时/无内容：标记失败、取消当前流，再尝试下一个候选。
             healthStore.markFailure(target.id(), permit.generation());
             disposeQuietly(disposable);
             lastError = result.getError();
             long latencyMs = elapsedMs(attemptStartNs);
             log.warn("{} first-packet probe failed: model={}, attempt={}/{}, result={}, latencyMs={}, fallbackAvailable={}, error={}",
                     label, target.id(), i + 1, targets.size(), result.getType(), latencyMs, i + 1 < targets.size(),
-                    lastError == null ? "none" : lastError.getMessage());
+                lastError == null ? "none" : lastError.getMessage());
             routingMetrics.recordAttempt("stream_first_packet", target.id(), "failure", latencyMs, i + 1 < targets.size());
         }
 
+        // 能走到这里，说明所有候选都没通过首包探测或都被断路器跳过。
         log.error("{} all candidates failed: models={}",
                 label, targets.stream().map(ModelTarget::id).toList());
         if (!attempted) {
@@ -246,11 +226,13 @@ public class RoutingLLMService implements LLMService {
     }
 
     private static long elapsedMs(long startNs) {
+        // 统一把纳秒起点转换成毫秒耗时，用于日志和 metrics。
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs);
     }
 
     private static void disposeQuietly(Disposable disposable) {
         try {
+            // Disposable 代表当前上游流；失败候选必须尽量取消，避免继续输出迟到内容。
             disposable.dispose();
         } catch (Exception ignored) {
             // Best-effort cleanup only; routing fallback should continue.
@@ -259,12 +241,19 @@ public class RoutingLLMService implements LLMService {
 
     // ========== 探针缓冲拦截器 ==========
 
+    /**
+     * 首包探测期间的缓冲回调。
+     *
+     * <p>在某个候选模型尚未被确认成功前，它收到的所有流式事件先进入 buffers。
+     * 等首包探测成功后 commit() 才统一转发给下游；如果探测失败，该 wrapper 会随上游取消而被丢弃。</p>
+     */
     static final class ProbeBufferingCallback implements StreamCallback {
         private final StreamCallback downstream;
         private final FirstPacketAwaiter awaiter;
         private final ModelHealthStore healthStore;
         private final String modelId;
-        
+
+        // buffers 和 committed 由不同回调线程/routeAndStream 等待线程共同访问，需要同步保护。
         private final Object lock = new Object();
         private final List<Runnable> buffers = new ArrayList<>();
         private boolean committed = false;
@@ -277,26 +266,32 @@ public class RoutingLLMService implements LLMService {
         }
 
         @Override public void onContent(String content) {
+            // 正文内容本身就是有效首包。
             awaiter.markContent();
             bufferOrDispatch(() -> downstream.onContent(content));
         }
         @Override public void onSignal() {
+            // 原始 SSE chunk 可能没有正文，但只要是有效 chunk，也能证明模型已响应。
             awaiter.markContent();
             bufferOrDispatch(downstream::onSignal);
         }
         @Override public void onThinking(String content) {
+            // 推理内容同样算有效首包。
             awaiter.markContent();
             bufferOrDispatch(() -> downstream.onThinking(content));
         }
         @Override public void onToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
+            // 工具调用出现说明模型已经开始返回有效语义事件。
             awaiter.markContent();
             bufferOrDispatch(() -> downstream.onToolCalls(toolCalls));
         }
         @Override public void onComplete() {
+            // 首包前直接 complete 会唤醒 awaiter，但因为没有 markContent，会被识别为 NO_CONTENT。
             awaiter.markComplete();
             bufferOrDispatch(downstream::onComplete);
         }
         @Override public void onError(Throwable t) {
+            // 首包阶段错误会唤醒 awaiter；若该模型已经 commit，错误也会继续传给下游。
             awaiter.markError(t);
             bufferOrDispatch(() -> {
                 healthStore.markFailure(modelId);
@@ -308,6 +303,7 @@ public class RoutingLLMService implements LLMService {
             synchronized (lock) {
                 if (committed) return;
                 committed = true;
+                // commit 时把首包探测期间缓存的事件按原顺序刷给下游。
                 List<Runnable> snapshot = new ArrayList<>(buffers);
                 buffers.clear();
                 snapshot.forEach(Runnable::run);
@@ -316,12 +312,14 @@ public class RoutingLLMService implements LLMService {
 
         private void bufferOrDispatch(Runnable action) {
             synchronized (lock) {
+                // 未 commit 前只缓存；commit 后的新事件直接向下游转发。
                 if (!committed) buffers.add(action);
                 else action.run();
             }
         }
     }
 
+    /** 空回调：调用方不关心外部流式事件时使用。 */
     enum NoopStreamCallback implements StreamCallback {
         INSTANCE;
 
@@ -338,6 +336,12 @@ public class RoutingLLMService implements LLMService {
         }
     }
 
+    /**
+     * 双写回调。
+     *
+     * <p>streamDecisionWithRouting 需要一边收集成 BufferedStreamingResponse，
+     * 一边把事件转发给外部 callback，因此用 Tee 同时分发给 primary/secondary。</p>
+     */
     static final class TeeStreamCallback implements StreamCallback {
         private final StreamCallback primary;
         private final StreamCallback secondary;
@@ -387,11 +391,18 @@ public class RoutingLLMService implements LLMService {
             try {
                 action.run();
             } catch (Exception ex) {
+                // 下游 callback 异常不能打断另一个 callback，也不能影响上游路由清理。
                 RoutingLLMService.log.warn("Stream callback dispatch failed: {}", ex.getMessage(), ex);
             }
         }
     }
 
+    /**
+     * 把流式事件收集成同步响应的 collector。
+     *
+     * <p>content 会拼成 AssistantMessage.content；thinking 作为事件保留；
+     * toolCalls 用 id 或内容指纹去重后放进最终 AssistantMessage。</p>
+     */
     static final class StreamingDecisionCollector implements StreamCallback {
         private final CountDownLatch done = new CountDownLatch(1);
         private final List<BufferedStreamingResponse.BufferedStreamEvent> events = new ArrayList<>();
@@ -404,6 +415,7 @@ public class RoutingLLMService implements LLMService {
             if (chunk == null || chunk.isEmpty()) {
                 return;
             }
+            // 正文需要拼成最终 ChatResponse 的 assistant content。
             content.append(chunk);
             events.add(new BufferedStreamingResponse.BufferedStreamEvent(
                     BufferedStreamingResponse.EventType.CONTENT,
@@ -415,6 +427,7 @@ public class RoutingLLMService implements LLMService {
             if (chunk == null || chunk.isEmpty()) {
                 return;
             }
+            // thinking 不进入最终正文，只作为可回放事件保存。
             events.add(new BufferedStreamingResponse.BufferedStreamEvent(
                     BufferedStreamingResponse.EventType.THINKING,
                     chunk));
@@ -426,6 +439,7 @@ public class RoutingLLMService implements LLMService {
                 return;
             }
             for (AssistantMessage.ToolCall toolCall : incomingToolCalls) {
+                // 优先按 id 去重；没有 id 时用 name+arguments 构造稳定 key。
                 String key = toolCall.id() != null ? toolCall.id() : toolCall.name() + ":" + toolCall.arguments();
                 toolCalls.put(key, toolCall);
             }
@@ -433,6 +447,7 @@ public class RoutingLLMService implements LLMService {
 
         @Override
         public void onComplete() {
+            // complete/error 都释放等待线程；区别在 toResponse 时是否抛异常。
             done.countDown();
         }
 
@@ -443,6 +458,7 @@ public class RoutingLLMService implements LLMService {
         }
 
         boolean await(long timeout, TimeUnit unit) throws InterruptedException {
+            // 等待整个流结束，而不是等待首包。
             return done.await(timeout, unit);
         }
 
@@ -450,6 +466,7 @@ public class RoutingLLMService implements LLMService {
             if (error != null) {
                 throw new RuntimeException("流式决策失败", error);
             }
+            // 将收集到的正文和工具调用包装成 Spring AI ChatResponse。
             AssistantMessage assistantMessage = AssistantMessage.builder()
                     .content(content.toString())
                     .toolCalls(new ArrayList<>(toolCalls.values()))

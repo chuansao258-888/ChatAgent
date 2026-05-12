@@ -10,6 +10,7 @@ public class ChatMessageVO {
     private String id;
     private String sessionId;
     private String turnId;
+    private Long turnSeq;
     private ChatMessageDTO.RoleType role;
     private String content;
     private ChatMessageDTO.MetaData metadata;

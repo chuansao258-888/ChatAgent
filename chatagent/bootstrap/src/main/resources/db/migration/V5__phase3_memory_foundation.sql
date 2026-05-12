@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_message_session_turn_seq
     ON chat_message(session_id, turn_id, seq_no);
 
 CREATE TABLE IF NOT EXISTS chat_session_summary (
-    session_id UUID PRIMARY KEY REFERENCES chat_session(id) ON DELETE CASCADE,
+    session_id VARCHAR(64) PRIMARY KEY REFERENCES chat_session(id) ON DELETE CASCADE,
     last_seq_no BIGINT NOT NULL DEFAULT 0,
     summary TEXT NOT NULL DEFAULT '',
     anchored_entities JSONB NOT NULL DEFAULT '{}'::jsonb,

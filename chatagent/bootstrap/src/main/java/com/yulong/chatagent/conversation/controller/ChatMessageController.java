@@ -19,7 +19,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST controller for chat message CRUD endpoints.
+ * 聊天消息 REST 入口。
+ * <p>
+ * 这个 Controller 表面上是“消息 CRUD”，但真正重要的是
+ * {@code POST /api/chat-messages} 这一条入口：
+ * <ul>
+ *     <li>它不是简单保存一条 USER 消息；</li>
+ *     <li>它会启动一次完整的 turn 编排流程；</li>
+ *     <li>后续可能继续触发意图准备、异步事件派发和 Agent runtime 执行。</li>
+ * </ul>
+ * 因此读会话编排主线时，这个类通常是第一个起点。
  */
 @RestController
 @RequestMapping("/api")
@@ -31,10 +40,10 @@ public class ChatMessageController {
     private final SessionConcurrencyGuard sessionConcurrencyGuard;
 
     /**
-     * Returns all messages for the given session.
+     * 查询指定会话的完整消息历史。
      *
-     * @param sessionId chat session identifier
-     * @return message history response
+     * @param sessionId 会话 ID
+     * @return 消息历史
      */
     @GetMapping("/chat-messages/session/{sessionId}")
     public ApiResponse<ChatMessageVO[]> getChatMessagesBySessionId(@PathVariable String sessionId) {
@@ -42,17 +51,18 @@ public class ChatMessageController {
     }
 
     /**
-     * Creates a new user message and enters the turn orchestrator.
+     * 创建用户消息，并进入“单轮对话”编排流程。
      * <p>
-     * Unlike the other endpoints in this controller, this route is not treated
-     * as plain CRUD anymore. It is the conversation entrypoint that may trigger
-     * asynchronous agent work after the user message is accepted.
+     * 这里会先拿会话级锁，避免同一个 session 同时进入多轮 Agent 执行，
+     * 造成消息顺序、短期记忆和 SSE 状态错乱。
      *
-     * @param request create message request
-     * @return created message response
+     * @param request 用户消息创建请求
+     * @return 已创建的用户消息 ID 等信息
      */
     @PostMapping("/chat-messages")
     public ApiResponse<CreateChatMessageResponse> createChatMessage(@RequestBody CreateChatMessageRequest request) {
+        // 入口锁只保护“开始一轮 turn”这个动作，避免同一个 session
+        // 在极短时间内并发进入两次编排，导致消息顺序、记忆窗口和 SSE 状态混乱。
         try (SessionConcurrencyGuard.SessionLock ignored = sessionConcurrencyGuard.acquire(request.getSessionId())) {
             return ApiResponse.success(conversationOrchestratorService.handleUserTurn(request));
         }

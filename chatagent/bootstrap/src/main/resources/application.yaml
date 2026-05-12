@@ -160,9 +160,12 @@ chat:
         spring-client-key: deepseek-reasoner
         priority: 10
         enabled: true
-        supports-thinking: false
+        supports-thinking: true
 
 chatagent:
+  id:
+    snowflake:
+      worker-id: ${CHATAGENT_SNOWFLAKE_WORKER_ID:1}
   intent:
     tool-scope-mode: ${CHATAGENT_INTENT_TOOL_SCOPE_MODE:AGENT_DEFAULT_WITH_INTENT_NARROWING}
     minimum-score: 0.45

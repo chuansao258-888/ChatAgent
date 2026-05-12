@@ -8,17 +8,19 @@
         <id property="id" column="id" jdbcType="VARCHAR"/>
         <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
         <result property="turnId" column="turn_id" jdbcType="VARCHAR"/>
+        <result property="turnSeq" column="turn_seq" jdbcType="BIGINT"/>
         <result property="role" column="role" jdbcType="VARCHAR"/>
         <result property="content" column="content" jdbcType="VARCHAR"/>
         <result property="metadata" column="metadata" jdbcType="VARCHAR"/>
         <result property="seqNo" column="seq_no" jdbcType="BIGINT"/>
+        <result property="turnCompleted" column="turn_completed" jdbcType="BOOLEAN"/>
         <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
         <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,session_id,turn_id,role,
-        content,metadata,seq_no,created_at,
+        id,session_id,turn_id,turn_seq,role,
+        content,metadata,seq_no,turn_completed,created_at,
         updated_at
     </sql>
 
@@ -28,6 +30,7 @@
         (
             session_id,
             turn_id,
+            turn_seq,
             role,
             content,
             metadata,
@@ -36,8 +39,9 @@
         )
         VALUES
             (
-                CAST(#{sessionId} AS uuid),
+                #{sessionId},
                 #{turnId},
+                #{turnSeq},
                 #{role},
                 #{content},
                 CAST(#{metadata} AS jsonb),
@@ -51,10 +55,12 @@
             id,
             session_id,
             turn_id,
+            turn_seq,
             role,
             content,
             metadata::text AS metadata,
             seq_no,
+            turn_completed,
             created_at,
             updated_at
         FROM chat_message
@@ -66,14 +72,16 @@
             id,
             session_id,
             turn_id,
+            turn_seq,
             role,
             content,
             metadata::text AS metadata,
             seq_no,
+            turn_completed,
             created_at,
             updated_at
         FROM chat_message
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
         ORDER BY seq_no ASC
     </select>
 
@@ -81,24 +89,28 @@
         SELECT id,
                session_id,
                turn_id,
+               turn_seq,
                role,
                content,
                metadata::text AS metadata,
                seq_no,
+               turn_completed,
                created_at,
                updated_at
         FROM (
             SELECT id,
                    session_id,
                    turn_id,
+                   turn_seq,
                    role,
                    content,
                    metadata,
                    seq_no,
+                   turn_completed,
                    created_at,
                    updated_at
             FROM chat_message
-            WHERE session_id = CAST(#{sessionId} AS uuid)
+            WHERE session_id = #{sessionId}
             ORDER BY seq_no DESC
             LIMIT #{limit}
         ) recent
@@ -110,14 +122,16 @@
             id,
             session_id,
             turn_id,
+            turn_seq,
             role,
             content,
             metadata::text AS metadata,
             seq_no,
+            turn_completed,
             created_at,
             updated_at
         FROM chat_message
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
           AND seq_no &gt; #{startExclusiveSeqNo}
           AND seq_no &lt;= #{endInclusiveSeqNo}
         ORDER BY seq_no ASC
@@ -126,13 +140,21 @@
     <select id="selectMaxSeqNoBySessionId" resultType="java.lang.Long">
         SELECT MAX(seq_no)
         FROM chat_message
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="selectTurnSeqBySessionIdAndTurnId" resultType="java.lang.Long">
+        SELECT MIN(turn_seq)
+        FROM chat_message
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND turn_seq IS NOT NULL
     </select>
 
     <select id="selectTurnCountBySessionId" resultType="java.lang.Long">
         SELECT COUNT(DISTINCT turn_id)
         FROM chat_message
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
           AND role = 'USER'
     </select>
 
@@ -142,7 +164,7 @@
 
     <delete id="deleteBySessionIdAndTurnIdAndRoles">
         DELETE FROM chat_message
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
           AND turn_id = #{turnId}
           AND role IN
           <foreach collection="roles" item="role" open="(" separator="," close=")">
@@ -154,10 +176,13 @@
         UPDATE chat_message
         <set>
             <if test="sessionId != null">
-                session_id = CAST(#{sessionId} AS uuid),
+                session_id = #{sessionId},
             </if>
             <if test="turnId != null">
                 turn_id = #{turnId},
+            </if>
+            <if test="turnSeq != null">
+                turn_seq = #{turnSeq},
             </if>
             <if test="role != null">
                 role = #{role},
@@ -168,8 +193,19 @@
             <if test="metadata != null">
                 metadata = CAST(#{metadata} AS jsonb),
             </if>
+            <if test="turnCompleted != null">
+                turn_completed = #{turnCompleted},
+            </if>
             updated_at = NOW()
         </set>
         WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="markTurnCompleted">
+        UPDATE chat_message
+        SET turn_completed = TRUE,
+            updated_at = NOW()
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
     </update>
 </mapper>

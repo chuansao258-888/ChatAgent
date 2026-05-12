@@ -131,6 +131,48 @@ class IntentRouterTest {
     }
 
     @Test
+    void shouldClarifyVagueQueryWhenRootCandidateMatches() {
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(
+                        node("domain-finance", null, IntentNodeLevel.DOMAIN, "报销制度", List.of("报销"), null),
+                        node("domain-hr", null, IntentNodeLevel.DOMAIN, "请假制度", List.of("请假"), null)
+                ),
+                Map.of()
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(snapshot);
+
+        IntentRoutingResult result = intentRouter.route("assistant-1", "报销");
+
+        assertThat(result.requiresClarification()).isTrue();
+        assertThat(result.clarificationCandidates())
+                .extracting(com.yulong.chatagent.support.dto.IntentNodeDTO::getId)
+                .contains("domain-finance");
+    }
+
+    @Test
+    void shouldReturnNoneForVagueQueryWhenRootCandidatesDoNotMatch() {
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(
+                        node("domain-finance", null, IntentNodeLevel.DOMAIN, "财务制度", List.of("报销"), null),
+                        node("domain-hr", null, IntentNodeLevel.DOMAIN, "人事制度", List.of("请假"), null)
+                ),
+                Map.of()
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(snapshot);
+        when(chatModelRouter.route("classifier-model")).thenReturn(chatClient);
+        when(chatClient.prompt(anyString()).call().content()).thenReturn("NONE");
+
+        IntentRoutingResult result = intentRouter.route("assistant-1", "天气");
+
+        assertThat(result.hasResolution()).isFalse();
+        assertThat(result.requiresClarification()).isFalse();
+    }
+
+    @Test
     void shouldFallbackToHeuristicWhenLlmFails() {
         IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
                 "assistant-1",

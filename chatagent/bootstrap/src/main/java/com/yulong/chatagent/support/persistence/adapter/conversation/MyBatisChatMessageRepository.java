@@ -46,6 +46,11 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
     }
 
     @Override
+    public Long findTurnSeqBySessionIdAndTurnId(String sessionId, String turnId) {
+        return chatMessageMapper.selectTurnSeqBySessionIdAndTurnId(sessionId, turnId);
+    }
+
+    @Override
     public long countTurnsBySessionId(String sessionId) {
         Long count = chatMessageMapper.selectTurnCountBySessionId(sessionId);
         return count == null ? 0L : count;
@@ -66,6 +71,8 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
             if (persisted != null) {
                 chatMessage.setSeqNo(persisted.getSeqNo());
                 chatMessage.setTurnId(persisted.getTurnId());
+                chatMessage.setTurnSeq(persisted.getTurnSeq());
+                chatMessage.setTurnCompleted(persisted.getTurnCompleted());
             }
         }
         return saved;
@@ -84,6 +91,11 @@ public class MyBatisChatMessageRepository implements ChatMessageRepository {
     @Override
     public boolean deleteBySessionIdAndTurnIdAndRoles(String sessionId, String turnId, List<String> roles) {
         return chatMessageMapper.deleteBySessionIdAndTurnIdAndRoles(sessionId, turnId, roles) >= 0;
+    }
+
+    @Override
+    public boolean markTurnCompleted(String sessionId, String turnId) {
+        return chatMessageMapper.markTurnCompleted(sessionId, turnId) > 0;
     }
 
     /**

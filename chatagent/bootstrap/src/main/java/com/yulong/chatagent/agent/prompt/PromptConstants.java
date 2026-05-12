@@ -1,49 +1,49 @@
 package com.yulong.chatagent.agent.prompt;
 
 /**
- * Central registry of all prompt template paths.
+ * Prompt 模板路径集中注册表。
  * <p>
- * Every path is relative to {@code classpath:prompts/}.
+ * 所有路径都相对于 {@code classpath:prompts/}，避免业务代码里散落硬编码模板路径。
  */
 public final class PromptConstants {
 
     private PromptConstants() {
     }
 
-    // ── Agent ──────────────────────────────────────────────────────────
+    // ── Agent 核心提示词 ───────────────────────────────────────────────
     public static final String AGENT_DEFAULT_SYSTEM = "agent/default-system-prompt.md";
     public static final String AGENT_DECISION_MODULE = "agent/decision-module.md";
     public static final String AGENT_FINAL_ANSWER = "agent/final-answer-module.md";
 
-    // Agent sections (conditionally assembled)
+    // Agent 条件片段：由 DefaultAgentRuntimeContextLoader 按运行时上下文拼装
     public static final String AGENT_MCP_TOOL_SAFETY = "agent/sections/mcp-tool-safety.md";
     public static final String AGENT_TOOL_STRATEGY = "agent/sections/tool-strategy.md";
     public static final String AGENT_LATEST_TURN_GUIDANCE = "agent/sections/latest-turn-guidance.md";
     public static final String AGENT_INTENT_BOUNDARY_NARROWED = "agent/sections/intent-boundary-narrowed.md";
     public static final String AGENT_INTENT_BOUNDARY_KB_ONLY = "agent/sections/intent-boundary-kb-only.md";
 
-    // ── Intent ─────────────────────────────────────────────────────────
+    // ── 意图路由 ───────────────────────────────────────────────────────
     public static final String INTENT_CLASSIFIER = "intent/classifier.md";
     public static final String INTENT_QUERY_REWRITE = "intent/query-rewrite.md";
 
-    // ── RAG — Ingestion ───────────────────────────────────────────────
+    // ── RAG 入库/切分 ──────────────────────────────────────────────────
     public static final String RAG_DOC_CLEANUP = "rag/ingestion/document-cleanup.md";
     public static final String RAG_DOC_METADATA = "rag/ingestion/document-metadata.md";
     public static final String RAG_CHUNK_CTX_SYSTEM = "rag/ingestion/chunk-context-system.md";
     public static final String RAG_CHUNK_CTX_USER = "rag/ingestion/chunk-context-user.md";
 
-    // ── RAG — Retrieval ───────────────────────────────────────────────
+    // ── RAG 检索 ───────────────────────────────────────────────────────
     public static final String RAG_RERANKER_SYSTEM = "rag/retrieval/reranker-system.md";
     public static final String RAG_RERANKER_USER = "rag/retrieval/reranker-user-template.md";
     public static final String RAG_EVIDENCE_BLOCK = "rag/retrieval/evidence-block-template.md";
 
-    // ── VLM ────────────────────────────────────────────────────────────
+    // ── VLM 视觉解析 ───────────────────────────────────────────────────
     public static final String VLM_PARSE = "vlm/visual-parse.md";
 
-    // ── Summarizer ─────────────────────────────────────────────────────
+    // ── 会话摘要 ───────────────────────────────────────────────────────
     public static final String SUMMARIZER_MEMORY = "summarizer/rolling-memory.md";
 
-    // ── Fallbacks ──────────────────────────────────────────────────────
+    // ── fallback 文案 ──────────────────────────────────────────────────
     public static final String FALLBACK_SESSION_FILES = "fallbacks/session-files.md";
     public static final String FALLBACK_SESSION_SUMMARY = "fallbacks/session-summary.md";
     public static final String FALLBACK_USER_PROFILE = "fallbacks/user-profile.md";

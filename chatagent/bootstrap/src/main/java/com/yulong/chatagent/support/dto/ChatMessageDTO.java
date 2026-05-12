@@ -21,6 +21,8 @@ public class ChatMessageDTO {
 
     private String turnId;
 
+    private Long turnSeq;
+
     private RoleType role;
 
     private String content;
@@ -28,6 +30,8 @@ public class ChatMessageDTO {
     private MetaData metadata;
 
     private Long seqNo;
+
+    private Boolean turnCompleted;
 
     private LocalDateTime createdAt;
 

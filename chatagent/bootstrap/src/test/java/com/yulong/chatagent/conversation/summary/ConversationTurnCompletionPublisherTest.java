@@ -2,6 +2,7 @@ package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.event.ConversationTurnCompletedEvent;
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,13 +23,16 @@ class ConversationTurnCompletionPublisherTest {
     private ChatMessageRepository chatMessageRepository;
 
     @Mock
+    private ChatSessionRepository chatSessionRepository;
+
+    @Mock
     private ApplicationEventPublisher applicationEventPublisher;
 
     private ConversationTurnCompletionPublisher publisher;
 
     @BeforeEach
     void setUp() {
-        publisher = new ConversationTurnCompletionPublisher(chatMessageRepository, applicationEventPublisher);
+        publisher = new ConversationTurnCompletionPublisher(chatMessageRepository, chatSessionRepository, applicationEventPublisher);
     }
 
     @Test
@@ -38,6 +42,8 @@ class ConversationTurnCompletionPublisherTest {
         boolean published = publisher.publishCompletedTurn("session-1", "turn-1");
 
         assertThat(published).isTrue();
+        verify(chatMessageRepository).markTurnCompleted("session-1", "turn-1");
+        verify(chatSessionRepository).advanceCompletedTurnSeq("session-1");
         ArgumentCaptor<ConversationTurnCompletedEvent> captor = ArgumentCaptor.forClass(ConversationTurnCompletedEvent.class);
         verify(applicationEventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue().sessionId()).isEqualTo("session-1");
@@ -52,6 +58,18 @@ class ConversationTurnCompletionPublisherTest {
         boolean published = publisher.publishCompletedTurn("session-1", "turn-1");
 
         assertThat(published).isFalse();
+        verify(applicationEventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void shouldSkipPublishingWhenEarlierTurnIsNotCompleted() {
+        when(chatMessageRepository.findTurnSeqBySessionIdAndTurnId("session-1", "turn-2")).thenReturn(2L);
+        when(chatSessionRepository.advanceCompletedTurnSeq("session-1")).thenReturn(0L);
+
+        boolean published = publisher.publishCompletedTurn("session-1", "turn-2");
+
+        assertThat(published).isFalse();
+        verify(chatMessageRepository).markTurnCompleted("session-1", "turn-2");
         verify(applicationEventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
     }
 }

@@ -17,6 +17,8 @@ public class ChatMessage {
 
     private String turnId;
 
+    private Long turnSeq;
+
     private String role;
 
     private String content;
@@ -25,6 +27,8 @@ public class ChatMessage {
     private String metadata;
 
     private Long seqNo;
+
+    private Boolean turnCompleted;
 
     private LocalDateTime createdAt;
 

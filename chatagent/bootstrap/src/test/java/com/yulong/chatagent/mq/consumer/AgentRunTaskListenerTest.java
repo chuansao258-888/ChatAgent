@@ -3,6 +3,7 @@ package com.yulong.chatagent.mq.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.yulong.chatagent.conversation.event.ChatEventProcessor;
+import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
@@ -52,6 +53,9 @@ class AgentRunTaskListenerTest {
 
     @Mock
     private ChatEventProcessor chatEventProcessor;
+
+    @Mock
+    private ChatSessionRepository chatSessionRepository;
 
     @Mock
     private Channel channel;
@@ -211,7 +215,7 @@ class AgentRunTaskListenerTest {
     }
 
     @Test
-    void shouldDelayWaitRequiredMessage() throws Exception {
+    void shouldAckInFlightDuplicateWhenTaskLockIsRunning() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
@@ -219,7 +223,59 @@ class AgentRunTaskListenerTest {
 
         listener.handle(buildMessage(0, false), channel);
 
+        verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
+        verify(channel).basicAck(7L, false);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldDelayWhenSessionExecutionLockIsBusy() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(
+                new MqSessionExecLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null)
+        );
+        when(distributedLockManager.releaseRunning(any())).thenReturn(true);
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(distributedLockManager).releaseRunning(any());
         verify(rabbitMqMessagePublisher).publish(eq("retry.direct"), eq("retry.agent"), any(), anyString());
+        verify(channel).basicAck(7L, false);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldDelayWhenPreviousTurnSequenceIsNotCompleted() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
+        });
+        when(chatSessionRepository.findLastCompletedTurnSeq("session-1")).thenReturn(0L);
+        when(distributedLockManager.releaseRunning(any())).thenReturn(true);
+
+        listener.handle(buildMessage(0, false, 2L), channel);
+
+        verify(distributedLockManager).releaseRunning(any());
+        verify(rabbitMqMessagePublisher).publish(eq("retry.direct"), eq("retry.agent"), any(), anyString());
+        verify(channel).basicAck(7L, false);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldAckWhenTurnSequenceWasAlreadyCompleted() throws Exception {
+        AgentRunTaskListener listener = newListener();
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString())).thenReturn(acquiredSessionLock());
+        when(lockWatchdog.watch(any(), any())).thenReturn(() -> {
+        });
+        when(chatSessionRepository.findLastCompletedTurnSeq("session-1")).thenReturn(1L);
+
+        listener.handle(buildMessage(0, false, 1L), channel);
+
+        verify(distributedLockManager).markCompleted(any());
+        verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
         verify(channel).basicAck(7L, false);
         verify(chatEventProcessor, never()).process(any());
     }
@@ -250,7 +306,8 @@ class AgentRunTaskListenerTest {
                 rabbitMqMessagePublisher,
                 distributedLockManager,
                 lockWatchdog,
-                chatEventProcessor
+                chatEventProcessor,
+                chatSessionRepository
         );
         
         when(distributedLockManager.tryAcquire(any(), anyString())).thenThrow(new RuntimeException("Redis down"));
@@ -271,15 +328,21 @@ class AgentRunTaskListenerTest {
                 rabbitMqMessagePublisher,
                 distributedLockManager,
                 lockWatchdog,
-                chatEventProcessor
+                chatEventProcessor,
+                chatSessionRepository
         );
     }
 
     private Message buildMessage(int retryCount, boolean forceRollback) throws Exception {
+        return buildMessage(retryCount, forceRollback, null);
+    }
+
+    private Message buildMessage(int retryCount, boolean forceRollback, Long turnSeq) throws Exception {
         AgentRunTaskPayload payload = new AgentRunTaskPayload(
                 "agent-1",
                 "session-1",
                 "turn-1",
+                turnSeq,
                 "msg-1",
                 "hello",
                 3,

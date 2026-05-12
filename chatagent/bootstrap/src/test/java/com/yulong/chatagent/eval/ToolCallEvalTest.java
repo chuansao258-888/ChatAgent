@@ -414,7 +414,7 @@ class ToolCallEvalTest {
         @Override
         public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService ignored) {
             decisionSteps++;
-            ChatResponse response = llmService.chatWithRouting(prompt, null, List.of());
+            ChatResponse response = streamToResponse(prompt, null, List.of());
             finalAnswer = extractText(response);
             return finalAnswer;
         }
@@ -427,18 +427,12 @@ class ToolCallEvalTest {
                                                                List<ToolCallback> tools,
                                                                LLMService ignored) {
             decisionSteps++;
-            ChatResponse response = llmService.chatWithRouting(prompt, systemPrompt, tools);
+            BufferedStreamingResponse bufferedResponse = llmService.streamDecisionWithRouting(prompt, systemPrompt, tools);
+            ChatResponse response = bufferedResponse.response();
             if (response != null && !response.hasToolCalls()) {
                 finalAnswer = extractText(response);
             }
-            return new BufferedStreamingResponse(response, List.of());
-        }
-
-        @Override
-        public void publishBufferedFinalResponse(String chatSessionId, String turnId, BufferedStreamingResponse bufferedResponse) {
-            if (bufferedResponse != null && bufferedResponse.response() != null) {
-                finalAnswer = extractText(bufferedResponse.response());
-            }
+            return bufferedResponse;
         }
 
         List<String> distinctToolCalls() {
@@ -451,6 +445,11 @@ class ToolCallEvalTest {
 
         String finalAnswer() {
             return finalAnswer == null ? "" : finalAnswer;
+        }
+
+        private ChatResponse streamToResponse(Prompt prompt, String systemPrompt, List<ToolCallback> tools) {
+            BufferedStreamingResponse bufferedResponse = llmService.streamDecisionWithRouting(prompt, systemPrompt, tools);
+            return bufferedResponse == null ? null : bufferedResponse.response();
         }
 
         private static String extractText(ChatResponse response) {

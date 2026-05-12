@@ -21,9 +21,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Builds and persists a rolling summary for the portion of the chat history
- * that has moved outside the L1 runtime window.
- * Uses the previous L2 summary plus newly stable turns to refresh session memory incrementally.
+ * 增量会话摘要器。
+ * <p>
+ * 它负责把“已经滑出 L1 原始记忆窗口”的那部分历史压缩成 L2 摘要，
+ * 并且不是每次从零开始重算，而是：
+ * <ol>
+ *     <li>读取现有摘要；</li>
+ *     <li>找到这次新稳定下来的 turn 片段；</li>
+ *     <li>把旧摘要与新 turn 合并成下一版摘要。</li>
+ * </ol>
+ * 这样可以把摘要成本控制在“增量更新”而不是“全量重建”。
  */
 @Component
 @Slf4j
@@ -68,16 +75,19 @@ public class IncrementalSummarizer {
     public boolean summarize(String sessionId, long anchorSeqNo) {
         SummaryWatermarkRange range = summaryWatermarkService.resolvePendingRange(sessionId, anchorSeqNo);
         if (!range.hasPendingMessages()) {
+            // 没有待推进的 seq_no 区间，说明当前 anchor 已经被摘要覆盖。
             return false;
         }
 
         ChatSessionSummaryDTO existing = chatSessionSummaryRepository.findBySessionId(sessionId);
+        // 只提取增量区间内、按 turn 聚合后的可摘要内容。
         List<AtomicConversationTurn> turns = turnBasedContextExtractor.extractPendingTurns(sessionId, range.endInclusiveSeqNo());
         Map<String, List<String>> mergedAnchors = mergeAnchoredEntities(
                 existing == null ? Map.of() : existing.getAnchoredEntities(),
                 extractAnchoredEntities(turns)
         );
 
+        // 新摘要不是覆盖式“重写全部历史”，而是在旧摘要之上增量刷新。
         String existingSummary = existing == null || existing.getSummary() == null ? "" : existing.getSummary().trim();
         String nextSummary = turns.isEmpty()
                 ? existingSummary
@@ -104,8 +114,10 @@ public class IncrementalSummarizer {
             if (StringUtils.hasText(content)) {
                 return content.trim();
             }
+            // 模型空返回也视作不可用，继续走确定性回退。
             log.warn("Summary model returned blank content, fallback to deterministic summary");
         } catch (Exception e) {
+            // 摘要是后台能力，不应该因为模型瞬时故障就整体失效。
             log.warn("Summary generation fallback triggered: error={}", e.getMessage());
         }
         return buildFallbackSummary(existingSummary, turns);
@@ -120,6 +132,8 @@ public class IncrementalSummarizer {
     }
 
     private String formatTurns(List<AtomicConversationTurn> turns) {
+        // 这里把 turn 格式化成 prompt 文本输入给 summary model，
+        // 尽量保留“谁问了什么、最终答了什么”的结构化顺序。
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < turns.size(); i++) {
             AtomicConversationTurn turn = turns.get(i);
@@ -137,6 +151,8 @@ public class IncrementalSummarizer {
     }
 
     private String buildFallbackSummary(String existingSummary, List<AtomicConversationTurn> turns) {
+        // 确定性回退方案不依赖模型，只做朴素拼接。
+        // 质量可能略差，但能保证后台摘要链不停摆。
         StringBuilder builder = new StringBuilder();
         if (StringUtils.hasText(existingSummary)) {
             builder.append(existingSummary.trim()).append('\n');
@@ -155,6 +171,7 @@ public class IncrementalSummarizer {
     }
 
     private String enforceLengthCap(String summary) {
+        // 摘要是放进 system prompt / memory 的长文本，长度必须可控。
         if (!StringUtils.hasText(summary) || summary.length() <= summaryMaxChars) {
             return summary == null ? "" : summary.trim();
         }
@@ -166,6 +183,8 @@ public class IncrementalSummarizer {
     }
 
     private Map<String, List<String>> extractAnchoredEntities(List<AtomicConversationTurn> turns) {
+        // 锚定实体是对摘要正文的一个保护：
+        // 即使摘要模型压缩得过度，也能额外保留日期、金额、订单号等稳定事实。
         Map<String, Set<String>> collected = new LinkedHashMap<>();
         for (AtomicConversationTurn turn : turns) {
             if (turn.userMessages() == null) {
@@ -187,6 +206,7 @@ public class IncrementalSummarizer {
 
     private Map<String, List<String>> mergeAnchoredEntities(Map<String, List<String>> existing,
                                                             Map<String, List<String>> extracted) {
+        // 新旧锚点是累积关系，不是覆盖关系。
         Map<String, Set<String>> merged = new LinkedHashMap<>();
         appendAnchors(merged, existing);
         appendAnchors(merged, extracted);
@@ -228,6 +248,8 @@ public class IncrementalSummarizer {
         if (!StringUtils.hasText(summary) || anchors == null || anchors.isEmpty()) {
             return;
         }
+        // 这里不强制失败，只做 warning。
+        // 目的是提醒摘要刷新后可能丢失了关键事实，便于后续人工观察和调优 prompt。
         String normalizedSummary = summary.toLowerCase();
         List<String> missing = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : anchors.entrySet()) {

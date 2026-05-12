@@ -38,7 +38,10 @@ public interface DocumentParser {
         return switch (parserType) {
             case MARKDOWN -> 10;
             case PDFBOX -> 20;
-            case IMAGE -> 30;
+            case WORD -> 30;
+            case POWERPOINT -> 40;
+            case SPREADSHEET -> 50;
+            case IMAGE -> 60;
             case TIKA -> 1000;
         };
     }

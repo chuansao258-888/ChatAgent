@@ -72,29 +72,18 @@ public class StructureAwareMarkdownChunker {
                     List.of("paragraph"),
                     0,
                     List.of(),
-                    Map.of()
+                    Map.of(
+                            "sourceStart", 0,
+                            "sourceEnd", normalizedMarkdown.length()
+                    )
             ));
         }
 
-        List<ChunkSlice> slices = packBlocksToChunks(blocks, normalizedMarkdown);
         List<KnowledgeChunkDraft> drafts = new ArrayList<>();
-        String overlapPrefix = "";
-
-        for (int index = 0; index < slices.size(); index++) {
-            ChunkSlice slice = slices.get(index);
-            String body = normalizedMarkdown.substring(slice.start(), slice.end()).trim();
-            if (!StringUtils.hasText(body)) {
-                continue;
-            }
-            String content = overlapPrefix.isEmpty() ? body : overlapPrefix + body;
-            List<HeadingInfo> headings = mostSpecificHeadings(slice.blocks());
-            List<String> blockKinds = collectBlockKinds(slice.blocks());
-            Map<String, Object> extraMetadata = slice.extraMetadata();
-            drafts.add(buildDraft(content, blockKinds, index, headings, extraMetadata));
-            overlapPrefix = overlapChars > 0 ? tailByChars(body, overlapChars) : "";
+        for (Section section : splitIntoSections(blocks)) {
+            drafts.addAll(chunkSection(section, normalizedMarkdown));
         }
-
-        return compactSmallDrafts(drafts);
+        return applyOverlap(reindexDrafts(drafts));
     }
 
     private String normalizeLineEndings(String markdownText) {
@@ -169,15 +158,6 @@ public class StructureAwareMarkdownChunker {
         return updated;
     }
 
-    private List<ChunkSlice> packBlocksToChunks(List<MarkdownBlock> blocks, String markdownText) {
-        List<Section> sections = splitIntoSections(blocks);
-        List<ChunkSlice> slices = new ArrayList<>();
-        for (Section section : sections) {
-            slices.addAll(packSectionBlocks(section, markdownText));
-        }
-        return slices;
-    }
-
     private List<Section> splitIntoSections(List<MarkdownBlock> blocks) {
         List<Section> sections = new ArrayList<>();
         List<MarkdownBlock> current = new ArrayList<>();
@@ -198,15 +178,36 @@ public class StructureAwareMarkdownChunker {
         return sections;
     }
 
-    private List<ChunkSlice> packSectionBlocks(Section section, String markdownText) {
+    private List<KnowledgeChunkDraft> chunkSection(Section section, String markdownText) {
+        if (section == null || section.blocks().isEmpty()) {
+            return List.of();
+        }
+        int sectionStart = section.blocks().get(0).start();
+        int sectionEnd = section.blocks().get(section.blocks().size() - 1).end();
+        if (sectionEnd - sectionStart <= maxChars) {
+            return List.of(buildDraftFromRange(
+                    markdownText,
+                    sectionStart,
+                    sectionEnd,
+                    section.blocks(),
+                    section.headingPath(),
+                    Map.of()
+            ));
+        }
+
+        return splitLongSection(section, markdownText);
+    }
+
+    private List<KnowledgeChunkDraft> splitLongSection(Section section, String markdownText) {
         List<MarkdownBlock> sectionBlocks = section.blocks();
-        List<ChunkSlice> slices = new ArrayList<>();
+        List<KnowledgeChunkDraft> drafts = new ArrayList<>();
+        int chunkLimit = fallbackChunkLimit();
         int index = 0;
 
         while (index < sectionBlocks.size()) {
             MarkdownBlock first = sectionBlocks.get(index);
-            if (blockLength(first) > maxChars) {
-                slices.addAll(splitOversizedBlock(first, markdownText));
+            if (blockLength(first) > chunkLimit) {
+                drafts.addAll(splitOversizedBlock(first, markdownText));
                 index++;
                 continue;
             }
@@ -222,7 +223,7 @@ public class StructureAwareMarkdownChunker {
                 MarkdownBlock block = sectionBlocks.get(next);
                 int expandedSize = block.end() - chunkStart;
 
-                if (expandedSize <= maxChars) {
+                if (expandedSize <= chunkLimit) {
                     chunkEnd = block.end();
                     currentSize = expandedSize;
                     chunkBlocks.add(block);
@@ -238,52 +239,68 @@ public class StructureAwareMarkdownChunker {
                 break;
             }
 
-            slices.add(new ChunkSlice(chunkStart, chunkEnd, List.copyOf(chunkBlocks), Map.of()));
+            drafts.add(buildDraftFromRange(
+                    markdownText,
+                    chunkStart,
+                    chunkEnd,
+                    List.copyOf(chunkBlocks),
+                    mostSpecificHeadings(chunkBlocks),
+                    Map.of()
+            ));
             index = next;
         }
-
-        if (slices.size() >= 2) {
-            ChunkSlice last = slices.get(slices.size() - 1);
-            if (last.end() - last.start() < Math.min(minChars, targetChars / 2)) {
-                ChunkSlice previous = slices.get(slices.size() - 2);
-                if (last.end() - previous.start() <= maxChars * 2) {
-                    List<MarkdownBlock> mergedBlocks = new ArrayList<>(previous.blocks());
-                    mergedBlocks.addAll(last.blocks());
-                    slices.set(slices.size() - 2, new ChunkSlice(
-                            previous.start(),
-                            last.end(),
-                            List.copyOf(mergedBlocks),
-                            mergeMetadata(previous.extraMetadata(), last.extraMetadata())
-                    ));
-                    slices.remove(slices.size() - 1);
-                }
-            }
-        }
-
-        return slices;
+        return drafts;
     }
 
-    private List<ChunkSlice> splitOversizedBlock(MarkdownBlock block, String markdownText) {
+    private List<KnowledgeChunkDraft> splitOversizedBlock(MarkdownBlock block, String markdownText) {
+        int chunkLimit = fallbackChunkLimit();
         int oversizedLimit = Math.max(maxChars, maxChars * 2);
         if (block.atomic() && blockLength(block) <= oversizedLimit) {
-            return List.of(new ChunkSlice(block.start(), block.end(), List.of(block), Map.of()));
+            return List.of(buildDraftFromRange(
+                    markdownText,
+                    block.start(),
+                    block.end(),
+                    List.of(block),
+                    block.headingPath(),
+                    Map.of()
+            ));
         }
 
-        List<ChunkSlice> slices = new ArrayList<>();
+        List<KnowledgeChunkDraft> drafts = new ArrayList<>();
         String text = markdownText.substring(block.start(), block.end());
-        List<TextRange> ranges = splitTextByNaturalBoundaries(text, maxChars);
+        List<TextRange> ranges = splitTextByNaturalBoundaries(text, chunkLimit);
         for (TextRange range : ranges) {
             Map<String, Object> metadata = new LinkedHashMap<>();
             metadata.put("splitOversizedBlock", true);
             metadata.put("oversizedBlockKind", block.kind().metadataName());
-            slices.add(new ChunkSlice(
+            drafts.add(buildDraftFromRange(
+                    markdownText,
                     block.start() + range.start(),
                     block.start() + range.end(),
                     List.of(block),
+                    block.headingPath(),
                     metadata
             ));
         }
-        return slices;
+        return drafts;
+    }
+
+    private int fallbackChunkLimit() {
+        int desiredLimit = Math.max(targetChars, minChars);
+        return Math.max(1, Math.min(maxChars, desiredLimit));
+    }
+
+    private KnowledgeChunkDraft buildDraftFromRange(String markdownText,
+                                                    int start,
+                                                    int end,
+                                                    List<MarkdownBlock> blocks,
+                                                    List<HeadingInfo> headings,
+                                                    Map<String, Object> extraMetadata) {
+        String body = markdownText.substring(start, end).trim();
+        Map<String, Object> metadata = new LinkedHashMap<>(extraMetadata == null ? Map.of() : extraMetadata);
+        metadata.put("sourceStart", start);
+        metadata.put("sourceEnd", end);
+        return buildDraft(body, collectBlockKinds(blocks), 0, headings, metadata);
     }
 
     private List<TextRange> splitTextByNaturalBoundaries(String text, int limit) {
@@ -385,101 +402,6 @@ public class StructureAwareMarkdownChunker {
         return List.copyOf(kinds);
     }
 
-    private List<KnowledgeChunkDraft> compactSmallDrafts(List<KnowledgeChunkDraft> drafts) {
-        if (drafts.size() < 2) {
-            return reindexDrafts(drafts);
-        }
-
-        int smallChunkThreshold = Math.max(80, minChars / 4);
-        List<KnowledgeChunkDraft> mergedDrafts = new ArrayList<>();
-
-        for (int i = 0; i < drafts.size(); i++) {
-            KnowledgeChunkDraft current = drafts.get(i);
-            while (contentLength(current) < smallChunkThreshold
-                    && i + 1 < drafts.size()
-                    && contentLength(current) + 2 + contentLength(drafts.get(i + 1)) <= maxChars) {
-                current = mergeDrafts(current, drafts.get(i + 1));
-                i++;
-            }
-
-            if (contentLength(current) < smallChunkThreshold
-                    && !mergedDrafts.isEmpty()
-                    && contentLength(mergedDrafts.get(mergedDrafts.size() - 1)) + 2 + contentLength(current) <= maxChars) {
-                KnowledgeChunkDraft previous = mergedDrafts.remove(mergedDrafts.size() - 1);
-                mergedDrafts.add(mergeDrafts(previous, current));
-                continue;
-            }
-
-            mergedDrafts.add(current);
-        }
-
-        return reindexDrafts(mergedDrafts);
-    }
-
-    private KnowledgeChunkDraft mergeDrafts(KnowledgeChunkDraft left, KnowledgeChunkDraft right) {
-        String mergedContent = left.content().trim() + "\n\n" + right.content().trim();
-        List<HeadingInfo> headings = mergeHeadings(left.metadata(), right.metadata());
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("chunkStrategy", "markdown_ast");
-        metadata.put("blockKinds", mergeBlockKinds(left.metadata(), right.metadata()));
-        metadata.put("contentLength", mergedContent.length());
-        metadata.put("mergedSmallChunk", true);
-        addHeadingMetadata(metadata, headings);
-        return new KnowledgeChunkDraft(mergedContent, writeMetadata(metadata));
-    }
-
-    private List<String> mergeBlockKinds(String leftMetadata, String rightMetadata) {
-        LinkedHashSet<String> blockKinds = new LinkedHashSet<>();
-        addBlockKinds(blockKinds, leftMetadata);
-        addBlockKinds(blockKinds, rightMetadata);
-        return List.copyOf(blockKinds);
-    }
-
-    private void addBlockKinds(LinkedHashSet<String> blockKinds, String metadataJson) {
-        try {
-            Map<String, Object> metadata = parseMetadata(metadataJson);
-            Object value = metadata.get("blockKinds");
-            if (value instanceof List<?> values) {
-                for (Object item : values) {
-                    if (item != null) {
-                        blockKinds.add(String.valueOf(item));
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
-    private List<HeadingInfo> mergeHeadings(String leftMetadata, String rightMetadata) {
-        List<HeadingInfo> left = parseHeadings(leftMetadata);
-        List<HeadingInfo> right = parseHeadings(rightMetadata);
-        return right.size() >= left.size() ? right : left;
-    }
-
-    private List<HeadingInfo> parseHeadings(String metadataJson) {
-        try {
-            Map<String, Object> metadata = parseMetadata(metadataJson);
-            Object value = metadata.get("sectionHeadings");
-            if (!(value instanceof List<?> values)) {
-                return List.of();
-            }
-            List<HeadingInfo> headings = new ArrayList<>();
-            for (Object item : values) {
-                if (!(item instanceof Map<?, ?> map)) {
-                    continue;
-                }
-                Object levelValue = map.get("level");
-                Object titleValue = map.get("title");
-                if (levelValue instanceof Number number && titleValue != null && StringUtils.hasText(titleValue.toString())) {
-                    headings.add(new HeadingInfo(number.intValue(), titleValue.toString()));
-                }
-            }
-            return headings;
-        } catch (Exception ignored) {
-            return List.of();
-        }
-    }
-
     private List<KnowledgeChunkDraft> reindexDrafts(List<KnowledgeChunkDraft> drafts) {
         List<KnowledgeChunkDraft> reindexedDrafts = new ArrayList<>(drafts.size());
         for (int i = 0; i < drafts.size(); i++) {
@@ -501,6 +423,38 @@ public class StructureAwareMarkdownChunker {
         return reindexedDrafts;
     }
 
+    private List<KnowledgeChunkDraft> applyOverlap(List<KnowledgeChunkDraft> drafts) {
+        if (overlapChars <= 0 || drafts.size() < 2) {
+            return drafts;
+        }
+
+        List<KnowledgeChunkDraft> overlappedDrafts = new ArrayList<>(drafts.size());
+        String previousOriginalContent = null;
+        for (KnowledgeChunkDraft draft : drafts) {
+            if (previousOriginalContent == null) {
+                overlappedDrafts.add(draft);
+                previousOriginalContent = draft.content();
+                continue;
+            }
+
+            String overlap = tailByChars(previousOriginalContent, overlapChars).trim();
+            String content = StringUtils.hasText(overlap)
+                    ? overlap + "\n\n" + draft.content()
+                    : draft.content();
+            Map<String, Object> metadata;
+            try {
+                metadata = new LinkedHashMap<>(parseMetadata(draft.metadata()));
+            } catch (Exception e) {
+                metadata = new LinkedHashMap<>();
+            }
+            metadata.put("contentLength", contentLength(content));
+            metadata.put("overlapChars", Math.min(overlapChars, contentLength(previousOriginalContent)));
+            overlappedDrafts.add(new KnowledgeChunkDraft(content, writeMetadata(metadata)));
+            previousOriginalContent = draft.content();
+        }
+        return overlappedDrafts;
+    }
+
     private int blockLength(MarkdownBlock block) {
         return block == null ? 0 : Math.max(0, block.end() - block.start());
     }
@@ -509,22 +463,15 @@ public class StructureAwareMarkdownChunker {
         return draft == null || draft.content() == null ? 0 : draft.content().length();
     }
 
+    private int contentLength(String content) {
+        return content == null ? 0 : content.length();
+    }
+
     private String tailByChars(String text, int count) {
         if (count <= 0 || text.length() <= count) {
             return text;
         }
         return text.substring(text.length() - count);
-    }
-
-    private Map<String, Object> mergeMetadata(Map<String, Object> left, Map<String, Object> right) {
-        Map<String, Object> merged = new LinkedHashMap<>();
-        if (left != null) {
-            merged.putAll(left);
-        }
-        if (right != null) {
-            merged.putAll(right);
-        }
-        return merged;
     }
 
     private Map<String, Object> parseMetadata(String metadataJson) throws JsonProcessingException {
@@ -571,9 +518,6 @@ public class StructureAwareMarkdownChunker {
     }
 
     private record Section(List<MarkdownBlock> blocks, List<HeadingInfo> headingPath) {
-    }
-
-    private record ChunkSlice(int start, int end, List<MarkdownBlock> blocks, Map<String, Object> extraMetadata) {
     }
 
     private record TextRange(int start, int end) {

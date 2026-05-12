@@ -311,11 +311,13 @@ public class BgeHttpRetrievalReranker implements RetrievalReranker {
                 .toList();
     }
 
-    private List<MilvusSearchHit> markAsFiltered(List<MilvusSearchHit> candidates) {
-        return candidates.stream()
-                .map(hit -> hit.withScore(null).withScoreType("filtered"))
-                .toList();
-    }
+    // 低置信过滤原本计划把候选标记为 filtered 后继续返回；当前主流程在
+    // shouldFilterLowConfidence(...) 命中时直接返回空列表，因此这个标记分支没有调用点。
+    // private List<MilvusSearchHit> markAsFiltered(List<MilvusSearchHit> candidates) {
+    //     return candidates.stream()
+    //             .map(hit -> hit.withScore(null).withScoreType("filtered"))
+    //             .toList();
+    // }
 
     private boolean shouldFilterLowConfidence(List<RankedIdAndScore> rankedResults) {
         if (!properties.isEnableConfidenceFilter() || rankedResults.isEmpty()) {

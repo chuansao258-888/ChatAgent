@@ -7,7 +7,6 @@ import com.yulong.chatagent.knowledge.application.KnowledgeDocumentFacadeService
 import com.yulong.chatagent.knowledge.model.request.UpsertKnowledgeBaseRequest;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
-import com.yulong.chatagent.rag.application.RagService;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import com.yulong.chatagent.rag.retrieve.KnowledgeBaseSimilaritySearcher;
@@ -65,9 +64,6 @@ class LatencyBaselineEvalTest {
 
     @Autowired
     private KnowledgeDocumentIngestionService ingestionService;
-
-    @Autowired
-    private RagService ragService;
 
     @Autowired
     private KnowledgeBaseSimilaritySearcher kbSearcher;
@@ -145,7 +141,7 @@ class LatencyBaselineEvalTest {
         for (int i = 0; i < Math.min(3, goldenQueries.size()); i++) {
             String q = goldenQueries.get(i);
             try {
-                ragService.similaritySearchByKnowledgeBaseIds(allKbIds, q);
+                kbSearcher.searchByKnowledgeBaseIds(allKbIds, q);
                 kbSearcher.searchCandidateHitsByKnowledgeBaseIds(allKbIds, q);
             } catch (Exception ignored) {}
         }
@@ -159,7 +155,7 @@ class LatencyBaselineEvalTest {
             long fullStart = System.nanoTime();
             List<RetrievalHit> fullHits;
             try {
-                fullHits = ragService.similaritySearchByKnowledgeBaseIds(allKbIds, query);
+                fullHits = kbSearcher.searchByKnowledgeBaseIds(allKbIds, query);
             } catch (Exception e) {
                 System.out.println("FULL FAILED: " + e.getMessage());
                 continue;

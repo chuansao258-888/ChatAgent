@@ -6,7 +6,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Immutable identity chain that must stay stable across publish, retry, dead-lettering, and replay.
+ * MQ 消息身份链。
+ *
+ * 这个 record 是理解幂等性的核心：
+ * 1. eventId：一次投递事件的随机 id，用于追踪日志，不用于业务去重；
+ * 2. idempotencyKey：稳定业务键，用于判断“是不是同一个任务”；
+ * 3. taskType + idempotencyKey：组成 Redis task lock key；
+ * 4. retryCount：消费者显式重试时递增，进入 retry queue / DLQ 时也会携带。
  */
 public record MqMessageIdentity(
         String eventId,
@@ -21,6 +27,7 @@ public record MqMessageIdentity(
 ) {
 
     public MqMessageIdentity {
+        // 构造时强校验，确保进入 MQ 的消息一定带完整幂等/追踪信息。
         eventId = requireText(eventId, MqMessageHeaders.EVENT_ID);
         idempotencyKey = requireText(idempotencyKey, MqMessageHeaders.IDEMPOTENCY_KEY);
         traceId = requireText(traceId, MqMessageHeaders.TRACE_ID);
@@ -52,7 +59,9 @@ public record MqMessageIdentity(
                                             String originalRoutingKey) {
         String resolvedTraceId = StringUtils.hasText(traceId) ? traceId.trim() : UUID.randomUUID().toString();
         return new MqMessageIdentity(
+                // eventId 由应用侧生成，不是 RabbitMQ 自动生成；每次 initial 都会产生新的投递事件 id。
                 UUID.randomUUID().toString(),
+                // idempotencyKey 必须由业务传入，例如 agent.run 用 sessionId + ":" + turnId。
                 idempotencyKey,
                 resolvedTraceId,
                 taskType,
@@ -65,6 +74,8 @@ public record MqMessageIdentity(
     }
 
     public MqMessageIdentity withRetryCount(int nextRetryCount) {
+        // 重试只改变 retryCount，不改变 eventId/idempotencyKey/traceId。
+        // 这样同一任务的所有重试仍能被识别为同一个业务任务。
         return new MqMessageIdentity(
                 eventId,
                 idempotencyKey,

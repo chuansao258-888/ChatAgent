@@ -28,6 +28,8 @@ public class ChatSessionConverter {
                 .metadata(chatSessionDTO.getMetadata() != null 
                         ? objectMapper.writeValueAsString(chatSessionDTO.getMetadata()) 
                         : null)
+                .nextTurnSeq(chatSessionDTO.getNextTurnSeq())
+                .lastCompletedTurnSeq(chatSessionDTO.getLastCompletedTurnSeq())
                 .createdAt(chatSessionDTO.getCreatedAt())
                 .updatedAt(chatSessionDTO.getUpdatedAt())
                 .build();
@@ -44,6 +46,8 @@ public class ChatSessionConverter {
                 .metadata(chatSession.getMetadata() != null 
                         ? objectMapper.readValue(chatSession.getMetadata(), ChatSessionDTO.MetaData.class) 
                         : null)
+                .nextTurnSeq(chatSession.getNextTurnSeq())
+                .lastCompletedTurnSeq(chatSession.getLastCompletedTurnSeq())
                 .createdAt(chatSession.getCreatedAt())
                 .updatedAt(chatSession.getUpdatedAt())
                 .build();

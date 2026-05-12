@@ -107,6 +107,7 @@ final class PdfSegmentAssembler {
         }
 
         if (StringUtils.hasText(markdown)) {
+            markMarkdownContent(metadata);
             return new ParseSegment(markdown, pageIndex, SegmentType.PAGE, metadata);
         }
         if (StringUtils.hasText(nativeText)) {
@@ -139,8 +140,17 @@ final class PdfSegmentAssembler {
             return;
         }
         metadata.put("fontAwareStructureRestored", structuredPageText.restored());
+        if (structuredPageText.restored()) {
+            markMarkdownContent(metadata);
+        }
         if (structuredPageText.headingCount() > 0) {
             metadata.put("restoredHeadingCount", structuredPageText.headingCount());
+        }
+    }
+
+    private void markMarkdownContent(Map<String, Object> metadata) {
+        if (metadata != null) {
+            metadata.put("contentFormat", "MARKDOWN");
         }
     }
 

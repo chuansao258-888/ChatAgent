@@ -7,7 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Resolves the persistent user profile summary visible to one chat session.
+ * 解析当前会话所属用户的 L3 用户画像摘要。
+ * <p>
+ * L3 是跨会话持久化信息，用于让 Agent 了解用户长期偏好和背景。
  */
 @Component
 public class AgentUserProfileSummaryResolver {
@@ -22,12 +24,13 @@ public class AgentUserProfileSummaryResolver {
     }
 
     /**
-     * Resolves the stored user profile summary for the owner of one chat session.
+     * 根据会话找到用户，再读取该用户的画像摘要。
      *
-     * @param chatSessionId chat session identifier
-     * @return stored summary, or a default sentence when unavailable
+     * @param chatSessionId 会话 ID
+     * @return 用户画像摘要；不可用时返回默认文案
      */
     public String resolve(String chatSessionId) {
+        // 会话未绑定用户时不能跨用户查画像，直接返回无画像提示。
         ChatSessionDTO chatSession = chatSessionRepository.findById(chatSessionId);
         if (chatSession == null || !StringUtils.hasText(chatSession.getUserId())) {
             return "No persistent user profile available";

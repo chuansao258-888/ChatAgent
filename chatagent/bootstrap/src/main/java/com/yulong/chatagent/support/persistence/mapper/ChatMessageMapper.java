@@ -2,6 +2,7 @@ package com.yulong.chatagent.support.persistence.mapper;
 
 import com.yulong.chatagent.support.persistence.entity.ChatMessage;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -25,11 +26,15 @@ public interface ChatMessageMapper {
 
     Long selectMaxSeqNoBySessionId(String sessionId);
 
+    Long selectTurnSeqBySessionIdAndTurnId(@Param("sessionId") String sessionId, @Param("turnId") String turnId);
+
     Long selectTurnCountBySessionId(String sessionId);
 
     int deleteById(String id);
 
     int deleteBySessionIdAndTurnIdAndRoles(String sessionId, String turnId, List<String> roles);
+
+    int markTurnCompleted(@Param("sessionId") String sessionId, @Param("turnId") String turnId);
 
     int updateById(ChatMessage chatMessage);
 }

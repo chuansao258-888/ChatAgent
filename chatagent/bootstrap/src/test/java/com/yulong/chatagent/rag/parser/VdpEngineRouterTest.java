@@ -45,7 +45,7 @@ class VdpEngineRouterTest {
         );
 
         assertThat(router.resolveForBatch(PipelineSource.KNOWLEDGE)).isNull();
-        assertThat(router.supportsBatchDispatch(PipelineSource.KNOWLEDGE)).isFalse();
+        // supportsBatchDispatch 是旧便捷入口；当前直接用 resolveForBatch(null) 表达不支持。
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
                 .turnId(chatMessage.getTurnId())
+                .turnSeq(chatMessage.getTurnSeq())
                 .build();
     }
 
@@ -58,6 +60,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
                 .turnId(chatMessage.getTurnId())
+                .turnSeq(chatMessage.getTurnSeq())
                 .build();
     }
 
@@ -67,6 +70,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessage.getId())
                 .turnId(chatMessage.getTurnId())
+                .turnSeq(chatMessage.getTurnSeq())
                 .build();
     }
 
@@ -83,10 +87,12 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
                 .id(existingChatMessage.getId())
                 .sessionId(existingChatMessage.getSessionId())
                 .turnId(existingChatMessage.getTurnId())
+                .turnSeq(existingChatMessage.getTurnSeq())
                 .role(existingChatMessage.getRole())
                 .content(currentContent + appendContent)
                 .metadata(existingChatMessage.getMetadata())
                 .seqNo(existingChatMessage.getSeqNo())
+                .turnCompleted(existingChatMessage.getTurnCompleted())
                 .createdAt(existingChatMessage.getCreatedAt())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -98,6 +104,7 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         return CreateChatMessageResponse.builder()
                 .chatMessageId(chatMessageId)
                 .turnId(existingChatMessage.getTurnId())
+                .turnSeq(existingChatMessage.getTurnSeq())
                 .build();
     }
 
@@ -147,6 +154,14 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
 
     private ChatMessageDTO doCreateChatMessage(ChatMessageDTO chatMessageDTO) {
         requireOwnedSessionIfAuthenticated(chatMessageDTO.getSessionId());
+        if (chatMessageDTO.getTurnSeq() == null
+                && StringUtils.hasText(chatMessageDTO.getSessionId())
+                && StringUtils.hasText(chatMessageDTO.getTurnId())) {
+            chatMessageDTO.setTurnSeq(chatMessageRepository.findTurnSeqBySessionIdAndTurnId(
+                    chatMessageDTO.getSessionId(),
+                    chatMessageDTO.getTurnId()
+            ));
+        }
         LocalDateTime now = LocalDateTime.now();
         chatMessageDTO.setCreatedAt(now);
         chatMessageDTO.setUpdatedAt(now);

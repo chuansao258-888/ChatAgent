@@ -14,10 +14,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Centralized prompt template loader.
+ * 集中式 Prompt 模板加载器。
  * <p>
- * Reads prompt files from {@code classpath:prompts/}, caches them in memory,
- * and provides variable substitution via {@code {{variableName}}} syntax.
+ * 从 {@code classpath:prompts/} 读取 Markdown 模板并缓存到内存，
+ * 同时支持 {@code {{variableName}}} 形式的变量替换。
  */
 @Component
 @Slf4j
@@ -39,27 +39,28 @@ public class PromptLoader {
     }
 
     /**
-     * Load a prompt template by its relative path under {@code classpath:prompts/}.
-     * The raw template string is cached after first load.
+     * 按相对路径加载 Prompt 模板。
+     * <p>
+     * 首次读取后会缓存原始模板文本，后续调用不再访问 classpath 资源。
      *
-     * @param templatePath relative path, e.g. {@code "agent/default-system-prompt.md"}
-     * @return the template content
-     * @throws IllegalStateException if the template file cannot be found or read
+     * @param templatePath 相对路径，例如 {@code "agent/default-system-prompt.md"}
+     * @return 模板内容
+     * @throws IllegalStateException 模板不存在或读取失败
      */
     public String load(String templatePath) {
         return cache.computeIfAbsent(templatePath, this::readTemplate);
     }
 
     /**
-     * Load and render a prompt template with variable substitution.
-     * Variables use {@code {{variableName}}} syntax.
+     * 加载并渲染带变量的 Prompt 模板。
+     * 变量使用 {@code {{variableName}}} 语法。
      * <p>
-     * The raw template is cached; substitution is applied on every call.
+     * 缓存的是原始模板，每次 render 都会重新做变量替换，避免不同 turn 的变量串用。
      *
-     * @param templatePath relative path under {@code classpath:prompts/}
-     * @param variables    map of variable names to replacement values
-     * @return the rendered prompt with all variables substituted
-     * @throws IllegalStateException if the template is missing or a variable has no mapping
+     * @param templatePath 模板相对路径
+     * @param variables 变量名到替换值的映射
+     * @return 替换后的 Prompt 文本
+     * @throws IllegalStateException 模板缺失或变量未提供
      */
     public String render(String templatePath, Map<String, String> variables) {
         String template = load(templatePath);
@@ -67,6 +68,7 @@ public class PromptLoader {
     }
 
     private String readTemplate(String templatePath) {
+        // 模板统一放在 resources/prompts 下，代码中只传相对路径。
         String location = CLASSPATH_PREFIX + templatePath;
         Resource resource = resourceLoader.getResource(location);
         if (!resource.exists()) {
@@ -82,6 +84,7 @@ public class PromptLoader {
     }
 
     private String substituteVariables(String templatePath, String template, Map<String, String> variables) {
+        // 使用 Matcher.appendReplacement，避免替换值里的 $ 或 \ 被当成正则替换语法。
         Matcher matcher = VARIABLE_PATTERN.matcher(template);
         StringBuffer result = new StringBuffer(template.length() + 256);
         while (matcher.find()) {

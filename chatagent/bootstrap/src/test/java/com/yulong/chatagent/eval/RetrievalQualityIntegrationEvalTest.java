@@ -10,9 +10,9 @@ import com.yulong.chatagent.knowledge.application.KnowledgeDocumentFacadeService
 import com.yulong.chatagent.knowledge.model.request.UpsertKnowledgeBaseRequest;
 import com.yulong.chatagent.knowledge.model.response.UploadKnowledgeDocumentResponse;
 import com.yulong.chatagent.knowledge.model.vo.KnowledgeBaseVO;
-import com.yulong.chatagent.rag.application.RagService;
 import com.yulong.chatagent.rag.ingestion.KnowledgeDocumentIngestionService;
 import com.yulong.chatagent.rag.model.RetrievalHit;
+import com.yulong.chatagent.rag.retrieve.KnowledgeBaseSimilaritySearcher;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -72,10 +72,10 @@ class RetrievalQualityIntegrationEvalTest {
     private KnowledgeDocumentIngestionService ingestionService;
 
     @Autowired
-    private RagService ragService;
+    private ChatModelRouter chatModelRouter;
 
     @Autowired
-    private ChatModelRouter chatModelRouter;
+    private KnowledgeBaseSimilaritySearcher kbSearcher;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -166,7 +166,7 @@ class RetrievalQualityIntegrationEvalTest {
             long retrievalStart = System.currentTimeMillis();
             List<RetrievalHit> hits;
             try {
-                hits = ragService.similaritySearchByKnowledgeBaseIds(allKbIds, q.query);
+                hits = kbSearcher.searchByKnowledgeBaseIds(allKbIds, q.query);
             } catch (Exception e) {
                 System.out.println("    Retrieval FAILED: " + e.getMessage());
                 results.add(new PerQueryResult(q, List.of(), "", 0.0, 0.0, 0, 0, 0, 0));

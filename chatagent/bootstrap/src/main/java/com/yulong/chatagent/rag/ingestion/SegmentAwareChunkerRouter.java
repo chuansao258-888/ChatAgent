@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -30,6 +31,7 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
 
     private final StructureAwareMarkdownChunker markdownChunker;
     private final PlainTextChunker plainTextChunker;
+    private final TableAwareChunker tableAwareChunker;
     private final ObjectMapper objectMapper;
 
     @Value("${chatagent.rag.chunk.page.target-chars:1200}")
@@ -49,7 +51,15 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
             case FULL -> chunkFullSegment(segments.get(0));
             case PAGE -> chunkPageSegments(segments);
             case FIGURE -> chunkStandaloneSegments(segments);
-            case TABLE, SECTION -> plainTextChunker.chunk(
+            case TABLE -> isSpreadsheetSegment(segments.get(0))
+                    ? chunkSpreadsheetTables(segments)
+                    : plainTextChunker.chunk(
+                    segments.stream()
+                            .map(ParseSegment::text)
+                            .filter(StringUtils::hasText)
+                            .collect(Collectors.joining("\n\n"))
+            );
+            case SECTION -> plainTextChunker.chunk(
                     segments.stream()
                             .map(ParseSegment::text)
                             .filter(StringUtils::hasText)
@@ -63,10 +73,25 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
         if (!StringUtils.hasText(text)) {
             return List.of();
         }
-        if (looksLikeMarkdown(text)) {
-            return markdownChunker.chunk(text);
+        List<KnowledgeChunkDraft> raw;
+        if (isMarkdownSegment(segment) || looksLikeMarkdown(text)) {
+            raw = markdownChunker.chunk(text);
+        } else {
+            raw = plainTextChunker.chunk(text);
         }
-        return plainTextChunker.chunk(text);
+        return attachSegmentMetadata(raw, List.of(segment), SegmentType.FULL);
+    }
+
+    private boolean isMarkdownSegment(ParseSegment segment) {
+        if (segment == null || segment.metadata() == null) {
+            return false;
+        }
+        Object contentFormat = segment.metadata().get("contentFormat");
+        if (contentFormat instanceof String value && "MARKDOWN".equalsIgnoreCase(value.trim())) {
+            return true;
+        }
+        Object parserType = segment.metadata().get("parserType");
+        return parserType instanceof String value && "markdown".equalsIgnoreCase(value.trim());
     }
 
     private boolean looksLikeMarkdown(String text) {
@@ -81,6 +106,10 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
     }
 
     private List<KnowledgeChunkDraft> chunkPageSegments(List<ParseSegment> pages) {
+        if (shouldChunkPagesAsLogicalMarkdown(pages)) {
+            return chunkLogicalMarkdownPages(pages);
+        }
+
         List<KnowledgeChunkDraft> drafts = new ArrayList<>();
         StringBuilder buffer = new StringBuilder();
         List<ParseSegment> bufferedSegments = new ArrayList<>();
@@ -122,6 +151,127 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
 
         flushPageBuffer(buffer, bufferedSegments, drafts);
         return reindexChunkMetadata(drafts);
+    }
+
+    private boolean shouldChunkPagesAsLogicalMarkdown(List<ParseSegment> pages) {
+        if (pages == null || pages.isEmpty()) {
+            return false;
+        }
+        List<ParseSegment> textPages = pages.stream()
+                .filter(page -> page != null && StringUtils.hasText(page.text()))
+                .toList();
+        if (textPages.isEmpty()) {
+            return false;
+        }
+        if (textPages.stream().allMatch(this::isMinerUMarkdownPage)) {
+            return true;
+        }
+        long explicitMarkdownPages = textPages.stream()
+                .filter(page -> !isStandaloneVisual(page))
+                .filter(this::isPageMarkdownSegment)
+                .count();
+        if (explicitMarkdownPages > 0) {
+            return true;
+        }
+        long markdownLikePages = textPages.stream()
+                .filter(page -> !isStandaloneVisual(page))
+                .filter(page -> looksLikeMarkdown(page.text()))
+                .count();
+        if (textPages.size() == 1) {
+            return markdownLikePages == 1;
+        }
+        return markdownLikePages >= 2 && markdownLikePages * 2 >= textPages.size();
+    }
+
+    private boolean isPageMarkdownSegment(ParseSegment page) {
+        if (isMarkdownSegment(page) || isMinerUMarkdownPage(page)) {
+            return true;
+        }
+        if (page == null || page.metadata() == null) {
+            return false;
+        }
+        Object restored = page.metadata().get("fontAwareStructureRestored");
+        if (restored instanceof Boolean value && value) {
+            return true;
+        }
+        if (restored instanceof String value && "true".equalsIgnoreCase(value.trim())) {
+            return true;
+        }
+        Object headingCount = page.metadata().get("restoredHeadingCount");
+        if (headingCount instanceof Number number && number.intValue() > 0) {
+            return true;
+        }
+        if (headingCount != null && StringUtils.hasText(headingCount.toString())) {
+            try {
+                return Integer.parseInt(headingCount.toString()) > 0;
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean isMinerUMarkdownPage(ParseSegment page) {
+        if (page == null || page.metadata() == null) {
+            return false;
+        }
+        Object engineId = page.metadata().get("engineId");
+        return engineId instanceof String value && "mineru".equalsIgnoreCase(value.trim());
+    }
+
+    private List<KnowledgeChunkDraft> chunkLogicalMarkdownPages(List<ParseSegment> pages) {
+        StringBuilder combined = new StringBuilder();
+        List<PageTextRange> pageRanges = new ArrayList<>();
+
+        for (ParseSegment page : pages) {
+            if (page == null || !StringUtils.hasText(page.text())) {
+                continue;
+            }
+            if (combined.length() > 0) {
+                combined.append("\n\n");
+            }
+            int start = combined.length();
+            combined.append(page.text().trim());
+            int end = combined.length();
+            pageRanges.add(new PageTextRange(start, end, page));
+        }
+
+        if (combined.isEmpty()) {
+            return List.of();
+        }
+
+        List<KnowledgeChunkDraft> markdownDrafts = markdownChunker.chunk(combined.toString());
+        List<KnowledgeChunkDraft> drafts = new ArrayList<>(markdownDrafts.size());
+        for (KnowledgeChunkDraft draft : markdownDrafts) {
+            Map<String, Object> metadata = parseMetadata(draft.metadata());
+            List<ParseSegment> sourceSegments = overlappingPageSegments(metadata, pageRanges);
+            if (sourceSegments.isEmpty()) {
+                sourceSegments = pageRanges.stream().map(PageTextRange::segment).toList();
+            }
+            metadata.put("sourceSegmentType", SegmentType.PAGE.name());
+            metadata.put("logicalPageMarkdown", true);
+            metadata.putAll(buildPageStats(sourceSegments));
+            metadata.put("contentLength", draft.content() == null ? 0 : draft.content().length());
+            if (sourceSegments.size() == 1) {
+                metadata.putAll(sourceSegments.get(0).metadata());
+            } else {
+                metadata.putAll(sharedSegmentMetadata(sourceSegments));
+            }
+            drafts.add(new KnowledgeChunkDraft(draft.content(), writeMetadata(metadata)));
+        }
+        return reindexChunkMetadata(drafts);
+    }
+
+    private List<ParseSegment> overlappingPageSegments(Map<String, Object> metadata, List<PageTextRange> pageRanges) {
+        Integer sourceStart = metadataInt(metadata, "sourceStart");
+        Integer sourceEnd = metadataInt(metadata, "sourceEnd");
+        if (sourceStart == null || sourceEnd == null || sourceEnd <= sourceStart) {
+            return List.of();
+        }
+        return pageRanges.stream()
+                .filter(range -> range.end() > sourceStart && range.start() < sourceEnd)
+                .map(PageTextRange::segment)
+                .toList();
     }
 
     private boolean isStandaloneVisual(ParseSegment segment) {
@@ -241,11 +391,61 @@ public class SegmentAwareChunkerRouter implements DocumentChunker {
         }
     }
 
+    private Integer metadataInt(Map<String, Object> metadata, String key) {
+        Object value = metadata == null ? null : metadata.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null && StringUtils.hasText(value.toString())) {
+            try {
+                return Integer.parseInt(value.toString());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private String writeMetadata(Map<String, Object> metadata) {
         try {
             return objectMapper.writeValueAsString(metadata);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize segment chunk metadata", e);
         }
+    }
+
+    private boolean isSpreadsheetSegment(ParseSegment segment) {
+        if (segment == null || segment.metadata() == null) {
+            return false;
+        }
+        return "spreadsheet".equals(segment.metadata().get("docType"));
+    }
+
+    private List<KnowledgeChunkDraft> chunkSpreadsheetTables(List<ParseSegment> segments) {
+        List<KnowledgeChunkDraft> drafts = new ArrayList<>();
+        for (ParseSegment segment : segments) {
+            if (!StringUtils.hasText(segment.text())) {
+                continue;
+            }
+            drafts.addAll(tableAwareChunker.chunk(segment.text(), segment.metadata()));
+        }
+        return reindexChunkMetadata(drafts);
+    }
+
+    private Map<String, Object> sharedSegmentMetadata(List<ParseSegment> sourceSegments) {
+        if (sourceSegments == null || sourceSegments.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>(sourceSegments.get(0).metadata());
+        Set<String> keysToKeep = new java.util.HashSet<>(result.keySet());
+        for (int i = 1; i < sourceSegments.size(); i++) {
+            Map<String, Object> other = sourceSegments.get(i).metadata();
+            keysToKeep.removeIf(key -> !other.containsKey(key) || !java.util.Objects.equals(result.get(key), other.get(key)));
+        }
+        result.keySet().retainAll(keysToKeep);
+        return result;
+    }
+
+    private record PageTextRange(int start, int end, ParseSegment segment) {
     }
 }

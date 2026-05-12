@@ -24,7 +24,10 @@ import org.springframework.util.StringUtils;
 import java.io.IOException;
 
 /**
- * Consumes staged knowledge-ingest tasks from RabbitMQ and preserves the retry/DLQ header contract.
+ * 知识库 ingestion MQ 消费者。
+ *
+ * 它和 agent.run 走同一个 AbstractRetryingMqConsumer 模板，
+ * 但业务动作不同：消费到文档入库任务后，执行解析、切块、向量化、写 Milvus。
  */
 @Component
 @Slf4j
@@ -61,6 +64,7 @@ public class KnowledgeIngestTaskListener extends AbstractRetryingMqConsumer<Know
             containerFactory = "knowledgeIngestListenerContainerFactory"
     )
     public void handle(Message message, Channel channel) throws IOException {
+        // 具体 ack/retry/DLQ/幂等锁逻辑全部交给父类模板。
         consume(message, channel);
     }
 
@@ -76,11 +80,14 @@ public class KnowledgeIngestTaskListener extends AbstractRetryingMqConsumer<Know
 
     @Override
     protected int maxRetryCount() {
+        // ingestion 失败通常和外部模型/向量库/临时 IO 有关，最多显式重试 3 次。
         return 3;
     }
 
     @Override
     protected boolean isRetryable(Exception exception) {
+        // 只有明确标记为可重试的 ingestion 异常才进 retry queue；
+        // 参数错误、文档不存在、绑定关系错误都属于终局失败。
         return exception instanceof RetryableKnowledgeDocumentIngestionException;
     }
 
@@ -93,9 +100,11 @@ public class KnowledgeIngestTaskListener extends AbstractRetryingMqConsumer<Know
     protected void processTask(KnowledgeIngestTaskPayload payload, MqMessageIdentity identity) {
         KnowledgeDocumentDTO knowledgeDocument = loadDocument(payload);
         if (payload.clearExistingContentFirst()) {
+            // 重新入库时先清旧 chunk 和 Milvus 向量，避免同一文档重复检索出旧内容。
             knowledgeChunkRepository.deleteByKnowledgeDocumentId(knowledgeDocument.getId());
             knowledgeBaseMilvusIndexer.deleteByKnowledgeDocumentId(knowledgeDocument.getId());
         }
+        // ingestSync 是真正的同步入库流程；MQ 只是把这个耗时动作异步化。
         knowledgeDocumentIngestionService.ingestSync(payload.knowledgeBaseId(), knowledgeDocument);
         log.info("Knowledge ingest task processed: eventId={}, documentId={}",
                 identity.eventId(), knowledgeDocument.getId());
@@ -105,7 +114,7 @@ public class KnowledgeIngestTaskListener extends AbstractRetryingMqConsumer<Know
         if (payload == null || !StringUtils.hasText(payload.knowledgeBaseId()) || !StringUtils.hasText(payload.documentId())) {
             throw new IllegalArgumentException("Invalid knowledge ingest payload");
         }
-        // In the current single-database rollout, a missing/deleted/misbound document is terminal rather than retryable.
+        // 当前是单库场景：文档缺失/已删除/知识库不匹配不是临时错误，重试也不会恢复，所以直接终局失败。
         KnowledgeDocumentDTO knowledgeDocument = knowledgeDocumentRepository.findById(payload.documentId());
         if (knowledgeDocument == null) {
             throw new IllegalArgumentException("Knowledge document not found: " + payload.documentId());

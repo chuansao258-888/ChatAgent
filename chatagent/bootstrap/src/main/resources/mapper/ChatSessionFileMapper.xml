@@ -36,7 +36,7 @@
         )
         VALUES (
             CAST(#{id} AS uuid),
-            CAST(#{sessionId} AS uuid),
+            #{sessionId},
             #{filename},
             #{originalFilename},
             #{mimeType},
@@ -65,7 +65,7 @@
             created_at,
             updated_at
         FROM chat_session_file
-        WHERE session_id = CAST(#{sessionId} AS uuid)
+        WHERE session_id = #{sessionId}
         ORDER BY created_at DESC
     </select>
 
@@ -91,7 +91,7 @@
         UPDATE chat_session_file
         <set>
             <if test="sessionId != null">
-                session_id = CAST(#{sessionId} AS uuid),
+                session_id = #{sessionId},
             </if>
             <if test="filename != null">
                 filename = #{filename},

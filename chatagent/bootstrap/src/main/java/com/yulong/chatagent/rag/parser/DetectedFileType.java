@@ -44,4 +44,19 @@ public record DetectedFileType(
                 || "webp".equals(extension)
                 || "bmp".equals(extension);
     }
+
+    public boolean isWord() {
+        return "docx".equals(extension)
+                || "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(mimeType);
+    }
+
+    public boolean isPowerPoint() {
+        return "pptx".equals(extension)
+                || "application/vnd.openxmlformats-officedocument.presentationml.presentation".equals(mimeType);
+    }
+
+    public boolean isSpreadsheet() {
+        return "xlsx".equals(extension)
+                || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(mimeType);
+    }
 }

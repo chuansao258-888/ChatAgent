@@ -62,7 +62,7 @@ class ImageDocumentParserTest {
                 .containsEntry("contentOrigin", "VDP_TRANSCRIBED")
                 .containsEntry("visualType", "TABLE")
                 .containsEntry("interpretiveNote", "Simple one-row table");
-        assertThat(result.getFullText()).contains("| Item | Value |");
+        assertThat(result.getSegments().get(0).text()).contains("| Item | Value |");
         assertThat(lastOptions.get().extra())
                 .containsEntry("pipelineSource", PipelineSource.SESSION)
                 .containsEntry("sessionId", "session-1")

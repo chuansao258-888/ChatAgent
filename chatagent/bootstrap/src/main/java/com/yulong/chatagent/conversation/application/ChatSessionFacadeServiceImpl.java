@@ -10,6 +10,7 @@ import com.yulong.chatagent.rag.application.DocumentStorageService;
 import com.yulong.chatagent.rag.vector.milvus.SessionFileMilvusIndexer;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.support.dto.ChatSessionFileDTO;
+import com.yulong.chatagent.support.id.SnowflakeIdGenerator;
 import com.yulong.chatagent.conversation.converter.ChatSessionConverter;
 import com.yulong.chatagent.conversation.model.request.CreateChatSessionRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatSessionRequest;
@@ -37,6 +38,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
     private final DocumentStorageService documentStorageService;
     private final SessionFileMilvusIndexer sessionFileMilvusIndexer;
     private final ResourceAccessGuard resourceAccessGuard;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
     public ChatSessionVO[] getChatSessions() {
@@ -60,6 +62,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
         String userId = requireCurrentUserId();
         String agentId = internalAssistantService.getRequiredAssistantId();
         ChatSessionDTO chatSessionDTO = chatSessionConverter.toDTO(request);
+        chatSessionDTO.setId(snowflakeIdGenerator.nextIdString());
         chatSessionDTO.setAgentId(agentId);
         chatSessionDTO.setUserId(userId);
         LocalDateTime now = LocalDateTime.now();
