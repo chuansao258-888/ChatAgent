@@ -13,6 +13,10 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+**/application-secrets.yml
+**/application-secrets.yaml
+**/application-mail.yml
+**/application-mail.yaml
 
 **/target/
 **/build/

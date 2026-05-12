@@ -40,7 +40,7 @@ spring:
     postgresql:
       transactional-lock: false
   mail:
-    host: ${CHATAGENT_MAIL_HOST:smtp.qq.com}
+    host: ${CHATAGENT_MAIL_HOST:}
     port: ${CHATAGENT_MAIL_PORT:587}
     username: ${CHATAGENT_MAIL_USERNAME:}
     password: ${CHATAGENT_MAIL_PASSWORD:}
@@ -48,10 +48,10 @@ spring:
     properties:
       mail:
         smtp:
-          auth: ${CHATAGENT_MAIL_SMTP_AUTH:true}
+          auth: ${CHATAGENT_MAIL_SMTP_AUTH:false}
           starttls:
-            enable: ${CHATAGENT_MAIL_STARTTLS_ENABLE:true}
-            required: ${CHATAGENT_MAIL_STARTTLS_REQUIRED:true}
+            enable: ${CHATAGENT_MAIL_STARTTLS_ENABLE:false}
+            required: ${CHATAGENT_MAIL_STARTTLS_REQUIRED:false}
   ai:
     deepseek:
       api-key: ${CHATAGENT_DEEPSEEK_API_KEY:}
