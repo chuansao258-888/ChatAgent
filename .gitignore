@@ -46,5 +46,7 @@ output/
 
 postman/*local*.json
 
+docs/
+
 # Interview preparation (personal notes, not for sharing)
 docs/interview/
