@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.agent.application.ToolFacadeService;
+import com.yulong.chatagent.agent.tools.WebSearchTools;
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
 import com.yulong.chatagent.intent.application.IntentResolution;
@@ -10,6 +11,10 @@ import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.mcp.runtime.McpRolloutPolicy;
 import com.yulong.chatagent.mcp.runtime.McpRolloutProperties;
 import com.yulong.chatagent.support.dto.AgentDTO;
+import com.yulong.chatagent.websearch.WebSearchProperties;
+import com.yulong.chatagent.websearch.WebSearchResponse;
+import com.yulong.chatagent.websearch.searxng.SearXNGHealthChecker;
+import com.yulong.chatagent.websearch.searxng.SearXNGWebSearchClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -18,6 +23,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -318,6 +324,29 @@ class AgentToolCallbackFactoryTest {
         assertThat(callbacks).isEmpty();
     }
 
+    @Test
+    void shouldExposeWebSearchToolWithModelFacingWebSearchName() {
+        ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
+        WebSearchTools webSearchTool = webSearchTool();
+        when(toolFacadeService.getFixedTools()).thenReturn(List.of());
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of(webSearchTool));
+
+        AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
+                toolFacadeService,
+                rolloutPolicy("ALL"),
+                IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING
+        );
+        AgentDTO agent = AgentDTO.builder()
+                .id("assistant-1")
+                .allowedTools(List.of("webSearchTool"))
+                .build();
+
+        List<ToolCallback> callbacks = factory.create(agent, null);
+
+        assertThat(callbackNames(callbacks))
+                .containsExactly("webSearch");
+    }
+
     private static List<String> callbackNames(List<ToolCallback> callbacks) {
         return callbacks.stream()
                 .map(callback -> callback.getToolDefinition().name())
@@ -350,6 +379,16 @@ class AgentToolCallbackFactoryTest {
 
     private static Tool optionalTool(String name) {
         return new NamedTool(name, ToolType.OPTIONAL);
+    }
+
+    private static WebSearchTools webSearchTool() {
+        WebSearchProperties properties = new WebSearchProperties();
+        properties.setEnabled(true);
+        SearXNGHealthChecker healthChecker = mock(SearXNGHealthChecker.class);
+        when(healthChecker.isReachable()).thenReturn(true);
+        SearXNGWebSearchClient searchClient = mock(SearXNGWebSearchClient.class);
+        when(searchClient.search(any())).thenReturn(WebSearchResponse.empty());
+        return new WebSearchTools(properties, healthChecker, searchClient);
     }
 
     private static final class NamedTool implements Tool, DirectToolCallbackSource {

@@ -301,6 +301,15 @@ chatagent:
     enabled: ${CHATAGENT_SESSION_GUARD_ENABLED:true}
     ttl-ms: ${CHATAGENT_SESSION_GUARD_TTL_MS:120000}
     fail-open: ${CHATAGENT_SESSION_GUARD_FAIL_OPEN:true}
+  web-search:
+    enabled: ${CHATAGENT_WEB_SEARCH_ENABLED:false}
+    searxng-base-url: ${CHATAGENT_WEB_SEARCH_SEARXNG_BASE_URL:http://localhost:8888}
+    connect-timeout-ms: ${CHATAGENT_WEB_SEARCH_CONNECT_TIMEOUT_MS:2000}
+    response-timeout-ms: ${CHATAGENT_WEB_SEARCH_RESPONSE_TIMEOUT_MS:8000}
+    default-max-results: ${CHATAGENT_WEB_SEARCH_DEFAULT_MAX_RESULTS:5}
+    max-results: ${CHATAGENT_WEB_SEARCH_MAX_RESULTS:8}
+    max-query-chars: ${CHATAGENT_WEB_SEARCH_MAX_QUERY_CHARS:300}
+    safe-search: ${CHATAGENT_WEB_SEARCH_SAFE_SEARCH:1}
   mcp:
     enabled: ${CHATAGENT_MCP_ENABLED:true}
     crypto:

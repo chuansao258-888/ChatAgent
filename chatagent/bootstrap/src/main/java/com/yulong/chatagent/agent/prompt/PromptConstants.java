@@ -24,6 +24,7 @@ public final class PromptConstants {
 
     // Agent 条件片段：由 DefaultAgentRuntimeContextLoader 按运行时上下文拼装
     public static final String AGENT_MCP_TOOL_SAFETY = "agent/sections/mcp-tool-safety.md";
+    public static final String AGENT_WEB_SEARCH_SAFETY = "agent/sections/web-search-safety.md";
     public static final String AGENT_TOOL_STRATEGY = "agent/sections/tool-strategy.md";
     public static final String AGENT_LATEST_TURN_GUIDANCE = "agent/sections/latest-turn-guidance.md";
     public static final String AGENT_INTENT_BOUNDARY_NARROWED = "agent/sections/intent-boundary-narrowed.md";

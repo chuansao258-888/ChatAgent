@@ -5,10 +5,12 @@ import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentNodeLevel;
 import com.yulong.chatagent.intent.model.IntentNodeStatus;
+import com.yulong.chatagent.intent.model.ScopePolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
@@ -19,7 +21,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -194,6 +198,91 @@ class IntentRouterTest {
 
         assertThat(result.hasResolution()).isTrue();
         assertThat(result.resolution().path().get(0).getId()).isEqualTo("topic-a");
+    }
+
+    @Test
+    void shouldExposeWebSearchToolMetadataAndGuidanceToClassifier() {
+        com.yulong.chatagent.support.dto.IntentNodeDTO webSearch = node(
+                "topic-web",
+                null,
+                IntentNodeLevel.TOPIC,
+                "外部搜索",
+                List.of("current public facts", "latest release"),
+                IntentKind.TOOL
+        );
+        webSearch.setDescription("Use native web search for public information that may have changed.");
+        webSearch.setAllowedTools(List.of("webSearchTool"));
+        webSearch.setScopePolicy(ScopePolicy.STRICT);
+        com.yulong.chatagent.support.dto.IntentNodeDTO knowledgeBase = node(
+                "topic-kb",
+                null,
+                IntentNodeLevel.TOPIC,
+                "内部知识库",
+                List.of("内部制度", "公司政策"),
+                IntentKind.KB
+        );
+        knowledgeBase.setDescription("Use internal knowledge bases and uploaded documents.");
+
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(webSearch, knowledgeBase),
+                Map.of("topic-kb", List.of("kb-internal"))
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(snapshot);
+        when(chatModelRouter.route("classifier-model")).thenReturn(chatClient);
+        when(chatClient.prompt(anyString()).call().content()).thenReturn("topic-web");
+        clearInvocations(chatClient);
+
+        IntentRoutingResult result = intentRouter.route("assistant-1", "今天 OpenAI 有什么重要变化？请给来源");
+
+        assertThat(result.hasResolution()).isTrue();
+        assertThat(result.resolution().kind()).isEqualTo(IntentKind.TOOL);
+        assertThat(result.resolution().allowedTools()).containsExactly("webSearchTool");
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(chatClient).prompt(promptCaptor.capture());
+        assertThat(promptCaptor.getValue())
+                .contains("Kind: TOOL")
+                .contains("AllowedTools: webSearchTool")
+                .contains("webSearchTool")
+                .contains("Web search is represented by the existing TOOL intent kind")
+                .contains("latest/current/today/recent");
+    }
+
+    @Test
+    void shouldPreferKnowledgeBaseForNonCurrentInternalFileQuestions() {
+        com.yulong.chatagent.support.dto.IntentNodeDTO webSearch = node(
+                "topic-web",
+                null,
+                IntentNodeLevel.TOPIC,
+                "外部搜索",
+                List.of("最新新闻", "联网搜索"),
+                IntentKind.TOOL
+        );
+        webSearch.setAllowedTools(List.of("webSearchTool"));
+        com.yulong.chatagent.support.dto.IntentNodeDTO knowledgeBase = node(
+                "topic-kb",
+                null,
+                IntentNodeLevel.TOPIC,
+                "内部文件",
+                List.of("内部文件", "上传文档", "知识库"),
+                IntentKind.KB
+        );
+
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(webSearch, knowledgeBase),
+                Map.of("topic-kb", List.of("kb-internal"))
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(snapshot);
+
+        IntentRoutingResult result = intentRouter.route("assistant-1", "内部文件里的报销政策是什么？");
+
+        assertThat(result.hasResolution()).isTrue();
+        assertThat(result.resolution().kind()).isEqualTo(IntentKind.KB);
+        assertThat(result.resolution().scopedKbIds()).containsExactly("kb-internal");
     }
 
     private com.yulong.chatagent.support.dto.IntentNodeDTO node(String id,

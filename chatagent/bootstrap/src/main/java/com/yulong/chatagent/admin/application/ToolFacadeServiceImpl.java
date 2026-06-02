@@ -4,6 +4,7 @@ import com.yulong.chatagent.agent.application.ToolFacadeService;
 
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
+import com.yulong.chatagent.agent.tools.WebSearchTools;
 import com.yulong.chatagent.mcp.runtime.McpRuntimeToolRegistry;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,9 @@ public class ToolFacadeServiceImpl implements ToolFacadeService {
 
     @Override
     public List<Tool> getAllTools() {
-        List<Tool> allTools = new ArrayList<>(tools);
+        List<Tool> allTools = new ArrayList<>(tools.stream()
+                .filter(this::isVisible)
+                .toList());
         allTools.addAll(mcpRuntimeToolRegistry.getOptionalTools());
         return List.copyOf(allTools);
     }
@@ -49,6 +52,14 @@ public class ToolFacadeServiceImpl implements ToolFacadeService {
     private List<Tool> getToolsByType(ToolType type) {
         return tools.stream()
                 .filter(tool -> tool.getType().equals(type))
+                .filter(this::isVisible)
                 .toList();
+    }
+
+    private boolean isVisible(Tool tool) {
+        if (tool instanceof WebSearchTools webSearchTools) {
+            return webSearchTools.isAvailable();
+        }
+        return true;
     }
 }

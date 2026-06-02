@@ -325,7 +325,7 @@ public class IntentRouter {
      */
     private String callLlmClassifier(List<IntentNodeDTO> candidates, String query, String pathLabel) {
         String candidatesText = candidates.stream()
-                .map(n -> "- ID: " + n.getId() + ", Name: " + n.getName() + ", Description: " + (n.getDescription() == null ? "None" : n.getDescription()))
+                .map(this::formatCandidateForClassifier)
                 .collect(Collectors.joining("\n"));
 
         String prompt = promptLoader.render(PromptConstants.INTENT_CLASSIFIER, Map.of(
@@ -347,6 +347,23 @@ public class IntentRouter {
             return "";
         }
         return content.trim();
+    }
+
+    private String formatCandidateForClassifier(IntentNodeDTO node) {
+        String description = StringUtils.hasText(node.getDescription()) ? node.getDescription() : "None";
+        String kind = node.getIntentKind() == null ? "None" : node.getIntentKind().name();
+        String allowedTools = node.getAllowedTools() == null || node.getAllowedTools().isEmpty()
+                ? "None"
+                : String.join(", ", node.getAllowedTools());
+        String examples = node.getExamples() == null || node.getExamples().isEmpty()
+                ? "None"
+                : String.join(", ", node.getExamples());
+        return "- ID: " + node.getId()
+                + ", Name: " + node.getName()
+                + ", Description: " + description
+                + "\n  Kind: " + kind
+                + "\n  AllowedTools: " + allowedTools
+                + "\n  Examples: " + examples;
     }
 
     private double score(String query, IntentNodeDTO node) {

@@ -44,7 +44,7 @@ class ChatRoutingPropertiesBindingTest {
         assertThat(deepseek.getSpringClientKey()).isEqualTo("deepseek-reasoner");
         assertThat(deepseek.getPriority()).isEqualTo(10);
         assertThat(deepseek.getEnabled()).isTrue();
-        assertThat(deepseek.getSupportsThinking()).isFalse();
+        assertThat(deepseek.getSupportsThinking()).isTrue();
     }
 
     private static ChatRoutingProperties bindFromApplicationYaml() throws Exception {

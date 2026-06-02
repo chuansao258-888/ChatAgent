@@ -168,9 +168,13 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         }
         appendLatestTurnGuidance(builder, memory);
 
+        appendToolStrategyGuidance(builder, toolCallbacks);
+
         if (hasMcpTools(toolCallbacks)) {
             builder.append("\n").append(promptLoader.load(PromptConstants.AGENT_MCP_TOOL_SAFETY)).append("\n");
-            appendToolStrategyGuidance(builder, toolCallbacks);
+        }
+        if (hasWebSearchTool(toolCallbacks)) {
+            builder.append("\n").append(promptLoader.load(PromptConstants.AGENT_WEB_SEARCH_SAFETY)).append("\n");
         }
 
         return builder.toString().trim();
@@ -293,5 +297,15 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 .map(ToolCallback::getToolDefinition)
                 .filter(java.util.Objects::nonNull)
                 .anyMatch(definition -> StringUtils.hasText(definition.name()) && definition.name().startsWith("mcp_"));
+    }
+
+    private boolean hasWebSearchTool(List<ToolCallback> toolCallbacks) {
+        if (toolCallbacks == null || toolCallbacks.isEmpty()) {
+            return false;
+        }
+        return toolCallbacks.stream()
+                .map(ToolCallback::getToolDefinition)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(definition -> "webSearch".equals(definition.name()));
     }
 }
