@@ -2,6 +2,8 @@ package com.yulong.chatagent.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
+import com.yulong.chatagent.chat.routing.LLMService;
+import com.yulong.chatagent.chat.routing.StreamCallback;
 import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
@@ -18,11 +20,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -92,6 +97,34 @@ class AgentMessageBridgeImplTest {
         verify(chatMessageFacadeService).createChatMessage(dtoCaptor.capture());
         assertThat(dtoCaptor.getValue().getMetadata().getCitations()).isNull();
         assertThat(currentTurnCitationHolder.peek("session-1", "turn-1")).hasSize(1);
+    }
+
+    @Test
+    void streamFinalResponseDoneEventShouldCarryTurnId() {
+        LLMService llmService = mock(LLMService.class);
+        when(llmService.streamChat(any(Prompt.class), eq(true), any(StreamCallback.class)))
+                .thenAnswer(invocation -> {
+                    StreamCallback callback = invocation.getArgument(2);
+                    callback.onContent("Final answer");
+                    callback.onComplete();
+                    return (reactor.core.Disposable) () -> {
+                    };
+                });
+
+        String finalText = agentMessageBridge.streamFinalResponse(
+                "session-1", "turn-1", new Prompt("final"), llmService, true);
+
+        assertThat(finalText).isEqualTo("Final answer");
+
+        ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
+        verify(sseService, atLeastOnce()).publish(eq("session-1"), sseCaptor.capture());
+
+        SseMessage done = sseCaptor.getAllValues().stream()
+                .filter(message -> message.getType() == SseMessage.Type.AI_DONE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(done.getPayload().getDone()).isTrue();
+        assertThat(done.getPayload().getTurnId()).isEqualTo("turn-1");
     }
 
     private CitationMetadata citation(String documentId) {

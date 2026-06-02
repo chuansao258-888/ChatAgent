@@ -1,5 +1,7 @@
 package com.yulong.chatagent.conversation.application;
 
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.AgentExecutionModeResolver;
 import com.yulong.chatagent.conversation.application.model.ConversationTurnContext;
 import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.conversation.event.ChatEventDispatcher;
@@ -53,6 +55,7 @@ public class ConversationOrchestratorService {
     private final ChatEventDispatcher chatEventDispatcher;
     private final ConversationTurnCompletionPublisher conversationTurnCompletionPublisher;
     private final SseService sseService;
+    private final AgentExecutionModeResolver executionModeResolver;
 
     public ConversationOrchestratorService(ChatSessionFacadeService chatSessionFacadeService,
                                            ChatSessionRepository chatSessionRepository,
@@ -60,7 +63,8 @@ public class ConversationOrchestratorService {
                                            ConversationTurnPreparationService conversationTurnPreparationService,
                                            ChatEventDispatcher chatEventDispatcher,
                                            ConversationTurnCompletionPublisher conversationTurnCompletionPublisher,
-                                           SseService sseService) {
+                                           SseService sseService,
+                                           AgentExecutionModeResolver executionModeResolver) {
         this.chatSessionFacadeService = chatSessionFacadeService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageFacadeService = chatMessageFacadeService;
@@ -68,6 +72,7 @@ public class ConversationOrchestratorService {
         this.chatEventDispatcher = chatEventDispatcher;
         this.conversationTurnCompletionPublisher = conversationTurnCompletionPublisher;
         this.sseService = sseService;
+        this.executionModeResolver = executionModeResolver;
     }
 
     /**
@@ -109,11 +114,13 @@ public class ConversationOrchestratorService {
 
         ChatSessionVO chatSession = chatSessionFacadeService.getChatSession(normalizedRequest.getSessionId());
         String resolvedAgentId = requireAgentId(chatSession, normalizedRequest.getSessionId());
+        AgentExecutionMode resolvedExecutionMode = executionModeResolver.resolve(normalizedRequest.getExecutionMode());
         Long turnSeq = chatSessionRepository.allocateNextTurnSeq(normalizedRequest.getSessionId());
         if (turnSeq == null || turnSeq <= 0L) {
             throw new BizException("Failed to allocate turn sequence for session: " + normalizedRequest.getSessionId());
         }
-        CreateChatMessageRequest sequencedRequest = withTurnSeq(normalizedRequest, turnSeq);
+        CreateChatMessageRequest requestWithMode = withResolvedExecutionMode(normalizedRequest, resolvedExecutionMode);
+        CreateChatMessageRequest sequencedRequest = withTurnSeq(requestWithMode, turnSeq);
 
         // 先保存用户消息，再读取最近历史，确保当前输入也进入 Agent 的 L1 记忆候选。
         CreateChatMessageResponse createdMessage = chatMessageFacadeService.createChatMessage(sequencedRequest);
@@ -130,7 +137,8 @@ public class ConversationOrchestratorService {
                 sequencedRequest,
                 chatSession,
                 createdMessage,
-                recentHistory
+                recentHistory,
+                resolvedExecutionMode
         );
     }
 
@@ -180,7 +188,8 @@ public class ConversationOrchestratorService {
                         turnContext.historySize(),
                         preparationResult.intentResolution(),
                         preparationResult.rewrittenInput(),
-                        resolveSessionUserId(turnContext.request().getSessionId())
+                        resolveSessionUserId(turnContext.request().getSessionId()),
+                        turnContext.executionMode()
                 )
         );
     }
@@ -245,6 +254,7 @@ public class ConversationOrchestratorService {
                 .turnSeq(null)
                 .role(request.getRole())
                 .content(request.getContent().trim())
+                .executionMode(request.getExecutionMode())
                 .metadata(request.getMetadata())
                 .build();
     }
@@ -256,8 +266,34 @@ public class ConversationOrchestratorService {
                 .turnSeq(turnSeq)
                 .role(request.getRole())
                 .content(request.getContent())
+                .executionMode(request.getExecutionMode())
                 .metadata(request.getMetadata())
                 .build();
+    }
+
+    private CreateChatMessageRequest withResolvedExecutionMode(CreateChatMessageRequest request,
+                                                               AgentExecutionMode executionMode) {
+        return CreateChatMessageRequest.builder()
+                .sessionId(request.getSessionId())
+                .turnId(request.getTurnId())
+                .turnSeq(request.getTurnSeq())
+                .role(request.getRole())
+                .content(request.getContent())
+                .executionMode(executionMode)
+                .metadata(withExecutionMode(request.getMetadata(), executionMode))
+                .build();
+    }
+
+    private ChatMessageDTO.MetaData withExecutionMode(ChatMessageDTO.MetaData metadata,
+                                                      AgentExecutionMode executionMode) {
+        ChatMessageDTO.MetaData.MetaDataBuilder builder = ChatMessageDTO.MetaData.builder()
+                .executionMode(executionMode);
+        if (metadata != null) {
+            builder.toolResponse(metadata.getToolResponse())
+                    .toolCalls(metadata.getToolCalls())
+                    .citations(metadata.getCitations());
+        }
+        return builder.build();
     }
 
     private String requireAgentId(ChatSessionVO chatSession, String sessionId) {

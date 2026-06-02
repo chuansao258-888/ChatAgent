@@ -1,5 +1,6 @@
 package com.yulong.chatagent.conversation.event;
 
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import lombok.Data;
 
@@ -29,6 +30,7 @@ public class ChatEvent {
     private IntentResolution intentResolution;
     private String rewrittenInput;
     private String userId;
+    private AgentExecutionMode executionMode;
 
     public ChatEvent(String agentId,
                      String sessionId,
@@ -50,7 +52,7 @@ public class ChatEvent {
                      IntentResolution intentResolution,
                      String rewrittenInput,
                      String userId) {
-        this(agentId, sessionId, turnId, null, chatMessageId, userInput, recentHistorySize, intentResolution, rewrittenInput, userId);
+        this(agentId, sessionId, turnId, null, chatMessageId, userInput, recentHistorySize, intentResolution, rewrittenInput, userId, AgentExecutionMode.REACT);
     }
 
     public ChatEvent(String agentId,
@@ -63,6 +65,20 @@ public class ChatEvent {
                      IntentResolution intentResolution,
                      String rewrittenInput,
                      String userId) {
+        this(agentId, sessionId, turnId, turnSeq, chatMessageId, userInput, recentHistorySize, intentResolution, rewrittenInput, userId, AgentExecutionMode.REACT);
+    }
+
+    public ChatEvent(String agentId,
+                     String sessionId,
+                     String turnId,
+                     Long turnSeq,
+                     String chatMessageId,
+                     String userInput,
+                     int recentHistorySize,
+                     IntentResolution intentResolution,
+                     String rewrittenInput,
+                     String userId,
+                     AgentExecutionMode executionMode) {
         // 这里不做额外业务逻辑，只负责把 turn 执行所需的最小字段稳定封装起来。
         this.agentId = agentId;
         this.sessionId = sessionId;
@@ -74,5 +90,6 @@ public class ChatEvent {
         this.intentResolution = intentResolution;
         this.rewrittenInput = rewrittenInput;
         this.userId = userId;
+        this.executionMode = executionMode == null ? AgentExecutionMode.REACT : executionMode;
     }
 }

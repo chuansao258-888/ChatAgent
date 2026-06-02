@@ -1,6 +1,12 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.TestPromptLoader;
+import com.yulong.chatagent.agent.deepthink.DeepThinkRuntimeEngine;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.AgentRunContext;
+import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
+import com.yulong.chatagent.agent.runtime.AgentRuntimeEngine;
+import com.yulong.chatagent.agent.runtime.ReactRuntimeEngine;
 import com.yulong.chatagent.chat.routing.LLMService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
@@ -11,6 +17,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatAgentFactoryTest {
@@ -34,20 +41,78 @@ class ChatAgentFactoryTest {
                 List.of(toolCallback),
                 "session file summary",
                 "session summary",
-                "user profile summary"
+                "user profile summary",
+                AgentExecutionMode.REACT
         );
 
-        when(contextLoader.load("agent-1", "session-1", null, null)).thenReturn(context);
+        when(contextLoader.load("agent-1", "session-1", null, null, null)).thenReturn(context);
 
-        ChatAgentFactory factory = new ChatAgentFactory(TestPromptLoader.create(), llmService, contextLoader, messageBridge);
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), llmService, contextLoader, messageBridge,
+                new AgentRunPolicyProperties()
+        );
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
 
         assertThat(ReflectionTestUtils.getField(chatAgent, "agentId")).isEqualTo("agent-1");
         assertThat(ReflectionTestUtils.getField(chatAgent, "name")).isEqualTo("Support");
-        assertThat(ReflectionTestUtils.getField(chatAgent, "llmService")).isSameAs(llmService);
-        assertThat(ReflectionTestUtils.getField(chatAgent, "sessionFileSummary")).isEqualTo("session file summary");
-        assertThat(ReflectionTestUtils.getField(chatAgent, "userProfileSummary")).isEqualTo("user profile summary");
-        assertThat(ReflectionTestUtils.getField(chatAgent, "messageBridge")).isSameAs(messageBridge);
+        // ChatAgent now delegates to runtime engine, verify the runContext is set
+        AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
+        assertThat(runContext).isNotNull();
+        assertThat(runContext.sessionFileSummary()).isEqualTo("session file summary");
+        assertThat(runContext.userProfileSummary()).isEqualTo("user profile summary");
+        assertThat(runContext.executionMode()).isEqualTo(AgentExecutionMode.REACT);
+
+        // REACT mode should select ReactRuntimeEngine
+        AgentRuntimeEngine engine = (AgentRuntimeEngine) ReflectionTestUtils.getField(chatAgent, "runtimeEngine");
+        assertThat(engine).isInstanceOf(ReactRuntimeEngine.class);
+    }
+
+    @Test
+    void shouldCreateAgentWithExplicitDeepThinkMode() {
+        LLMService llmService = mock(LLMService.class);
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
+
+        AgentRuntimeContext context = new AgentRuntimeContext(
+                "agent-1",
+                "Support",
+                "support agent",
+                "system prompt",
+                "glm-4.6",
+                12,
+                List.of(),
+                List.of(),
+                "session file summary",
+                "session summary",
+                "user profile summary",
+                AgentExecutionMode.DEEPTHINK
+        );
+
+        when(contextLoader.load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK))
+                .thenReturn(context);
+
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), llmService, contextLoader, messageBridge,
+                new AgentRunPolicyProperties()
+        );
+
+        ChatAgent chatAgent = factory.create(
+                "agent-1",
+                "session-1",
+                null,
+                null,
+                null,
+                "user-1",
+                AgentExecutionMode.DEEPTHINK
+        );
+
+        AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
+        assertThat(runContext.executionMode()).isEqualTo(AgentExecutionMode.DEEPTHINK);
+        verify(contextLoader).load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK);
+
+        // DEEPTHINK mode should select DeepThinkRuntimeEngine
+        AgentRuntimeEngine deepEngine = (AgentRuntimeEngine) ReflectionTestUtils.getField(chatAgent, "runtimeEngine");
+        assertThat(deepEngine).isInstanceOf(DeepThinkRuntimeEngine.class);
     }
 }

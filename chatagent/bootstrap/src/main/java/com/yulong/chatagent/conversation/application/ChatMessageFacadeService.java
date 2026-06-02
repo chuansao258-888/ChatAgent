@@ -18,9 +18,10 @@ public interface ChatMessageFacadeService {
 
     /**
      * Returns the full message history for a chat session.
+     * Internal trace messages (metadata.internal=true) are filtered out.
      *
      * @param sessionId chat session identifier
-     * @return ordered message list for the session
+     * @return ordered message list for the session, excluding internal trace messages
      */
     ChatMessageVO[] getChatMessagesBySessionId(String sessionId);
 
@@ -90,4 +91,3 @@ public interface ChatMessageFacadeService {
      */
     void updateChatMessage(String chatMessageId, UpdateChatMessageRequest request);
 }
-

@@ -33,6 +33,10 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
         List<ChatMessageDTO> chatMessages = chatMessageRepository.findBySessionId(sessionId);
         List<ChatMessageVO> result = new ArrayList<>();
         for (ChatMessageDTO chatMessage : chatMessages) {
+            // 过滤掉 DeepThink 内部 trace 消息，不展示在用户聊天历史中。
+            if (isInternal(chatMessage)) {
+                continue;
+            }
             result.add(chatMessageConverter.toVO(chatMessage));
         }
         return result.toArray(new ChatMessageVO[0]);
@@ -170,6 +174,10 @@ public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {
             throw new BizException("Failed to create chat message");
         }
         return chatMessageDTO;
+    }
+
+    private boolean isInternal(ChatMessageDTO dto) {
+        return dto.getMetadata() != null && Boolean.TRUE.equals(dto.getMetadata().getInternal());
     }
 
     private void requireOwnedSessionIfAuthenticated(String sessionId) {

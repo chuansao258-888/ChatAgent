@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -46,7 +47,7 @@ class AgentThinkingEngineTest {
     @Test
     void shouldStreamFinalAnswerDirectlyWhenNoToolsAreAvailable() {
         when(chatMemory.get(SESSION_ID)).thenReturn(List.of(new UserMessage("hello")));
-        when(messageBridge.streamFinalResponse(eq(SESSION_ID), eq(TURN_ID), any(Prompt.class), same(llmService)))
+        when(messageBridge.streamFinalResponse(eq(SESSION_ID), eq(TURN_ID), any(Prompt.class), same(llmService), anyBoolean()))
                 .thenReturn("direct final answer");
 
         AgentThinkingEngine engine = engineWithTools(List.of());
@@ -55,7 +56,7 @@ class AgentThinkingEngineTest {
 
         assertThat(response.getResult().getOutput().getText()).isEqualTo("direct final answer");
         assertThat(response.getResult().getOutput().getToolCalls()).isEmpty();
-        verify(messageBridge).streamFinalResponse(eq(SESSION_ID), eq(TURN_ID), any(Prompt.class), same(llmService));
+        verify(messageBridge).streamFinalResponse(eq(SESSION_ID), eq(TURN_ID), any(Prompt.class), same(llmService), anyBoolean());
         verify(messageBridge, never()).streamDecisionResponse(
                 any(), any(), any(Prompt.class), any(), any(), same(llmService));
         verify(messageBridge, never()).persistAndPublish(any(), any(), any());
@@ -87,7 +88,7 @@ class AgentThinkingEngineTest {
 
         assertThat(response.getResult().getOutput()).isSameAs(output);
         verify(messageBridge).persistAndPublish(SESSION_ID, TURN_ID, output);
-        verify(messageBridge, never()).streamFinalResponse(any(), any(), any(Prompt.class), same(llmService));
+        verify(messageBridge, never()).streamFinalResponse(any(), any(), any(Prompt.class), same(llmService), anyBoolean());
     }
 
     @Test
@@ -115,7 +116,7 @@ class AgentThinkingEngineTest {
         assertThat(response.getResult().getOutput()).isSameAs(output);
         assertThat(response.getResult().getOutput().getToolCalls()).isEmpty();
         verify(messageBridge, never()).persistAndPublish(any(), any(), any());
-        verify(messageBridge, never()).streamFinalResponse(any(), any(), any(Prompt.class), same(llmService));
+        verify(messageBridge, never()).streamFinalResponse(any(), any(), any(Prompt.class), same(llmService), anyBoolean());
     }
 
     private AgentThinkingEngine engineWithTools(List<ToolCallback> tools) {
@@ -129,7 +130,8 @@ class AgentThinkingEngineTest {
                 "session file summary",
                 "user profile summary",
                 TURN_ID,
-                messageBridge
+                messageBridge,
+                4  // maxToolCallsPerStep
         );
     }
 

@@ -1,6 +1,7 @@
 package com.yulong.chatagent.support.dto;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.rag.model.CitationMetadata;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -43,6 +44,15 @@ public class ChatMessageDTO {
         private ToolResponseMessage.ToolResponse toolResponse;
         private List<AssistantMessage.ToolCall> toolCalls;
         private List<CitationMetadata> citations;
+        private AgentExecutionMode executionMode;
+        /** true = 不在默认聊天历史中展示；DeepThink 内部 tool_call/tool_response 消息标记。 */
+        private Boolean internal;
+        /** DeepThink 阶段标签："PLAN" | "EXECUTE" | "REFLECT" | "VERIFY" */
+        private String deepThinkPhase;
+        /** 计划步骤 ID，如 "S1"、"S2" */
+        private String planStepId;
+        /** DeepThink 运行追踪摘要，仅附加在最终回答上 */
+        private AgentTraceMetadata agentTrace;
     }
 
     @Getter

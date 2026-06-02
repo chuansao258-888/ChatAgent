@@ -17,6 +17,7 @@ import type {
 } from "../../../types";
 import CitationInlineTag from "./CitationInlineTag.tsx";
 import CitationSourcePanel from "./CitationSourcePanel.tsx";
+import DeepThinkTracePanel from "./DeepThinkTracePanel.tsx";
 
 interface AgentChatHistoryProps {
   messages: ChatMessageVO[];
@@ -361,7 +362,9 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8 md:px-10">
-        {messages.map((message) => (
+        {messages
+          .filter((message) => !message.metadata?.internal)
+          .map((message) => (
           <div key={message.id}>
             {message.role === "assistant" ? (
               <div className="flex justify-start">
@@ -390,6 +393,9 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
                       messageId={message.id}
                       citations={message.metadata.citations}
                     />
+                  ) : null}
+                  {message.metadata?.agentTrace ? (
+                    <DeepThinkTracePanel trace={message.metadata.agentTrace} />
                   ) : null}
                 </div>
               </div>

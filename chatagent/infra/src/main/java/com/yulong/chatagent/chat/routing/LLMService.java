@@ -19,14 +19,27 @@ public interface LLMService {
     // 由 streamDecisionWithRouting 收集完整 ChatResponse，或由 streamChat 直接推送最终回答。
     // ChatResponse chatWithRouting(Prompt prompt, String systemPrompt, List<ToolCallback> tools);
 
-    /** 流式决策调用：内部先走流式路由，再收集成 BufferedStreamingResponse 返回。 */
-    BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt, List<ToolCallback> tools);
+    /** 流式决策调用：内部先走流式路由，再收集成 BufferedStreamingResponse 返回。deepThinking 默认 false。 */
+    default BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt, List<ToolCallback> tools) {
+        return streamDecisionWithRouting(prompt, systemPrompt, tools, false);
+    }
 
-    /** 带外部回调的流式决策调用，collector 和外部 callback 会同时收到流式事件。 */
-    BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt,
-                                                        String systemPrompt,
+    /** 带外部回调的流式决策调用，collector 和外部 callback 会同时收到流式事件。deepThinking 默认 false。 */
+    default BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt,
+                                                                String systemPrompt,
+                                                                List<ToolCallback> tools,
+                                                                StreamCallback callback) {
+        return streamDecisionWithRouting(prompt, systemPrompt, tools, callback, false);
+    }
+
+    /** 流式决策调用，显式指定 deepThinking。DeepThink 的 planner/reflection/verification 阶段使用。 */
+    BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt,
+                                                        List<ToolCallback> tools, boolean deepThinking);
+
+    /** 带外部回调的流式决策调用，显式指定 deepThinking。 */
+    BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt,
                                                         List<ToolCallback> tools,
-                                                        StreamCallback callback);
+                                                        StreamCallback callback, boolean deepThinking);
 
     /** 真实流式聊天入口；返回的 Disposable 可用于首包超时、用户取消等场景。 */
     Disposable streamChat(Prompt prompt, boolean deepThinking, StreamCallback callback);

@@ -3,9 +3,13 @@ import { CloseOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
 import { Sender } from "@ant-design/x";
 import type { ChatSessionFileVO } from "../../../api/api.ts";
+import type { AgentExecutionMode } from "../../../types";
+import ExecutionModeToggle from "./ExecutionModeToggle.tsx";
 
 interface AgentChatInputProps {
   onSend: (message: string) => Promise<void> | void;
+  executionMode: AgentExecutionMode;
+  onExecutionModeChange: (executionMode: AgentExecutionMode) => void;
   onUploadFile: (file: File) => Promise<void> | void;
   onRemoveFile: (sessionFileId: string) => Promise<void> | void;
   attachments: ChatSessionFileVO[];
@@ -15,6 +19,8 @@ interface AgentChatInputProps {
 
 const AgentChatInput: React.FC<AgentChatInputProps> = ({
   onSend,
+  executionMode,
+  onExecutionModeChange,
   onUploadFile,
   onRemoveFile,
   attachments,
@@ -56,6 +62,14 @@ const AgentChatInput: React.FC<AgentChatInputProps> = ({
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
+      <div className="flex items-center justify-end">
+        <ExecutionModeToggle
+          executionMode={executionMode}
+          onExecutionModeChange={onExecutionModeChange}
+          disabled={disabled || isSubmitting}
+        />
+      </div>
+
       {attachments.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {attachments.map((file) => (

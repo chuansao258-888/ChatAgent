@@ -5,6 +5,7 @@ import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.agent.runtime.AgentDefinition;
 import com.yulong.chatagent.agent.runtime.AgentDefinitionLoader;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
@@ -67,6 +68,15 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                     String chatSessionId,
                                     IntentResolution intentResolution,
                                     String rewrittenInput) {
+        return load(agentId, chatSessionId, intentResolution, rewrittenInput, AgentExecutionMode.REACT);
+    }
+
+    @Override
+    public AgentRuntimeContext load(String agentId,
+                                    String chatSessionId,
+                                    IntentResolution intentResolution,
+                                    String rewrittenInput,
+                                    AgentExecutionMode executionMode) {
         // 1. 读取静态 Agent 配置，包括模型、系统提示词、工具 allowlist 和 chatOptions。
         AgentDefinition definition = agentDefinitionLoader.load(agentId);
         AgentDTO agentConfig = definition.config();
@@ -102,7 +112,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 toolCallbacks,
                 sessionFileSummary,
                 sessionSummary,
-                userProfileSummary
+                userProfileSummary,
+                executionMode == null ? AgentExecutionMode.REACT : executionMode
         );
     }
 

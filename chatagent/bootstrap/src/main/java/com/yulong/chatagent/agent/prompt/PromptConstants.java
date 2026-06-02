@@ -15,6 +15,13 @@ public final class PromptConstants {
     public static final String AGENT_DECISION_MODULE = "agent/decision-module.md";
     public static final String AGENT_FINAL_ANSWER = "agent/final-answer-module.md";
 
+    // ── DeepThink 提示词 ──────────────────────────────────────────────
+    public static final String DEEPTHINK_PLANNER = "agent/deepthink/planner.md";
+    public static final String DEEPTHINK_STEP_EXECUTOR = "agent/deepthink/step-executor.md";
+    public static final String DEEPTHINK_REFLECTION = "agent/deepthink/reflection.md";
+    public static final String DEEPTHINK_VERIFICATION = "agent/deepthink/verification.md";
+    public static final String DEEPTHINK_FINAL_SYNTHESIS = "agent/deepthink/final-synthesis.md";
+
     // Agent 条件片段：由 DefaultAgentRuntimeContextLoader 按运行时上下文拼装
     public static final String AGENT_MCP_TOOL_SAFETY = "agent/sections/mcp-tool-safety.md";
     public static final String AGENT_TOOL_STRATEGY = "agent/sections/tool-strategy.md";

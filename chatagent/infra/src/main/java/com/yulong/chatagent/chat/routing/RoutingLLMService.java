@@ -63,23 +63,25 @@ public class RoutingLLMService implements LLMService {
     // 因此同步入口先从接口和实现中注释掉，避免阅读 02-agent-runtime 主线时产生干扰。
 
     @Override
-    public BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt, List<ToolCallback> tools) {
+    public BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt, String systemPrompt,
+                                                                List<ToolCallback> tools, boolean deepThinking) {
         // 没有外部 callback 时，只使用内部 collector 收集流式结果。
-        return streamDecisionWithRouting(prompt, systemPrompt, tools, NoopStreamCallback.INSTANCE);
+        return streamDecisionWithRouting(prompt, systemPrompt, tools, NoopStreamCallback.INSTANCE, deepThinking);
     }
 
     @Override
     public BufferedStreamingResponse streamDecisionWithRouting(Prompt prompt,
                                                                String systemPrompt,
                                                                List<ToolCallback> tools,
-                                                               StreamCallback callback) {
+                                                               StreamCallback callback,
+                                                               boolean deepThinking) {
         // collector 把流式事件重新拼成 BufferedStreamingResponse。
         StreamingDecisionCollector collector = new StreamingDecisionCollector();
         // TeeStreamCallback 会把同一份流式事件同时发给 collector 和外部 callback。
         Disposable disposable = routeAndStream(
                 prompt,
                 systemPrompt,
-                false,
+                deepThinking,
                 tools,
                 new TeeStreamCallback(collector, callback == null ? NoopStreamCallback.INSTANCE : callback));
 

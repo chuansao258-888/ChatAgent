@@ -46,9 +46,10 @@ public class ChatEventProcessor {
     public void process(ChatEvent event) {
         try {
             // 这里开始已经脱离用户请求线程，必须从事件中恢复本轮运行所需的全部上下文。
-            log.info("Dispatching chat event: agentId={}, sessionId={}, userMessageId={}, recentHistorySize={}, intentKind={}",
+            log.info("Dispatching chat event: agentId={}, sessionId={}, userMessageId={}, recentHistorySize={}, intentKind={}, executionMode={}",
                     event.getAgentId(), event.getSessionId(), event.getChatMessageId(), event.getRecentHistorySize(),
-                    event.getIntentResolution() == null ? "DEFAULT" : event.getIntentResolution().kind());
+                    event.getIntentResolution() == null ? "DEFAULT" : event.getIntentResolution().kind(),
+                    event.getExecutionMode());
 
             if (!chatModelAvailability.hasConfiguredProvider()) {
                 // 本地开发环境可能没有配置模型 API key；直接给用户可见的降级说明，而不是静默失败。
@@ -80,7 +81,8 @@ public class ChatEventProcessor {
                     event.getTurnId(),
                     event.getIntentResolution(),
                     event.getRewrittenInput(),
-                    resolveUserId(event)
+                    resolveUserId(event),
+                    event.getExecutionMode()
             );
             // 到这里 conversation 编排层的职责基本结束，控制权正式交给 Agent runtime。
             AgentRunResult runResult = chatAgent.run();

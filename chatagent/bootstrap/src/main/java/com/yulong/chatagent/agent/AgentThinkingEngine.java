@@ -36,7 +36,7 @@ import java.util.stream.IntStream;
  * 直接输出最终答案，或返回一组工具调用。真正执行工具的逻辑在
  * {@link AgentToolExecutionEngine} 中完成。
  */
-class AgentThinkingEngine {
+public class AgentThinkingEngine {
 
     private final PromptLoader promptLoader;
     private final LLMService llmService;
@@ -46,15 +46,17 @@ class AgentThinkingEngine {
     private final String userProfileSummary;
     private final String turnId;
     private final AgentMessageBridge messageBridge;
+    private final int maxToolCallsPerStep;
 
-    AgentThinkingEngine(PromptLoader promptLoader,
+    public AgentThinkingEngine(PromptLoader promptLoader,
                         LLMService llmService,
                         ChatOptions chatOptions,
                         List<ToolCallback> availableTools,
                         String sessionFileSummary,
                         String userProfileSummary,
                         String turnId,
-                        AgentMessageBridge messageBridge) {
+                        AgentMessageBridge messageBridge,
+                        int maxToolCallsPerStep) {
         this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.chatOptions = chatOptions;
@@ -63,6 +65,7 @@ class AgentThinkingEngine {
         this.userProfileSummary = userProfileSummary;
         this.turnId = turnId;
         this.messageBridge = messageBridge;
+        this.maxToolCallsPerStep = maxToolCallsPerStep;
     }
 
     /**
@@ -72,7 +75,7 @@ class AgentThinkingEngine {
      * @param chatSessionId 当前会话 ID
      * @return 本轮模型输出，可能包含 tool calls，也可能已经是最终文本
      */
-    ChatResponse think(ChatMemory chatMemory, String chatSessionId) {
+    public ChatResponse think(ChatMemory chatMemory, String chatSessionId) {
         long startTime = System.nanoTime();
         Map<String, String> vars = Map.of(
                 "sessionFileSummary", this.sessionFileSummary,
@@ -113,8 +116,23 @@ class AgentThinkingEngine {
         AssistantMessage output = chatResponse.getResult().getOutput();
         List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
 
+        // 在持久化之前截断超限的 tool calls，保证 DB 中 assistant tool_calls 与
+        // 后续 tool_response 数量严格配对，避免 memory loader 丢弃整组序列。
+        if (toolCalls != null && toolCalls.size() > this.maxToolCallsPerStep) {
+            log.warn("Model returned {} tool calls in one step, exceeding maxToolCallsPerStep={}. " +
+                            "Truncating to first {} calls before persistence.",
+                    toolCalls.size(), this.maxToolCallsPerStep, this.maxToolCallsPerStep);
+            List<AssistantMessage.ToolCall> truncated = List.copyOf(toolCalls.subList(0, this.maxToolCallsPerStep));
+            output = AssistantMessage.builder()
+                    .content(output.getText())
+                    .toolCalls(truncated)
+                    .build();
+            chatResponse = new ChatResponse(List.of(new Generation(output)));
+            toolCalls = truncated;
+        }
+
         if (toolCalls != null && !toolCalls.isEmpty()) {
-            // 工具调用决策也要落库，这样下一轮模型能看到“assistant 请求了哪些工具”。
+            // 工具调用决策也要落库，这样下一轮模型能看到 assistant 请求了哪些工具。
             this.messageBridge.persistAndPublish(chatSessionId, turnId, output);
             logToolCalls(toolCalls);
         } else {
@@ -133,7 +151,7 @@ class AgentThinkingEngine {
     private ChatResponse streamFinalAnswer(String chatSessionId, Prompt prompt) {
         // ChatAgent.step() 只看返回的 ChatResponse 是否包含 tool_call。
         // 因此最终答案的流式输出也放在 think() 内完成，再包装成一个普通 ChatResponse 返回。
-        String finalContent = this.messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, this.llmService);
+        String finalContent = this.messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, this.llmService, false);
         return new ChatResponse(List.of(new Generation(new AssistantMessage(finalContent))));
     }
 

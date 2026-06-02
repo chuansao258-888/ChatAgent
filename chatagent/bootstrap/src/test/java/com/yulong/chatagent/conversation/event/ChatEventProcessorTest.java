@@ -4,6 +4,7 @@ import com.yulong.chatagent.agent.AgentRunException;
 import com.yulong.chatagent.agent.AgentRunResult;
 import com.yulong.chatagent.agent.ChatAgent;
 import com.yulong.chatagent.agent.ChatAgentFactory;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.support.chat.ChatModelAvailability;
@@ -92,7 +93,7 @@ class ChatEventProcessorTest {
         assertThat(messageCaptor.getValue().getContent()).contains("ChatAgent is running without a configured chat model");
         verify(sseService, times(3)).publish(anyString(), any(SseMessage.class));
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
-        verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString(), anyString());
+        verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any());
         verify(chatTurnMetricRecorder).record(any(ChatEvent.class), any(AgentRunResult.class));
         verify(currentTurnCitationHolder).clear("session-1", "turn-1");
     }
@@ -103,7 +104,7 @@ class ChatEventProcessorTest {
         ChatEvent event = new ChatEvent("agent-1", "session-1", "turn-1", "msg-1", "hello", 3, null, "rewritten", null);
         when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
         when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1"))
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1", AgentExecutionMode.REACT))
                 .thenReturn(chatAgent);
         when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("assistant-1").build());
@@ -151,6 +152,37 @@ class ChatEventProcessorTest {
         verify(sseService).publish(anyString(), sseCaptor.capture());
         assertThat(sseCaptor.getValue().getType()).isEqualTo(SseMessage.Type.TURN_ROLLBACK);
         assertThat(sseCaptor.getValue().getPayload().getTurnId()).isEqualTo("turn-1");
+    }
+
+    @Test
+    void shouldPassDeepThinkModeToAgentFactory() {
+        ChatEventProcessor processor = newProcessor();
+        IntentResolution resolution = new IntentResolution(null, null, null, null, null, null);
+        ChatEvent event = new ChatEvent(
+                "agent-1",
+                "session-1",
+                "turn-1",
+                1L,
+                "msg-1",
+                "hello",
+                3,
+                resolution,
+                "rewritten",
+                "user-1",
+                AgentExecutionMode.DEEPTHINK
+        );
+        AgentRunResult runResult = AgentRunResult.success(42L, true);
+
+        when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK))
+                .thenReturn(chatAgent);
+        when(chatAgent.run()).thenReturn(runResult);
+
+        processor.process(event);
+
+        verify(chatAgentFactory).create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK);
+        verify(chatTurnMetricRecorder).record(event, runResult);
+        verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
     }
 
     private ChatEventProcessor newProcessor() {

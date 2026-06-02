@@ -86,6 +86,34 @@ export interface CreateIntentNodeResponse {
   nodeId: string;
 }
 
+export interface CreateIntentNodeRequest {
+  parentId?: string;
+  nodeLevel: IntentNodeLevel;
+  name: string;
+  description?: string;
+  examples?: string[];
+  intentKind?: IntentKind;
+  scopePolicy?: ScopePolicy;
+  allowedTools?: string[];
+  systemPromptOverride?: string;
+  enabled?: boolean;
+  sortOrder?: number;
+}
+
+export interface UpdateIntentNodeRequest {
+  parentId?: string | null;
+  nodeLevel?: IntentNodeLevel;
+  name?: string;
+  description?: string | null;
+  examples?: string[];
+  intentKind?: IntentKind;
+  scopePolicy?: ScopePolicy;
+  allowedTools?: string[];
+  systemPromptOverride?: string | null;
+  enabled?: boolean;
+  sortOrder?: number;
+}
+
 export interface SetIntentNodeKnowledgeBasesRequest {
   knowledgeBaseIds: string[];
 }

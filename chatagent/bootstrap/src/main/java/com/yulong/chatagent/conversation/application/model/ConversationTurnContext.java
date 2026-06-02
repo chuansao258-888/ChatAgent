@@ -1,5 +1,6 @@
 package com.yulong.chatagent.conversation.application.model;
 
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
@@ -16,7 +17,8 @@ public record ConversationTurnContext(
         CreateChatMessageRequest request,
         ChatSessionVO session,
         CreateChatMessageResponse createdUserMessage,
-        List<ChatMessageDTO> recentHistory
+        List<ChatMessageDTO> recentHistory,
+        AgentExecutionMode executionMode
 ) {
 
     public int historySize() {

@@ -219,6 +219,7 @@ export default function IntentTreePage() {
   };
 
   const handleSubmitNode = async ({
+    mode,
     payload,
     knowledgeBaseIds,
   }: IntentNodeEditSubmitValue) => {
@@ -228,11 +229,11 @@ export default function IntentTreePage() {
       const finalIntentKind =
         "intentKind" in payload ? payload.intentKind : editorState.node?.intentKind;
 
-      if (editorState.mode === "create") {
-        const response = await createIntentNode(payload as Record<string, unknown>);
+      if (mode === "create") {
+        const response = await createIntentNode(payload);
         targetNodeId = response.nodeId;
       } else if (targetNodeId) {
-        await updateIntentNode(targetNodeId, payload as Record<string, unknown>);
+        await updateIntentNode(targetNodeId, payload);
       }
 
       if (targetNodeId && finalIntentKind === "KB") {

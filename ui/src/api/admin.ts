@@ -2,6 +2,7 @@ import { del, get, patch, post, put } from "./http.ts";
 import type {
   CreateAdminUserRequest,
   CreateAdminUserResponse,
+  CreateIntentNodeRequest,
   CreateIntentNodeResponse,
   DeleteMcpServerResponse,
   DashboardGranularity,
@@ -23,6 +24,7 @@ import type {
   SetIntentNodeKnowledgeBasesRequest,
   UpdateAdminUserRequest,
   UpdateAdminUserStatusRequest,
+  UpdateIntentNodeRequest,
   UploadKnowledgeDocumentResponse,
   // VO types returned directly (Phase 9-β-1 eliminated thin Response wrappers)
   KnowledgeBaseVO,
@@ -231,38 +233,14 @@ export async function getIntentTree(): Promise<GetIntentTreeResponse> {
 }
 
 export async function createIntentNode(
-  request: {
-    parentId?: string;
-    nodeLevel: string;
-    name: string;
-    description?: string;
-    examples?: string[];
-    intentKind?: string;
-    scopePolicy?: string;
-    allowedTools?: string[];
-    systemPromptOverride?: string;
-    enabled?: boolean;
-    sortOrder?: number;
-  },
+  request: CreateIntentNodeRequest,
 ): Promise<CreateIntentNodeResponse> {
   return post<CreateIntentNodeResponse>("/admin/assistant/intent-tree/nodes", request);
 }
 
 export async function updateIntentNode(
   nodeId: string,
-  request: {
-    parentId?: string | null;
-    nodeLevel?: string;
-    name?: string;
-    description?: string | null;
-    examples?: string[];
-    intentKind?: string;
-    scopePolicy?: string;
-    allowedTools?: string[];
-    systemPromptOverride?: string | null;
-    enabled?: boolean;
-    sortOrder?: number;
-  },
+  request: UpdateIntentNodeRequest,
 ): Promise<void> {
   return patch<void>(`/admin/assistant/intent-tree/nodes/${nodeId}`, request);
 }

@@ -2,18 +2,27 @@ import { Button, Drawer, Form, Input, InputNumber, Select, Switch, Tag, Typograp
 import { useEffect, useMemo } from "react";
 import IntentKnowledgeBaseBindPanel from "./IntentKnowledgeBaseBindPanel.tsx";
 import type {
+  CreateIntentNodeRequest,
   IntentKind,
   IntentNodeLevel,
   IntentNodeVO,
   KnowledgeBaseVO,
   ScopePolicy,
   ToolVO,
+  UpdateIntentNodeRequest,
 } from "../../types/admin.ts";
 
-export interface IntentNodeEditSubmitValue {
-  payload: Record<string, unknown>;
-  knowledgeBaseIds: string[];
-}
+export type IntentNodeEditSubmitValue =
+  | {
+      mode: "create";
+      payload: CreateIntentNodeRequest;
+      knowledgeBaseIds: string[];
+    }
+  | {
+      mode: "edit";
+      payload: UpdateIntentNodeRequest;
+      knowledgeBaseIds: string[];
+    };
 
 interface IntentNodeEditDrawerProps {
   open: boolean;
@@ -127,51 +136,62 @@ export default function IntentNodeEditDrawer({
 
   const handleFinish = async (values: IntentNodeFormValues) => {
     const finalIntentKind = isTopicNode ? values.intentKind : undefined;
-    const payload =
-      mode === "create"
-        ? ({
-            parentId: parentNode?.id,
-            nodeLevel: currentLevel,
-            name: values.name.trim(),
-            description: sanitizeString(values.description),
-            examples: sanitizeExamplesText(values.examplesText),
-            intentKind: finalIntentKind,
-            scopePolicy:
-              finalIntentKind === "KB"
-                ? values.scopePolicy ?? "FALLBACK_ALLOWED"
-                : undefined,
-            allowedTools:
-              finalIntentKind === "TOOL" ? sanitizeList(values.allowedTools) : [],
-            systemPromptOverride:
-              finalIntentKind === "SYSTEM"
-                ? sanitizeString(values.systemPromptOverride)
-                : undefined,
-            enabled: values.enabled,
-            sortOrder: values.sortOrder,
-          })
-        : ({
-            name: values.name.trim(),
-            description: sanitizeNullableString(values.description),
-            examples: sanitizeExamplesText(values.examplesText),
-            intentKind: finalIntentKind,
-            scopePolicy:
-              finalIntentKind === "KB"
-                ? values.scopePolicy ?? "FALLBACK_ALLOWED"
-                : undefined,
-            allowedTools:
-              finalIntentKind === "TOOL" ? sanitizeList(values.allowedTools) : [],
-            systemPromptOverride:
-              finalIntentKind === "SYSTEM"
-                ? sanitizeNullableString(values.systemPromptOverride)
-                : null,
-            enabled: values.enabled,
-            sortOrder: values.sortOrder,
-          });
+    const knowledgeBaseIds =
+      finalIntentKind === "KB" ? sanitizeList(values.knowledgeBaseIds) : [];
+
+    if (mode === "create") {
+      const payload: CreateIntentNodeRequest = {
+        parentId: parentNode?.id,
+        nodeLevel: currentLevel,
+        name: values.name.trim(),
+        description: sanitizeString(values.description),
+        examples: sanitizeExamplesText(values.examplesText),
+        intentKind: finalIntentKind,
+        scopePolicy:
+          finalIntentKind === "KB"
+            ? values.scopePolicy ?? "FALLBACK_ALLOWED"
+            : undefined,
+        allowedTools:
+          finalIntentKind === "TOOL" ? sanitizeList(values.allowedTools) : [],
+        systemPromptOverride:
+          finalIntentKind === "SYSTEM"
+            ? sanitizeString(values.systemPromptOverride)
+            : undefined,
+        enabled: values.enabled,
+        sortOrder: values.sortOrder,
+      };
+
+      await onSubmit({
+        mode,
+        payload,
+        knowledgeBaseIds,
+      });
+      return;
+    }
+
+    const payload: UpdateIntentNodeRequest = {
+      name: values.name.trim(),
+      description: sanitizeNullableString(values.description),
+      examples: sanitizeExamplesText(values.examplesText),
+      intentKind: finalIntentKind,
+      scopePolicy:
+        finalIntentKind === "KB"
+          ? values.scopePolicy ?? "FALLBACK_ALLOWED"
+          : undefined,
+      allowedTools:
+        finalIntentKind === "TOOL" ? sanitizeList(values.allowedTools) : [],
+      systemPromptOverride:
+        finalIntentKind === "SYSTEM"
+          ? sanitizeNullableString(values.systemPromptOverride)
+          : null,
+      enabled: values.enabled,
+      sortOrder: values.sortOrder,
+    };
 
     await onSubmit({
+      mode,
       payload,
-      knowledgeBaseIds:
-        finalIntentKind === "KB" ? sanitizeList(values.knowledgeBaseIds) : [],
+      knowledgeBaseIds,
     });
   };
 

@@ -133,15 +133,38 @@ vi.mock("./agentChatView/AgentChatHistory.tsx", () => ({
 }));
 
 vi.mock("./agentChatView/AgentChatInput.tsx", () => ({
-  default: ({ onSend }: { onSend: (message: string) => Promise<void> | void }) => (
-    <button
-      type="button"
-      onClick={() => {
-        void onSend("hello");
-      }}
-    >
-      send
-    </button>
+  default: ({
+    onSend,
+    executionMode,
+    onExecutionModeChange,
+    disabled,
+  }: {
+    onSend: (message: string) => Promise<void> | void;
+    executionMode: "REACT" | "DEEPTHINK";
+    onExecutionModeChange: (mode: "REACT" | "DEEPTHINK") => void;
+    disabled?: boolean;
+  }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          void onSend("hello");
+        }}
+      >
+        send
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          onExecutionModeChange(
+            executionMode === "DEEPTHINK" ? "REACT" : "DEEPTHINK",
+          );
+        }}
+      >
+        mode:{executionMode}
+      </button>
+    </div>
   ),
 }));
 
@@ -166,6 +189,13 @@ vi.mock("../../api/api.ts", async () => {
 describe("AgentChatView", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.restoreAllMocks();
+    vi.mocked(createChatMessage).mockReset();
+    vi.mocked(getChatMessagesBySessionId).mockReset();
+    vi.mocked(getChatSession).mockReset();
+    vi.mocked(getChatSessionFiles).mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
     MockEventSource.instances = [];
     Object.defineProperty(globalThis, "EventSource", {
       configurable: true,
@@ -176,38 +206,32 @@ describe("AgentChatView", () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("turn-client");
 
     vi.mocked(getChatSession).mockResolvedValue({
-      chatSession: {
-        id: "session-1",
-        agentId: "agent-1",
-        title: "Test",
-      },
+      id: "session-1",
+      agentId: "agent-1",
+      title: "Test",
     });
-    vi.mocked(getChatSessionFiles).mockResolvedValue({ files: [] });
+    vi.mocked(getChatSessionFiles).mockResolvedValue([]);
     vi.mocked(getChatMessagesBySessionId)
-      .mockResolvedValueOnce({ chatMessages: [] })
-      .mockResolvedValueOnce({ chatMessages: [] })
-      .mockResolvedValueOnce({
-        chatMessages: [
-          {
-            id: "tool-1",
-            sessionId: "session-1",
-            turnId: "turn-server",
-            role: "tool",
-            content: "Tool output",
-          },
-        ],
-      })
-      .mockResolvedValue({
-        chatMessages: [
-          {
-            id: "tool-1",
-            sessionId: "session-1",
-            turnId: "turn-server",
-            role: "tool",
-            content: "Tool output",
-          },
-        ],
-      });
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "tool-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "tool",
+          content: "Tool output",
+        },
+      ])
+      .mockResolvedValue([
+        {
+          id: "tool-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "tool",
+          content: "Tool output",
+        },
+      ]);
     vi.mocked(createChatMessage).mockResolvedValue({
       chatMessageId: "user-1",
       turnId: "turn-server",
@@ -232,6 +256,7 @@ describe("AgentChatView", () => {
         turnId: "turn-client",
         role: "user",
         content: "hello",
+        executionMode: "REACT",
     });
 
     expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe("turn-server");
@@ -263,6 +288,125 @@ describe("AgentChatView", () => {
         type: "AI_DONE",
         payload: {
           done: true,
+          turnId: "turn-server",
+        },
+        metadata: {
+          chatMessageId: "assistant-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("idle");
+    expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBeNull();
+  });
+
+  it("ignores status events unless they match the active pending turn", async () => {
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    const eventSource = MockEventSource.instances[0];
+    expect(eventSource).toBeDefined();
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_PLANNING",
+        payload: {
+          statusText: "Legacy planning",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("idle");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("Queuing...");
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_THINKING",
+        payload: {
+          turnId: "other-turn",
+          statusText: "Thinking for another turn",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("Queuing...");
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_EXECUTING",
+        payload: {
+          statusText: "Missing turn",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("Queuing...");
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_EXECUTING",
+        payload: {
+          turnId: "turn-server",
+          statusText: "Executing current turn",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe(
+      "Executing current turn",
+    );
+  });
+
+  it("ignores AI_DONE for wrong turn and only clears pending for matching turn", async () => {
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("Queuing...");
+
+    const eventSource = MockEventSource.instances[0];
+    expect(eventSource).toBeDefined();
+
+    // AI_DONE with wrong turnId should not clear pending
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_DONE",
+        payload: {
+          done: true,
+          turnId: "other-turn",
+        },
+        metadata: {
+          chatMessageId: "assistant-wrong",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-status").textContent).toBe("Queuing...");
+    expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe("turn-server");
+
+    // AI_DONE with correct turnId should clear pending
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_DONE",
+        payload: {
+          done: true,
+          turnId: "turn-server",
         },
         metadata: {
           chatMessageId: "assistant-1",
@@ -397,6 +541,7 @@ describe("AgentChatView", () => {
       turnId: "turn-client",
       role: "user",
       content: "hello",
+      executionMode: "REACT",
     });
 
     act(() => {
@@ -469,5 +614,49 @@ describe("AgentChatView", () => {
     expect(screen.getByTestId("history-messages").textContent).not.toContain(
       "assistant-provisional-1",
     );
+  });
+
+  it("sends the selected DeepThink mode and disables mode switching while pending", async () => {
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "mode:REACT" }));
+    });
+    expect(localStorage.getItem("chatagent:execution-mode:session-1")).toBe(
+      "DEEPTHINK",
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    expect(createChatMessage).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      turnId: "turn-client",
+      role: "user",
+      content: "hello",
+      executionMode: "DEEPTHINK",
+    });
+    expect(
+      (screen.getByRole("button", { name: "mode:DEEPTHINK" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("restores the stored execution mode when the session loads", async () => {
+    localStorage.setItem("chatagent:execution-mode:session-1", "DEEPTHINK");
+
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(screen.getByRole("button", { name: "mode:DEEPTHINK" })).toBeDefined();
   });
 });

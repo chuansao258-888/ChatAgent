@@ -27,11 +27,13 @@ vi.mock("antd", () => ({
   Button: ({
     children,
     onClick,
+    disabled,
   }: {
     children?: ReactNode;
     onClick?: () => void;
+    disabled?: boolean;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} disabled={disabled}>
       {children}
     </button>
   ),
@@ -87,6 +89,7 @@ vi.mock("../../../hooks/useAuth.ts", () => ({
 
 vi.mock("../../../hooks/useChatSessions.ts", () => ({
   useChatSessions: () => ({
+    chatSessions: [{ id: "session-1", agentId: "agent-1", title: "Test" }],
     refreshChatSessions: hoisted.refreshChatSessionsMock,
   }),
 }));
@@ -103,10 +106,10 @@ vi.mock("../../../api/api.ts", async () => {
 
 describe("EmptyAgentChatView", () => {
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("turn-client");
-    vi.mocked(createChatSession).mockResolvedValue({
-      chatSessionId: "session-1",
-    });
+    vi.mocked(createChatSession).mockResolvedValue("session-1");
     vi.mocked(createChatMessage)
       .mockRejectedValueOnce(new Error("send failed"))
       .mockResolvedValueOnce({
@@ -116,7 +119,13 @@ describe("EmptyAgentChatView", () => {
   });
 
   it("reuses the created session when the first message fails and the user retries", async () => {
-    render(<EmptyAgentChatView loading={false} />);
+    render(
+      <EmptyAgentChatView
+        loading={false}
+        executionMode="REACT"
+        onExecutionModeChange={vi.fn()}
+      />,
+    );
 
     fireEvent.change(screen.getByLabelText("empty-chat-input"), {
       target: { value: "Hello from first turn" },
@@ -143,9 +152,50 @@ describe("EmptyAgentChatView", () => {
     });
 
     expect(createChatSession).toHaveBeenCalledTimes(1);
+    expect(createChatMessage).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      turnId: "turn-client",
+      content: "Hello from first turn",
+      role: "user",
+      executionMode: "REACT",
+    });
     expect(hoisted.refreshChatSessionsMock).toHaveBeenCalledTimes(1);
     expect(hoisted.navigateMock).toHaveBeenCalledWith("/chat/session-1");
     expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe("turn-server");
     expect(hoisted.antdMessage.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores and sends DEEPTHINK mode for the first message in a new chat", async () => {
+    vi.mocked(createChatMessage).mockReset();
+    vi.mocked(createChatMessage).mockResolvedValue({
+      chatMessageId: "user-1",
+      turnId: "turn-server",
+    });
+
+    render(
+      <EmptyAgentChatView
+        loading={false}
+        executionMode="DEEPTHINK"
+        onExecutionModeChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("empty-chat-input"), {
+      target: { value: "Plan this carefully" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+
+    await waitFor(() => {
+      expect(createChatMessage).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        turnId: "turn-client",
+        content: "Plan this carefully",
+        role: "user",
+        executionMode: "DEEPTHINK",
+      });
+    });
+    expect(localStorage.getItem("chatagent:execution-mode:session-1")).toBe(
+      "DEEPTHINK",
+    );
   });
 });

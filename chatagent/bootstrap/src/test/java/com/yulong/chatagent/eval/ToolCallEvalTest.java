@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yulong.chatagent.agent.AgentMessageBridge;
 import com.yulong.chatagent.agent.ChatAgent;
+import com.yulong.chatagent.agent.DecisionVisibility;
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
@@ -412,7 +413,7 @@ class ToolCallEvalTest {
         }
 
         @Override
-        public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService ignored) {
+        public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService ignored, boolean deepThinking) {
             decisionSteps++;
             ChatResponse response = streamToResponse(prompt, null, List.of());
             finalAnswer = extractText(response);
@@ -433,6 +434,27 @@ class ToolCallEvalTest {
                 finalAnswer = extractText(response);
             }
             return bufferedResponse;
+        }
+
+        @Override
+        public BufferedStreamingResponse collectDecisionResponse(String chatSessionId, String turnId, Prompt prompt, String systemPrompt, List<ToolCallback> tools, LLMService llmService, DecisionVisibility visibility, boolean deepThinking, String deepThinkPhase, String planStepId) {
+            // Eval bridge does not use DeepThink; delegate to user-visible path.
+            return streamDecisionResponse(chatSessionId, turnId, prompt, systemPrompt, tools, llmService);
+        }
+
+        @Override
+        public void publishStatusEvent(String chatSessionId, String turnId, com.yulong.chatagent.conversation.model.SseMessage.Type type, String statusText) {
+            // No-op for eval
+        }
+
+        @Override
+        public void persistInternalToolResponses(String chatSessionId, String turnId, ToolResponseMessage toolResponseMessage, String deepThinkPhase, String planStepId) {
+            // Eval bridge does not use DeepThink internal tool responses.
+        }
+
+        @Override
+        public void attachTraceMetadata(String chatSessionId, String turnId, com.yulong.chatagent.support.dto.AgentTraceMetadata trace) {
+            // No-op for eval
         }
 
         List<String> distinctToolCalls() {

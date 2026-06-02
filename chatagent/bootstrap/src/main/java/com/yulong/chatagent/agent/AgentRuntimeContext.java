@@ -1,5 +1,6 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -22,6 +23,7 @@ import java.util.List;
  * @param sessionFileSummary 会话附件摘要
  * @param sessionSummary L2 历史摘要
  * @param userProfileSummary L3 用户画像摘要
+ * @param executionMode 本轮用户选择并解析后的执行模式
  */
 public record AgentRuntimeContext(
         String agentId,
@@ -34,6 +36,7 @@ public record AgentRuntimeContext(
         List<ToolCallback> toolCallbacks,
         String sessionFileSummary,
         String sessionSummary,
-        String userProfileSummary
+        String userProfileSummary,
+        AgentExecutionMode executionMode
 ) {
 }

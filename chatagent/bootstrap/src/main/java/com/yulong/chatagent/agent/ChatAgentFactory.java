@@ -1,5 +1,7 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.intent.application.IntentResolution;
@@ -18,15 +20,18 @@ public class ChatAgentFactory {
     private final LLMService llmService;
     private final AgentRuntimeContextLoader agentRuntimeContextLoader;
     private final AgentMessageBridge agentMessageBridge;
+    private final AgentRunPolicyProperties policyProperties;
 
     public ChatAgentFactory(PromptLoader promptLoader,
                             LLMService llmService,
                             AgentRuntimeContextLoader agentRuntimeContextLoader,
-                            AgentMessageBridge agentMessageBridge) {
+                            AgentMessageBridge agentMessageBridge,
+                            AgentRunPolicyProperties policyProperties) {
         this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.agentRuntimeContextLoader = agentRuntimeContextLoader;
         this.agentMessageBridge = agentMessageBridge;
+        this.policyProperties = policyProperties;
     }
 
     /**
@@ -37,7 +42,7 @@ public class ChatAgentFactory {
      * @return 已装配完成、可以直接 run 的 ChatAgent
      */
     public ChatAgent create(String agentId, String chatSessionId) {
-        return create(agentId, chatSessionId, null, null, null, null);
+        return create(agentId, chatSessionId, null, null, null, null, null);
     }
 
     public ChatAgent create(String agentId,
@@ -45,7 +50,7 @@ public class ChatAgentFactory {
                             String turnId,
                             IntentResolution intentResolution,
                             String rewrittenInput) {
-        return create(agentId, chatSessionId, turnId, intentResolution, rewrittenInput, null);
+        return create(agentId, chatSessionId, turnId, intentResolution, rewrittenInput, null, null);
     }
 
     public ChatAgent create(String agentId,
@@ -54,8 +59,24 @@ public class ChatAgentFactory {
                             IntentResolution intentResolution,
                             String rewrittenInput,
                             String userId) {
+        return create(agentId, chatSessionId, turnId, intentResolution, rewrittenInput, userId, null);
+    }
+
+    public ChatAgent create(String agentId,
+                            String chatSessionId,
+                            String turnId,
+                            IntentResolution intentResolution,
+                            String rewrittenInput,
+                            String userId,
+                            AgentExecutionMode executionMode) {
         // RuntimeContextLoader 负责重活：读取 Agent 定义、恢复记忆、解析摘要、筛选工具并拼系统提示词。
-        AgentRuntimeContext context = agentRuntimeContextLoader.load(agentId, chatSessionId, intentResolution, rewrittenInput);
+        AgentRuntimeContext context = agentRuntimeContextLoader.load(
+                agentId,
+                chatSessionId,
+                intentResolution,
+                rewrittenInput,
+                executionMode
+        );
 
         // ChatAgent 是纯运行态对象，不交给 Spring 管理；这样可以把每轮执行的 mutable state 隔离开。
         return new ChatAgent(
@@ -74,7 +95,9 @@ public class ChatAgentFactory {
                 userId,
                 turnId,
                 chatSessionId,
-                agentMessageBridge
+                agentMessageBridge,
+                policyProperties,
+                context.executionMode()
         );
     }
 }

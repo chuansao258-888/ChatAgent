@@ -15,10 +15,19 @@ import {
 } from "../../api/api.ts";
 import { useAuth } from "../../hooks/useAuth.ts";
 import { useChatSessions } from "../../hooks/useChatSessions.ts";
-import type { ChatMessageVO, SseMessage, SseMessageType } from "../../types";
+import type {
+  AgentExecutionMode,
+  ChatMessageVO,
+  SseMessage,
+  SseMessageType,
+} from "../../types";
 import AgentChatHistory from "./agentChatView/AgentChatHistory.tsx";
 import AgentChatInput from "./agentChatView/AgentChatInput.tsx";
 import EmptyAgentChatView from "./agentChatView/EmptyAgentChatView.tsx";
+import {
+  getStoredExecutionMode,
+  setStoredExecutionMode,
+} from "./agentChatView/executionModeStorage.ts";
 import {
   clearPendingTurnId,
   getPendingTurnId,
@@ -74,6 +83,8 @@ const AgentChatView: React.FC = () => {
   >(undefined);
   const [persistentErrorText, setPersistentErrorText] = useState("");
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [executionMode, setExecutionMode] =
+    useState<AgentExecutionMode>("REACT");
   const [activePendingTurnId, setActivePendingTurnId] = useState<string | null>(
     null,
   );
@@ -304,7 +315,21 @@ const AgentChatView: React.FC = () => {
     setSessionFiles([]);
     setPersistentErrorText("");
     setRetryMessage(null);
+    setExecutionMode(chatSessionId ? getStoredExecutionMode(chatSessionId) : "REACT");
   }, [chatSessionId]);
+
+  const handleExecutionModeChange = useCallback(
+    (nextMode: AgentExecutionMode) => {
+      if (displayAgentStatus) {
+        return;
+      }
+      setExecutionMode(nextMode);
+      if (chatSessionId) {
+        setStoredExecutionMode(chatSessionId, nextMode);
+      }
+    },
+    [chatSessionId, displayAgentStatus],
+  );
 
   useEffect(() => {
     if (!chatSessionId || initializing) {
@@ -431,6 +456,7 @@ const AgentChatView: React.FC = () => {
           turnId,
           role: "user",
           content: state.initMessage ?? "",
+          executionMode,
         });
         setPendingTurnId(activeChatSessionId, response.turnId);
         setActivePendingTurnId(response.turnId);
@@ -440,6 +466,7 @@ const AgentChatView: React.FC = () => {
           turnId,
           role: "user",
           content: message,
+          executionMode,
         });
         setPendingTurnId(activeChatSessionId, response.turnId);
         setActivePendingTurnId(response.turnId);
@@ -535,35 +562,50 @@ const AgentChatView: React.FC = () => {
       if (isProcessingRef.current) markPendingActivity();
 
       if (message.type === "AI_GENERATED_CONTENT") {
-        addMessage(message.payload.message);
-        if (
-          activePendingTurnIdRef.current &&
-          message.payload.message.turnId === activePendingTurnIdRef.current &&
-          (message.payload.message.role === "assistant" ||
-            message.payload.message.role === "tool")
-        ) {
-          observedTurnMessageCountRef.current += 1;
+        if (message.payload?.message) {
+          addMessage(message.payload.message);
+          if (
+            activePendingTurnIdRef.current &&
+            message.payload.message.turnId === activePendingTurnIdRef.current &&
+            (message.payload.message.role === "assistant" ||
+              message.payload.message.role === "tool")
+          ) {
+            observedTurnMessageCountRef.current += 1;
+          }
         }
       } else if (message.type === "AI_PLANNING") {
-        setDisplayAgentStatus(true);
-        setAgentStatusText(message.payload.statusText);
-        setAgentStatusType("AI_PLANNING");
+        const pendingTurnId = activePendingTurnIdRef.current;
+        if (pendingTurnId && message.payload?.turnId === pendingTurnId) {
+          setDisplayAgentStatus(true);
+          setAgentStatusText(message.payload?.statusText ?? "Planning...");
+          setAgentStatusType("AI_PLANNING");
+        }
       } else if (message.type === "AI_THINKING") {
-        setDisplayAgentStatus(true);
-        setAgentStatusText(message.payload.statusText);
-        setAgentStatusType("AI_THINKING");
+        const pendingTurnId = activePendingTurnIdRef.current;
+        if (pendingTurnId && message.payload?.turnId === pendingTurnId) {
+          setDisplayAgentStatus(true);
+          setAgentStatusText(message.payload?.statusText ?? "Thinking...");
+          setAgentStatusType("AI_THINKING");
+        }
       } else if (message.type === "AI_EXECUTING") {
-        setDisplayAgentStatus(true);
-        setAgentStatusText(message.payload.statusText);
-        setAgentStatusType("AI_EXECUTING");
+        const pendingTurnId = activePendingTurnIdRef.current;
+        if (pendingTurnId && message.payload?.turnId === pendingTurnId) {
+          setDisplayAgentStatus(true);
+          setAgentStatusText(message.payload?.statusText ?? "Executing...");
+          setAgentStatusType("AI_EXECUTING");
+        }
       } else if (message.type === "AI_ERROR") {
         setDisplayAgentStatus(true);
-        setAgentStatusText(message.payload.statusText);
+        setAgentStatusText(message.payload?.statusText ?? "Error");
         setAgentStatusType("AI_ERROR");
-        setPersistentErrorText(message.payload.statusText);
+        setPersistentErrorText(message.payload?.statusText ?? "Error");
         setRetryMessage(resolveRetryMessage(activePendingTurnIdRef.current));
       } else if (message.type === "AI_DONE") {
-        clearPendingState(chatSessionId);
+        const doneTurnId = message.payload?.turnId;
+        const pendingTurnId = activePendingTurnIdRef.current;
+        if (pendingTurnId && doneTurnId === pendingTurnId) {
+          clearPendingState(chatSessionId);
+        }
       } else if (message.type === "TURN_ROLLBACK") {
         const rollbackTurnId = message.payload.turnId;
         if (rollbackTurnId) {
@@ -593,7 +635,13 @@ const AgentChatView: React.FC = () => {
   }, [retryMessage]);
 
   if (!chatSessionId) {
-    return <EmptyAgentChatView loading={loading} />;
+    return (
+      <EmptyAgentChatView
+        loading={loading}
+        executionMode={executionMode}
+        onExecutionModeChange={handleExecutionModeChange}
+      />
+    );
   }
 
   return (
@@ -610,6 +658,8 @@ const AgentChatView: React.FC = () => {
       <div className="bg-[#212121] px-5 pb-6 pt-2 md:px-8">
         <AgentChatInput
           onSend={handleSendMessage}
+          executionMode={executionMode}
+          onExecutionModeChange={handleExecutionModeChange}
           onUploadFile={handleUploadFile}
           onRemoveFile={handleRemoveFile}
           attachments={sessionFiles}

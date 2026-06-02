@@ -40,10 +40,10 @@ public class ChatMessageController {
     private final SessionConcurrencyGuard sessionConcurrencyGuard;
 
     /**
-     * 查询指定会话的完整消息历史。
+     * 查询指定会话的完整消息历史（过滤 internal trace 消息）。
      *
      * @param sessionId 会话 ID
-     * @return 消息历史
+     * @return 消息历史（不含 DeepThink 内部 trace）
      */
     @GetMapping("/chat-messages/session/{sessionId}")
     public ApiResponse<ChatMessageVO[]> getChatMessagesBySessionId(@PathVariable String sessionId) {

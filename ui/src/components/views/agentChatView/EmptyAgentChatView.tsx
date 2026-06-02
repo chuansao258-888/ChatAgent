@@ -10,16 +10,23 @@ import {
 } from "../../../api/api.ts";
 import { useAuth } from "../../../hooks/useAuth.ts";
 import { useChatSessions } from "../../../hooks/useChatSessions.ts";
+import type { AgentExecutionMode } from "../../../types";
 import { clearPendingTurnId, setPendingTurnId } from "./pendingTurnStorage.ts";
+import { setStoredExecutionMode } from "./executionModeStorage.ts";
+import ExecutionModeToggle from "./ExecutionModeToggle.tsx";
 
 const { Title, Text } = Typography;
 
 interface DefaultAgentChatViewProps {
   loading: boolean;
+  executionMode: AgentExecutionMode;
+  onExecutionModeChange: (executionMode: AgentExecutionMode) => void;
 }
 
 const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
   loading,
+  executionMode,
+  onExecutionModeChange,
 }) => {
   const [inputValue, setInputValue] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -42,7 +49,7 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
     // Reuse the session if we already created one and it still exists in the list
     if (pendingSessionIdRef.current) {
       const stillExists = chatSessions.some(
-        (session) => session.chatSessionId === pendingSessionIdRef.current,
+        (session) => session.id === pendingSessionIdRef.current,
       );
       if (stillExists) {
         return { chatSessionId: pendingSessionIdRef.current };
@@ -56,6 +63,7 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
     });
 
     pendingSessionIdRef.current = response;
+    setStoredExecutionMode(response, executionMode);
     await refreshChatSessions();
     return {
       chatSessionId: response,
@@ -85,6 +93,7 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
         turnId,
         content: trimmedMessage,
         role: "user",
+        executionMode,
       });
       setPendingTurnId(createdSession.chatSessionId, response.turnId);
 
@@ -233,6 +242,13 @@ const EmptyAgentChatView: React.FC<DefaultAgentChatViewProps> = ({
                 setInputValue(value);
               }}
             />
+            <div className="mt-3 flex items-center justify-end px-1">
+              <ExecutionModeToggle
+                executionMode={executionMode}
+                onExecutionModeChange={onExecutionModeChange}
+                disabled={loading || uploadingFile || isSubmitting}
+              />
+            </div>
             <div className="mt-6 text-center text-sm text-slate-400">
               <Text className="!text-slate-400">
                 {isAuthenticated

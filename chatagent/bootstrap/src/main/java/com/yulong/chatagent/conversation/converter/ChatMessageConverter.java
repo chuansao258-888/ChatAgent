@@ -87,8 +87,27 @@ public class ChatMessageConverter {
                 .turnSeq(request.getTurnSeq())
                 .role(request.getRole())
                 .content(request.getContent())
-                .metadata(request.getMetadata())
+                .metadata(resolveMetadata(request))
                 .build();
+    }
+
+    private ChatMessageDTO.MetaData resolveMetadata(CreateChatMessageRequest request) {
+        ChatMessageDTO.MetaData metadata = request.getMetadata();
+        if (request.getExecutionMode() == null) {
+            return metadata;
+        }
+        ChatMessageDTO.MetaData.MetaDataBuilder builder = ChatMessageDTO.MetaData.builder()
+                .executionMode(request.getExecutionMode());
+        if (metadata != null) {
+            builder.toolResponse(metadata.getToolResponse())
+                    .toolCalls(metadata.getToolCalls())
+                    .citations(metadata.getCitations())
+                    .internal(metadata.getInternal())
+                    .deepThinkPhase(metadata.getDeepThinkPhase())
+                    .planStepId(metadata.getPlanStepId())
+                    .agentTrace(metadata.getAgentTrace());
+        }
+        return builder.build();
     }
 
     public void updateDTOFromRequest(ChatMessageDTO dto, UpdateChatMessageRequest request) {

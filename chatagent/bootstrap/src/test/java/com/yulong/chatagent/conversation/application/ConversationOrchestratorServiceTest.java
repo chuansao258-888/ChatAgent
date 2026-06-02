@@ -1,5 +1,7 @@
 package com.yulong.chatagent.conversation.application;
 
+import com.yulong.chatagent.agent.runtime.AgentExecutionModeResolver;
+import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
 import com.yulong.chatagent.conversation.event.ChatEventDispatcher;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
@@ -22,7 +24,8 @@ class ConversationOrchestratorServiceTest {
             mock(ConversationTurnPreparationService.class),
             mock(ChatEventDispatcher.class),
             mock(ConversationTurnCompletionPublisher.class),
-            mock(SseService.class)
+            mock(SseService.class),
+            new AgentExecutionModeResolver(new AgentRunPolicyProperties())
     );
 
     @Test

@@ -1,5 +1,5 @@
 import { del, get, patch, post } from "./http.ts";
-import type { ChatMessageVO, MessageType } from "../types";
+import type { AgentExecutionMode, ChatMessageVO, MessageType } from "../types";
 
 export interface ChatOptions {
   temperature?: number;
@@ -78,6 +78,7 @@ export interface CreateChatMessageRequest {
   turnId?: string;
   role: MessageType;
   content: string;
+  executionMode?: AgentExecutionMode;
   metadata?: MetaData;
 }
 

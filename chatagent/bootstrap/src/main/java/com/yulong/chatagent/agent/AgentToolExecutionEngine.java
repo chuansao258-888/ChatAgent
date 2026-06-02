@@ -24,14 +24,14 @@ import java.util.stream.Collectors;
  * 模型只会产出 tool_call 描述；这里负责调用 Spring AI 的工具执行器，
  * 得到 tool_response 后再把完整对话历史写回 Agent 记忆。
  */
-class AgentToolExecutionEngine {
+public class AgentToolExecutionEngine {
 
     private final ToolCallingManager toolCallingManager;
     private final ChatOptions chatOptions;
     private final String turnId;
     private final AgentMessageBridge messageBridge;
 
-    AgentToolExecutionEngine(List<ToolCallback> availableTools,
+    public AgentToolExecutionEngine(List<ToolCallback> availableTools,
                              ChatOptions chatOptions,
                              String turnId,
                              AgentMessageBridge messageBridge) {
@@ -53,7 +53,7 @@ class AgentToolExecutionEngine {
      * @param chatResponse 上一步模型输出
      * @return 如果工具响应里出现 terminate，返回 {@code true} 让外层循环停止
      */
-    boolean execute(ChatMemory chatMemory, String chatSessionId, ChatResponse chatResponse) {
+    public boolean execute(ChatMemory chatMemory, String chatSessionId, ChatResponse chatResponse) {
         Assert.notNull(chatResponse, "Last chat client response cannot be null");
 
         // 没有工具调用时不做任何事；正常情况下外层 step() 已经挡住这个分支。

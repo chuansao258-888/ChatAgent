@@ -116,7 +116,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     }
 
     @Override
-    public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService llmService) {
+    public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService llmService, boolean deepThinking) {
         // 最终回复阶段：先创建一条空 assistant 消息，拿到 messageId。
         // 后续每个 content chunk 都基于这个 messageId 推送快照，前端才能增量更新同一条消息。
         List<CitationMetadata> citations = currentTurnCitationHolder.take(chatSessionId, turnId);
@@ -208,7 +208,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 // 通知前端本条 assistant 消息流式输出结束。
                 SseMessage msg = new SseMessage(
                     SseMessage.Type.AI_DONE,
-                    SseMessage.Payload.builder().done(true).build(),
+                    SseMessage.Payload.builder().done(true).turnId(turnId).build(),
                     SseMessage.Metadata.builder().chatMessageId(chatMessageDTO.getId()).build()
                 );
                 sseService.publish(chatSessionId, msg);
@@ -245,7 +245,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 // 最后仍然推 DONE，让前端关闭 loading 状态。
                 SseMessage doneMsg = new SseMessage(
                     SseMessage.Type.AI_DONE,
-                    SseMessage.Payload.builder().done(true).build(),
+                    SseMessage.Payload.builder().done(true).turnId(turnId).build(),
                     SseMessage.Metadata.builder().chatMessageId(chatMessageDTO.getId()).build()
                 );
                 sseService.publish(chatSessionId, doneMsg);
@@ -255,7 +255,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
 
         // 发起最终回答流式调用。streamChat 内部会进入 routeAndStream 做首包探测和候选 fallback。
         try {
-            Disposable disposable = llmService.streamChat(prompt, false, sseAdapter);
+            Disposable disposable = llmService.streamChat(prompt, deepThinking, sseAdapter);
             if (disposable == null) {
                 sseAdapter.onError(new IllegalStateException("LLM stream returned a null disposable"));
             } else {
@@ -417,8 +417,112 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         publishContent(chatSessionId, chatMessageDTO.getId(), finalSnapshot);
         // 现在确定这条 assistant 消息保留，才真正消费 citations。
         currentTurnCitationHolder.take(chatSessionId, turnId);
-        publishDone(chatSessionId, chatMessageDTO.getId());
+        publishDone(chatSessionId, chatMessageDTO.getId(), turnId);
         return bufferedResponse;
+    }
+
+    // ========== 内部决策收集（Phase 3: DeepThink 内部调用路径） ==========
+
+    @Override
+    public BufferedStreamingResponse collectDecisionResponse(String chatSessionId,
+                                                              String turnId,
+                                                              Prompt prompt,
+                                                              String systemPrompt,
+                                                              List<ToolCallback> tools,
+                                                              LLMService llmService,
+                                                              DecisionVisibility visibility,
+                                                              boolean deepThinking,
+                                                              String deepThinkPhase,
+                                                              String planStepId) {
+        // USER_VISIBLE_PROVISIONAL 走现有 streamDecisionResponse 路径，完全向后兼容。
+        if (visibility == DecisionVisibility.USER_VISIBLE_PROVISIONAL) {
+            return streamDecisionResponse(chatSessionId, turnId, prompt, systemPrompt, tools, llmService);
+        }
+
+        // === INTERNAL_TRACE_ONLY 路径 ===
+        // 不创建 provisional 消息、不流式推前端、tool_call/tool_response 持久化为 internal 消息。
+        log.info("Collecting internal decision: sessionId={}, turnId={}, phase={}, stepId={}, deepThinking={}",
+                chatSessionId, turnId, deepThinkPhase, planStepId, deepThinking);
+
+        // 内部决策不需要外部 callback，流式事件只由 RoutingLLMService 内部 collector 收集。
+        BufferedStreamingResponse bufferedResponse = llmService.streamDecisionWithRouting(
+                prompt, systemPrompt, tools, deepThinking);
+
+        Assert.notNull(bufferedResponse, "Buffered streamed response cannot be null");
+        Assert.notNull(bufferedResponse.response(), "Buffered streamed response cannot carry a null ChatResponse");
+        Assert.notNull(bufferedResponse.response().getResult(), "Buffered streamed response cannot carry a null Generation result");
+
+        AssistantMessage output = bufferedResponse.response().getResult().getOutput();
+        Assert.notNull(output, "Buffered streamed response cannot carry a null AssistantMessage");
+
+        List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
+        if (toolCalls != null && !toolCalls.isEmpty()) {
+            // 持久化 internal assistant tool_call 消息
+            persistInternalAssistant(chatSessionId, turnId, output, deepThinkPhase, planStepId);
+            log.info("Persisted internal assistant with {} tool calls: sessionId={}, turnId={}, phase={}",
+                    toolCalls.size(), chatSessionId, turnId, deepThinkPhase);
+        }
+        // 非 tool_call 的响应不持久化——调用方从 BufferedStreamingResponse 获取文本。
+
+        return bufferedResponse;
+    }
+
+    @Override
+    public void publishStatusEvent(String chatSessionId, String turnId, SseMessage.Type type, String statusText) {
+        // status-only SSE：只有 statusText + turnId，没有 message 和 metadata。
+        sseService.publish(chatSessionId, SseMessage.builder()
+                .type(type)
+                .payload(SseMessage.Payload.builder()
+                        .statusText(statusText)
+                        .turnId(turnId)
+                        .build())
+                .build());
+    }
+
+    /**
+     * 持久化 internal assistant 消息（含 tool calls），不推送 SSE。
+     */
+    private void persistInternalAssistant(String chatSessionId, String turnId,
+                                           AssistantMessage output,
+                                           String deepThinkPhase, String planStepId) {
+        ChatMessageDTO dto = ChatMessageDTO.builder()
+                .role(ChatMessageDTO.RoleType.ASSISTANT)
+                .content(output.getText())
+                .sessionId(chatSessionId)
+                .turnId(turnId)
+                .metadata(ChatMessageDTO.MetaData.builder()
+                        .toolCalls(output.getToolCalls())
+                        .internal(true)
+                        .deepThinkPhase(deepThinkPhase)
+                        .planStepId(planStepId)
+                        .build())
+                .build();
+        chatMessageFacadeService.createChatMessage(dto);
+    }
+
+    /**
+     * 持久化 internal tool response 消息，不推送 SSE。
+     * DeepThink 引擎执行工具后可调用此方法记录工具响应。
+     */
+    @Override
+    public void persistInternalToolResponses(String chatSessionId, String turnId,
+                                              ToolResponseMessage toolResponseMessage,
+                                              String deepThinkPhase, String planStepId) {
+        for (ToolResponseMessage.ToolResponse toolResponse : toolResponseMessage.getResponses()) {
+            ChatMessageDTO dto = ChatMessageDTO.builder()
+                    .role(ChatMessageDTO.RoleType.TOOL)
+                    .content(toolResponse.responseData())
+                    .sessionId(chatSessionId)
+                    .turnId(turnId)
+                    .metadata(ChatMessageDTO.MetaData.builder()
+                            .toolResponse(toolResponse)
+                            .internal(true)
+                            .deepThinkPhase(deepThinkPhase)
+                            .planStepId(planStepId)
+                            .build())
+                    .build();
+            chatMessageFacadeService.createChatMessage(dto);
+        }
     }
 
     // 当前生产流程没有调用 publishBufferedFinalResponse：
@@ -469,11 +573,11 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         ));
     }
 
-    private void publishDone(String chatSessionId, String chatMessageId) {
+    private void publishDone(String chatSessionId, String chatMessageId, String turnId) {
         // 通知前端该 assistant 消息完成，关闭 loading/打字状态。
         sseService.publish(chatSessionId, new SseMessage(
                 SseMessage.Type.AI_DONE,
-                SseMessage.Payload.builder().done(true).build(),
+                SseMessage.Payload.builder().done(true).turnId(turnId).build(),
                 SseMessage.Metadata.builder().chatMessageId(chatMessageId).build()
         ));
     }
@@ -522,5 +626,33 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         } catch (Exception e) {
             log.warn("Failed to record SSE timer: name={}, error={}", name, e.getMessage());
         }
+    }
+
+    // ========== Trace Metadata 附加（Phase 4 Fix 2） ==========
+
+    @Override
+    public void attachTraceMetadata(String chatSessionId, String turnId, com.yulong.chatagent.support.dto.AgentTraceMetadata trace) {
+        List<ChatMessageDTO> recentMessages = chatMessageFacadeService
+                .getChatMessagesBySessionIdRecently(chatSessionId, 50);
+
+        // 从最新消息向前查找指定 turn 的非 internal assistant 消息
+        for (int i = recentMessages.size() - 1; i >= 0; i--) {
+            ChatMessageDTO msg = recentMessages.get(i);
+            if (turnId.equals(msg.getTurnId())
+                    && msg.getRole() == ChatMessageDTO.RoleType.ASSISTANT
+                    && !(msg.getMetadata() != null && Boolean.TRUE.equals(msg.getMetadata().getInternal()))) {
+                ChatMessageDTO.MetaData meta = msg.getMetadata();
+                if (meta == null) {
+                    meta = ChatMessageDTO.MetaData.builder().build();
+                }
+                meta.setAgentTrace(trace);
+                UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
+                updateReq.setMetadata(meta);
+                chatMessageFacadeService.updateChatMessage(msg.getId(), updateReq);
+                log.info("Attached trace metadata to message {} for turn {}", msg.getId(), turnId);
+                return;
+            }
+        }
+        log.warn("No non-internal assistant message found for turn {} to attach trace", turnId);
     }
 }
