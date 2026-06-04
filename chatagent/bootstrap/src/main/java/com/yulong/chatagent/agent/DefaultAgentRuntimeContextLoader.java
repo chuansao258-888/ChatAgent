@@ -10,7 +10,6 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
-import com.yulong.chatagent.agent.runtime.AgentUserProfileSummaryResolver;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -27,7 +26,7 @@ import java.util.List;
 /**
  * 默认 Agent 运行时上下文加载器。
  * <p>
- * 它是 Agent 启动前的“装配台”：读取 Agent 定义、恢复 L1 记忆、解析 L2/L3 摘要、
+ * 它是 Agent 启动前的"装配台"：读取 Agent 定义、恢复 L1 记忆、解析 L2/L3 摘要、
  * 根据意图筛选工具，并把这些信息拼成最终系统提示词。
  */
 @Component
@@ -39,7 +38,6 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     private final AgentMemoryLoader agentMemoryLoader;
     private final AgentSessionFileSummaryResolver sessionFileSummaryResolver;
     private final AgentSessionSummaryResolver sessionSummaryResolver;
-    private final AgentUserProfileSummaryResolver relevantLongTermMemoriesResolver;
     private final AgentToolCallbackFactory agentToolCallbackFactory;
 
     public DefaultAgentRuntimeContextLoader(PromptLoader promptLoader,
@@ -47,14 +45,12 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                             AgentMemoryLoader agentMemoryLoader,
                                             AgentSessionFileSummaryResolver sessionFileSummaryResolver,
                                             AgentSessionSummaryResolver sessionSummaryResolver,
-                                            AgentUserProfileSummaryResolver relevantLongTermMemoriesResolver,
                                             AgentToolCallbackFactory agentToolCallbackFactory) {
         this.promptLoader = promptLoader;
         this.agentDefinitionLoader = agentDefinitionLoader;
         this.agentMemoryLoader = agentMemoryLoader;
         this.sessionFileSummaryResolver = sessionFileSummaryResolver;
         this.sessionSummaryResolver = sessionSummaryResolver;
-        this.relevantLongTermMemoriesResolver = relevantLongTermMemoriesResolver;
         this.agentToolCallbackFactory = agentToolCallbackFactory;
     }
 
@@ -84,19 +80,17 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         List<Message> memory = agentMemoryLoader.load(chatSessionId, agentConfig);
         String sessionFileSummary = sessionFileSummaryResolver.resolve(agentConfig, chatSessionId);
         String sessionSummary = sessionSummaryResolver.resolve(chatSessionId);
-        String relevantLongTermMemories = relevantLongTermMemoriesResolver.resolve(chatSessionId);
         // 3. 工具列表要结合 Agent 配置和意图结果动态收窄，避免模型看到不该使用的工具。
         List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig, intentResolution);
 
-        // 4. 系统提示词是最终喂给模型的“运行合同”，包含身份、历史摘要、意图边界和工具策略。
+        // 4. 系统提示词是最终喂给模型的"运行合同"，包含身份、历史摘要、意图边界和工具策略。
         String resolvedSystemPrompt = buildSystemPrompt(
-                agentConfig.getSystemPrompt(), 
-                sessionSummary, 
-                intentResolution, 
+                agentConfig.getSystemPrompt(),
+                sessionSummary,
+                intentResolution,
                 rewrittenInput,
                 memory,
                 sessionFileSummary,
-                relevantLongTermMemories,
                 toolCallbacks
         );
         logResolvedPrompt(intentResolution, resolvedSystemPrompt);
@@ -112,7 +106,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 toolCallbacks,
                 sessionFileSummary,
                 sessionSummary,
-                relevantLongTermMemories,
+                "",
                 executionMode == null ? AgentExecutionMode.REACT : executionMode
         );
     }
@@ -123,7 +117,6 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                      String rewrittenInput,
                                      List<Message> memory,
                                      String sessionFileSummary,
-                                     String relevantLongTermMemories,
                                      List<ToolCallback> toolCallbacks) {
         StringBuilder builder = new StringBuilder();
 
@@ -158,13 +151,10 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
             appendIntentBoundaryInstructions(builder, hasScopedKnowledgeBases, hasNarrowedTools);
         }
 
-        // 4. 会话上下文：附件摘要和用户画像让模型知道“当前会话有什么材料”和“用户长期偏好”。
+        // 4. 会话上下文：附件摘要让模型知道"当前会话有什么材料"。
         builder.append("[Session Context]\n");
         if (StringUtils.hasText(sessionFileSummary)) {
             builder.append("- Assets: ").append(sessionFileSummary).append("\n");
-        }
-        if (StringUtils.hasText(relevantLongTermMemories)) {
-            builder.append("- User Profile: ").append(relevantLongTermMemories).append("\n");
         }
         appendLatestTurnGuidance(builder, memory);
 
@@ -189,7 +179,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     }
 
     private void appendLatestTurnGuidance(StringBuilder builder, List<Message> memory) {
-        // 用户如果追问“你怎么知道的/依据是什么”，模型应解释上一轮依据，而不是盲目重新检索。
+        // 用户如果追问"你怎么知道的/依据是什么"，模型应解释上一轮依据，而不是盲目重新检索。
         if (!isPriorAnswerBasisFollowUp(memory)) {
             return;
         }
@@ -197,7 +187,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     }
 
     private boolean isPriorAnswerBasisFollowUp(List<Message> memory) {
-        // 从最近一条用户消息判断是否是“追问上一答复依据”的问题。
+        // 从最近一条用户消息判断是否是"追问上一答复依据"的问题。
         if (memory == null || memory.isEmpty()) {
             return false;
         }

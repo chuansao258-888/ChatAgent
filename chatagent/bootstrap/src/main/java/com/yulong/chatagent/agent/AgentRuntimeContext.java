@@ -22,7 +22,7 @@ import java.util.List;
  * @param toolCallbacks 本轮可用工具回调
  * @param sessionFileSummary 会话附件摘要
  * @param sessionSummary L2 历史摘要
- * @param relevantLongTermMemories L3 用户画像摘要
+ * @param relevantLongTermMemories L3 相关长期记忆（Phase 5 接入 recall 后填充）
  * @param executionMode 本轮用户选择并解析后的执行模式
  */
 public record AgentRuntimeContext(

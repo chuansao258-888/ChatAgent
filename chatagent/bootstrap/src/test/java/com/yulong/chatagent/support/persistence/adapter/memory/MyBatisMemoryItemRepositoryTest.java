@@ -135,7 +135,7 @@ class MyBatisMemoryItemRepositoryTest {
     }
 
     @Test
-    void shouldDeserializeNullJsonFieldsGracefully() {
+    void shouldDeserializeNullJsonFieldsAsEmptyDefaults() {
         MemoryItemDTO storedItem = MemoryItemDTO.builder()
                 .id("id-1")
                 .userId("user-1")
@@ -153,7 +153,42 @@ class MyBatisMemoryItemRepositoryTest {
         List<MemoryItemDTO> results = repository.findByUserIdAndStatus("user-1", "active");
 
         assertThat(results).hasSize(1);
-        assertThat(results.get(0).getTags()).isNull();
-        assertThat(results.get(0).getSource()).isNull();
+        assertThat(results.get(0).getTags()).isEmpty();
+        assertThat(results.get(0).getSource()).isEmpty();
+    }
+
+    @Test
+    void shouldNormalizeNullTagsAndSourceOnUpsert() {
+        MemoryItemDTO item = MemoryItemDTO.builder()
+                .userId("user-1")
+                .type("fact")
+                .content("A fact")
+                .contentHash("hash1")
+                .tags(null)
+                .source(null)
+                .build();
+
+        MemoryItemDTO persisted = MemoryItemDTO.builder()
+                .id("id-1")
+                .userId("user-1")
+                .type("fact")
+                .content("A fact")
+                .contentHash("hash1")
+                .tagsJson("[]")
+                .sourceJson("{}")
+                .status("active")
+                .indexStatus("pending")
+                .build();
+        when(memoryItemMapper.upsertOnConflict(any())).thenReturn(1);
+        when(memoryItemMapper.selectByUserAndTypeAndHash("user-1", "fact", "hash1"))
+                .thenReturn(persisted);
+
+        repository.upsert(item);
+
+        ArgumentCaptor<MemoryItemDTO> captor = ArgumentCaptor.forClass(MemoryItemDTO.class);
+        verify(memoryItemMapper).upsertOnConflict(captor.capture());
+        MemoryItemDTO upserted = captor.getValue();
+        assertThat(upserted.getTagsJson()).isEqualTo("[]");
+        assertThat(upserted.getSourceJson()).isEqualTo("{}");
     }
 }

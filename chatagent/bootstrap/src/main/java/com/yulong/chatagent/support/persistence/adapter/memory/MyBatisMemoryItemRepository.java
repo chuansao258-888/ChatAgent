@@ -38,6 +38,12 @@ public class MyBatisMemoryItemRepository implements MemoryItemRepository {
         if (item.getIndexStatus() == null) {
             item.setIndexStatus("pending");
         }
+        if (item.getTags() == null) {
+            item.setTags(List.of());
+        }
+        if (item.getSource() == null) {
+            item.setSource(Map.of());
+        }
         item.setTagsJson(writeJson(item.getTags()));
         item.setSourceJson(writeJson(item.getSource()));
         item.setUpdatedAt(LocalDateTime.now());
@@ -83,8 +89,14 @@ public class MyBatisMemoryItemRepository implements MemoryItemRepository {
     }
 
     private void deserializeJsonFields(MemoryItemDTO dto) {
-        dto.setTags(readJson(dto.getTagsJson(), TAGS_LIST_TYPE));
-        dto.setSource(readJson(dto.getSourceJson(), SOURCE_MAP_TYPE));
+        dto.setTags(readJson(dto.getTagsJson(), TAGS_LIST_TYPE, List.of()));
+        dto.setSource(readJson(dto.getSourceJson(), SOURCE_MAP_TYPE, Map.of()));
+    }
+
+    @SuppressWarnings("SameParameterValue")
+    private <T> T readJson(String json, TypeReference<T> type, T defaultValue) {
+        T result = readJson(json, type);
+        return result != null ? result : defaultValue;
     }
 
     private <T> T readJson(String json, TypeReference<T> type) {

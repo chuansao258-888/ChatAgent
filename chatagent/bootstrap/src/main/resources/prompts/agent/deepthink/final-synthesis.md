@@ -6,7 +6,7 @@
 
 {{sessionFileSummary}}
 
-## 用户画像摘要
+## 相关长期记忆
 
 {{relevantLongTermMemories}}
 

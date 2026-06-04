@@ -7,7 +7,6 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
-import com.yulong.chatagent.agent.runtime.AgentUserProfileSummaryResolver;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
@@ -45,9 +44,6 @@ class DefaultAgentRuntimeContextLoaderTest {
     private AgentSessionSummaryResolver sessionSummaryResolver;
 
     @Mock
-    private AgentUserProfileSummaryResolver relevantLongTermMemoriesResolver;
-
-    @Mock
     private AgentToolCallbackFactory agentToolCallbackFactory;
 
     @Mock
@@ -63,7 +59,6 @@ class DefaultAgentRuntimeContextLoaderTest {
                 agentMemoryLoader,
                 sessionFileSummaryResolver,
                 sessionSummaryResolver,
-                relevantLongTermMemoriesResolver,
                 agentToolCallbackFactory
         );
     }
@@ -94,7 +89,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, intentResolution)).thenReturn(List.of(toolCallback));
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1", intentResolution, "leave request process");
@@ -129,7 +123,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(mcpToolCallback));
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1");
@@ -151,7 +144,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("latest OpenAI release")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(webSearchCallback));
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1");
@@ -177,7 +169,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("latest status")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(mcpToolCallback, webSearchCallback));
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1");
@@ -199,7 +190,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("calendar")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(localToolCallback));
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1");
@@ -226,7 +216,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, intentResolution)).thenReturn(List.of());
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1", intentResolution, null);
@@ -253,7 +242,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, intentResolution)).thenReturn(List.of());
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1", intentResolution, "leave request process");
@@ -280,7 +268,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, intentResolution)).thenReturn(List.of());
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1", intentResolution, null);
@@ -314,7 +301,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         ));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(mcpToolCallback));
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1");
@@ -337,7 +323,6 @@ class DefaultAgentRuntimeContextLoaderTest {
         ));
         when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("Attached policy.pdf");
         when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
-        when(relevantLongTermMemoriesResolver.resolve("session-1")).thenReturn("Known employee");
         when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
 
         AgentRuntimeContext context = loader.load("agent-1", "session-1");
