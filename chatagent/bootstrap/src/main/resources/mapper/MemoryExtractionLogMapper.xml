@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.MemoryExtractionLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.dto.MemoryExtractionLogDTO">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="seqStartNo" column="seq_start_no" jdbcType="BIGINT"/>
+        <result property="seqEndNo" column="seq_end_no" jdbcType="BIGINT"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="errorMessage" column="error_message" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <select id="selectByRange" resultMap="BaseResultMap">
+        SELECT id::text, user_id::text, session_id, seq_start_no, seq_end_no,
+               status, error_message, created_at, updated_at
+        FROM memory_extraction_log
+        WHERE session_id = #{sessionId}
+          AND seq_start_no = #{seqStartNo}
+          AND seq_end_no = #{seqEndNo}
+    </select>
+
+    <insert id="insert" parameterType="com.yulong.chatagent.support.dto.MemoryExtractionLogDTO"
+            useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO memory_extraction_log (
+            user_id, session_id, seq_start_no, seq_end_no, status, error_message
+        ) VALUES (
+            CAST(#{userId} AS uuid), #{sessionId}, #{seqStartNo}, #{seqEndNo},
+            #{status}, #{errorMessage}
+        )
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE memory_extraction_log
+        SET status = #{status},
+            error_message = #{errorMessage},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+</mapper>

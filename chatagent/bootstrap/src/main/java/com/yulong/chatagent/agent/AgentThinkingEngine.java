@@ -43,7 +43,7 @@ public class AgentThinkingEngine {
     private final ChatOptions chatOptions;
     private final List<ToolCallback> availableTools;
     private final String sessionFileSummary;
-    private final String userProfileSummary;
+    private final String relevantLongTermMemories;
     private final String turnId;
     private final AgentMessageBridge messageBridge;
     private final int maxToolCallsPerStep;
@@ -53,7 +53,7 @@ public class AgentThinkingEngine {
                         ChatOptions chatOptions,
                         List<ToolCallback> availableTools,
                         String sessionFileSummary,
-                        String userProfileSummary,
+                        String relevantLongTermMemories,
                         String turnId,
                         AgentMessageBridge messageBridge,
                         int maxToolCallsPerStep) {
@@ -62,7 +62,7 @@ public class AgentThinkingEngine {
         this.chatOptions = chatOptions;
         this.availableTools = availableTools;
         this.sessionFileSummary = sessionFileSummary;
-        this.userProfileSummary = userProfileSummary;
+        this.relevantLongTermMemories = relevantLongTermMemories;
         this.turnId = turnId;
         this.messageBridge = messageBridge;
         this.maxToolCallsPerStep = maxToolCallsPerStep;
@@ -79,7 +79,7 @@ public class AgentThinkingEngine {
         long startTime = System.nanoTime();
         Map<String, String> vars = Map.of(
                 "sessionFileSummary", this.sessionFileSummary,
-                "userProfileSummary", this.userProfileSummary
+                "relevantLongTermMemories", this.relevantLongTermMemories
         );
         String decisionPrompt = promptLoader.render(PromptConstants.AGENT_DECISION_MODULE, vars);
 
@@ -165,7 +165,7 @@ public class AgentThinkingEngine {
         List<Message> finalPromptMessages = new ArrayList<>(promptMessages.size() + 1);
         Map<String, String> vars = Map.of(
                 "sessionFileSummary", this.sessionFileSummary,
-                "userProfileSummary", this.userProfileSummary
+                "relevantLongTermMemories", this.relevantLongTermMemories
         );
         finalPromptMessages.add(new SystemMessage(promptLoader.render(PromptConstants.AGENT_FINAL_ANSWER, vars)));
         finalPromptMessages.addAll(promptMessages);

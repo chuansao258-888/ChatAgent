@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.MemoryItemMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.dto.MemoryItemDTO">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
+        <result property="type" column="type" jdbcType="VARCHAR"/>
+        <result property="content" column="content" jdbcType="VARCHAR"/>
+        <result property="tagsJson" column="tags" jdbcType="VARCHAR"/>
+        <result property="sourceJson" column="source" jdbcType="VARCHAR"/>
+        <result property="contentHash" column="content_hash" jdbcType="VARCHAR"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="indexStatus" column="index_status" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT id::text, user_id::text, type, content, tags::text AS tags, source::text AS source,
+               content_hash, status, index_status, created_at, updated_at
+        FROM memory_item
+        WHERE id = CAST(#{id} AS uuid)
+    </select>
+
+    <select id="selectByUserIdAndStatus" resultMap="BaseResultMap">
+        SELECT id::text, user_id::text, type, content, tags::text AS tags, source::text AS source,
+               content_hash, status, index_status, created_at, updated_at
+        FROM memory_item
+        WHERE user_id = CAST(#{userId} AS uuid)
+          AND status = #{status}
+        ORDER BY updated_at DESC
+    </select>
+
+    <select id="selectByUserAndTypeAndHash" resultMap="BaseResultMap">
+        SELECT id::text, user_id::text, type, content, tags::text AS tags, source::text AS source,
+               content_hash, status, index_status, created_at, updated_at
+        FROM memory_item
+        WHERE user_id = CAST(#{userId} AS uuid)
+          AND type = #{type}
+          AND content_hash = #{contentHash}
+    </select>
+
+    <!-- Atomic upsert: on duplicate (user_id, type, content_hash), update tags, source, updated_at -->
+    <insert id="upsertOnConflict" parameterType="com.yulong.chatagent.support.dto.MemoryItemDTO"
+            useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO memory_item (
+            user_id, type, content, tags, source, content_hash, status, index_status
+        ) VALUES (
+            CAST(#{userId} AS uuid), #{type}, #{content},
+            CAST(#{tagsJson} AS jsonb),
+            CAST(#{sourceJson} AS jsonb),
+            #{contentHash}, #{status}, #{indexStatus}
+        )
+        ON CONFLICT (user_id, type, content_hash)
+        DO UPDATE SET
+            tags = EXCLUDED.tags,
+            source = EXCLUDED.source,
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+    <update id="updateIndexStatus">
+        UPDATE memory_item
+        SET index_status = #{indexStatus},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="updateStatus">
+        UPDATE memory_item
+        SET status = #{status},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+</mapper>

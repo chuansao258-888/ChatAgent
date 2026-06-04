@@ -47,7 +47,7 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
     private final PromptLoader promptLoader;
     private final LLMService llmService;
     private final String sessionFileSummary;
-    private final String userProfileSummary;
+    private final String relevantLongTermMemories;
     private final String turnId;
 
     private AgentState agentState;
@@ -62,7 +62,7 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
         this.promptLoader = context.promptLoader();
         this.llmService = context.llmService();
         this.sessionFileSummary = context.sessionFileSummary();
-        this.userProfileSummary = context.userProfileSummary();
+        this.relevantLongTermMemories = context.relevantLongTermMemories();
         this.turnId = context.turnId();
         this.messageBridge = context.messageBridge();
         this.agentState = AgentState.IDLE;
@@ -73,7 +73,7 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
                 context.chatOptions(),
                 context.availableTools(),
                 context.sessionFileSummary(),
-                context.userProfileSummary(),
+                context.relevantLongTermMemories(),
                 context.turnId(),
                 context.messageBridge(),
                 policy.getMaxToolCallsPerStep()
@@ -180,7 +180,7 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
 
             Map<String, String> vars = Map.of(
                     "sessionFileSummary", this.sessionFileSummary,
-                    "userProfileSummary", this.userProfileSummary
+                    "relevantLongTermMemories", this.relevantLongTermMemories
             );
             String finalAnswerPrompt = this.promptLoader.render(PromptConstants.AGENT_FINAL_ANSWER, vars);
 

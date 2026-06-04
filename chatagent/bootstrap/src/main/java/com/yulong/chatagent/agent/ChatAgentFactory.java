@@ -91,7 +91,7 @@ public class ChatAgentFactory {
                 context.toolCallbacks(),
                 context.sessionFileSummary(),
                 context.sessionSummary(),
-                context.userProfileSummary(),
+                context.relevantLongTermMemories(),
                 userId,
                 turnId,
                 chatSessionId,

@@ -60,7 +60,7 @@ class ChatAgentFactoryTest {
         AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
         assertThat(runContext).isNotNull();
         assertThat(runContext.sessionFileSummary()).isEqualTo("session file summary");
-        assertThat(runContext.userProfileSummary()).isEqualTo("user profile summary");
+        assertThat(runContext.relevantLongTermMemories()).isEqualTo("user profile summary");
         assertThat(runContext.executionMode()).isEqualTo(AgentExecutionMode.REACT);
 
         // REACT mode should select ReactRuntimeEngine

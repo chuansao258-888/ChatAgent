@@ -21,7 +21,7 @@ You are the Agent Decision Module. Your sole responsibility is to analyze the cu
 # Context
 
 - Attached session files: {{sessionFileSummary}}
-- Persistent user profile: {{userProfileSummary}}
+- Persistent user profile: {{relevantLongTermMemories}}
 
 # Rules
 

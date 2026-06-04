@@ -41,7 +41,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
     private final LLMService llmService;
     private final List<ToolCallback> availableTools;
     private final String sessionFileSummary;
-    private final String userProfileSummary;
+    private final String relevantLongTermMemories;
     private final String turnId;
 
     private AgentState agentState;
@@ -56,7 +56,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         this.llmService = context.llmService();
         this.availableTools = context.availableTools();
         this.sessionFileSummary = context.sessionFileSummary();
-        this.userProfileSummary = context.userProfileSummary();
+        this.relevantLongTermMemories = context.relevantLongTermMemories();
         this.turnId = context.turnId();
         this.messageBridge = context.messageBridge();
         this.agentState = AgentState.IDLE;
@@ -124,7 +124,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
 
             DeepThinkFinalSynthesizer finalSynthesizer = new DeepThinkFinalSynthesizer(
                     messageBridge, llmService, promptLoader, chatMemory, chatOptions,
-                    chatSessionId, turnId, sessionFileSummary, userProfileSummary);
+                    chatSessionId, turnId, sessionFileSummary, relevantLongTermMemories);
             finalSynthesizer.synthesize(plan, notebook, reflectionResult, verificationResult);
 
             agentState = AgentState.FINISHED;
@@ -326,8 +326,8 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         if (sessionFileSummary != null && !sessionFileSummary.isBlank()) {
             sb.append("已上传文件摘要：").append(sessionFileSummary).append("\n");
         }
-        if (userProfileSummary != null && !userProfileSummary.isBlank()) {
-            sb.append("用户画像：").append(userProfileSummary);
+        if (relevantLongTermMemories != null && !relevantLongTermMemories.isBlank()) {
+            sb.append("用户画像：").append(relevantLongTermMemories);
         }
         return sb.toString();
     }

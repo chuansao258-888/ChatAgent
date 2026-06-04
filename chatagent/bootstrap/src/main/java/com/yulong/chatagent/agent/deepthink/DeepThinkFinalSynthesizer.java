@@ -34,7 +34,7 @@ public class DeepThinkFinalSynthesizer {
     private final String chatSessionId;
     private final String turnId;
     private final String sessionFileSummary;
-    private final String userProfileSummary;
+    private final String relevantLongTermMemories;
 
     public DeepThinkFinalSynthesizer(AgentMessageBridge messageBridge,
                                      LLMService llmService,
@@ -44,7 +44,7 @@ public class DeepThinkFinalSynthesizer {
                                      String chatSessionId,
                                      String turnId,
                                      String sessionFileSummary,
-                                     String userProfileSummary) {
+                                     String relevantLongTermMemories) {
         this.messageBridge = messageBridge;
         this.llmService = llmService;
         this.promptLoader = promptLoader;
@@ -53,7 +53,7 @@ public class DeepThinkFinalSynthesizer {
         this.chatSessionId = chatSessionId;
         this.turnId = turnId;
         this.sessionFileSummary = sessionFileSummary;
-        this.userProfileSummary = userProfileSummary;
+        this.relevantLongTermMemories = relevantLongTermMemories;
     }
 
     public void synthesize(DeepThinkPlan plan,
@@ -91,7 +91,7 @@ public class DeepThinkFinalSynthesizer {
 
         String finalAnswerPrompt = promptLoader.render(PromptConstants.DEEPTHINK_FINAL_SYNTHESIS, Map.of(
                 "sessionFileSummary", sessionFileSummary == null ? "" : sessionFileSummary,
-                "userProfileSummary", userProfileSummary == null ? "" : userProfileSummary,
+                "relevantLongTermMemories", relevantLongTermMemories == null ? "" : relevantLongTermMemories,
                 "goal", plan == null || plan.getGoal() == null ? "" : plan.getGoal(),
                 "observations", notebook.buildObservationsSummary(),
                 "reflectionSummary", summarizeReflection(reflectionResult),

@@ -8,7 +8,7 @@
 
 ## 用户画像摘要
 
-{{userProfileSummary}}
+{{relevantLongTermMemories}}
 
 ## 目标
 

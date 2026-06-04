@@ -15,7 +15,7 @@ You are the Final Answer Module. Your task is to compose the user-facing answer 
 # Context
 
 - Attached session files: {{sessionFileSummary}}
-- Persistent user profile: {{userProfileSummary}}
+- Persistent user profile: {{relevantLongTermMemories}}
 
 # Rules
 

@@ -80,7 +80,7 @@ public class ChatAgent {
                      List<ToolCallback> availableTools,
                      String sessionFileSummary,
                      String sessionSummary,
-                     String userProfileSummary,
+                     String relevantLongTermMemories,
                      String userId,
                      String turnId,
                      String chatSessionId,
@@ -88,7 +88,7 @@ public class ChatAgent {
                      AgentRunPolicyProperties policyProperties) {
         this(agentId, name, description, systemPrompt, promptLoader, llmService,
                 maxMessages, memory, availableTools, sessionFileSummary, sessionSummary,
-                userProfileSummary, userId, turnId, chatSessionId, messageBridge,
+                relevantLongTermMemories, userId, turnId, chatSessionId, messageBridge,
                 policyProperties, AgentExecutionMode.REACT);
     }
 
@@ -103,7 +103,7 @@ public class ChatAgent {
                      List<ToolCallback> availableTools,
                      String sessionFileSummary,
                      String sessionSummary,
-                     String userProfileSummary,
+                     String relevantLongTermMemories,
                      String userId,
                      String turnId,
                      String chatSessionId,
@@ -123,8 +123,8 @@ public class ChatAgent {
         String resolvedSessionSummary = StringUtils.hasText(sessionSummary)
                 ? sessionSummary
                 : promptLoader.load(PromptConstants.FALLBACK_SESSION_SUMMARY);
-        String resolvedUserProfileSummary = StringUtils.hasText(userProfileSummary)
-                ? userProfileSummary
+        String resolvedUserProfileSummary = StringUtils.hasText(relevantLongTermMemories)
+                ? relevantLongTermMemories
                 : promptLoader.load(PromptConstants.FALLBACK_USER_PROFILE);
 
         List<ToolCallback> resolvedTools = availableTools == null ? List.of() : List.copyOf(availableTools);
@@ -200,14 +200,14 @@ public class ChatAgent {
                      List<ToolCallback> availableTools,
                      String sessionFileSummary,
                      String sessionSummary,
-                     String userProfileSummary,
+                     String relevantLongTermMemories,
                      String userId,
                      String turnId,
                      String chatSessionId,
                      AgentMessageBridge messageBridge) {
         this(agentId, name, description, systemPrompt, promptLoader, llmService,
                 maxMessages, memory, availableTools, sessionFileSummary, sessionSummary,
-                userProfileSummary, userId, turnId, chatSessionId, messageBridge,
+                relevantLongTermMemories, userId, turnId, chatSessionId, messageBridge,
                 new AgentRunPolicyProperties());
     }
 

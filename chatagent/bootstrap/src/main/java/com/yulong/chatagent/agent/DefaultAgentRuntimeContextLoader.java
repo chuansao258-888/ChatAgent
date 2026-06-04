@@ -39,7 +39,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     private final AgentMemoryLoader agentMemoryLoader;
     private final AgentSessionFileSummaryResolver sessionFileSummaryResolver;
     private final AgentSessionSummaryResolver sessionSummaryResolver;
-    private final AgentUserProfileSummaryResolver userProfileSummaryResolver;
+    private final AgentUserProfileSummaryResolver relevantLongTermMemoriesResolver;
     private final AgentToolCallbackFactory agentToolCallbackFactory;
 
     public DefaultAgentRuntimeContextLoader(PromptLoader promptLoader,
@@ -47,14 +47,14 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                             AgentMemoryLoader agentMemoryLoader,
                                             AgentSessionFileSummaryResolver sessionFileSummaryResolver,
                                             AgentSessionSummaryResolver sessionSummaryResolver,
-                                            AgentUserProfileSummaryResolver userProfileSummaryResolver,
+                                            AgentUserProfileSummaryResolver relevantLongTermMemoriesResolver,
                                             AgentToolCallbackFactory agentToolCallbackFactory) {
         this.promptLoader = promptLoader;
         this.agentDefinitionLoader = agentDefinitionLoader;
         this.agentMemoryLoader = agentMemoryLoader;
         this.sessionFileSummaryResolver = sessionFileSummaryResolver;
         this.sessionSummaryResolver = sessionSummaryResolver;
-        this.userProfileSummaryResolver = userProfileSummaryResolver;
+        this.relevantLongTermMemoriesResolver = relevantLongTermMemoriesResolver;
         this.agentToolCallbackFactory = agentToolCallbackFactory;
     }
 
@@ -84,7 +84,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         List<Message> memory = agentMemoryLoader.load(chatSessionId, agentConfig);
         String sessionFileSummary = sessionFileSummaryResolver.resolve(agentConfig, chatSessionId);
         String sessionSummary = sessionSummaryResolver.resolve(chatSessionId);
-        String userProfileSummary = userProfileSummaryResolver.resolve(chatSessionId);
+        String relevantLongTermMemories = relevantLongTermMemoriesResolver.resolve(chatSessionId);
         // 3. 工具列表要结合 Agent 配置和意图结果动态收窄，避免模型看到不该使用的工具。
         List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig, intentResolution);
 
@@ -96,7 +96,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 rewrittenInput,
                 memory,
                 sessionFileSummary,
-                userProfileSummary,
+                relevantLongTermMemories,
                 toolCallbacks
         );
         logResolvedPrompt(intentResolution, resolvedSystemPrompt);
@@ -112,7 +112,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 toolCallbacks,
                 sessionFileSummary,
                 sessionSummary,
-                userProfileSummary,
+                relevantLongTermMemories,
                 executionMode == null ? AgentExecutionMode.REACT : executionMode
         );
     }
@@ -123,7 +123,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                      String rewrittenInput,
                                      List<Message> memory,
                                      String sessionFileSummary,
-                                     String userProfileSummary,
+                                     String relevantLongTermMemories,
                                      List<ToolCallback> toolCallbacks) {
         StringBuilder builder = new StringBuilder();
 
@@ -163,8 +163,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         if (StringUtils.hasText(sessionFileSummary)) {
             builder.append("- Assets: ").append(sessionFileSummary).append("\n");
         }
-        if (StringUtils.hasText(userProfileSummary)) {
-            builder.append("- User Profile: ").append(userProfileSummary).append("\n");
+        if (StringUtils.hasText(relevantLongTermMemories)) {
+            builder.append("- User Profile: ").append(relevantLongTermMemories).append("\n");
         }
         appendLatestTurnGuidance(builder, memory);
 

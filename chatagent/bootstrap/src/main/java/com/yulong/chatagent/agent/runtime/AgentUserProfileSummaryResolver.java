@@ -24,17 +24,17 @@ public class AgentUserProfileSummaryResolver {
     }
 
     /**
-     * 根据会话找到用户，再读取该用户的画像摘要。
+     * Returns long-term memory context for the current session's user.
+     * <p>
+     * Deprecated: this resolver will be replaced by LongTermMemoryRecallService in Phase 5.
+     * For now, returns empty to stop reading from the deprecated user_profile.summary column.
      *
-     * @param chatSessionId 会话 ID
-     * @return 用户画像摘要；不可用时返回默认文案
+     * @param chatSessionId session ID
+     * @return empty string — L3 recall will be injected via the new service
      */
     public String resolve(String chatSessionId) {
-        // 会话未绑定用户时不能跨用户查画像，直接返回无画像提示。
-        ChatSessionDTO chatSession = chatSessionRepository.findById(chatSessionId);
-        if (chatSession == null || !StringUtils.hasText(chatSession.getUserId())) {
-            return "No persistent user profile available";
-        }
-        return userProfileService.getUserProfileSummary(chatSession.getUserId());
+        // Phase 1: user_profile.summary is no longer read for runtime L3 memory.
+        // Phase 5 will replace this resolver with LongTermMemoryRecallService.
+        return "";
     }
 }

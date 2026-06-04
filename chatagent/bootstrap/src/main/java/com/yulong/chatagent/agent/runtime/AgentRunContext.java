@@ -27,7 +27,7 @@ public record AgentRunContext(
         ChatOptions chatOptions,
         List<ToolCallback> availableTools,
         String sessionFileSummary,
-        String userProfileSummary,
+        String relevantLongTermMemories,
         AgentMessageBridge messageBridge,
         AgentRunPolicy policy,
         AgentExecutionMode executionMode
