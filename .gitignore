@@ -1,7 +1,10 @@
 .idea/
 *.iml
 out/
+.agents/
 .claude/
+AGENTS.md
+CLAUDE.md
 
 .DS_Store
 Thumbs.db
