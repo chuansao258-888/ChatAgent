@@ -1,6 +1,6 @@
 -- L3 Long-Term User Memory
 -- Replaces user_profile.summary with atomic memory items.
--- The deprecated user_profile table is dropped by V21; runtime no longer reads or writes it.
+-- The user_profile table is kept as deprecated schema; runtime no longer reads or writes it.
 
 CREATE TABLE memory_item (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,4 +44,4 @@ CREATE TABLE memory_extraction_log (
 );
 
 -- DEPRECATED: user_profile table is no longer used by runtime L3 memory.
--- Dropped by V21__drop_deprecated_user_profile.sql.
+-- Kept for rollback and manual inspection. A future migration may drop it.
