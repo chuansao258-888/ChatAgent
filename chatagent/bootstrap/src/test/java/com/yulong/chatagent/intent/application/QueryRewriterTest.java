@@ -50,7 +50,7 @@ class QueryRewriterTest {
 
         String result = queryRewriter.rewrite("怎么弄？", resolution);
 
-        assertThat(result).isEqualTo("如何申请差旅报销？");
+        assertThat(result).isEqualTo("报销制度 如何申请差旅报销？");
     }
 
     @Test
@@ -84,7 +84,7 @@ class QueryRewriterTest {
 
         String result = queryRewriter.rewrite("发个邮件给张三", resolution);
 
-        assertThat(result).isEqualTo("发个邮件给张三");
+        assertThat(result).isEqualTo("发送邮件 发个邮件给张三");
     }
 
     @Test

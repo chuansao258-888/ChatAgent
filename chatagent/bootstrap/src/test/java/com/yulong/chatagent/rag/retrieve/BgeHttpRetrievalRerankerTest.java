@@ -170,11 +170,11 @@ class BgeHttpRetrievalRerankerTest {
         List<MilvusSearchHit> result = reranker.rerank("query", candidates);
 
         assertEquals(2, result.size());
-        assertNull(result.get(0).score());
-        assertNull(result.get(1).score());
-        assertEquals("filtered", result.get(0).scoreType());
-        assertEquals("filtered", result.get(1).scoreType());
-        assertEquals(1.0, meterRegistry.counter("chatagent.reranker.requests", "provider", "bge-http", "outcome", "filtered").count());
+        assertEquals(0.12d, result.get(0).score());
+        assertEquals(0.08d, result.get(1).score());
+        assertEquals("reranker", result.get(0).scoreType());
+        assertEquals("reranker", result.get(1).scoreType());
+        assertEquals(1.0, meterRegistry.counter("chatagent.reranker.requests", "provider", "bge-http", "outcome", "low_confidence").count());
     }
 
     @Test
