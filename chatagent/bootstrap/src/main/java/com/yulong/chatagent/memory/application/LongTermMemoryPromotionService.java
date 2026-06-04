@@ -4,12 +4,18 @@ import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
 import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
 import com.yulong.chatagent.memory.port.MemoryExtractionLogRepository;
+import com.yulong.chatagent.memory.port.MemoryItemRepository;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.support.dto.MemoryExtractionLogDTO;
+import com.yulong.chatagent.support.dto.MemoryItemDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Handles L3 long-term memory promotion after L2 summarization.
@@ -18,9 +24,10 @@ import java.util.List;
  * <ol>
  *     <li>Resolves the user from the session (skips if no user).</li>
  *     <li>Checks extraction log idempotency — duplicate ranges are skipped.</li>
- *     <li>Records the extraction log as processing.</li>
- *     <li>Extracts long-term memories from the raw turns (Phase 3 fills this in).</li>
- *     <li>Marks the extraction log as completed or failed.</li>
+ *     <li>Inserts an extraction log with status "processing".</li>
+ *     <li>Calls the LLM extractor to get memory candidates.</li>
+ *     <li>For each valid extracted memory: normalizes content, computes hash, upserts into {@code memory_item}.</li>
+ *     <li>Updates the extraction log to "completed" or "failed".</li>
  * </ol>
  *
  * <p>L3 failures are fully isolated from L2: any exception is caught and logged
@@ -32,11 +39,17 @@ public class LongTermMemoryPromotionService {
 
     private final ChatSessionRepository chatSessionRepository;
     private final MemoryExtractionLogRepository extractionLogRepository;
+    private final MemoryItemRepository memoryItemRepository;
+    private final LongTermMemoryExtractor extractor;
 
     public LongTermMemoryPromotionService(ChatSessionRepository chatSessionRepository,
-                                          MemoryExtractionLogRepository extractionLogRepository) {
+                                          MemoryExtractionLogRepository extractionLogRepository,
+                                          MemoryItemRepository memoryItemRepository,
+                                          LongTermMemoryExtractor extractor) {
         this.chatSessionRepository = chatSessionRepository;
         this.extractionLogRepository = extractionLogRepository;
+        this.memoryItemRepository = memoryItemRepository;
+        this.extractor = extractor;
     }
 
     /**
@@ -64,42 +77,97 @@ public class LongTermMemoryPromotionService {
         }
         String userId = session.getUserId();
 
-        // Idempotency: skip if this range was already extracted.
-        MemoryExtractionLogDTO existingLog = extractionLogRepository.findByRange(
-                sessionId, range.startExclusiveSeqNo() + 1, range.endInclusiveSeqNo());
+        long seqStart = range.startExclusiveSeqNo() + 1;
+        long seqEnd = range.endInclusiveSeqNo();
+
+        // Idempotency: skip if this range was already processed (any status, including failed).
+        // v1 treats failed logs as terminal. Future iterations may retry failed ranges.
+        MemoryExtractionLogDTO existingLog = extractionLogRepository.findByRange(sessionId, seqStart, seqEnd);
         if (existingLog != null) {
             log.debug("L3 promotion skipped: range already processed: sessionId={}, logStatus={}",
                     sessionId, existingLog.getStatus());
             return;
         }
 
-        // Record extraction as processing.
-        MemoryExtractionLogDTO extractionLog = extractionLogRepository.insert(MemoryExtractionLogDTO.builder()
+        // Insert extraction log as "processing".
+        MemoryExtractionLogDTO extractionLog = MemoryExtractionLogDTO.builder()
                 .userId(userId)
                 .sessionId(sessionId)
-                .seqStartNo(range.startExclusiveSeqNo() + 1)
-                .seqEndNo(range.endInclusiveSeqNo())
+                .seqStartNo(seqStart)
+                .seqEndNo(seqEnd)
                 .status("processing")
-                .build());
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+        MemoryExtractionLogDTO savedLog = extractionLogRepository.insert(extractionLog);
 
         try {
-            // Phase 3 will add the actual extractor call here.
-            // For now, this is a no-op that marks the extraction as completed.
-            log.info("L3 memory promotion completed (extractor pending Phase 3): sessionId={}, userId={}, turns={}",
-                    sessionId, userId, turns.size());
+            ExtractionResult extractionResult = extractor.extract(turns);
+            if (!extractionResult.success()) {
+                extractionLogRepository.updateStatus(savedLog.getId(), "failed", "extractor returned failure");
+                log.info("L3 extraction returned failure: sessionId={}, userId={}", sessionId, userId);
+                return;
+            }
 
-            extractionLogRepository.updateStatus(extractionLog.getId(), "completed", null);
+            List<ExtractedMemory> memories = extractionResult.memories();
+            int upserted = upsertMemories(userId, sessionId, seqStart, seqEnd, turns, memories);
+
+            extractionLogRepository.updateStatus(savedLog.getId(), "completed", null);
+            log.info("L3 extraction completed: sessionId={}, userId={}, candidates={}, upserted={}",
+                    sessionId, userId, memories.size(), upserted);
         } catch (Exception e) {
-            log.warn("L3 extraction failed, marking log: sessionId={}, error={}", sessionId, e.getMessage());
-            extractionLogRepository.updateStatus(extractionLog.getId(), "failed", abbreviate(e));
+            extractionLogRepository.updateStatus(savedLog.getId(), "failed",
+                    truncate(e.getMessage(), 500));
+            log.warn("L3 extraction error: sessionId={}, userId={}, error={}",
+                    sessionId, userId, e.getMessage());
         }
     }
 
-    private String abbreviate(Exception e) {
-        String message = e == null ? null : e.getMessage();
-        if (message == null || message.isBlank()) {
-            return e == null ? "Unknown error" : e.getClass().getSimpleName();
+    private int upsertMemories(String userId, String sessionId, long seqStart, long seqEnd,
+                               List<AtomicConversationTurn> turns, List<ExtractedMemory> memories) {
+        Map<String, Object> source = buildSource(sessionId, seqStart, seqEnd, turns);
+        int count = 0;
+        for (ExtractedMemory memory : memories) {
+            String normalized = MemoryHashNormalizer.normalize(memory.content());
+            String hash = MemoryHashNormalizer.hash(userId, memory.type(), normalized);
+
+            MemoryItemDTO item = MemoryItemDTO.builder()
+                    .userId(userId)
+                    .type(memory.type())
+                    .content(memory.content().trim())
+                    .tags(memory.tags())
+                    .source(source)
+                    .contentHash(hash)
+                    .status("active")
+                    .indexStatus("pending")
+                    .build();
+
+            memoryItemRepository.upsert(item);
+            count++;
         }
-        return message.length() <= 500 ? message : message.substring(0, 500);
+        return count;
+    }
+
+    private Map<String, Object> buildSource(String sessionId, long seqStart, long seqEnd,
+                                            List<AtomicConversationTurn> turns) {
+        List<String> turnIds = new ArrayList<>();
+        for (AtomicConversationTurn turn : turns) {
+            if (turn.turnId() != null) {
+                turnIds.add(turn.turnId());
+            }
+        }
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("session_id", sessionId);
+        source.put("seq_start_no", seqStart);
+        source.put("seq_end_no", seqEnd);
+        source.put("turn_ids", turnIds);
+        return source;
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) {
+            return null;
+        }
+        return s.length() <= maxLen ? s : s.substring(0, maxLen);
     }
 }

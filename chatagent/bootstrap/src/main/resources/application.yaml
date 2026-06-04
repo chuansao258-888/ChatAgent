@@ -180,6 +180,7 @@ chatagent:
     summary-max-chars: ${CHATAGENT_MEMORY_SUMMARY_MAX_CHARS:500}
     l3:
       enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
+      extractor-model: ${CHATAGENT_MEMORY_L3_EXTRACTOR_MODEL:deepseek-chat}
   rag:
     vdp:
       cache:
