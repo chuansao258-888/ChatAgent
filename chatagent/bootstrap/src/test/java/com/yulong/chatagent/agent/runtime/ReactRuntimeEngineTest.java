@@ -300,7 +300,7 @@ class ReactRuntimeEngineTest {
                 chatOptions,
                 tools,
                 "file summary",
-                "user profile summary",
+                "relevant long-term memory",
                 messageBridge,
                 policy,
                 AgentExecutionMode.REACT

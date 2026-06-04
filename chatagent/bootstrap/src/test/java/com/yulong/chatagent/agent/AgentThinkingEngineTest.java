@@ -128,7 +128,7 @@ class AgentThinkingEngineTest {
                         .build(),
                 tools,
                 "session file summary",
-                "user profile summary",
+                "relevant long-term memory",
                 TURN_ID,
                 messageBridge,
                 4  // maxToolCallsPerStep

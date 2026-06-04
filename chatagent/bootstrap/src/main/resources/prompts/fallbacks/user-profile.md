@@ -1,1 +1,0 @@
-No persistent user profile available

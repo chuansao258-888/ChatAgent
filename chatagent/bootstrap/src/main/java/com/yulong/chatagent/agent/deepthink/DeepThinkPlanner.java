@@ -50,7 +50,7 @@ public class DeepThinkPlanner {
      * @param chatSessionId  聊天会话 ID
      * @param turnId         当前轮次 ID
      * @param userQuestion   用户问题
-     * @param sessionContext 会话上下文（文件摘要、用户画像等）
+     * @param sessionContext 会话上下文（文件摘要、相关长期记忆等）
      * @param maxPlanItems   最大步骤数
      * @return 解析后的计划，如果 LLM 输出无法解析则返回 null
      */

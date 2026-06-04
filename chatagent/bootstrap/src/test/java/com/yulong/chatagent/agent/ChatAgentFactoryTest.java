@@ -41,7 +41,7 @@ class ChatAgentFactoryTest {
                 List.of(toolCallback),
                 "session file summary",
                 "session summary",
-                "user profile summary",
+                "relevant long-term memory",
                 AgentExecutionMode.REACT
         );
 
@@ -60,7 +60,7 @@ class ChatAgentFactoryTest {
         AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
         assertThat(runContext).isNotNull();
         assertThat(runContext.sessionFileSummary()).isEqualTo("session file summary");
-        assertThat(runContext.relevantLongTermMemories()).isEqualTo("user profile summary");
+        assertThat(runContext.relevantLongTermMemories()).isEqualTo("relevant long-term memory");
         assertThat(runContext.executionMode()).isEqualTo(AgentExecutionMode.REACT);
 
         // REACT mode should select ReactRuntimeEngine
@@ -85,7 +85,7 @@ class ChatAgentFactoryTest {
                 List.of(),
                 "session file summary",
                 "session summary",
-                "user profile summary",
+                "relevant long-term memory",
                 AgentExecutionMode.DEEPTHINK
         );
 
@@ -114,5 +114,39 @@ class ChatAgentFactoryTest {
         // DEEPTHINK mode should select DeepThinkRuntimeEngine
         AgentRuntimeEngine deepEngine = (AgentRuntimeEngine) ReflectionTestUtils.getField(chatAgent, "runtimeEngine");
         assertThat(deepEngine).isInstanceOf(DeepThinkRuntimeEngine.class);
+    }
+
+    @Test
+    void shouldOmitLongTermMemoryWhenRuntimeContextHasNone() {
+        LLMService llmService = mock(LLMService.class);
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
+
+        AgentRuntimeContext context = new AgentRuntimeContext(
+                "agent-1",
+                "Support",
+                "support agent",
+                "system prompt",
+                "glm-4.6",
+                12,
+                List.of(),
+                List.of(),
+                "session file summary",
+                "session summary",
+                "",
+                AgentExecutionMode.REACT
+        );
+
+        when(contextLoader.load("agent-1", "session-1", null, null, null)).thenReturn(context);
+
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), llmService, contextLoader, messageBridge,
+                new AgentRunPolicyProperties()
+        );
+
+        ChatAgent chatAgent = factory.create("agent-1", "session-1");
+
+        AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
+        assertThat(runContext.relevantLongTermMemories()).isEmpty();
     }
 }

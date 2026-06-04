@@ -123,9 +123,9 @@ public class ChatAgent {
         String resolvedSessionSummary = StringUtils.hasText(sessionSummary)
                 ? sessionSummary
                 : promptLoader.load(PromptConstants.FALLBACK_SESSION_SUMMARY);
-        String resolvedUserProfileSummary = StringUtils.hasText(relevantLongTermMemories)
+        String resolvedRelevantLongTermMemories = StringUtils.hasText(relevantLongTermMemories)
                 ? relevantLongTermMemories
-                : promptLoader.load(PromptConstants.FALLBACK_USER_PROFILE);
+                : "";
 
         List<ToolCallback> resolvedTools = availableTools == null ? List.of() : List.copyOf(availableTools);
 
@@ -170,7 +170,7 @@ public class ChatAgent {
                 chatOptions,
                 resolvedTools,
                 resolvedSessionFileSummary,
-                resolvedUserProfileSummary,
+                resolvedRelevantLongTermMemories,
                 messageBridge,
                 policy,
                 this.executionMode

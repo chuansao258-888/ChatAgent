@@ -54,7 +54,6 @@ public final class PromptConstants {
     // ── fallback 文案 ──────────────────────────────────────────────────
     public static final String FALLBACK_SESSION_FILES = "fallbacks/session-files.md";
     public static final String FALLBACK_SESSION_SUMMARY = "fallbacks/session-summary.md";
-    public static final String FALLBACK_USER_PROFILE = "fallbacks/user-profile.md";
     public static final String FALLBACK_SYSTEM_INTENT = "fallbacks/system-intent.md";
     public static final String FALLBACK_VLM_FAILURE = "fallbacks/vlm-failure.md";
 }

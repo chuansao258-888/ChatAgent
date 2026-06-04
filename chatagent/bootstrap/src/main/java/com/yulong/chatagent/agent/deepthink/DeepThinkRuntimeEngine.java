@@ -327,7 +327,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
             sb.append("已上传文件摘要：").append(sessionFileSummary).append("\n");
         }
         if (relevantLongTermMemories != null && !relevantLongTermMemories.isBlank()) {
-            sb.append("用户画像：").append(relevantLongTermMemories);
+            sb.append("相关长期记忆：").append(relevantLongTermMemories);
         }
         return sb.toString();
     }
