@@ -36,6 +36,11 @@ public class AsyncConfig {
         return buildExecutor(20, 100, 200, "LlmStream-", new ThreadPoolExecutor.AbortPolicy());
     }
 
+    @Bean("l3Executor")
+    public Executor l3Executor() {
+        return buildExecutor(1, 2, 8, "l3-promote-", new ThreadPoolExecutor.DiscardOldestPolicy());
+    }
+
     private TaskDecorator traceTaskDecorator() {
         return runnable -> {
             String traceId = TraceContext.getTraceId();

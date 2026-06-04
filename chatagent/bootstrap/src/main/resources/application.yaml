@@ -178,6 +178,8 @@ chatagent:
     l1-token-budget: ${CHATAGENT_MEMORY_L1_TOKEN_BUDGET:4000}
     summary-model: ${CHATAGENT_MEMORY_SUMMARY_MODEL:deepseek-chat}
     summary-max-chars: ${CHATAGENT_MEMORY_SUMMARY_MAX_CHARS:500}
+    l3:
+      enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
   rag:
     vdp:
       cache:

@@ -98,6 +98,42 @@ class IncrementalSummarizerTest {
     }
 
     @Test
+    void shouldReturnRawTurnsViaSummarizeWithDetails() {
+        AtomicConversationTurn turn = new AtomicConversationTurn(
+                "turn-1", 5L, 8L,
+                List.of("Order AB-1234 on 2026-03-28 amount $100"),
+                "Approved and submitted."
+        );
+        when(summaryWatermarkService.resolvePendingRange("session-1", 8L))
+                .thenReturn(new SummaryWatermarkRange("session-1", 4L, 8L));
+        when(turnBasedContextExtractor.extractPendingTurns("session-1", 8L))
+                .thenReturn(List.of(turn));
+        when(chatSessionSummaryRepository.findBySessionId("session-1"))
+                .thenReturn(ChatSessionSummaryDTO.builder()
+                        .sessionId("session-1").lastSeqNo(4L).summary("Old").build());
+        when(chatModelRouter.route("summary-model")).thenReturn(chatClient);
+        when(chatClient.prompt(anyString()).call().content()).thenReturn("Updated summary.");
+        when(chatSessionSummaryRepository.saveOrUpdate(any())).thenReturn(true);
+
+        SummaryResult result = incrementalSummarizer.summarizeWithDetails("session-1", 8L);
+
+        assertThat(result.updated()).isTrue();
+        assertThat(result.range()).isEqualTo(new SummaryWatermarkRange("session-1", 4L, 8L));
+        assertThat(result.turns()).containsExactly(turn);
+    }
+
+    @Test
+    void shouldReturnEmptyTurnsWhenNoPendingRange() {
+        when(summaryWatermarkService.resolvePendingRange("session-1", 8L))
+                .thenReturn(new SummaryWatermarkRange("session-1", 8L, 8L));
+
+        SummaryResult result = incrementalSummarizer.summarizeWithDetails("session-1", 8L);
+
+        assertThat(result.updated()).isFalse();
+        assertThat(result.turns()).isEmpty();
+    }
+
+    @Test
     void shouldFallbackToDeterministicSummaryWhenLlmFails() {
         when(summaryWatermarkService.resolvePendingRange("session-1", 6L))
                 .thenReturn(new SummaryWatermarkRange("session-1", 0L, 6L));

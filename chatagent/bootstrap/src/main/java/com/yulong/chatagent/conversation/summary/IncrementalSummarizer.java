@@ -23,14 +23,14 @@ import java.util.regex.Pattern;
 /**
  * 增量会话摘要器。
  * <p>
- * 它负责把“已经滑出 L1 原始记忆窗口”的那部分历史压缩成 L2 摘要，
+ * 它负责把"已经滑出 L1 原始记忆窗口"的那部分历史压缩成 L2 摘要，
  * 并且不是每次从零开始重算，而是：
  * <ol>
  *     <li>读取现有摘要；</li>
  *     <li>找到这次新稳定下来的 turn 片段；</li>
  *     <li>把旧摘要与新 turn 合并成下一版摘要。</li>
  * </ol>
- * 这样可以把摘要成本控制在“增量更新”而不是“全量重建”。
+ * 这样可以把摘要成本控制在"增量更新"而不是"全量重建"。
  */
 @Component
 @Slf4j
@@ -73,10 +73,22 @@ public class IncrementalSummarizer {
      * @return true when the summary record was updated
      */
     public boolean summarize(String sessionId, long anchorSeqNo) {
+        return summarizeWithDetails(sessionId, anchorSeqNo).updated();
+    }
+
+    /**
+     * Summarizes the newly stable portion of a session, returning both the update
+     * status and the raw turns that were processed so L3 promotion can reuse them.
+     *
+     * @param sessionId chat session identifier
+     * @param anchorSeqNo latest persisted message sequence that is safe to summarize
+     * @return summary result including whether the record was updated, the processed range, and raw turns
+     */
+    public SummaryResult summarizeWithDetails(String sessionId, long anchorSeqNo) {
         SummaryWatermarkRange range = summaryWatermarkService.resolvePendingRange(sessionId, anchorSeqNo);
         if (!range.hasPendingMessages()) {
             // 没有待推进的 seq_no 区间，说明当前 anchor 已经被摘要覆盖。
-            return false;
+            return new SummaryResult(false, range, List.of());
         }
 
         ChatSessionSummaryDTO existing = chatSessionSummaryRepository.findBySessionId(sessionId);
@@ -87,7 +99,7 @@ public class IncrementalSummarizer {
                 extractAnchoredEntities(turns)
         );
 
-        // 新摘要不是覆盖式“重写全部历史”，而是在旧摘要之上增量刷新。
+        // 新摘要不是覆盖式"重写全部历史"，而是在旧摘要之上增量刷新。
         String existingSummary = existing == null || existing.getSummary() == null ? "" : existing.getSummary().trim();
         String nextSummary = turns.isEmpty()
                 ? existingSummary
@@ -101,7 +113,8 @@ public class IncrementalSummarizer {
                 .summary(nextSummary)
                 .anchoredEntities(mergedAnchors)
                 .build();
-        return chatSessionSummaryRepository.saveOrUpdate(updated);
+        boolean saved = chatSessionSummaryRepository.saveOrUpdate(updated);
+        return new SummaryResult(saved, range, turns);
     }
 
     private String generateSummary(String existingSummary, List<AtomicConversationTurn> turns) {
@@ -133,7 +146,7 @@ public class IncrementalSummarizer {
 
     private String formatTurns(List<AtomicConversationTurn> turns) {
         // 这里把 turn 格式化成 prompt 文本输入给 summary model，
-        // 尽量保留“谁问了什么、最终答了什么”的结构化顺序。
+        // 尽量保留"谁问了什么、最终答了什么"的结构化顺序。
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < turns.size(); i++) {
             AtomicConversationTurn turn = turns.get(i);

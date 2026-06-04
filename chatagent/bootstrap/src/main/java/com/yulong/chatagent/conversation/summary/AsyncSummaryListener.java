@@ -1,8 +1,10 @@
 package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.event.ConversationTurnCompletedEvent;
+import com.yulong.chatagent.conversation.event.LongTermMemoryPromotionRequestedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Component;
  *     <li>当前事件对应的 anchor 是否已经被历史摘要覆盖。</li>
  * </ul>
  * 只有这些条件都满足时，才真正调用 IncrementalSummarizer。
+ * L2 完成后，如果产生了实际待压缩的 turns，同时发出 L3 promotion 事件。
  */
 @Component
 @Slf4j
@@ -26,18 +29,24 @@ public class AsyncSummaryListener {
     private final SummaryWatermarkService summaryWatermarkService;
     private final IncrementalSummarizer incrementalSummarizer;
     private final RedisLockManager redisLockManager;
+    private final ApplicationEventPublisher eventPublisher;
     private final int l1WindowTurns;
+    private final boolean l3Enabled;
 
     public AsyncSummaryListener(TurnBasedContextExtractor turnBasedContextExtractor,
                                 SummaryWatermarkService summaryWatermarkService,
                                 IncrementalSummarizer incrementalSummarizer,
                                 RedisLockManager redisLockManager,
-                                @Value("${chatagent.memory.l1-window-turns:8}") int l1WindowTurns) {
+                                ApplicationEventPublisher eventPublisher,
+                                @Value("${chatagent.memory.l1-window-turns:8}") int l1WindowTurns,
+                                @Value("${chatagent.memory.l3.enabled:true}") boolean l3Enabled) {
         this.turnBasedContextExtractor = turnBasedContextExtractor;
         this.summaryWatermarkService = summaryWatermarkService;
         this.incrementalSummarizer = incrementalSummarizer;
         this.redisLockManager = redisLockManager;
+        this.eventPublisher = eventPublisher;
         this.l1WindowTurns = Math.max(l1WindowTurns, 1);
+        this.l3Enabled = l3Enabled;
     }
 
     @Async("summaryExecutor")
@@ -62,7 +71,15 @@ public class AsyncSummaryListener {
                 // 当前 anchor 已经被更早或更晚的摘要任务覆盖，不需要重复跑。
                 return;
             }
-            incrementalSummarizer.summarize(event.sessionId(), event.lastSeqNo());
+            SummaryResult result = incrementalSummarizer.summarizeWithDetails(event.sessionId(), event.lastSeqNo());
+
+            if (l3Enabled && result.updated() && result.turns() != null && !result.turns().isEmpty()) {
+                eventPublisher.publishEvent(new LongTermMemoryPromotionRequestedEvent(
+                        event.sessionId(),
+                        result.range(),
+                        result.turns()
+                ));
+            }
         } finally {
             // 无论 summarize 成功还是失败，都必须释放 session 级摘要锁。
             redisLockManager.unlock(event.sessionId(), lockToken);
