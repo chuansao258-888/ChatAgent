@@ -88,7 +88,7 @@ class KnowledgeIngestTaskListenerTest {
     }
 
     @Test
-    void shouldAckInFlightDuplicateWhenTaskLockIsRunning() throws Exception {
+    void shouldRequeueWithDelayWhenTaskLockIsRunning() throws Exception {
         KnowledgeIngestTaskListener listener = newListener(new ChatAgentMqProperties());
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
@@ -96,7 +96,7 @@ class KnowledgeIngestTaskListenerTest {
 
         listener.handle(buildMessage(0, false), channel);
 
-        verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
+        verify(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(), anyString());
         verify(channel).basicAck(7L, false);
         verify(knowledgeDocumentRepository, never()).findById(anyString());
         verify(knowledgeDocumentIngestionService, never()).ingestSync(anyString(), any());

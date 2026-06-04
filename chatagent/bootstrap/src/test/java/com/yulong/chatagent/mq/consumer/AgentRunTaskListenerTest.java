@@ -215,7 +215,7 @@ class AgentRunTaskListenerTest {
     }
 
     @Test
-    void shouldAckInFlightDuplicateWhenTaskLockIsRunning() throws Exception {
+    void shouldRequeueWithDelayWhenTaskLockIsRunning() throws Exception {
         AgentRunTaskListener listener = newListener();
         when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(
                 new MqTaskLockAcquisition(MqTaskLockAcquireOutcome.WAIT_REQUIRED, null, MqTaskLockState.RUNNING)
@@ -223,7 +223,7 @@ class AgentRunTaskListenerTest {
 
         listener.handle(buildMessage(0, false), channel);
 
-        verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(), anyString());
+        verify(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(), anyString());
         verify(channel).basicAck(7L, false);
         verify(chatEventProcessor, never()).process(any());
     }

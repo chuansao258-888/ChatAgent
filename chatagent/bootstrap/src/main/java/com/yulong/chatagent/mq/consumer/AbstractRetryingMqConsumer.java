@@ -78,11 +78,8 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 return;
             }
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.WAIT_REQUIRED) {
-                // 已有同一个任务处于 RUNNING。
-                // 这里 ack 掉当前重复消息，不让它继续重投；真正的那条消息会负责完成/失败状态。
-                log.info("MQ task skipped because an equivalent task is already RUNNING: taskType={}, eventId={}, idempotencyKey={}",
-                        identity.taskType(), identity.eventId(), identity.idempotencyKey());
-                channel.basicAck(deliveryTag, false);
+                // 已有同一个任务处于 RUNNING。将消息放入延迟重投队列，等当前任务完成后再处理。
+                requeueWithDelay(message, channel, deliveryTag, identity, "task lock already RUNNING");
                 return;
             }
             if (acquisition.outcome() == MqTaskLockAcquireOutcome.DUPLICATE) {
