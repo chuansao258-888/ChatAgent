@@ -2,15 +2,16 @@ package com.yulong.chatagent.websearch;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
 /**
  * Externalized configuration for the native web search tool.
  * <p>
  * Bound to {@code chatagent.web-search} in application.yaml.
  * Defaults to disabled so the application starts without a SearXNG instance.
+ * <p>
+ * Registered by {@link com.yulong.chatagent.websearch.config.WebSearchConfiguration}
+ * via {@code @EnableConfigurationProperties}; do not add {@code @Component}.
  */
-@Component
 @ConfigurationProperties(prefix = "chatagent.web-search")
 @Data
 public class WebSearchProperties {
