@@ -204,33 +204,15 @@ public class AgentMemoryLoader {
      * <p>
      * 这里不追求精确 tokenizer，只用于 L1 记忆窗口裁剪：中文字符按 2 token，
      * 其他字符按 1 token，配合 80% 安全系数使用。
+     * <p>
+     * 委托给 {@link com.yulong.chatagent.conversation.summary.TokenEstimator} 保持 L1/L2 估算一致。
      */
     private int estimateTokens(List<Message> messages) {
         int total = 0;
         for (Message message : messages) {
-            String content = message.getText();
-            if (!StringUtils.hasText(content)) {
-                continue;
-            }
-            for (char c : content.toCharArray()) {
-                if (isChinese(c)) {
-                    total += 2;
-                } else {
-                    total += 1;
-                }
-            }
+            total += com.yulong.chatagent.conversation.summary.TokenEstimator.estimateTokens(message.getText());
         }
         return total;
-    }
-
-    private boolean isChinese(char c) {
-        Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
-        return ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-                || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-                || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-                || ub == Character.UnicodeBlock.GENERAL_PUNCTUATION
-                || ub == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
-                || ub == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS;
     }
 
     /**
