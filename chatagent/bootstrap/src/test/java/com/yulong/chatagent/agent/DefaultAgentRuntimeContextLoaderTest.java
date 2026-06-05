@@ -10,6 +10,7 @@ import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
+import com.yulong.chatagent.memory.application.LongTermMemoryRecallService;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,9 @@ class DefaultAgentRuntimeContextLoaderTest {
     private AgentToolCallbackFactory agentToolCallbackFactory;
 
     @Mock
+    private LongTermMemoryRecallService longTermMemoryRecallService;
+
+    @Mock
     private ToolCallback toolCallback;
 
     private DefaultAgentRuntimeContextLoader loader;
@@ -59,7 +63,8 @@ class DefaultAgentRuntimeContextLoaderTest {
                 agentMemoryLoader,
                 sessionFileSummaryResolver,
                 sessionSummaryResolver,
-                agentToolCallbackFactory
+                agentToolCallbackFactory,
+                longTermMemoryRecallService
         );
     }
 
@@ -329,6 +334,45 @@ class DefaultAgentRuntimeContextLoaderTest {
 
         assertThat(context.systemPrompt())
                 .doesNotContain("[Latest Turn Guidance]");
+    }
+
+    @Test
+    void shouldInjectRelevantLongTermMemoriesInSystemPrompt() {
+        AgentDTO agent = minimalAgent();
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
+        ToolCallback calendarTool = namedToolCallback("calendarTool", "Read calendar events");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(calendarTool));
+        when(longTermMemoryRecallService.recall("session-1", "hello")).thenReturn(
+                "- preference: User prefers short answers\n- fact: User works at NTU");
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        assertThat(context.systemPrompt()).contains("[Relevant Long-Term Memory]");
+        assertThat(context.systemPrompt()).contains("- preference: User prefers short answers");
+        assertThat(context.systemPrompt()).contains("- fact: User works at NTU");
+        // Memories should appear after [Session Context] and before [Tool Strategy]
+        assertThat(context.systemPrompt().indexOf("[Session Context]"))
+                .isLessThan(context.systemPrompt().indexOf("[Relevant Long-Term Memory]"));
+        assertThat(context.systemPrompt().indexOf("[Relevant Long-Term Memory]"))
+                .isLessThan(context.systemPrompt().indexOf("[Tool Strategy]"));
+        assertThat(context.relevantLongTermMemories())
+                .isEqualTo("- preference: User prefers short answers\n- fact: User works at NTU");
+    }
+
+    @Test
+    void shouldOmitRelevantLongTermMemorySectionWhenEmpty() {
+        AgentDTO agent = minimalAgent();
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("L2 summary");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
+        when(longTermMemoryRecallService.recall("session-1", "hello")).thenReturn("");
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        assertThat(context.systemPrompt()).doesNotContain("[Relevant Long-Term Memory]");
     }
 
     private AgentDTO minimalAgent() {

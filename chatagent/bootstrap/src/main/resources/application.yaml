@@ -183,6 +183,7 @@ chatagent:
     l3:
       enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
       extractor-model: ${CHATAGENT_MEMORY_L3_EXTRACTOR_MODEL:deepseek-chat}
+      recall-top-k: ${CHATAGENT_MEMORY_L3_RECALL_TOP_K:3}
   rag:
     vdp:
       cache:

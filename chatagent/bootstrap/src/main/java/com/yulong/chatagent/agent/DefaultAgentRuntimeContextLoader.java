@@ -10,6 +10,7 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.memory.application.LongTermMemoryRecallService;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -39,19 +40,22 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     private final AgentSessionFileSummaryResolver sessionFileSummaryResolver;
     private final AgentSessionSummaryResolver sessionSummaryResolver;
     private final AgentToolCallbackFactory agentToolCallbackFactory;
+    private final LongTermMemoryRecallService longTermMemoryRecallService;
 
     public DefaultAgentRuntimeContextLoader(PromptLoader promptLoader,
                                             AgentDefinitionLoader agentDefinitionLoader,
                                             AgentMemoryLoader agentMemoryLoader,
                                             AgentSessionFileSummaryResolver sessionFileSummaryResolver,
                                             AgentSessionSummaryResolver sessionSummaryResolver,
-                                            AgentToolCallbackFactory agentToolCallbackFactory) {
+                                            AgentToolCallbackFactory agentToolCallbackFactory,
+                                            LongTermMemoryRecallService longTermMemoryRecallService) {
         this.promptLoader = promptLoader;
         this.agentDefinitionLoader = agentDefinitionLoader;
         this.agentMemoryLoader = agentMemoryLoader;
         this.sessionFileSummaryResolver = sessionFileSummaryResolver;
         this.sessionSummaryResolver = sessionSummaryResolver;
         this.agentToolCallbackFactory = agentToolCallbackFactory;
+        this.longTermMemoryRecallService = longTermMemoryRecallService;
     }
 
     @Override
@@ -83,6 +87,10 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         // 3. 工具列表要结合 Agent 配置和意图结果动态收窄，避免模型看到不该使用的工具。
         List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig, intentResolution);
 
+        // 3.5 L3 recall: embed query, search user memories, format for prompt injection.
+        String query = resolveQuery(rewrittenInput, memory);
+        String relevantLongTermMemories = longTermMemoryRecallService.recall(chatSessionId, query);
+
         // 4. 系统提示词是最终喂给模型的"运行合同"，包含身份、历史摘要、意图边界和工具策略。
         String resolvedSystemPrompt = buildSystemPrompt(
                 agentConfig.getSystemPrompt(),
@@ -91,6 +99,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 rewrittenInput,
                 memory,
                 sessionFileSummary,
+                relevantLongTermMemories,
                 toolCallbacks
         );
         logResolvedPrompt(intentResolution, resolvedSystemPrompt);
@@ -106,7 +115,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 toolCallbacks,
                 sessionFileSummary,
                 sessionSummary,
-                "",
+                relevantLongTermMemories,
                 executionMode == null ? AgentExecutionMode.REACT : executionMode
         );
     }
@@ -117,6 +126,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                      String rewrittenInput,
                                      List<Message> memory,
                                      String sessionFileSummary,
+                                     String relevantLongTermMemories,
                                      List<ToolCallback> toolCallbacks) {
         StringBuilder builder = new StringBuilder();
 
@@ -158,6 +168,12 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         }
         appendLatestTurnGuidance(builder, memory);
 
+        // 5. L3 相关长期记忆：从用户历史对话中提取的稳定偏好和事实。
+        if (StringUtils.hasText(relevantLongTermMemories)) {
+            builder.append("\n[Relevant Long-Term Memory]\n")
+                    .append(relevantLongTermMemories).append("\n");
+        }
+
         appendToolStrategyGuidance(builder, toolCallbacks);
 
         if (hasMcpTools(toolCallbacks)) {
@@ -176,6 +192,22 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
             return;
         }
         builder.append("\n").append(promptLoader.load(PromptConstants.AGENT_TOOL_STRATEGY)).append("\n");
+    }
+
+    private String resolveQuery(String rewrittenInput, List<Message> memory) {
+        if (StringUtils.hasText(rewrittenInput)) {
+            return rewrittenInput;
+        }
+        if (memory == null || memory.isEmpty()) {
+            return "";
+        }
+        for (int i = memory.size() - 1; i >= 0; i--) {
+            if (memory.get(i) instanceof UserMessage userMsg) {
+                String text = userMsg.getText();
+                return StringUtils.hasText(text) ? text : "";
+            }
+        }
+        return "";
     }
 
     private void appendLatestTurnGuidance(StringBuilder builder, List<Message> memory) {
