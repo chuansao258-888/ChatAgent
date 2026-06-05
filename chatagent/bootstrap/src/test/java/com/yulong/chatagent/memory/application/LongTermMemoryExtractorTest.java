@@ -162,6 +162,24 @@ class LongTermMemoryExtractorTest {
     }
 
     @Test
+    void shouldDropMissingTypeWithoutDiscardingOtherValidMemories() {
+        String json = """
+                {
+                  "memories": [
+                    {"content": "Missing type field", "tags": []},
+                    {"type": "fact", "content": "Valid fact", "tags": []}
+                  ]
+                }
+                """;
+        ExtractionResult result = extractor.parseResponse(json);
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.memories()).hasSize(1);
+        assertThat(result.memories().get(0).type()).isEqualTo("fact");
+        assertThat(result.memories().get(0).content()).isEqualTo("Valid fact");
+    }
+
+    @Test
     void shouldFailWhenMemoriesKeyMissing() {
         String json = """
                 {"data": []}

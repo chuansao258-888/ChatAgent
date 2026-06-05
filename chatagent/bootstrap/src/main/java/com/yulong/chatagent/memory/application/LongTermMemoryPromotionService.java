@@ -77,8 +77,8 @@ public class LongTermMemoryPromotionService {
         try {
             doPromote(sessionId, range, turns);
         } catch (Exception e) {
-            log.warn("L3 memory promotion failed, L2 summary is unaffected: sessionId={}, range={}:{}, error={}",
-                    sessionId, range.startExclusiveSeqNo(), range.endInclusiveSeqNo(), e.getMessage());
+            log.warn("L3 memory promotion failed, L2 summary is unaffected: sessionId={}, range={}:{}, errorClass={}",
+                    sessionId, range.startExclusiveSeqNo(), range.endInclusiveSeqNo(), e.getClass().getSimpleName());
         }
     }
 
@@ -132,8 +132,8 @@ public class LongTermMemoryPromotionService {
         } catch (Exception e) {
             extractionLogRepository.updateStatus(savedLog.getId(), "failed",
                     truncate(e.getMessage(), 500));
-            log.warn("L3 extraction error: sessionId={}, userId={}, error={}",
-                    sessionId, userId, e.getMessage());
+            log.warn("L3 extraction error: sessionId={}, userId={}, errorClass={}",
+                    sessionId, userId, e.getClass().getSimpleName());
         }
     }
 
@@ -177,11 +177,11 @@ public class LongTermMemoryPromotionService {
                 log.debug("L3 memory Milvus indexing unavailable: memoryId={}", item.getId());
             }
         } catch (Exception e) {
-            log.warn("L3 memory Milvus indexing failed: memoryId={}, error={}", item.getId(), e.getMessage());
+            log.warn("L3 memory Milvus indexing failed: memoryId={}, errorClass={}", item.getId(), e.getClass().getSimpleName());
             try {
                 memoryItemRepository.updateIndexStatus(item.getId(), "failed");
             } catch (Exception ex) {
-                log.warn("L3 memory index_status update failed: memoryId={}, error={}", item.getId(), ex.getMessage());
+                log.warn("L3 memory index_status update failed: memoryId={}, errorClass={}", item.getId(), ex.getClass().getSimpleName());
             }
         }
     }

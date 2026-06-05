@@ -70,7 +70,7 @@ public class LongTermMemoryExtractor {
             }
             return parseResponse(content.trim());
         } catch (Exception e) {
-            log.warn("L3 extraction failed: error={}", e.getMessage());
+            log.warn("L3 extraction failed: errorClass={}", e.getClass().getSimpleName());
             return ExtractionResult.failure();
         }
     }
@@ -99,7 +99,7 @@ public class LongTermMemoryExtractor {
             }
             return ExtractionResult.success(valid);
         } catch (Exception e) {
-            log.warn("L3 extractor JSON parse failed: error={}", e.getMessage());
+            log.warn("L3 extractor JSON parse failed: errorClass={}", e.getClass().getSimpleName());
             return ExtractionResult.failure();
         }
     }
@@ -110,8 +110,8 @@ public class LongTermMemoryExtractor {
         }
         String type = textField(node, "type");
         String content = textField(node, "content");
-        if (!VALID_TYPES.contains(type)) {
-            log.debug("L3 extractor dropped memory with invalid type: type={}", type);
+        if (type == null || !VALID_TYPES.contains(type)) {
+            log.debug("L3 extractor dropped memory with invalid type: typeChars={}", type != null ? type.length() : 0);
             return null;
         }
         if (!StringUtils.hasText(content)) {

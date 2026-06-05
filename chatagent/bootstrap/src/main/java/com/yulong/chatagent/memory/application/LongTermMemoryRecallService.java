@@ -77,8 +77,8 @@ public class LongTermMemoryRecallService {
             log.debug("L3 recall returned {} memories for user={}", hits.size(), userId);
             return formatMemories(hits);
         } catch (Exception e) {
-            log.warn("L3 recall failed, continuing without memories: sessionId={}, error={}",
-                    sessionId, e.getMessage());
+            log.warn("L3 recall failed, continuing without memories: sessionId={}, errorClass={}",
+                    sessionId, e.getClass().getSimpleName());
             return "";
         }
     }

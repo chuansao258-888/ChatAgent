@@ -152,7 +152,7 @@ public class DefaultUserMemoryMilvusIndexService implements UserMemoryIndexServi
                     .build());
             return true;
         } catch (Exception e) {
-            log.warn("User-memory Milvus upsert failed: memoryId={}, error={}", memoryId, e.getMessage());
+            log.warn("User-memory Milvus upsert failed: memoryId={}, errorClass={}", memoryId, e.getClass().getSimpleName());
             return false;
         }
     }

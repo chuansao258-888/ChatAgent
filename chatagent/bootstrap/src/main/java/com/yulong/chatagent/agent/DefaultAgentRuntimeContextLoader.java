@@ -303,11 +303,13 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         }
         boolean hasScopedKnowledgeBases = intentResolution != null && !intentResolution.scopedKbIds().isEmpty();
         boolean hasNarrowedTools = intentResolution != null && !intentResolution.allowedTools().isEmpty();
-        log.debug("Resolved system prompt branch: intentKind={}, scopedKb={}, narrowedTools={}\n{}",
+        boolean hasL3Memory = resolvedSystemPrompt.contains("[Relevant Long-Term Memory]");
+        log.debug("Resolved system prompt: intentKind={}, scopedKb={}, narrowedTools={}, hasL3Memory={}, promptChars={}",
                 intentResolution == null ? "NONE" : intentResolution.kind(),
                 hasScopedKnowledgeBases,
                 hasNarrowedTools,
-                resolvedSystemPrompt);
+                hasL3Memory,
+                resolvedSystemPrompt.length());
     }
 
     private boolean hasMcpTools(List<ToolCallback> toolCallbacks) {
