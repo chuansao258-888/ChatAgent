@@ -38,9 +38,12 @@ public class AgentMemoryLoader {
     private static final double TOKEN_SAFETY_MARGIN = 0.8;
 
     private final ChatMessageRepository chatMessageRepository;
+    private final ToolResultCompactor toolResultCompactor;
 
-    public AgentMemoryLoader(ChatMessageRepository chatMessageRepository) {
+    public AgentMemoryLoader(ChatMessageRepository chatMessageRepository,
+                             ToolResultCompactor toolResultCompactor) {
         this.chatMessageRepository = chatMessageRepository;
+        this.toolResultCompactor = toolResultCompactor;
     }
 
     /**
@@ -82,6 +85,10 @@ public class AgentMemoryLoader {
             List<Message> springAiMessages = convertToSpringAiMessages(turnMessages);
 
             int turnTokens = estimateTokens(springAiMessages);
+            if (turnTokens > effectiveBudget) {
+                springAiMessages = applyBudgetCompaction(springAiMessages);
+                turnTokens = estimateTokens(springAiMessages);
+            }
             if (!selectedTurnMessages.isEmpty() && currentTokenCount + turnTokens > effectiveBudget) {
                 break;
             }
@@ -171,8 +178,12 @@ public class AgentMemoryLoader {
                 continue;
             }
 
+            // Apply deterministic microcompact to oversized tool responses (no DB mutation).
+            String responseContent = toolResultCompactor.compactIfNeeded(toolResponse.responseData());
+            ToolResponseMessage.ToolResponse compactedResponse = new ToolResponseMessage.ToolResponse(
+                    toolResponse.id(), toolResponse.name(), responseContent);
             sequence.add(ToolResponseMessage.builder()
-                    .responses(List.of(toolResponse))
+                    .responses(List.of(compactedResponse))
                     .build());
             if (StringUtils.hasLength(toolResponse.id())) {
                 resolvedToolCallIds.add(toolResponse.id());
@@ -206,13 +217,45 @@ public class AgentMemoryLoader {
      * 其他字符按 1 token，配合 80% 安全系数使用。
      * <p>
      * 委托给 {@link com.yulong.chatagent.conversation.summary.TokenEstimator} 保持 L1/L2 估算一致。
+     * 注意：{@code ToolResponseMessage.getText()} 返回空串，实际内容在
+     * {@code responseData()} 里，所以需要单独处理。
      */
     private int estimateTokens(List<Message> messages) {
         int total = 0;
         for (Message message : messages) {
-            total += com.yulong.chatagent.conversation.summary.TokenEstimator.estimateTokens(message.getText());
+            if (message instanceof ToolResponseMessage toolMsg) {
+                for (ToolResponseMessage.ToolResponse response : toolMsg.getResponses()) {
+                    total += com.yulong.chatagent.conversation.summary.TokenEstimator
+                            .estimateTokens(response.responseData());
+                }
+            } else {
+                total += com.yulong.chatagent.conversation.summary.TokenEstimator
+                        .estimateTokens(message.getText());
+            }
         }
         return total;
+    }
+
+    /**
+     * Apply budget-pressure compaction to all tool responses in a turn.
+     * Force-compacts regardless of char threshold, to help the turn fit within budget.
+     */
+    private List<Message> applyBudgetCompaction(List<Message> messages) {
+        List<Message> result = new ArrayList<>();
+        for (Message message : messages) {
+            if (message instanceof ToolResponseMessage toolMsg) {
+                List<ToolResponseMessage.ToolResponse> compacted = new ArrayList<>();
+                for (ToolResponseMessage.ToolResponse response : toolMsg.getResponses()) {
+                    String compactedData = toolResultCompactor.compactForBudget(response.responseData());
+                    compacted.add(new ToolResponseMessage.ToolResponse(
+                            response.id(), response.name(), compactedData));
+                }
+                result.add(ToolResponseMessage.builder().responses(compacted).build());
+            } else {
+                result.add(message);
+            }
+        }
+        return result;
     }
 
     /**

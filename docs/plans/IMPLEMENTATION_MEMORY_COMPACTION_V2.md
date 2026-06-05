@@ -2,7 +2,7 @@
 
 ## Overall Status
 
-Phase 1–3 complete. Phases 4–7 pending.
+Phase 1–4 complete. Phases 5–7 pending.
 
 Authoritative plan:
 
@@ -15,7 +15,7 @@ Authoritative plan:
 | 1 | Schema And Runtime Contract Slice | **Complete** |
 | 2 | Stable Boundary And Token Policy | **Complete** |
 | 3 | Structured Segment Summarization | **Complete** |
-| 4 | Runtime Tool-Result Microcompact | Pending |
+| 4 | Runtime Tool-Result Microcompact | **Complete** |
 | 5 | Failure Protection And Retry | Pending |
 | 6 | Runtime Rendering And L3 Alignment | Pending |
 | 7 | Documentation And Broad Verification | Pending |
@@ -49,6 +49,25 @@ Authoritative plan:
 | `DefaultAgentRuntimeContextLoader` removed stale `contains("No historical context summary available")` string filter — V2 resolver returns empty string directly | Confirmed |
 
 ## Files Changed
+
+### Phase 4: Runtime Tool-Result Microcompact
+
+New files:
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/runtime/ToolResultCompactor.java` — Spring @Component with @Value config (tool-result-max-chars, head-chars, tail-chars) and Micrometer counter via ObjectProvider<MeterRegistry>. Deterministic head/tail compaction format: `[Tool result compacted for context budget]` header, original char count, head excerpt, error-line extraction from dropped middle, tail excerpt. Minimum bounds (maxChars≥200, head/tail≥100) enforced in constructor. Supports normal max-char compaction and stronger budget-pressure compaction.
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/agent/runtime/ToolResultCompactorTest.java` — 14 tests: large content compacted, small unchanged, exact threshold boundary, null, empty, head/tail from different parts, shouldCompact flag, max exceeded when head/tail would overlap, forced budget compaction below maxChars, budget compaction keeps original when wrapping would grow content, budget compaction of null, metric increment on compaction, metric not incremented without compaction, error-line preservation from dropped middle
+
+Modified files:
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/runtime/AgentMemoryLoader.java` — added ToolResultCompactor dependency; in `collectAssistantSequence()`, applies compaction to oversized `ToolResponse.responseData()` before creating Spring AI ToolResponseMessage. Token estimation now includes `ToolResponseMessage.responseData()`. If a selected turn would exceed the effective L1 token budget, loader applies budget-pressure compaction before deciding whether the turn can fit. Creates new ToolResponse with same id/name but compacted content. No mutation of persisted DTO.
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/agent/runtime/AgentMemoryLoaderTest.java` — 8 tests: 3 existing tests updated for new constructor, 5 new tests (oversized tool compacted, tool call ID preserved after compaction, small tool unchanged, DTO content unchanged proving no DB mutation, budget-pressure compaction below maxChars)
+
+Implementation notes:
+
+- Compaction happens during Spring AI message construction, not on the raw ChatMessageDTO. The DTO's ToolResponse object (a Java record) is immutable; a new ToolResponse is created with compacted content.
+- Config values already exist in `application.yaml` from Phase 1: `tool-result-max-chars: 2000`, `tool-result-head-chars: 800`, `tool-result-tail-chars: 800`.
+- The `ToolResponseMessage.getText()` returns empty — content is in `responseData()`. Tests assert on `responseData()` to verify compaction.
+- Budget-pressure compaction uses smaller excerpts than normal threshold compaction so it materially reduces token estimate while preserving tool response pairing.
 
 ### Phase 3: Structured Segment Summarization
 
@@ -131,6 +150,14 @@ Planning/review-fix documents changed:
 
 ## Tests Added Or Updated
 
+Phase 4 new tests (14):
+
+- `ToolResultCompactorTest`: 14 tests covering large content compacted with head/tail format, small content unchanged, exact threshold boundary, null/empty input, head/tail from distinct content regions, shouldCompact flag, max exceeded when configured head/tail would overlap, forced budget compaction below maxChars, budget compaction preserving original content when the compacted wrapper would be larger, budget compaction of null, Micrometer counter incremented on compaction, Micrometer counter not incremented when no compaction, error-line preservation from dropped middle region
+
+Phase 4 updated tests (5):
+
+- `AgentMemoryLoaderTest`: 3 existing tests updated for new ToolResultCompactor constructor parameter; 5 new tests — oversized tool result compacted in returned Spring AI messages, tool call ID preserved after compaction, small tool result unchanged, DTO content unchanged proving no DB mutation, budget-pressure compaction for a below-maxChars tool result
+
 Phase 3 new tests (11):
 
 - `StructuredSummaryParserTest`: 11 tests covering valid JSON, missing optional fields, markdown code fence stripping, invalid JSON → raw text fallback, blank input, null input, non-string list filtering, empty entity list filtering, deterministic fallback from turns, empty turns, null turns
@@ -178,6 +205,20 @@ Phase 2 targeted verification:
 ```powershell
 .\mvnw.cmd -pl bootstrap test "-Dtest=StructuredSummaryParserTest,IncrementalSummarizerTest,AsyncSummaryListenerTest"
 # Result: 27 tests, 0 failures, 0 errors
+```
+
+Phase 4 targeted verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test "-Dtest=ToolResultCompactorTest,AgentMemoryLoaderTest"
+# Result: 18 tests, 0 failures, 0 errors
+```
+
+Phase 4 broad verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test
+# Result: 766 tests, 0 failures, 0 errors
 ```
 
 Phase 3 broad verification:
@@ -313,6 +354,9 @@ Planned manual checks:
 | 2026-06-06 | Review fix | Fixed P2: Added `shouldHandleDuplicateSegmentInsert` test covering ON CONFLICT path — segment insert returns false, no segments in result, segmentCount unchanged, synopsis still merged, watermark advanced. Fixed P3: `toStructuredJson` now reuses static `OBJECT_MAPPER` instead of creating new ObjectMapper per call. Fixed P3: Added `shouldFallbackWhenLlmReturnsBlankContent` test covering blank LLM response path. 2 new tests. |
 | 2026-06-06 | Review fix | Fixed P2: `StructuredSummaryParser.parse()` now returns empty on JSON parse failure instead of wrapping raw model text, so `IncrementalSummarizer` falls through to `StructuredSummaryParser.fallback(turns)` for deterministic output. Updated `shouldReturnEmptyWhenJsonIsInvalid` parser test. Added `shouldFallbackWhenLlmReturnsInvalidJson` summarizer test proving segment summary comes from turns, not unstructured model text. Fixed P2: `warnIfAnchorsMissing` now logs only `missingCount` and `buckets=[dates:1, amounts:3]` — no raw entity values in logs. |
 | 2026-06-06 | Review fix | Fixed P2: `StructuredSummaryParser` parse failure log now uses `errorClass=JsonParseException, inputChars=79` instead of `e.getMessage()` to avoid leaking model response tokens into logs. |
+| 2026-06-06 | Implementation | Phase 4 complete: ToolResultCompactor with deterministic head/tail format for oversized tool responses, integrated into AgentMemoryLoader's collectAssistantSequence (compact on read, no DB mutation). Tool call ID and response pairing preserved. 7 new + 4 updated tests. Targeted 14 tests passing. |
+| 2026-06-06 | Review fix | Fixed P2: `compactIfNeeded()` now still compacts when content exceeds maxChars even if configured head/tail would overlap the content, dynamically shrinking excerpts so the result is shorter than the original. Fixed P2: `AgentMemoryLoader` now counts `ToolResponseMessage.responseData()` in token estimates and applies budget-pressure compaction before dropping a selected over-budget turn. Fixed P3: verified the stray `chatagent/org/` generated class directory is absent from `git status`. Added 4 regression tests. Targeted 18 tests and full 766-test suite passing. |
+| 2026-06-06 | Review fix | Fixed P3: Added Micrometer counter `chatagent.memory.compaction.v2.tool_results_compacted` to `ToolResultCompactor`, following `ObjectProvider<MeterRegistry>` pattern from AsyncSummaryListener. 2 metric verification tests added. Fixed P3: `doCompact` now scans the dropped middle region for lines matching error/stack-trace/URL/path patterns and preserves up to 3 such lines within 25% of the excerpt budget. Safety check reverts to head/tail-only if error lines would make the result longer than the original. 1 test for error-line preservation. Fixed P3: Added `shouldReturnNullWhenBudgetCompactingNull` test covering `compactForBudget(null)` contract. Targeted 22 tests passing. |
 
 ## Deferred Items
 
