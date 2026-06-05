@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * Milvus client wiring guarded behind the {@code milvus.enabled} flag.
  */
 @Configuration
-@EnableConfigurationProperties({MilvusProperties.class, KnowledgeBaseMilvusProperties.class})
+@EnableConfigurationProperties({MilvusProperties.class, KnowledgeBaseMilvusProperties.class, UserMemoryMilvusProperties.class})
 public class MilvusConfiguration {
 
     @Bean

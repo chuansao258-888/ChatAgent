@@ -1,10 +1,12 @@
 package com.yulong.chatagent.memory.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
 import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
 import com.yulong.chatagent.memory.port.MemoryExtractionLogRepository;
 import com.yulong.chatagent.memory.port.MemoryItemRepository;
+import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.support.dto.MemoryExtractionLogDTO;
 import com.yulong.chatagent.support.dto.MemoryItemDTO;
@@ -27,6 +29,8 @@ import java.util.Map;
  *     <li>Inserts an extraction log with status "processing".</li>
  *     <li>Calls the LLM extractor to get memory candidates.</li>
  *     <li>For each valid extracted memory: normalizes content, computes hash, upserts into {@code memory_item}.</li>
+ *     <li>Embeds each memory and indexes it into Milvus.</li>
+ *     <li>Updates {@code index_status} based on Milvus upsert result.</li>
  *     <li>Updates the extraction log to "completed" or "failed".</li>
  * </ol>
  *
@@ -41,15 +45,24 @@ public class LongTermMemoryPromotionService {
     private final MemoryExtractionLogRepository extractionLogRepository;
     private final MemoryItemRepository memoryItemRepository;
     private final LongTermMemoryExtractor extractor;
+    private final OllamaEmbeddingClient embeddingClient;
+    private final UserMemoryIndexService indexService;
+    private final ObjectMapper objectMapper;
 
     public LongTermMemoryPromotionService(ChatSessionRepository chatSessionRepository,
                                           MemoryExtractionLogRepository extractionLogRepository,
                                           MemoryItemRepository memoryItemRepository,
-                                          LongTermMemoryExtractor extractor) {
+                                          LongTermMemoryExtractor extractor,
+                                          OllamaEmbeddingClient embeddingClient,
+                                          UserMemoryIndexService indexService,
+                                          ObjectMapper objectMapper) {
         this.chatSessionRepository = chatSessionRepository;
         this.extractionLogRepository = extractionLogRepository;
         this.memoryItemRepository = memoryItemRepository;
         this.extractor = extractor;
+        this.embeddingClient = embeddingClient;
+        this.indexService = indexService;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -110,7 +123,8 @@ public class LongTermMemoryPromotionService {
             }
 
             List<ExtractedMemory> memories = extractionResult.memories();
-            int upserted = upsertMemories(userId, sessionId, seqStart, seqEnd, turns, memories);
+            Map<String, Object> source = buildSource(sessionId, seqStart, seqEnd, turns);
+            int upserted = upsertAndIndexMemories(userId, memories, source);
 
             extractionLogRepository.updateStatus(savedLog.getId(), "completed", null);
             log.info("L3 extraction completed: sessionId={}, userId={}, candidates={}, upserted={}",
@@ -123,13 +137,13 @@ public class LongTermMemoryPromotionService {
         }
     }
 
-    private int upsertMemories(String userId, String sessionId, long seqStart, long seqEnd,
-                               List<AtomicConversationTurn> turns, List<ExtractedMemory> memories) {
-        Map<String, Object> source = buildSource(sessionId, seqStart, seqEnd, turns);
+    private int upsertAndIndexMemories(String userId, List<ExtractedMemory> memories,
+                                       Map<String, Object> source) {
         int count = 0;
         for (ExtractedMemory memory : memories) {
             String normalized = MemoryHashNormalizer.normalize(memory.content());
             String hash = MemoryHashNormalizer.hash(userId, memory.type(), normalized);
+            String tagsJson = toJson(memory.tags());
 
             MemoryItemDTO item = MemoryItemDTO.builder()
                     .userId(userId)
@@ -142,10 +156,34 @@ public class LongTermMemoryPromotionService {
                     .indexStatus("pending")
                     .build();
 
-            memoryItemRepository.upsert(item);
+            MemoryItemDTO saved = memoryItemRepository.upsert(item);
             count++;
+
+            // Embed and index into Milvus. Update index_status based on result.
+            indexSingleMemory(saved, userId, memory.type(), tagsJson);
         }
         return count;
+    }
+
+    private void indexSingleMemory(MemoryItemDTO item, String userId, String type, String tagsJson) {
+        try {
+            float[] embedding = embeddingClient.embed(item.getContent());
+            boolean indexed = indexService.upsertMemory(
+                    item.getId(), userId, type, item.getStatus(),
+                    item.getContent(), tagsJson, embedding);
+            String indexStatus = indexed ? "indexed" : "failed";
+            memoryItemRepository.updateIndexStatus(item.getId(), indexStatus);
+            if (!indexed) {
+                log.debug("L3 memory Milvus indexing unavailable: memoryId={}", item.getId());
+            }
+        } catch (Exception e) {
+            log.warn("L3 memory Milvus indexing failed: memoryId={}, error={}", item.getId(), e.getMessage());
+            try {
+                memoryItemRepository.updateIndexStatus(item.getId(), "failed");
+            } catch (Exception ex) {
+                log.warn("L3 memory index_status update failed: memoryId={}, error={}", item.getId(), ex.getMessage());
+            }
+        }
     }
 
     private Map<String, Object> buildSource(String sessionId, long seqStart, long seqEnd,
@@ -162,6 +200,14 @@ public class LongTermMemoryPromotionService {
         source.put("seq_end_no", seqEnd);
         source.put("turn_ids", turnIds);
         return source;
+    }
+
+    private String toJson(List<String> tags) {
+        try {
+            return objectMapper.writeValueAsString(tags);
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 
     private static String truncate(String s, int maxLen) {

@@ -131,6 +131,8 @@ milvus:
   dimension: ${CHATAGENT_MILVUS_DIMENSION:1024}
   knowledge-base:
     collection: ${CHATAGENT_MILVUS_KNOWLEDGE_BASE_COLLECTION:chat_knowledge_chunk}
+  user-memory:
+    collection: ${CHATAGENT_MILVUS_USER_MEMORY_COLLECTION:chat_user_memory}
 
 chat:
   routing:

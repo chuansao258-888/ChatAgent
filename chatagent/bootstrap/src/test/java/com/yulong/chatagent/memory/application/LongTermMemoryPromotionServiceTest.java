@@ -1,10 +1,12 @@
 package com.yulong.chatagent.memory.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
 import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
 import com.yulong.chatagent.memory.port.MemoryExtractionLogRepository;
 import com.yulong.chatagent.memory.port.MemoryItemRepository;
+import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import com.yulong.chatagent.support.dto.MemoryExtractionLogDTO;
 import com.yulong.chatagent.support.dto.MemoryItemDTO;
@@ -43,6 +45,14 @@ class LongTermMemoryPromotionServiceTest {
     @Mock
     private LongTermMemoryExtractor extractor;
 
+    @Mock
+    private OllamaEmbeddingClient embeddingClient;
+
+    @Mock
+    private UserMemoryIndexService indexService;
+
+    private ObjectMapper objectMapper;
+
     private LongTermMemoryPromotionService service;
 
     private static final SummaryWatermarkRange RANGE = new SummaryWatermarkRange("session-1", 4L, 12L);
@@ -53,8 +63,10 @@ class LongTermMemoryPromotionServiceTest {
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper();
         service = new LongTermMemoryPromotionService(
-                chatSessionRepository, extractionLogRepository, memoryItemRepository, extractor);
+                chatSessionRepository, extractionLogRepository, memoryItemRepository,
+                extractor, embeddingClient, indexService, objectMapper);
     }
 
     @Test
@@ -100,21 +112,17 @@ class LongTermMemoryPromotionServiceTest {
 
         service.promote("session-1", RANGE, TURNS);
 
-        // Verify extraction log was inserted with "processing" status.
         ArgumentCaptor<MemoryExtractionLogDTO> logCaptor = ArgumentCaptor.forClass(MemoryExtractionLogDTO.class);
         verify(extractionLogRepository).insert(logCaptor.capture());
         assertThat(logCaptor.getValue().getStatus()).isEqualTo("processing");
         assertThat(logCaptor.getValue().getUserId()).isEqualTo("user-1");
 
-        // Verify extractor was called.
         verify(extractor).extract(TURNS);
-
-        // Verify log updated to completed.
         verify(extractionLogRepository).updateStatus("log-1", "completed", null);
     }
 
     @Test
-    void shouldUpsertExtractedMemories() {
+    void shouldUpsertExtractedMemoriesAndIndex() {
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());
         when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
@@ -124,20 +132,21 @@ class LongTermMemoryPromotionServiceTest {
         ExtractedMemory memory = new ExtractedMemory("preference", "User prefers short answers", List.of("style"));
         when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(memory)));
 
+        MemoryItemDTO upsertedItem = MemoryItemDTO.builder()
+                .id("mem-1").userId("user-1").type("preference").status("active")
+                .content("User prefers short answers").contentHash("abc").build();
+        when(memoryItemRepository.upsert(any())).thenReturn(upsertedItem);
+        when(embeddingClient.embed("User prefers short answers")).thenReturn(new float[]{0.1f, 0.2f});
+        when(indexService.upsertMemory(anyString(), anyString(), anyString(), anyString(),
+                anyString(), anyString(), any(float[].class))).thenReturn(true);
+
         service.promote("session-1", RANGE, TURNS);
 
-        // Verify memory was upserted with correct hash.
-        ArgumentCaptor<MemoryItemDTO> itemCaptor = ArgumentCaptor.forClass(MemoryItemDTO.class);
-        verify(memoryItemRepository).upsert(itemCaptor.capture());
-        MemoryItemDTO item = itemCaptor.getValue();
-        assertThat(item.getUserId()).isEqualTo("user-1");
-        assertThat(item.getType()).isEqualTo("preference");
-        assertThat(item.getContent()).isEqualTo("User prefers short answers");
-        assertThat(item.getContentHash()).hasSize(64);
-        assertThat(item.getStatus()).isEqualTo("active");
-        assertThat(item.getIndexStatus()).isEqualTo("pending");
-        assertThat(item.getSource()).containsEntry("session_id", "session-1");
-
+        verify(memoryItemRepository).upsert(any());
+        verify(embeddingClient).embed("User prefers short answers");
+        verify(indexService).upsertMemory(eq("mem-1"), eq("user-1"), eq("preference"),
+                eq("active"), eq("User prefers short answers"), anyString(), any(float[].class));
+        verify(memoryItemRepository).updateIndexStatus("mem-1", "indexed");
         verify(extractionLogRepository).updateStatus("log-1", "completed", null);
     }
 
@@ -195,21 +204,48 @@ class LongTermMemoryPromotionServiceTest {
     }
 
     @Test
-    void shouldDedupeSameContentViaHash() {
+    void shouldMarkIndexFailedWhenMilvusUpsertFails() {
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());
         when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
         when(extractionLogRepository.insert(any())).thenReturn(
                 MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
 
-        // Same content extracted twice with different casing/whitespace should produce same hash.
-        ExtractedMemory m1 = new ExtractedMemory("fact", "User works at NTU", List.of());
-        ExtractedMemory m2 = new ExtractedMemory("fact", "user  works  at  ntu", List.of());
-        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(m1, m2)));
+        ExtractedMemory memory = new ExtractedMemory("fact", "A fact", List.of());
+        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(memory)));
+        MemoryItemDTO upsertedItem = MemoryItemDTO.builder()
+                .id("mem-1").userId("user-1").type("fact").status("active").content("A fact").build();
+        when(memoryItemRepository.upsert(any())).thenReturn(upsertedItem);
+        when(embeddingClient.embed("A fact")).thenReturn(new float[]{0.1f});
+        when(indexService.upsertMemory(anyString(), anyString(), anyString(), anyString(),
+                anyString(), anyString(), any(float[].class))).thenReturn(false);
 
         service.promote("session-1", RANGE, TURNS);
 
-        // Both should be upserted — the ON CONFLICT in the DB handles the dedup.
-        verify(memoryItemRepository, times(2)).upsert(any());
+        verify(indexService).upsertMemory(eq("mem-1"), eq("user-1"), eq("fact"),
+                eq("active"), eq("A fact"), anyString(), any(float[].class));
+        verify(memoryItemRepository).updateIndexStatus("mem-1", "failed");
+    }
+
+    @Test
+    void shouldMarkIndexFailedWhenEmbeddingThrows() {
+        when(chatSessionRepository.findById("session-1")).thenReturn(
+                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
+        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
+        when(extractionLogRepository.insert(any())).thenReturn(
+                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
+
+        ExtractedMemory memory = new ExtractedMemory("fact", "A fact", List.of());
+        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(memory)));
+        MemoryItemDTO upsertedItem = MemoryItemDTO.builder()
+                .id("mem-1").userId("user-1").type("fact").content("A fact").build();
+        when(memoryItemRepository.upsert(any())).thenReturn(upsertedItem);
+        when(embeddingClient.embed("A fact")).thenThrow(new RuntimeException("Ollama down"));
+
+        service.promote("session-1", RANGE, TURNS);
+
+        verify(memoryItemRepository).updateIndexStatus("mem-1", "failed");
+        verify(indexService, never()).upsertMemory(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(float[].class));
     }
 }
