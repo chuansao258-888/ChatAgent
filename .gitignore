@@ -1,10 +1,13 @@
 .idea/
 *.iml
 out/
+
+# Local agent workflow files
 .agents/
 .claude/
 AGENTS.md
 CLAUDE.md
+CONTEXT.md
 
 .DS_Store
 Thumbs.db
@@ -49,7 +52,10 @@ output/
 
 postman/*local*.json
 
+# Local docs can contain plans, ADR drafts, and secret-bearing env references.
 docs/
+docs/adr/
+docs/env_variables.txt
 
 # Interview preparation (personal notes, not for sharing)
 docs/interview/
