@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionSummarySegmentRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
 import com.yulong.chatagent.conversation.summary.IncrementalSummarizer;
 import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -88,14 +90,18 @@ class MemorySummaryEvalTest {
             TurnBasedContextExtractor contextExtractor = mock(TurnBasedContextExtractor.class);
             SummaryWatermarkService watermarkService = mock(SummaryWatermarkService.class);
             InMemorySummaryRepository summaryRepository = new InMemorySummaryRepository();
+            ChatSessionSummarySegmentRepository segmentRepository = mock(ChatSessionSummarySegmentRepository.class);
+            when(segmentRepository.insert(any())).thenReturn(true);
             IncrementalSummarizer summarizer = new IncrementalSummarizer(
                     promptLoader,
                     contextExtractor,
                     watermarkService,
                     summaryRepository,
+                    segmentRepository,
                     chatModelRouter,
                     "",
-                    500
+                    1200,
+                    2000
             );
 
             String sessionId = "memory-eval-" + dialogue.id();

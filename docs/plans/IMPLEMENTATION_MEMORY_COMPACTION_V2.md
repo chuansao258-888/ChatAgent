@@ -2,7 +2,7 @@
 
 ## Overall Status
 
-Phase 1–2 complete. Phases 3–7 pending.
+Phase 1–3 complete. Phases 4–7 pending.
 
 Authoritative plan:
 
@@ -14,7 +14,7 @@ Authoritative plan:
 |---|---|---|
 | 1 | Schema And Runtime Contract Slice | **Complete** |
 | 2 | Stable Boundary And Token Policy | **Complete** |
-| 3 | Structured Segment Summarization | Pending |
+| 3 | Structured Segment Summarization | **Complete** |
 | 4 | Runtime Tool-Result Microcompact | Pending |
 | 5 | Failure Protection And Retry | Pending |
 | 6 | Runtime Rendering And L3 Alignment | Pending |
@@ -49,6 +49,30 @@ Authoritative plan:
 | `DefaultAgentRuntimeContextLoader` removed stale `contains("No historical context summary available")` string filter — V2 resolver returns empty string directly | Confirmed |
 
 ## Files Changed
+
+### Phase 3: Structured Segment Summarization
+
+New files:
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/StructuredSummary.java` — record with summary, facts, decisions, openTasks, entities; static empty() factory
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/StructuredSummaryParser.java` — static utility: parses LLM JSON output into StructuredSummary with markdown fence stripping, null-safe list extraction, and entity map handling; fallback method creates deterministic summary from raw turns
+- `chatagent/bootstrap/src/main/resources/prompts/summarizer/segment-memory.md` — structured JSON prompt requesting summary/facts/decisions/open_tasks/entities schema
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/conversation/summary/StructuredSummaryParserTest.java` — 11 tests: valid JSON, missing fields, code fences, invalid JSON → raw text fallback, blank/null input, non-string list filtering, empty entity list filtering, deterministic fallback from turns, empty/null turns
+
+Modified files:
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/prompt/PromptConstants.java` — added SUMMARIZER_SEGMENT_MEMORY constant for the new prompt template
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/SummaryResult.java` — added `segments` (List<ChatSessionSummarySegmentDTO>) and `synopsis` (String) fields; backward-compatible 3-arg constructor delegates with defaults
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/IncrementalSummarizer.java` — V2 structured flow: uses segment-memory prompt, parses response via StructuredSummaryParser, creates segment row via ChatSessionSummarySegmentRepository, merges synopsis deterministically (append with head-truncation), serializes structured JSON for segment.structuredSummaryJson. Added segmentMaxChars and synopsisMaxChars config replacing summaryMaxChars. Three-way anchored entity merge (existing + regex + structured).
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/conversation/summary/IncrementalSummarizerTest.java` — 8 tests rewritten for V2 flow: segment+synopsis creation, LLM fallback, no-pending-range, no-pending-turns, anchored entity merge (regex+structured), synopsis truncation, structured prompt verification, segment count increment
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/eval/MemorySummaryEvalTest.java` — added ChatSessionSummarySegmentRepository mock and updated IncrementalSummarizer constructor call for new parameters
+
+Implementation notes:
+
+- Synopsis merge is deterministic (append + truncate from head) rather than LLM-based, keeping the flow to a single LLM call per compaction pass
+- StructuredSummaryParser strips markdown code fences (```json ... ```) before JSON parsing, since weaker models may wrap output
+- Invalid JSON is treated as plain-text summary rather than dropped entirely
+- Empty entity lists in structured output are filtered out to avoid noise in anchored entities map
 
 ### Phase 2: Stable Boundary And Token Policy
 
@@ -107,6 +131,15 @@ Planning/review-fix documents changed:
 
 ## Tests Added Or Updated
 
+Phase 3 new tests (11):
+
+- `StructuredSummaryParserTest`: 11 tests covering valid JSON, missing optional fields, markdown code fence stripping, invalid JSON → raw text fallback, blank input, null input, non-string list filtering, empty entity list filtering, deterministic fallback from turns, empty turns, null turns
+
+Phase 3 updated tests (8+1):
+
+- `IncrementalSummarizerTest`: 8 tests rewritten for V2 structured flow — segment+synopsis creation with anchored entity merge, LLM fallback to deterministic summary, no-pending-range, no-pending-turns, three-way anchored entity merge (regex+structured), synopsis head-truncation, structured prompt verification, segment count increment
+- `MemorySummaryEvalTest`: constructor call updated for new IncrementalSummarizer parameters (added segmentRepository mock)
+
 Phase 2 new tests (28):
 
 - `TokenEstimatorTest`: 10 tests covering ASCII, CJK, mixed content, null/empty/blank input, turns estimation, null/empty turn lists, null userMessages
@@ -139,6 +172,20 @@ Phase 1 updated tests (16 across 4 files):
 - `MemorySummaryEvalTest`: 4 references updated for `summarizedUntilSeqNo`/`synopsis`/`getSynopsis()` field names
 
 ## Verification Commands
+
+Phase 2 targeted verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test "-Dtest=StructuredSummaryParserTest,IncrementalSummarizerTest,AsyncSummaryListenerTest"
+# Result: 27 tests, 0 failures, 0 errors
+```
+
+Phase 3 broad verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test
+# Result: 748 tests, 0 failures, 0 errors
+```
 
 Phase 2 targeted verification:
 
@@ -262,6 +309,10 @@ Planned manual checks:
 | 2026-06-06 | Implementation | Phase 2 complete: CompactionBoundaryResolver resolves stable/L1-tail boundary, MemoryCompactionPolicy adds token-aware trigger with three independent reasons (PENDING_TURNS, PENDING_TOKENS, L1_TOKEN_PRESSURE), TokenEstimator shared utility, AsyncSummaryListener uses stable anchor instead of event.lastSeqNo, TurnBasedContextExtractor gains extractAllTurns. 36 new/updated tests. 729 total tests passing. |
 | 2026-06-06 | Review fix | Fixed P2: CompactionBoundary now provides pendingStableTurns()/pendingStableTurnCount() that filter by (summarizedUntilSeqNo, stableAnchorSeqNo] range. Policy and listener use pending values, not all-stable values. Added 4 regression tests covering watermark scenario (20 turns, L1 tail 8, watermark at turn 11). Fixed P2: Added Micrometer counter `chatagent.memory.compaction.v2.policy.decisions` with outcome=run|skip and reason=trigger tags. Added 2 metric verification tests using SimpleMeterRegistry. Fixed P3: AgentMemoryLoader now delegates to shared TokenEstimator, removing private estimateTokens/isChinese. 734 total tests passing. |
 | 2026-06-06 | Review fix | Fixed P2: Removed listener early return on no-stable-turns so policy always evaluates and records decision metric (including NO_STABLE_TURNS). Test `shouldDelegateToPolicyWhenNoStableTurns` uses real no-stable boundary, verifies policy call, metric count, and no lock/summarizer invocation. 733 total tests passing. |
+| 2026-06-06 | Implementation | Phase 3 complete: StructuredSummary record + StructuredSummaryParser with JSON parse/deterministic fallback, structured segment prompt (segment-memory.md), IncrementalSummarizer refactored to V2 flow — structured prompt → parse → segment row → deterministic synopsis merge, three-way anchored entity merge (existing + regex + structured entities), SummaryResult extended with segments/synopsis, MemorySummaryEvalTest updated for new constructor. 11 new + 9 updated tests. Targeted 59 tests passing. |
+| 2026-06-06 | Review fix | Fixed P2: Added `shouldHandleDuplicateSegmentInsert` test covering ON CONFLICT path — segment insert returns false, no segments in result, segmentCount unchanged, synopsis still merged, watermark advanced. Fixed P3: `toStructuredJson` now reuses static `OBJECT_MAPPER` instead of creating new ObjectMapper per call. Fixed P3: Added `shouldFallbackWhenLlmReturnsBlankContent` test covering blank LLM response path. 2 new tests. |
+| 2026-06-06 | Review fix | Fixed P2: `StructuredSummaryParser.parse()` now returns empty on JSON parse failure instead of wrapping raw model text, so `IncrementalSummarizer` falls through to `StructuredSummaryParser.fallback(turns)` for deterministic output. Updated `shouldReturnEmptyWhenJsonIsInvalid` parser test. Added `shouldFallbackWhenLlmReturnsInvalidJson` summarizer test proving segment summary comes from turns, not unstructured model text. Fixed P2: `warnIfAnchorsMissing` now logs only `missingCount` and `buckets=[dates:1, amounts:3]` — no raw entity values in logs. |
+| 2026-06-06 | Review fix | Fixed P2: `StructuredSummaryParser` parse failure log now uses `errorClass=JsonParseException, inputChars=79` instead of `e.getMessage()` to avoid leaking model response tokens into logs. |
 
 ## Deferred Items
 
