@@ -10,31 +10,28 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * DTO representing one persisted rolling summary for a chat session (V2 schema).
+ * DTO representing one L2 summary segment for a chat session.
  *
- * <p>V2 replaces the old {@code last_seq_no} / {@code summary} columns with
- * {@code summarized_until_seq_no} / {@code synopsis} and adds failure-protection
- * and segment-tracking fields.
+ * <p>Each segment covers a stable seq range that was compacted together.
+ * Segments are auditable rows; the session-level synopsis is derived from them.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ChatSessionSummaryDTO {
+public class ChatSessionSummarySegmentDTO {
+    private String id;
     private String sessionId;
-    private Long summarizedUntilSeqNo;
-    private String synopsis;
+    private Long seqStartNo;
+    private Long seqEndNo;
+    private Integer turnCount;
+    private Integer sourceTokenEstimate;
+    private String segmentSummary;
     private String structuredSummaryJson;
     private Map<String, List<String>> anchoredEntities;
     /** Raw JSON string mapped by MyBatis for the {@code anchored_entities} column. */
     private String anchoredEntitiesJson;
-    private Integer segmentCount;
-    private Integer consecutiveFailures;
-    private Long failedStartSeqNo;
-    private Long failedEndSeqNo;
-    private String lastFailureClass;
-    private LocalDateTime nextRetryAt;
-    private Integer version;
+    private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -184,6 +184,21 @@ chatagent:
       enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
       extractor-model: ${CHATAGENT_MEMORY_L3_EXTRACTOR_MODEL:deepseek-chat}
       recall-top-k: ${CHATAGENT_MEMORY_L3_RECALL_TOP_K:3}
+    compaction:
+      v2:
+        enabled: ${CHATAGENT_MEMORY_COMPACTION_V2_ENABLED:true}
+        min-pending-turns: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TURNS:1}
+        min-pending-tokens: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS:1200}
+        l1-token-warning-ratio: ${CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO:0.75}
+        segment-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS:1200}
+        synopsis-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS:2000}
+        runtime-max-segments: ${CHATAGENT_MEMORY_COMPACTION_V2_RUNTIME_MAX_SEGMENTS:3}
+        max-retries: ${CHATAGENT_MEMORY_COMPACTION_V2_MAX_RETRIES:2}
+        max-consecutive-failures: ${CHATAGENT_MEMORY_COMPACTION_V2_MAX_CONSECUTIVE_FAILURES:3}
+        failure-backoff-seconds: ${CHATAGENT_MEMORY_COMPACTION_V2_FAILURE_BACKOFF_SECONDS:300}
+        tool-result-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS:2000}
+        tool-result-head-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_HEAD_CHARS:800}
+        tool-result-tail-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_TAIL_CHARS:800}
   rag:
     vdp:
       cache:

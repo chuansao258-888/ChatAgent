@@ -38,7 +38,7 @@ class SummaryWatermarkServiceTest {
         when(chatSessionSummaryRepository.findBySessionId("session-1")).thenReturn(
                 ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(12L)
+                        .summarizedUntilSeqNo(12L)
                         .build()
         );
         when(chatMessageRepository.findMaxSeqNoBySessionId("session-1")).thenReturn(20L);
@@ -79,7 +79,7 @@ class SummaryWatermarkServiceTest {
         when(chatSessionSummaryRepository.findBySessionId("session-1")).thenReturn(
                 ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(20L)
+                        .summarizedUntilSeqNo(20L)
                         .build()
         );
 
@@ -94,7 +94,7 @@ class SummaryWatermarkServiceTest {
         when(chatSessionSummaryRepository.findBySessionId("session-1")).thenReturn(
                 ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(9L)
+                        .summarizedUntilSeqNo(9L)
                         .build()
         );
 
@@ -109,7 +109,7 @@ class SummaryWatermarkServiceTest {
         when(chatSessionSummaryRepository.findBySessionId("session-1")).thenReturn(
                 ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(5L)
+                        .summarizedUntilSeqNo(5L)
                         .build()
         );
         List<ChatMessageDTO> pendingMessages = List.of(

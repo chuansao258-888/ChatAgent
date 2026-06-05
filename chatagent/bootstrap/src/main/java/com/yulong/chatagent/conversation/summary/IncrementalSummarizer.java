@@ -100,18 +100,20 @@ public class IncrementalSummarizer {
         );
 
         // 新摘要不是覆盖式"重写全部历史"，而是在旧摘要之上增量刷新。
-        String existingSummary = existing == null || existing.getSummary() == null ? "" : existing.getSummary().trim();
-        String nextSummary = turns.isEmpty()
-                ? existingSummary
-                : generateSummary(existingSummary, turns);
-        nextSummary = enforceLengthCap(nextSummary);
-        warnIfAnchorsMissing(sessionId, nextSummary, mergedAnchors);
+        String existingSynopsis = existing == null || existing.getSynopsis() == null ? "" : existing.getSynopsis().trim();
+        String nextSynopsis = turns.isEmpty()
+                ? existingSynopsis
+                : generateSummary(existingSynopsis, turns);
+        nextSynopsis = enforceLengthCap(nextSynopsis);
+        warnIfAnchorsMissing(sessionId, nextSynopsis, mergedAnchors);
 
         ChatSessionSummaryDTO updated = ChatSessionSummaryDTO.builder()
                 .sessionId(sessionId)
-                .lastSeqNo(range.endInclusiveSeqNo())
-                .summary(nextSummary)
+                .summarizedUntilSeqNo(range.endInclusiveSeqNo())
+                .synopsis(nextSynopsis)
                 .anchoredEntities(mergedAnchors)
+                .segmentCount(existing == null || existing.getSegmentCount() == null ? 0 : existing.getSegmentCount())
+                .consecutiveFailures(0)
                 .build();
         boolean saved = chatSessionSummaryRepository.saveOrUpdate(updated);
         return new SummaryResult(saved, range, turns);

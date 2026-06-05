@@ -39,9 +39,9 @@ public class SummaryWatermarkService {
         ChatSessionSummaryDTO summary = chatSessionSummaryRepository.findBySessionId(sessionId);
         // lastSummarizedSeqNo 表示摘要系统已经稳定覆盖到哪里；
         // anchorSeqNo 表示“这次最多允许摘要到哪里”。
-        long lastSummarizedSeqNo = summary == null || summary.getLastSeqNo() == null
+        long lastSummarizedSeqNo = summary == null || summary.getSummarizedUntilSeqNo() == null
                 ? 0L
-                : summary.getLastSeqNo();
+                : summary.getSummarizedUntilSeqNo();
         return new SummaryWatermarkRange(sessionId, lastSummarizedSeqNo, Math.max(anchorSeqNo, 0L));
     }
 

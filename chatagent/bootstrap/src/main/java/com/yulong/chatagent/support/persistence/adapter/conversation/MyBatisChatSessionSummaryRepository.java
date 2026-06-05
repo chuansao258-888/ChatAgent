@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MyBatis-backed repository for rolling chat-session summaries.
+ * MyBatis-backed repository for rolling chat-session summaries (V2 schema).
  */
 @Repository
 public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRepository {
@@ -44,15 +44,22 @@ public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRe
         ChatSessionSummaryDTO existing = findBySessionId(summary.getSessionId());
         if (existing == null) {
             LocalDateTime now = LocalDateTime.now();
-            if (summary.getLastSeqNo() == null) {
-                summary.setLastSeqNo(0L);
+            if (summary.getSummarizedUntilSeqNo() == null) {
+                summary.setSummarizedUntilSeqNo(0L);
             }
             if (summary.getVersion() == null) {
                 summary.setVersion(0);
             }
+            if (summary.getSegmentCount() == null) {
+                summary.setSegmentCount(0);
+            }
+            if (summary.getConsecutiveFailures() == null) {
+                summary.setConsecutiveFailures(0);
+            }
             summary.setCreatedAt(now);
             summary.setUpdatedAt(now);
             summary.setAnchoredEntitiesJson(writeAnchoredEntities(summary.getAnchoredEntities()));
+            summary.setStructuredSummaryJson(defaultJson(summary.getStructuredSummaryJson()));
             return chatSessionSummaryMapper.insert(summary) > 0;
         }
 
@@ -60,6 +67,13 @@ public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRe
         summary.setCreatedAt(existing.getCreatedAt());
         summary.setUpdatedAt(LocalDateTime.now());
         summary.setAnchoredEntitiesJson(writeAnchoredEntities(summary.getAnchoredEntities()));
+        summary.setStructuredSummaryJson(defaultJson(summary.getStructuredSummaryJson()));
+        if (summary.getSegmentCount() == null) {
+            summary.setSegmentCount(existing.getSegmentCount() == null ? 0 : existing.getSegmentCount());
+        }
+        if (summary.getConsecutiveFailures() == null) {
+            summary.setConsecutiveFailures(existing.getConsecutiveFailures() == null ? 0 : existing.getConsecutiveFailures());
+        }
         boolean updated = chatSessionSummaryMapper.updateBySessionIdAndVersion(summary) > 0;
         if (updated) {
             summary.setVersion(existing.getVersion() + 1);
@@ -89,5 +103,9 @@ public class MyBatisChatSessionSummaryRepository implements ChatSessionSummaryRe
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize chat session summary", e);
         }
+    }
+
+    private static String defaultJson(String json) {
+        return (json == null || json.isBlank()) ? "{}" : json;
     }
 }

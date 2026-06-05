@@ -120,7 +120,7 @@ class MemorySummaryEvalTest {
                 CheckpointResult checkpoint = new CheckpointResult();
                 checkpoint.turnId = evalTurn.turn().turnId();
                 checkpoint.summarized = summarized;
-                checkpoint.summary = current == null ? "" : safeTrim(current.getSummary());
+                checkpoint.summary = current == null ? "" : safeTrim(current.getSynopsis());
                 checkpoint.expectedSummaryMentions = evalTurn.expectedSummaryMentions();
                 checkpoint.expectedMentionCount = evalTurn.expectedSummaryMentions().size();
                 checkpoint.matchedMentions = matchedItems(checkpoint.summary, evalTurn.expectedSummaryMentions());
@@ -136,7 +136,7 @@ class MemorySummaryEvalTest {
             }
 
             ChatSessionSummaryDTO finalState = summaryRepository.findBySessionId(sessionId);
-            dialogueResult.finalSummary = finalState == null ? "" : safeTrim(finalState.getSummary());
+            dialogueResult.finalSummary = finalState == null ? "" : safeTrim(finalState.getSynopsis());
             dialogueResult.finalSummaryChars = dialogueResult.finalSummary.length();
             dialogueResult.anchoredEntities = finalState == null || finalState.getAnchoredEntities() == null
                     ? Map.of()
@@ -439,8 +439,8 @@ class MemorySummaryEvalTest {
             }
             return ChatSessionSummaryDTO.builder()
                     .sessionId(source.getSessionId())
-                    .lastSeqNo(source.getLastSeqNo())
-                    .summary(source.getSummary())
+                    .summarizedUntilSeqNo(source.getSummarizedUntilSeqNo())
+                    .synopsis(source.getSynopsis())
                     .anchoredEntities(anchorsCopy)
                     .anchoredEntitiesJson(source.getAnchoredEntitiesJson())
                     .version(source.getVersion())

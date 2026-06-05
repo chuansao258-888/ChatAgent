@@ -71,8 +71,8 @@ class IncrementalSummarizerTest {
         when(chatSessionSummaryRepository.findBySessionId("session-1"))
                 .thenReturn(ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(4L)
-                        .summary("Existing summary")
+                        .summarizedUntilSeqNo(4L)
+                        .synopsis("Existing summary")
                         .anchoredEntities(Map.of("dates", List.of("2026-03-01")))
                         .build());
         when(chatModelRouter.route("summary-model")).thenReturn(chatClient);
@@ -90,8 +90,8 @@ class IncrementalSummarizerTest {
         ArgumentCaptor<ChatSessionSummaryDTO> captor = ArgumentCaptor.forClass(ChatSessionSummaryDTO.class);
         verify(chatSessionSummaryRepository).saveOrUpdate(captor.capture());
         ChatSessionSummaryDTO saved = captor.getValue();
-        assertThat(saved.getLastSeqNo()).isEqualTo(8L);
-        assertThat(saved.getSummary()).contains("AB-1234");
+        assertThat(saved.getSummarizedUntilSeqNo()).isEqualTo(8L);
+        assertThat(saved.getSynopsis()).contains("AB-1234");
         assertThat(saved.getAnchoredEntities().get("dates")).contains("2026-03-01", "2026-03-28");
         assertThat(saved.getAnchoredEntities().get("amounts")).contains("$100");
         assertThat(saved.getAnchoredEntities().get("orderIds")).contains("AB-1234");
@@ -110,7 +110,7 @@ class IncrementalSummarizerTest {
                 .thenReturn(List.of(turn));
         when(chatSessionSummaryRepository.findBySessionId("session-1"))
                 .thenReturn(ChatSessionSummaryDTO.builder()
-                        .sessionId("session-1").lastSeqNo(4L).summary("Old").build());
+                        .sessionId("session-1").summarizedUntilSeqNo(4L).synopsis("Old").build());
         when(chatModelRouter.route("summary-model")).thenReturn(chatClient);
         when(chatClient.prompt(anyString()).call().content()).thenReturn("Updated summary.");
         when(chatSessionSummaryRepository.saveOrUpdate(any())).thenReturn(true);
@@ -155,7 +155,7 @@ class IncrementalSummarizerTest {
         assertThat(summarized).isTrue();
         ArgumentCaptor<ChatSessionSummaryDTO> captor = ArgumentCaptor.forClass(ChatSessionSummaryDTO.class);
         verify(chatSessionSummaryRepository).saveOrUpdate(captor.capture());
-        assertThat(captor.getValue().getSummary())
+        assertThat(captor.getValue().getSynopsis())
                 .contains("User: Need reimbursement for taxi")
                 .contains("Assistant: Please submit the receipt.");
     }
