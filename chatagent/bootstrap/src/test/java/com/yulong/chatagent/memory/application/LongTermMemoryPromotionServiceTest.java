@@ -228,6 +228,61 @@ class LongTermMemoryPromotionServiceTest {
     }
 
     @Test
+    void shouldReceiveRawTurnsNotSummaryText() {
+        // Verify L3 promotion receives raw turn content, not summary text.
+        // The extractor is called with AtomicConversationTurn objects containing
+        // the original user/assistant messages, never the L2 synopsis.
+        when(chatSessionRepository.findById("session-1")).thenReturn(
+                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
+        when(extractionLogRepository.findByRange("session-1", 5L, 8L)).thenReturn(null);
+        when(extractionLogRepository.insert(any())).thenReturn(
+                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
+
+        // The extractor must receive the raw turns, not any summary text
+        AtomicConversationTurn rawTurn = new AtomicConversationTurn(
+                "turn-1", 5L, 8L, List.of("raw user message content"), "raw assistant reply");
+        List<AtomicConversationTurn> rawTurns = List.of(rawTurn);
+        SummaryWatermarkRange stableRange = new SummaryWatermarkRange("session-1", 4L, 8L);
+
+        when(extractor.extract(rawTurns)).thenReturn(ExtractionResult.success(List.of()));
+
+        service.promote("session-1", stableRange, rawTurns);
+
+        // Extractor receives the raw AtomicConversationTurn, not a synopsis string
+        ArgumentCaptor<List<AtomicConversationTurn>> turnsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(extractor).extract(turnsCaptor.capture());
+        assertThat(turnsCaptor.getValue()).hasSize(1);
+        assertThat(turnsCaptor.getValue().get(0).userMessages()).containsExactly("raw user message content");
+        assertThat(turnsCaptor.getValue().get(0).assistantConclusion()).isEqualTo("raw assistant reply");
+    }
+
+    @Test
+    void shouldUseStableRangeNotL1Tail() {
+        // Verify that the extraction log records the stable L2 range,
+        // not the L1 tail range. The range comes from the event published
+        // by AsyncSummaryListener which filters turns per segment.
+        when(chatSessionRepository.findById("session-1")).thenReturn(
+                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
+        when(extractionLogRepository.findByRange("session-1", 5L, 8L)).thenReturn(null);
+        when(extractionLogRepository.insert(any())).thenReturn(
+                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
+        when(extractor.extract(any())).thenReturn(ExtractionResult.success(List.of()));
+
+        // Stable range: turns 5..8 (outside L1 window which might be e.g. turns 13..20)
+        SummaryWatermarkRange stableRange = new SummaryWatermarkRange("session-1", 4L, 8L);
+        List<AtomicConversationTurn> stableTurns = List.of(
+                new AtomicConversationTurn("t-1", 5L, 8L, List.of("stable turn"), "reply"));
+
+        service.promote("session-1", stableRange, stableTurns);
+
+        // Extraction log records the stable range (5..8), not L1 tail range
+        ArgumentCaptor<MemoryExtractionLogDTO> logCaptor = ArgumentCaptor.forClass(MemoryExtractionLogDTO.class);
+        verify(extractionLogRepository).insert(logCaptor.capture());
+        assertThat(logCaptor.getValue().getSeqStartNo()).isEqualTo(5L);
+        assertThat(logCaptor.getValue().getSeqEndNo()).isEqualTo(8L);
+    }
+
+    @Test
     void shouldMarkIndexFailedWhenEmbeddingThrows() {
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());

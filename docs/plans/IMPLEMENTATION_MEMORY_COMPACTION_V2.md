@@ -2,7 +2,7 @@
 
 ## Overall Status
 
-Phase 1–5 complete. Phases 6–7 pending.
+Phase 1–6 complete. Phase 7 pending.
 
 Authoritative plan:
 
@@ -17,7 +17,7 @@ Authoritative plan:
 | 3 | Structured Segment Summarization | **Complete** |
 | 4 | Runtime Tool-Result Microcompact | **Complete** |
 | 5 | Failure Protection And Retry | **Complete** |
-| 6 | Runtime Rendering And L3 Alignment | Pending |
+| 6 | Runtime Rendering And L3 Alignment | **Complete** |
 | 7 | Documentation And Broad Verification | Pending |
 
 ## Decisions Made
@@ -45,14 +45,37 @@ Authoritative plan:
 | `summary-max-chars` is retained as a legacy no-op; V2 uses `segment-max-chars` and `synopsis-max-chars` instead | Confirmed |
 | `docs/env_variables.txt` must document all memory variables (existing + V2), not just new ones; Phase 1 adds a static check | Confirmed |
 | Phase 1 recommended next step text matches the actual Schema And Runtime Contract Slice scope | Confirmed |
-| `AgentSessionSummaryResolver` no longer loads a fallback prompt — returns empty string when no synopsis exists, allowing the caller to omit `[Historical Context Summary]` | Confirmed |
-| `DefaultAgentRuntimeContextLoader` removed stale `contains("No historical context summary available")` string filter — V2 resolver returns empty string directly | Confirmed |
+| `AgentSessionSummaryResolver` returns empty string only when neither synopsis nor active nonblank segments exist, allowing the caller to omit `[Historical Context Summary]` | Confirmed |
+| `DefaultAgentRuntimeContextLoader` injects resolver output into `[Historical Context Summary]` when non-empty — no fallback text filtering needed | Confirmed |
 | Deterministic fallback after LLM retry exhaustion is not a failure — compaction succeeds with lower-quality output; failure recording only for save failures and prompt-too-long on single turn | Confirmed |
 | Prompt-too-long detection is heuristic (exception message pattern matching) rather than model-specific exception types | Confirmed |
 | Backoff is linear (consecutiveFailures × failureBackoffSeconds), not exponential | Confirmed |
 | Split-and-retry is recursive down to single-turn minimum; no explicit depth limit needed since log₂(N) is bounded for practical turn counts | Confirmed |
+| Runtime rendering includes synopsis + latest N segment summaries (bounded by `runtime-max-segments`); segments ordered newest-first from `findActiveBySessionId` | Confirmed |
+| No L1 duplication invariant: L2 summary covers turns before L1 window, L1 memory covers recent tail; resolver output never contains L1 turn content | Confirmed |
+| L3 alignment verified at two levels: AsyncSummaryListener publishes per-segment events with filtered raw turns, LongTermMemoryPromotionService receives raw AtomicConversationTurn objects with stable L2 range | Confirmed |
 
 ## Files Changed
+
+### Phase 6: Runtime Rendering And L3 Alignment
+
+Modified files:
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/runtime/AgentSessionSummaryResolver.java` — added `ChatSessionSummarySegmentRepository` dependency and `runtime-max-segments` config. `resolve()` now returns synopsis + up to N latest active segment summaries, each prefixed with `[Segment start..end]` for traceability. Returns empty only when neither synopsis nor active nonblank segments exist. Blank segment summaries are skipped before applying the N limit (not counted against it). Returns synopsis-only when `runtimeMaxSegments=0`.
+
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/agent/runtime/AgentSessionSummaryResolverTest.java` — updated `@BeforeEach` for new constructor. 7 new tests: synopsis + latest segments appended, segments bounded by runtimeMaxSegments, segments with blank summary skipped, runtimeMaxSegments=0 returns synopsis only, blank synopsis + active segments returns segment text, null summary row + active segments returns segment text, blank newest segment does not crowd out older valid segment. Total: 13 tests.
+
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/agent/DefaultAgentRuntimeContextLoaderTest.java` — 3 new tests: segment detail included in `[Historical Context Summary]`, `[Historical Context Summary]` omitted when resolver returns empty, no L1 duplication (L2 summary covers pre-L1 range, L1 memory covers recent tail, no overlap). Total: 15 tests.
+
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/memory/application/LongTermMemoryPromotionServiceTest.java` — 2 new tests: L3 receives raw `AtomicConversationTurn` objects (not summary text) with verified user messages and assistant conclusion, extraction log records stable L2 range (not L1 tail range). Total: 13 tests.
+
+Implementation notes:
+
+- `AgentSessionSummaryResolver` uses `findActiveBySessionId` which returns segments ordered by `seq_end_no` descending (newest first). The first N nonblank segments are the most recent, matching the runtime need for fresh context. Blank summaries are skipped before the N limit is applied, so they never crowd out valid segments.
+- The `runtime-max-segments` config was already in `application.yaml` (default 3) from Phase 1 but had no consumer until now.
+- No change to `DefaultAgentRuntimeContextLoader` — it already delegates to the resolver and injects whatever formatted text is returned into `[Historical Context Summary]`. The resolver's richer output is transparent to the loader.
+- L3 alignment is verified at two levels: (1) `AsyncSummaryListener` per-segment events with filtered turns (Phase 5), and (2) `LongTermMemoryPromotionService` receives raw `AtomicConversationTurn` objects and logs the stable range (this phase).
+- The no-L1-duplication test verifies the architectural invariant: L2 summary text (synopsis + segments) covers turns before the L1 window, while L1 memory contains recent turns. The resolver output never includes L1 turn content.
 
 ### Phase 5: Failure Protection And Retry
 
@@ -178,6 +201,12 @@ Planning/review-fix documents changed:
 
 ## Tests Added Or Updated
 
+Phase 6 new tests (12):
+
+- `AgentSessionSummaryResolverTest`: 7 new tests — synopsis + latest segments appended and formatted with range prefixes, segments bounded by runtimeMaxSegments config, segments with blank summary skipped, runtimeMaxSegments=0 returns synopsis-only, blank synopsis + active segments returns segment text, null summary row + active segments returns segment text, blank newest segment does not crowd out older valid segment
+- `DefaultAgentRuntimeContextLoaderTest`: 3 new tests — segment detail included in `[Historical Context Summary]` prompt section, `[Historical Context Summary]` omitted when resolver returns empty string, no L1 tail duplication in summary output (L2 covers pre-L1 turns, L1 memory covers recent tail, no content overlap)
+- `LongTermMemoryPromotionServiceTest`: 2 new tests — L3 promotion receives raw `AtomicConversationTurn` objects with original user messages and assistant conclusion (not summary text), extraction log records the stable L2 range (not L1 tail range)
+
 Phase 5 new tests (16):
 
 - `IncrementalSummarizerTest`: 14 new tests — retry on blank output then succeeds with valid JSON on second attempt, retry on exception then succeeds, prompt-too-long splits 4-turn range into 2+2 with two segments created, partial split success (first half OK, second half save fails) advances watermark only through first half and returns effective range, save failure after all maxRetries+1 attempts records failure state and returns updated=false, optimistic lock conflict (false, false, true) retries 3 times and succeeds on third attempt, consecutive failures below maxConsecutiveFailures threshold keep nextRetryAt=null, consecutive failures at threshold set nextRetryAt, failure recording preserves existing anchored entities and structuredSummaryJson, successful run after previous failure clears all failure fields (consecutiveFailures=0, failedStartSeqNo=null, failedEndSeqNo=null, lastFailureClass=null, nextRetryAt=null), prompt-too-long detection from exception message patterns, no segment duplication on retry after partial success (watermark ensures only remaining range processed), all maxRetries+1 save attempts exhausted returns failure
@@ -236,6 +265,13 @@ Phase 1 updated tests (16 across 4 files):
 - `MemorySummaryEvalTest`: 4 references updated for `summarizedUntilSeqNo`/`synopsis`/`getSynopsis()` field names
 
 ## Verification Commands
+
+Phase 6 targeted verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test "-Dtest=DefaultAgentRuntimeContextLoaderTest,AsyncSummaryListenerTest,LongTermMemoryPromotionServiceTest,AgentSessionSummaryResolverTest"
+# Result: 50 tests, 0 failures, 0 errors
+```
 
 Phase 5 targeted verification:
 
@@ -410,6 +446,9 @@ Planned manual checks:
 | 2026-06-06 | Review fix | Fixed P3: Added Micrometer counter `chatagent.memory.compaction.v2.tool_results_compacted` to `ToolResultCompactor`, following `ObjectProvider<MeterRegistry>` pattern from AsyncSummaryListener. 2 metric verification tests added. Fixed P3: `doCompact` now scans the dropped middle region for lines matching error/stack-trace/URL/path patterns and preserves up to 3 such lines within 25% of the excerpt budget. Safety check reverts to head/tail-only if error lines would make the result longer than the original. 1 test for error-line preservation. Fixed P3: Added `shouldReturnNullWhenBudgetCompactingNull` test covering `compactForBudget(null)` contract. Targeted 22 tests passing. |
 | 2026-06-06 | Implementation | Phase 5 complete: model retry on blank/invalid output (up to maxRetries+1 attempts), prompt-too-long split-and-retry (recursive half-split with per-sub-range segments), optimistic lock retry (saveOrUpdate retried once), failure state recording (consecutiveFailures, failure range, nextRetryAt, lastFailureClass), success clears failure state. 10 new tests, 1 updated test. 780 total tests passing. |
 | 2026-06-06 | Review fix | Fixed P2: `saveWithRetry` now loops maxRetries+1 total attempts (was hardcoded 2). Fixed P2: `recordFailure` only sets `nextRetryAt` when `consecutiveFailures >= maxConsecutiveFailures` threshold (was set on every failure). Fixed P2: `recordFailure` now preserves existing `anchoredEntities`, `structuredSummaryJson` from existing summary (was dropping them). Fixed P2: `AsyncSummaryListener.publishL3Events` publishes one L3 event per segment when result has segments, with filtered turns per segment range (was publishing one merged event). 6 new regression tests. 784 total tests passing. |
+| 2026-06-06 | Implementation | Phase 6 complete: `AgentSessionSummaryResolver` now returns synopsis + up to N latest segment summaries (bounded by `runtime-max-segments` config), each with `[Segment start..end]` prefix. No change to `DefaultAgentRuntimeContextLoader` (transparent resolver output). L3 alignment verified: raw `AtomicConversationTurn` objects and stable L2 range. No-L1-duplication invariant tested. 9 new tests across 3 test classes. Targeted 47 tests passing. |
+| 2026-06-06 | Review fix | Fixed P2: `AgentSessionSummaryResolver` now queries segments before checking synopsis — returns segment text when synopsis is blank/null but active nonblank segments exist (was returning empty). Fixed P3: blank segments are filtered before the N limit is applied, so a blank newest segment never crowds out an older valid segment. 3 new regression tests. Targeted 50 tests passing. |
+| 2026-06-06 | Review fix | Fixed P3: segment-only summary no longer has leading blank lines — `\n\n` separator only appended when result is non-empty. Tests strengthened to exact `isEqualTo` assertions. Fixed P3: updated stale comments in `DefaultAgentRuntimeContextLoader` and decision table in implementation doc to reflect segment-only summary path. Targeted 50 tests passing. |
 
 ## Deferred Items
 
