@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
+from chatagent_eval.memory_runner import DEFAULT_MEMORY_DATASET_ID, MemoryConfig, run_memory
 from chatagent_eval.ragas_runner import DEFAULT_RAGAS_METRICS, RagasRunnerConfig, run_ragas
 from chatagent_eval.text_recall_runner import DEFAULT_TEXT_RECALL_DATASET_ID, TextRecallConfig, run_text_recall
 
@@ -36,6 +37,19 @@ def main(argv: list[str] | None = None) -> int:
     text_recall.add_argument("--splits", default="", help="Comma-separated split filter; empty means all splits")
     text_recall.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
     text_recall.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
+    memory = subparsers.add_parser("memory-smoke", help="Run deterministic Memory V2 eval over real multi-turn tasks")
+    memory.add_argument("--dataset-root", default=Path("artifacts/eval/phase3"), type=Path)
+    memory.add_argument("--output-root", default=Path("artifacts/eval/phase7"), type=Path)
+    memory.add_argument("--run-id", default=os.getenv("CHATAGENT_EVAL_RUN_ID", "memory-smoke"))
+    memory.add_argument("--dataset-id", default=DEFAULT_MEMORY_DATASET_ID)
+    memory.add_argument("--l1-window-turns", type=int, default=4)
+    memory.add_argument("--l1-budget-chars", type=int, default=8000)
+    memory.add_argument("--l2-segment-turns", type=int, default=4)
+    memory.add_argument("--l3-top-k", type=int, default=3)
+    memory.add_argument("--max-samples", type=int, default=_optional_int("CHATAGENT_EVAL_MAX_CASES"))
+    memory.add_argument("--splits", default="", help="Comma-separated split filter; empty means all splits")
+    memory.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
+    memory.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
 
     args = parser.parse_args(argv)
     if args.command == "ragas-smoke":
@@ -67,6 +81,22 @@ def main(argv: list[str] | None = None) -> int:
             git_sha=args.git_sha,
         )
         run_dir = run_text_recall(dataset_root=args.dataset_root, output_root=args.output_root, config=config)
+        print(run_dir)
+        return 0
+    if args.command == "memory-smoke":
+        config = MemoryConfig(
+            run_id=args.run_id,
+            dataset_id=args.dataset_id,
+            l1_window_turns=args.l1_window_turns,
+            l1_budget_chars=args.l1_budget_chars,
+            l2_segment_turns=args.l2_segment_turns,
+            l3_top_k=args.l3_top_k,
+            max_samples=args.max_samples,
+            splits=tuple(split.strip() for split in args.splits.split(",") if split.strip()),
+            git_branch=args.git_branch,
+            git_sha=args.git_sha,
+        )
+        run_dir = run_memory(dataset_root=args.dataset_root, output_root=args.output_root, config=config)
         print(run_dir)
         return 0
     return 2
