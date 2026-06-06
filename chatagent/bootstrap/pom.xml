@@ -16,7 +16,7 @@
     <description>Spring Boot bootstrap and business module for ChatAgent</description>
 
     <properties>
-        <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval</surefire.excludedGroups>
+        <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval,eval-v2</surefire.excludedGroups>
     </properties>
 
     <dependencies>
