@@ -1,0 +1,14 @@
+schemaVersion: 1
+suite: rag-retrieval
+calibrationStatus: pending-phase-9
+datasetIds:
+  - beir-scifact-rag-v1
+  - mtrag-human-rag-v1
+sizeGates:
+  smoke:
+    queries: 50
+    documents: 1000
+  full:
+    queries: 1000
+    documents: 5000
+qualityThresholds: {}

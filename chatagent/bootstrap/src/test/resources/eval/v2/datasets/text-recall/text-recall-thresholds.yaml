@@ -1,0 +1,11 @@
+schemaVersion: 1
+suite: text-recall
+calibrationStatus: pending-phase-9
+datasetIds:
+  - sec-companyfacts-text-recall-v1
+sizeGates:
+  smoke:
+    files: 25
+  full:
+    files: 200
+qualityThresholds: {}

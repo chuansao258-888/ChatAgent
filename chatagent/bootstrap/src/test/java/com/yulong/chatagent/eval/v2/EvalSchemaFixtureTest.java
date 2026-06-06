@@ -36,12 +36,19 @@ class EvalSchemaFixtureTest {
                 .hasMessageContaining("sampleId");
     }
 
+    @Test
+    void approvedSourceCatalogsMatchCanonicalSchema() throws Exception {
+        validateResource("eval-source-catalog.schema.json", "/eval/v2/corpora/catalog/beir-scifact.json");
+        validateResource("eval-source-catalog.schema.json", "/eval/v2/corpora/catalog/mtrag-human.json");
+        validateResource("eval-source-catalog.schema.json", "/eval/v2/corpora/catalog/sec-edgar-companyfacts.json");
+    }
+
     private void validateFixture(String schemaName, String fixtureName) throws Exception {
-        validate(
-                load("/eval/v2/fixtures/" + fixtureName),
-                load("/eval/v2/schemas/" + schemaName),
-                "$"
-        );
+        validateResource(schemaName, "/eval/v2/fixtures/" + fixtureName);
+    }
+
+    private void validateResource(String schemaName, String resourcePath) throws Exception {
+        validate(load(resourcePath), load("/eval/v2/schemas/" + schemaName), "$");
     }
 
     private JsonNode load(String path) throws IOException {

@@ -1,0 +1,9 @@
+{
+  "sourceId": "beir-scifact",
+  "sourceUrl": "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/scifact.zip",
+  "sourceRevision": "official-beir-scifact-zip-md5-5f7d1de60b170fc8027bb7898e2efca1",
+  "expectedSha256": "sha256:536e14446a0ba56ed1398ab1055f39fe852686ecad24a6306c80c490fa8e0165",
+  "license": "CC-BY-SA-4.0",
+  "licenseUrl": "https://huggingface.co/datasets/BeIR/scifact",
+  "notes": "Official BEIR-prepared SciFact archive. BEIR redistributes the public dataset but requires users to confirm and cite the underlying dataset terms."
+}

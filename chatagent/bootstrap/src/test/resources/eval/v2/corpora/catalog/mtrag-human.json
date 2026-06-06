@@ -1,0 +1,9 @@
+{
+  "sourceId": "mtrag-human",
+  "sourceUrl": "https://raw.githubusercontent.com/IBM/mt-rag-benchmark/df219109fc4873e4c89198851660df2913741800/mtrag-human/generation_tasks/reference.jsonl",
+  "sourceRevision": "df219109fc4873e4c89198851660df2913741800",
+  "expectedSha256": "sha256:b3dde4076f9f692a99513e424a0a39f57591dbe45600a4c1017aaa7a7edcfaac",
+  "license": "Apache-2.0",
+  "licenseUrl": "https://github.com/IBM/mt-rag-benchmark/blob/df219109fc4873e4c89198851660df2913741800/LICENSE",
+  "notes": "Pinned human-generated MTRAG reference tasks. Apache-2.0 applies to the benchmark repository; upstream standalone corpora require separate manifests before direct ingestion."
+}

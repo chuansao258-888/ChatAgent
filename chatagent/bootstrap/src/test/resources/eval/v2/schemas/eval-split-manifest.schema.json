@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-split-manifest.schema.json",
+  "title": "ChatAgent Evaluation Source-Grouped Split Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "datasetId", "splits"],
+  "properties": {
+    "schemaVersion": { "type": "integer" },
+    "datasetId": { "type": "string", "minLength": 1 },
+    "splits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["groupIds", "groupHash"],
+        "properties": {
+          "groupIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "groupHash": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

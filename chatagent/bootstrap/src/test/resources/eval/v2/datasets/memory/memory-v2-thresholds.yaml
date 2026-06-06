@@ -1,0 +1,11 @@
+schemaVersion: 1
+suite: memory-v2
+calibrationStatus: pending-phase-9
+datasetIds:
+  - memory-v2-dialogues
+sizeGates:
+  smoke:
+    tasks: 20
+  full:
+    tasks: 200
+qualityThresholds: {}

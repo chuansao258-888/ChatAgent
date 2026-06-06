@@ -1,0 +1,12 @@
+{
+  "sourceId": "sec-edgar-companyfacts",
+  "sourceUrl": "https://www.sec.gov/files/company_tickers.json",
+  "companyFactsUrlTemplate": "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+  "submissionsUrlTemplate": "https://data.sec.gov/submissions/CIK{cik}.json",
+  "filingUrlTemplate": "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{primaryDocument}",
+  "sourceRevision": "live-sec-edgar-api-snapshot",
+  "license": "U.S. SEC public data subject to SEC website policies",
+  "licenseUrl": "https://www.sec.gov/about/webmaster-frequently-asked-questions",
+  "termsUrl": "https://www.sec.gov/edgar/searchedgar/accessing-edgar-data.htm",
+  "notes": "Official SEC EDGAR ticker, company-facts, submissions, and filing HTML sources. Each prepared snapshot records per-file hashes. Automated access must use a contact-bearing User-Agent and respect SEC fair-access limits."
+}

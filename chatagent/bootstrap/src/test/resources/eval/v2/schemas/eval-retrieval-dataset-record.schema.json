@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-retrieval-dataset-record.schema.json",
+  "title": "ChatAgent Retrieval Dataset Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sampleId", "datasetId", "sourceGroupId", "split", "userInput", "referenceContextIds", "metadata"],
+  "properties": {
+    "sampleId": { "type": "string", "minLength": 1 },
+    "datasetId": { "type": "string", "minLength": 1 },
+    "sourceGroupId": { "type": "string", "minLength": 1 },
+    "split": { "type": "string", "enum": ["calibration", "development", "holdout", "challenge"] },
+    "userInput": { "type": "string", "minLength": 1 },
+    "conversation": { "type": "array", "items": { "type": "object" } },
+    "reference": { "type": "string" },
+    "referenceContextIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "metadata": { "type": "object" }
+  }
+}
