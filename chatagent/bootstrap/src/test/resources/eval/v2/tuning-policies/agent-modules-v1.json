@@ -1,0 +1,31 @@
+{
+  "id": "agent-modules-v1",
+  "suite": "agent-modules",
+  "parameterSpaceId": "agent-modules-v1",
+  "primaryMetric": "agentModules.intentExactPathAccuracy",
+  "direction": "maximize",
+  "baselineParameters": {
+    "intentHistoryTurns": 6,
+    "intentMinEvidenceTerms": 1,
+    "rewriteHistoryTurns": 6,
+    "rewriteMaxAnchors": 3,
+    "rewriteMaxExtraTerms": 0,
+    "toolCandidateLimit": 1,
+    "multiturnCorefWindowTurns": 6
+  },
+  "secondaryMetrics": [
+    { "metric": "agentModules.rewriteAnchorRecall", "direction": "maximize" },
+    { "metric": "agentModules.toolCallF1", "direction": "maximize" },
+    { "metric": "agentModules.coreferenceRecall", "direction": "maximize" }
+  ],
+  "hardGates": {
+    "agentModules.intentExactPathAccuracy": { "min": 1.0 },
+    "agentModules.toolCallF1": { "min": 1.0 },
+    "agentModules.wrongHistorySuppression": { "min": 1.0 }
+  },
+  "categoryMetric": "agentModules.intentExactPathAccuracy",
+  "categoryRegressionTolerance": 0.0,
+  "latencyP95MaxMs": 5000.0,
+  "costMaxUsd": 0.0,
+  "holdoutTolerance": 0.0
+}

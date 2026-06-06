@@ -1,0 +1,25 @@
+{
+  "id": "text-recall-v1",
+  "suite": "text-recall",
+  "parameterSpaceId": "text-recall-v1",
+  "primaryMetric": "textRecall.retrievalContextPhraseRecall",
+  "direction": "maximize",
+  "baselineParameters": {
+    "chunkSize": 2000,
+    "chunkOverlap": 200,
+    "topK": 5
+  },
+  "secondaryMetrics": [
+    { "metric": "textRecall.citationSupportRecall", "direction": "maximize" },
+    { "metric": "textRecall.chunkSpanRecall", "direction": "maximize" }
+  ],
+  "hardGates": {
+    "textRecall.parserPhraseRecall": { "min": 1.0 },
+    "textRecall.chunkSpanRecall": { "min": 1.0 }
+  },
+  "categoryMetric": "textRecall.retrievalContextPhraseRecall",
+  "categoryRegressionTolerance": 0.0,
+  "latencyP95MaxMs": 5000.0,
+  "costMaxUsd": 0.0,
+  "holdoutTolerance": 0.0
+}

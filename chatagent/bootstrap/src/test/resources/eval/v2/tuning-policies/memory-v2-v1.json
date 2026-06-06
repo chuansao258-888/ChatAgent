@@ -1,0 +1,27 @@
+{
+  "id": "memory-v2-v1",
+  "suite": "memory-v2",
+  "parameterSpaceId": "memory-v2-v1",
+  "primaryMetric": "memory.l1CompleteTurnRecall",
+  "direction": "maximize",
+  "baselineParameters": {
+    "l1WindowTurns": 8,
+    "l1BudgetChars": 8000,
+    "l2SegmentTurns": 4,
+    "l3TopK": 3
+  },
+  "secondaryMetrics": [
+    { "metric": "memory.l2FactRecall", "direction": "maximize" },
+    { "metric": "memory.l3RecallHitAtK", "direction": "maximize" }
+  ],
+  "hardGates": {
+    "memory.l1BudgetCompliance": { "min": 1.0 },
+    "memory.l2ContradictionRate": { "max": 0.0 },
+    "memory.l3ExtractionF1": { "min": 1.0 }
+  },
+  "categoryMetric": "memory.l1CompleteTurnRecall",
+  "categoryRegressionTolerance": 0.0,
+  "latencyP95MaxMs": 5000.0,
+  "costMaxUsd": 0.0,
+  "holdoutTolerance": 0.0
+}

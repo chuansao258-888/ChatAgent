@@ -1,0 +1,36 @@
+{
+  "id": "memory-v2-v1",
+  "version": "1",
+  "primaryMetric": "memory.l1CompleteTurnRecall",
+  "direction": "maximize",
+  "parameters": [
+    {
+      "id": "l1WindowTurns",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [2, 4, 8],
+      "rationale": "Controls the expected L1 recent-turn window."
+    },
+    {
+      "id": "l1BudgetChars",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [1000, 4000, 8000],
+      "rationale": "Controls the deterministic L1 character budget."
+    },
+    {
+      "id": "l2SegmentTurns",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [2, 4, 8],
+      "rationale": "Controls the number of stable turns per L2 segment."
+    },
+    {
+      "id": "l3TopK",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [1, 3, 5],
+      "rationale": "Controls L3 memory recall depth."
+    }
+  ]
+}

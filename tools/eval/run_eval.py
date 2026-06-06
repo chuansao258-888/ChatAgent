@@ -12,6 +12,15 @@ from chatagent_eval.agent_module_runner import (
 from chatagent_eval.memory_runner import DEFAULT_MEMORY_DATASET_ID, MemoryConfig, run_memory
 from chatagent_eval.ragas_runner import DEFAULT_RAGAS_METRICS, RagasRunnerConfig, run_ragas
 from chatagent_eval.text_recall_runner import DEFAULT_TEXT_RECALL_DATASET_ID, TextRecallConfig, run_text_recall
+from chatagent_eval.tuning_runner import TuningConfig, run_tuning_experiment
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+EVAL_RESOURCE_ROOT = PROJECT_ROOT / "chatagent" / "bootstrap" / "src" / "test" / "resources" / "eval" / "v2"
+TUNING_RESOURCE_IDS = {
+    "agent-modules": "agent-modules-v1",
+    "memory-v2": "memory-v2-v1",
+    "text-recall": "text-recall-v1",
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,6 +84,22 @@ def main(argv: list[str] | None = None) -> int:
     agent_modules.add_argument("--splits", default="", help="Comma-separated split filter; empty means all splits")
     agent_modules.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
     agent_modules.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
+    tune = subparsers.add_parser("tune-suite", help="Run reproducible real-data parameter tuning with sealed holdout")
+    tune.add_argument("--suite", choices=tuple(TUNING_RESOURCE_IDS), required=True)
+    tune.add_argument("--dataset-root", default=PROJECT_ROOT / "artifacts" / "eval" / "phase3", type=Path)
+    tune.add_argument("--output-root", default=PROJECT_ROOT / "artifacts" / "eval" / "phase9", type=Path)
+    tune.add_argument("--experiment-id", required=True)
+    tune.add_argument("--strategy", choices=("grid", "random"), default="random")
+    tune.add_argument("--combination-budget", type=int, default=8)
+    tune.add_argument("--random-seed", type=int, default=42)
+    tune.add_argument("--search-splits", default="calibration,development")
+    tune.add_argument("--holdout-split", default="holdout")
+    tune.add_argument("--challenge-split", default="challenge")
+    tune.add_argument("--max-samples-per-trial", type=int, default=50)
+    tune.add_argument("--holdout-max-samples", type=int)
+    tune.add_argument("--confidence-resamples", type=int, default=300)
+    tune.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
+    tune.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
 
     args = parser.parse_args(argv)
     if args.command == "ragas-smoke":
@@ -143,6 +168,33 @@ def main(argv: list[str] | None = None) -> int:
         )
         run_dir = run_agent_modules(dataset_root=args.dataset_root, output_root=args.output_root, config=config)
         print(run_dir)
+        return 0
+    if args.command == "tune-suite":
+        resource_id = TUNING_RESOURCE_IDS[args.suite]
+        config = TuningConfig(
+            experiment_id=args.experiment_id,
+            suite=args.suite,
+            strategy=args.strategy,
+            combination_budget=args.combination_budget,
+            random_seed=args.random_seed,
+            search_splits=tuple(split.strip() for split in args.search_splits.split(",") if split.strip()),
+            holdout_split=args.holdout_split,
+            challenge_split=args.challenge_split or None,
+            max_samples_per_trial=args.max_samples_per_trial,
+            holdout_max_samples=args.holdout_max_samples,
+            confidence_resamples=args.confidence_resamples,
+            git_branch=args.git_branch,
+            git_sha=args.git_sha,
+        )
+        experiment_dir = run_tuning_experiment(
+            dataset_root=args.dataset_root,
+            output_root=args.output_root,
+            parameter_space_path=EVAL_RESOURCE_ROOT / "parameter-spaces" / f"{resource_id}.json",
+            policy_path=EVAL_RESOURCE_ROOT / "tuning-policies" / f"{resource_id}.json",
+            registry_path=EVAL_RESOURCE_ROOT / "parameter-registry-v1.json",
+            config=config,
+        )
+        print(experiment_dir)
         return 0
     return 2
 

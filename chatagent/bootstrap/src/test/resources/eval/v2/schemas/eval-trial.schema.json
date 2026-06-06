@@ -21,13 +21,32 @@
     "configFingerprint": { "type": "string", "minLength": 1 },
     "randomSeed": { "type": "integer" },
     "parameters": { "type": "object" },
+    "stage": { "type": "string", "enum": ["baseline", "sensitivity", "combination"] },
     "status": { "type": "string", "enum": ["completed", "failed", "skipped"] },
+    "datasetHash": { "type": "string", "minLength": 1 },
+    "splitHashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "codeSha": { "type": "string" },
+    "models": { "type": "object" },
     "metrics": {
       "type": "object",
       "additionalProperties": { "type": ["number", "null"] }
     },
+    "categoryMetrics": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "confidenceInterval": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "repeatedRunVariance": { "type": ["number", "null"] },
+    "failureCount": { "type": "integer" },
     "gateFailures": { "type": "array", "items": { "type": "string" } },
     "latencyP95Ms": { "type": ["number", "null"] },
+    "executionElapsedMs": { "type": ["number", "null"] },
     "costUsd": { "type": ["number", "null"] }
   }
 }

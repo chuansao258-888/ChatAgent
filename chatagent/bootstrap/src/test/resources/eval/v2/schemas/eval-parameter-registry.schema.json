@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-parameter-registry.schema.json",
+  "title": "ChatAgent Evaluation Parameter Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "registryId", "parameters"],
+  "properties": {
+    "schemaVersion": { "type": "integer" },
+    "registryId": { "type": "string", "minLength": 1 },
+    "parameters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "owner",
+          "source",
+          "classification",
+          "type",
+          "default",
+          "suites",
+          "metrics",
+          "promotionStatus",
+          "rationale"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "runtimeProperty": { "type": ["string", "null"] },
+          "environmentVariable": { "type": ["string", "null"] },
+          "classification": {
+            "type": "string",
+            "enum": ["quality-tunable", "operational-only", "safety-fixed", "excluded-with-rationale"]
+          },
+          "type": { "type": "string", "enum": ["integer", "number", "string", "boolean"] },
+          "default": { "type": ["integer", "number", "string", "boolean"] },
+          "validRange": { "type": ["object", "null"] },
+          "choices": { "type": ["array", "null"] },
+          "constraints": { "type": ["array", "null"], "items": { "type": "string" } },
+          "suites": { "type": "array", "items": { "type": "string" } },
+          "metrics": { "type": "array", "items": { "type": "string" } },
+          "parameterSpaceId": { "type": ["string", "null"] },
+          "spaceParameterId": { "type": ["string", "null"] },
+          "promotionStatus": {
+            "type": "string",
+            "enum": ["current", "candidate", "deferred", "not-applicable"]
+          },
+          "rationale": { "type": "string" }
+        }
+      }
+    }
+  }
+}
