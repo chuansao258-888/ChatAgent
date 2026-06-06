@@ -2,7 +2,7 @@
 
 ## Overall Status
 
-Phase 1–4 complete. Phases 5–7 pending.
+Phase 1–5 complete. Phases 6–7 pending.
 
 Authoritative plan:
 
@@ -16,7 +16,7 @@ Authoritative plan:
 | 2 | Stable Boundary And Token Policy | **Complete** |
 | 3 | Structured Segment Summarization | **Complete** |
 | 4 | Runtime Tool-Result Microcompact | **Complete** |
-| 5 | Failure Protection And Retry | Pending |
+| 5 | Failure Protection And Retry | **Complete** |
 | 6 | Runtime Rendering And L3 Alignment | Pending |
 | 7 | Documentation And Broad Verification | Pending |
 
@@ -47,8 +47,36 @@ Authoritative plan:
 | Phase 1 recommended next step text matches the actual Schema And Runtime Contract Slice scope | Confirmed |
 | `AgentSessionSummaryResolver` no longer loads a fallback prompt — returns empty string when no synopsis exists, allowing the caller to omit `[Historical Context Summary]` | Confirmed |
 | `DefaultAgentRuntimeContextLoader` removed stale `contains("No historical context summary available")` string filter — V2 resolver returns empty string directly | Confirmed |
+| Deterministic fallback after LLM retry exhaustion is not a failure — compaction succeeds with lower-quality output; failure recording only for save failures and prompt-too-long on single turn | Confirmed |
+| Prompt-too-long detection is heuristic (exception message pattern matching) rather than model-specific exception types | Confirmed |
+| Backoff is linear (consecutiveFailures × failureBackoffSeconds), not exponential | Confirmed |
+| Split-and-retry is recursive down to single-turn minimum; no explicit depth limit needed since log₂(N) is bounded for practical turn counts | Confirmed |
 
 ## Files Changed
+
+### Phase 5: Failure Protection And Retry
+
+Modified files:
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/IncrementalSummarizer.java` — added `maxRetries`, `maxConsecutiveFailures`, `failureBackoffSeconds` config fields (wired from application.yaml). Refactored `summarizeWithDetails` to delegate to `summarizeRange` which handles split-and-retry. New `generateStructuredSummaryWithRetry` retries model calls on blank/invalid output (up to maxRetries+1 attempts) before falling back to deterministic. New `isPromptTooLong` detects context-overflow exceptions by message pattern. New `splitAndSummarize` splits turns in half on prompt-too-long, processes each sub-range independently via recursive `summarizeRange`. New `recordFailure` writes failure state (consecutiveFailures, failure range, lastFailureClass) on any summarization failure; sets `nextRetryAt` only when `consecutiveFailures >= maxConsecutiveFailures` threshold. Preserves existing anchoredEntities and structuredSummaryJson in failure updates. New `saveWithRetry` retries `saveOrUpdate` up to maxRetries+1 total attempts on optimistic lock conflict. Success path clears all failure fields (consecutiveFailures=0, failure range=null, nextRetryAt=null). Two new inner exceptions: `PromptTooLongException` (signals context overflow → split), `SummarizationFailedException` (signals save failure → record failure state).
+
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/AsyncSummaryListener.java` — added `publishL3Events` method: when result has segments (from split-and-retry), publishes one `LongTermMemoryPromotionRequestedEvent` per segment with filtered turns matching each segment's seq range. Falls back to single merged event when no segments present.
+
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/conversation/summary/IncrementalSummarizerTest.java` — updated `@BeforeEach` constructor for 3 new parameters. 16 Phase 5 tests including 6 review-fix regressions: retry on blank output, retry on exception, prompt-too-long splits range, partial split success, save failure after maxRetries+1 attempts, optimistic lock retry across 3 attempts (false, false, true), consecutive failures below threshold (nextRetryAt=null), consecutive failures at threshold (nextRetryAt set), failure preserves existing anchored entities/structured JSON, successful run clears failure state, prompt-too-long detection, no segment duplication on retry, all save attempts exhausted. Total: 24 tests.
+
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/conversation/summary/AsyncSummaryListenerTest.java` — added per-segment L3 event test: 2 segments → 2 L3 events with correct range/turns per segment. Total: 9 tests.
+
+- `chatagent/bootstrap/src/test/java/com/yulong/chatagent/eval/MemorySummaryEvalTest.java` — updated `IncrementalSummarizer` constructor call for 3 new parameters.
+
+Implementation notes:
+
+- Deterministic fallback is still the last resort: after all LLM retries are exhausted, the deterministic summary is used. This is not treated as a failure — the compaction succeeds with lower-quality output.
+- Failure recording only happens when the entire `doSummarizeRange` fails (save failure after optimistic lock retry, or prompt-too-long on a single turn). These are edge cases in normal operation.
+- Split-and-retry is recursive: if a half is still too long, it splits again down to single turns. Minimum split size is 1 turn.
+- Segment insert is idempotent (ON CONFLICT DO NOTHING), so retry after partial success never creates duplicate segments.
+- Backoff is linear: `nextRetryAt = now + (consecutiveFailures × failureBackoffSeconds)`, but only activated when `consecutiveFailures >= maxConsecutiveFailures`. Below threshold, only the count and range are recorded.
+- Prompt-too-long detection is heuristic-based (checks exception message for common patterns). This covers most model providers without model-specific exception handling.
+- `saveWithRetry` uses maxRetries+1 total attempts (matching the model retry count), not a hardcoded value.
 
 ### Phase 4: Runtime Tool-Result Microcompact
 
@@ -150,6 +178,15 @@ Planning/review-fix documents changed:
 
 ## Tests Added Or Updated
 
+Phase 5 new tests (16):
+
+- `IncrementalSummarizerTest`: 14 new tests — retry on blank output then succeeds with valid JSON on second attempt, retry on exception then succeeds, prompt-too-long splits 4-turn range into 2+2 with two segments created, partial split success (first half OK, second half save fails) advances watermark only through first half and returns effective range, save failure after all maxRetries+1 attempts records failure state and returns updated=false, optimistic lock conflict (false, false, true) retries 3 times and succeeds on third attempt, consecutive failures below maxConsecutiveFailures threshold keep nextRetryAt=null, consecutive failures at threshold set nextRetryAt, failure recording preserves existing anchored entities and structuredSummaryJson, successful run after previous failure clears all failure fields (consecutiveFailures=0, failedStartSeqNo=null, failedEndSeqNo=null, lastFailureClass=null, nextRetryAt=null), prompt-too-long detection from exception message patterns, no segment duplication on retry after partial success (watermark ensures only remaining range processed), all maxRetries+1 save attempts exhausted returns failure
+
+Phase 5 updated tests (2):
+
+- `MemorySummaryEvalTest`: constructor call updated for 3 new IncrementalSummarizer parameters (maxRetries, maxConsecutiveFailures, failureBackoffSeconds)
+- `AsyncSummaryListenerTest`: added per-segment L3 event test (2 segments → 2 L3 events with correct range/turns per segment). Total: 9 tests.
+
 Phase 4 new tests (14):
 
 - `ToolResultCompactorTest`: 14 tests covering large content compacted with head/tail format, small content unchanged, exact threshold boundary, null/empty input, head/tail from distinct content regions, shouldCompact flag, max exceeded when configured head/tail would overlap, forced budget compaction below maxChars, budget compaction preserving original content when the compacted wrapper would be larger, budget compaction of null, Micrometer counter incremented on compaction, Micrometer counter not incremented when no compaction, error-line preservation from dropped middle region
@@ -199,6 +236,20 @@ Phase 1 updated tests (16 across 4 files):
 - `MemorySummaryEvalTest`: 4 references updated for `summarizedUntilSeqNo`/`synopsis`/`getSynopsis()` field names
 
 ## Verification Commands
+
+Phase 5 targeted verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test "-Dtest=IncrementalSummarizerTest,AsyncSummaryListenerTest"
+# Result: 33 tests, 0 failures, 0 errors
+```
+
+Phase 5 broad verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test
+# Result: 784 tests, 0 failures, 0 errors
+```
 
 Phase 2 targeted verification:
 
@@ -357,6 +408,8 @@ Planned manual checks:
 | 2026-06-06 | Implementation | Phase 4 complete: ToolResultCompactor with deterministic head/tail format for oversized tool responses, integrated into AgentMemoryLoader's collectAssistantSequence (compact on read, no DB mutation). Tool call ID and response pairing preserved. 7 new + 4 updated tests. Targeted 14 tests passing. |
 | 2026-06-06 | Review fix | Fixed P2: `compactIfNeeded()` now still compacts when content exceeds maxChars even if configured head/tail would overlap the content, dynamically shrinking excerpts so the result is shorter than the original. Fixed P2: `AgentMemoryLoader` now counts `ToolResponseMessage.responseData()` in token estimates and applies budget-pressure compaction before dropping a selected over-budget turn. Fixed P3: verified the stray `chatagent/org/` generated class directory is absent from `git status`. Added 4 regression tests. Targeted 18 tests and full 766-test suite passing. |
 | 2026-06-06 | Review fix | Fixed P3: Added Micrometer counter `chatagent.memory.compaction.v2.tool_results_compacted` to `ToolResultCompactor`, following `ObjectProvider<MeterRegistry>` pattern from AsyncSummaryListener. 2 metric verification tests added. Fixed P3: `doCompact` now scans the dropped middle region for lines matching error/stack-trace/URL/path patterns and preserves up to 3 such lines within 25% of the excerpt budget. Safety check reverts to head/tail-only if error lines would make the result longer than the original. 1 test for error-line preservation. Fixed P3: Added `shouldReturnNullWhenBudgetCompactingNull` test covering `compactForBudget(null)` contract. Targeted 22 tests passing. |
+| 2026-06-06 | Implementation | Phase 5 complete: model retry on blank/invalid output (up to maxRetries+1 attempts), prompt-too-long split-and-retry (recursive half-split with per-sub-range segments), optimistic lock retry (saveOrUpdate retried once), failure state recording (consecutiveFailures, failure range, nextRetryAt, lastFailureClass), success clears failure state. 10 new tests, 1 updated test. 780 total tests passing. |
+| 2026-06-06 | Review fix | Fixed P2: `saveWithRetry` now loops maxRetries+1 total attempts (was hardcoded 2). Fixed P2: `recordFailure` only sets `nextRetryAt` when `consecutiveFailures >= maxConsecutiveFailures` threshold (was set on every failure). Fixed P2: `recordFailure` now preserves existing `anchoredEntities`, `structuredSummaryJson` from existing summary (was dropping them). Fixed P2: `AsyncSummaryListener.publishL3Events` publishes one L3 event per segment when result has segments, with filtered turns per segment range (was publishing one merged event). 6 new regression tests. 784 total tests passing. |
 
 ## Deferred Items
 

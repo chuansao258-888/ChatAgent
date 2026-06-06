@@ -101,7 +101,10 @@ class MemorySummaryEvalTest {
                     chatModelRouter,
                     "",
                     1200,
-                    2000
+                    2000,
+                    2,    // maxRetries
+                    3,    // maxConsecutiveFailures
+                    300   // failureBackoffSeconds
             );
 
             String sessionId = "memory-eval-" + dialogue.id();

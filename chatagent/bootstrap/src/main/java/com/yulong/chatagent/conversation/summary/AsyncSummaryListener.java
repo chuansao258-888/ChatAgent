@@ -1,6 +1,7 @@
 package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.event.ConversationTurnCompletedEvent;
+import com.yulong.chatagent.support.dto.ChatSessionSummarySegmentDTO;
 import com.yulong.chatagent.conversation.event.LongTermMemoryPromotionRequestedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +12,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 后台异步摘要监听器。
@@ -92,15 +96,45 @@ public class AsyncSummaryListener {
                     event.sessionId(), boundary.stableAnchorSeqNo());
 
             if (l3Enabled && result.updated() && result.turns() != null && !result.turns().isEmpty()) {
-                eventPublisher.publishEvent(new LongTermMemoryPromotionRequestedEvent(
-                        event.sessionId(),
-                        result.range(),
-                        result.turns()
-                ));
+                publishL3Events(event.sessionId(), result);
             }
         } finally {
             redisLockManager.unlock(event.sessionId(), lockToken);
         }
+    }
+
+    /**
+     * Publishes L3 promotion events. When the result contains segments (from split-and-retry),
+     * publishes one event per segment with matching range and turns.
+     * Falls back to a single merged event when no segments are present.
+     */
+    private void publishL3Events(String sessionId, SummaryResult result) {
+        if (result.segments() != null && !result.segments().isEmpty()) {
+            for (ChatSessionSummarySegmentDTO segment : result.segments()) {
+                SummaryWatermarkRange segmentRange = new SummaryWatermarkRange(
+                        sessionId, segment.getSeqStartNo() - 1, segment.getSeqEndNo());
+                List<AtomicConversationTurn> segmentTurns = filterTurnsByRange(
+                        result.turns(), segment.getSeqStartNo(), segment.getSeqEndNo());
+                if (!segmentTurns.isEmpty()) {
+                    eventPublisher.publishEvent(new LongTermMemoryPromotionRequestedEvent(
+                            sessionId, segmentRange, segmentTurns));
+                }
+            }
+        } else {
+            eventPublisher.publishEvent(new LongTermMemoryPromotionRequestedEvent(
+                    sessionId, result.range(), result.turns()));
+        }
+    }
+
+    private static List<AtomicConversationTurn> filterTurnsByRange(
+            List<AtomicConversationTurn> turns, long startSeqNo, long endSeqNo) {
+        List<AtomicConversationTurn> filtered = new ArrayList<>();
+        for (AtomicConversationTurn turn : turns) {
+            if (turn.endSeqNo() >= startSeqNo && turn.endSeqNo() <= endSeqNo) {
+                filtered.add(turn);
+            }
+        }
+        return filtered;
     }
 
     private void recordDecision(CompactionDecision decision) {

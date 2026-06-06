@@ -2,6 +2,7 @@ package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.event.ConversationTurnCompletedEvent;
 import com.yulong.chatagent.conversation.event.LongTermMemoryPromotionRequestedEvent;
+import com.yulong.chatagent.support.dto.ChatSessionSummarySegmentDTO;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -244,5 +246,46 @@ class AsyncSummaryListenerTest {
 
     private static CompactionBoundary stableBoundary(String sessionId, long stableAnchorSeqNo) {
         return new CompactionBoundary(sessionId, 0L, stableAnchorSeqNo, 5, 3, List.of(), 0, false);
+    }
+
+    @Test
+    void shouldPublishPerSegmentL3EventsOnSplit() {
+        ConversationTurnCompletedEvent event = new ConversationTurnCompletedEvent("session-1", "turn-1", 12L);
+        AtomicConversationTurn t1 = new AtomicConversationTurn("t-1", 1L, 4L, List.of("A"), "a");
+        AtomicConversationTurn t2 = new AtomicConversationTurn("t-2", 5L, 8L, List.of("B"), "b");
+
+        ChatSessionSummarySegmentDTO seg1 = ChatSessionSummarySegmentDTO.builder()
+                .sessionId("session-1").seqStartNo(1L).seqEndNo(4L).build();
+        ChatSessionSummarySegmentDTO seg2 = ChatSessionSummarySegmentDTO.builder()
+                .sessionId("session-1").seqStartNo(5L).seqEndNo(8L).build();
+
+        SummaryWatermarkRange fullRange = new SummaryWatermarkRange("session-1", 0L, 8L);
+        CompactionBoundary boundary = stableBoundary("session-1", 8L);
+        when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
+        when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+        when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
+        when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
+        when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))
+                .thenReturn(new SummaryResult(true, fullRange,
+                        List.of(t1, t2), List.of(seg1, seg2), "synopsis"));
+
+        asyncSummaryListener.handle(event);
+
+        // Should publish 2 L3 events (one per segment)
+        ArgumentCaptor<LongTermMemoryPromotionRequestedEvent> captor =
+                ArgumentCaptor.forClass(LongTermMemoryPromotionRequestedEvent.class);
+        verify(eventPublisher, times(2)).publishEvent(captor.capture());
+
+        List<LongTermMemoryPromotionRequestedEvent> events = captor.getAllValues();
+        assertThat(events).hasSize(2);
+
+        // First segment event
+        assertThat(events.get(0).range().endInclusiveSeqNo()).isEqualTo(4L);
+        assertThat(events.get(0).turns()).containsExactly(t1);
+
+        // Second segment event
+        assertThat(events.get(1).range().endInclusiveSeqNo()).isEqualTo(8L);
+        assertThat(events.get(1).turns()).containsExactly(t2);
     }
 }
