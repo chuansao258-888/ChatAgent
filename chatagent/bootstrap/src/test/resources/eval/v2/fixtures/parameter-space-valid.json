@@ -1,0 +1,21 @@
+{
+  "id": "rag-retrieval-v1",
+  "version": "1",
+  "primaryMetric": "ndcgAt3",
+  "direction": "maximize",
+  "parameters": [
+    {
+      "id": "topK",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [3, 5, 8],
+      "rationale": "Controls the final retrieval context count."
+    },
+    {
+      "id": "rrfK",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [20, 60]
+    }
+  ]
+}

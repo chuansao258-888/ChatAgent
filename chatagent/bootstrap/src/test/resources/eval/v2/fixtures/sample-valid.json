@@ -1,0 +1,20 @@
+{
+  "sampleId": "scifact-1",
+  "datasetId": "beir-scifact-v1",
+  "split": "development",
+  "userInput": "Does the cited study support the claim?",
+  "response": null,
+  "reference": "The study supports the claim.",
+  "retrievedContexts": [
+    {
+      "id": "doc-1#chunk-2",
+      "text": "The study reports evidence supporting the claim.",
+      "sourceId": "doc-1",
+      "score": 0.91
+    }
+  ],
+  "referenceContextIds": ["doc-1#chunk-2"],
+  "metadata": {
+    "sourceType": "public-benchmark"
+  }
+}

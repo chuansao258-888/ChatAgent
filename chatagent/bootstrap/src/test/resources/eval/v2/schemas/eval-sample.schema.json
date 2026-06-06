@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-sample.schema.json",
+  "title": "ChatAgent Evaluation Sample",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sampleId",
+    "datasetId",
+    "split",
+    "userInput",
+    "retrievedContexts",
+    "referenceContextIds"
+  ],
+  "properties": {
+    "sampleId": { "type": "string", "minLength": 1 },
+    "datasetId": { "type": "string", "minLength": 1 },
+    "split": {
+      "type": "string",
+      "enum": ["train", "calibration", "development", "holdout", "challenge", "smoke"]
+    },
+    "userInput": { "type": "string", "minLength": 1 },
+    "response": { "type": ["string", "null"] },
+    "reference": { "type": ["string", "null"] },
+    "retrievedContexts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string" },
+          "sourceId": { "type": ["string", "null"] },
+          "score": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "referenceContextIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "metadata": { "type": "object" }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-trial.schema.json",
+  "title": "ChatAgent Evaluation Trial",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "experimentId",
+    "trialId",
+    "parameterSpaceId",
+    "configFingerprint",
+    "randomSeed",
+    "parameters",
+    "status",
+    "metrics"
+  ],
+  "properties": {
+    "experimentId": { "type": "string", "minLength": 1 },
+    "trialId": { "type": "string", "minLength": 1 },
+    "parameterSpaceId": { "type": "string", "minLength": 1 },
+    "configFingerprint": { "type": "string", "minLength": 1 },
+    "randomSeed": { "type": "integer" },
+    "parameters": { "type": "object" },
+    "status": { "type": "string", "enum": ["completed", "failed", "skipped"] },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] }
+    },
+    "gateFailures": { "type": "array", "items": { "type": "string" } },
+    "latencyP95Ms": { "type": ["number", "null"] },
+    "costUsd": { "type": ["number", "null"] }
+  }
+}

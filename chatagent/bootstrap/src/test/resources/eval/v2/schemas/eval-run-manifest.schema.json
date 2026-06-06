@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-run-manifest.schema.json",
+  "title": "ChatAgent Evaluation Run Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runId",
+    "suite",
+    "mode",
+    "timestamp",
+    "gitBranch",
+    "gitSha",
+    "datasetId",
+    "datasetHash",
+    "config",
+    "configFingerprint",
+    "models",
+    "thresholds",
+    "artifactFiles"
+  ],
+  "properties": {
+    "runId": { "type": "string", "minLength": 1 },
+    "suite": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "minLength": 1 },
+    "gitBranch": { "type": "string" },
+    "gitSha": { "type": "string" },
+    "datasetId": { "type": "string", "minLength": 1 },
+    "datasetHash": { "type": "string", "minLength": 1 },
+    "config": { "type": "object" },
+    "configFingerprint": { "type": "string", "minLength": 1 },
+    "models": { "type": "object" },
+    "thresholds": { "type": "object" },
+    "artifactFiles": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "tuning": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["parameterSpaceId", "experimentId", "trialId", "randomSeed"],
+      "properties": {
+        "parameterSpaceId": { "type": "string", "minLength": 1 },
+        "experimentId": { "type": "string", "minLength": 1 },
+        "trialId": { "type": "string", "minLength": 1 },
+        "randomSeed": { "type": "integer" }
+      }
+    }
+  }
+}

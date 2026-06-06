@@ -1,0 +1,19 @@
+{
+  "experimentId": "exp-rag-001",
+  "trialId": "trial-0001",
+  "parameterSpaceId": "rag-retrieval-v1",
+  "configFingerprint": "sha256:trial",
+  "randomSeed": 42,
+  "parameters": {
+    "topK": 3,
+    "rrfK": 60
+  },
+  "status": "completed",
+  "metrics": {
+    "ndcgAt3": 0.88,
+    "recallAt3": 0.91
+  },
+  "gateFailures": [],
+  "latencyP95Ms": 420.0,
+  "costUsd": 0.0
+}

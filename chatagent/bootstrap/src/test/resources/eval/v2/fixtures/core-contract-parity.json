@@ -1,0 +1,21 @@
+{
+  "configFingerprint": {
+    "config": {
+      "rrfK": 60,
+      "topK": 3
+    },
+    "sha256": "32c69312dd20bdb1a7e81db214e21e24d74165eaf22a2c72af13e42ae7512708"
+  },
+  "retrievalMetrics": {
+    "retrieved": ["a", "x", "b", "c"],
+    "relevant": ["a", "b", "z"],
+    "k": 3,
+    "expected": {
+      "hitAt3": 1.0,
+      "recallAt3": 0.6666666666666666,
+      "precisionAt3": 0.6666666666666666,
+      "mrr": 1.0,
+      "ndcgAt3": 0.7039180890341347
+    }
+  }
+}

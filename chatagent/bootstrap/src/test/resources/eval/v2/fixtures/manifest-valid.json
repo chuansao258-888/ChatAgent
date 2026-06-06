@@ -1,0 +1,17 @@
+{
+  "runId": "run-20260606-001",
+  "suite": "rag-retrieval",
+  "mode": "smoke",
+  "timestamp": "2026-06-06T00:00:00Z",
+  "gitBranch": "codex/ragas-evaluation-rework",
+  "gitSha": "3310250",
+  "datasetId": "beir-scifact-v1",
+  "datasetHash": "sha256:dataset",
+  "config": {
+    "topK": 3
+  },
+  "configFingerprint": "sha256:config",
+  "models": {},
+  "thresholds": {},
+  "artifactFiles": ["manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl"]
+}

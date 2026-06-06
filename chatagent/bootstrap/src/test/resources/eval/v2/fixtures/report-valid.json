@@ -1,0 +1,14 @@
+{
+  "runId": "run-20260606-001",
+  "suite": "rag-retrieval",
+  "mode": "smoke",
+  "status": "pass",
+  "datasetId": "beir-scifact-v1",
+  "datasetHash": "sha256:dataset",
+  "configFingerprint": "sha256:config",
+  "metrics": {
+    "hitAt3": 1.0,
+    "mrr": 1.0
+  },
+  "thresholdResults": []
+}

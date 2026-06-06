@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-report.schema.json",
+  "title": "ChatAgent Evaluation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runId",
+    "suite",
+    "mode",
+    "status",
+    "datasetId",
+    "datasetHash",
+    "configFingerprint",
+    "metrics"
+  ],
+  "properties": {
+    "runId": { "type": "string", "minLength": 1 },
+    "suite": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+    "datasetId": { "type": "string", "minLength": 1 },
+    "datasetHash": { "type": "string", "minLength": 1 },
+    "configFingerprint": { "type": "string", "minLength": 1 },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] }
+    },
+    "thresholdResults": { "type": "array", "items": { "type": "object" } },
+    "tuning": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["parameterSpaceId", "experimentId", "trialId", "randomSeed"],
+      "properties": {
+        "parameterSpaceId": { "type": "string", "minLength": 1 },
+        "experimentId": { "type": "string", "minLength": 1 },
+        "trialId": { "type": "string", "minLength": 1 },
+        "randomSeed": { "type": "integer" }
+      }
+    }
+  }
+}
