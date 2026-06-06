@@ -36,8 +36,8 @@ class MyBatisChatSessionSummaryRepositoryTest {
     void shouldInsertNewSummaryWithInitialVersion() {
         ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
                 .sessionId("session-1")
-                .lastSeqNo(8L)
-                .summary("Rolling summary")
+                .summarizedUntilSeqNo(8L)
+                .synopsis("Rolling summary")
                 .anchoredEntities(Map.of("dates", List.of("2026-03-28")))
                 .build();
         when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(null);
@@ -54,8 +54,8 @@ class MyBatisChatSessionSummaryRepositoryTest {
     void shouldSerializeNullAnchoredEntitiesAsEmptyJsonObject() {
         ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
                 .sessionId("session-1")
-                .lastSeqNo(2L)
-                .summary("Summary")
+                .summarizedUntilSeqNo(2L)
+                .synopsis("Summary")
                 .anchoredEntities(null)
                 .build();
         when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(null);
@@ -69,13 +69,63 @@ class MyBatisChatSessionSummaryRepositoryTest {
     }
 
     @Test
+    void shouldDefaultStructuredSummaryJsonToEmptyObjectOnInsert() {
+        ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
+                .sessionId("session-1")
+                .summarizedUntilSeqNo(5L)
+                .synopsis("Summary without structured JSON")
+                .anchoredEntities(null)
+                .structuredSummaryJson(null)
+                .build();
+        when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(null);
+        when(chatSessionSummaryMapper.insert(any())).thenReturn(1);
+
+        repository.saveOrUpdate(summary);
+
+        ArgumentCaptor<ChatSessionSummaryDTO> captor = ArgumentCaptor.forClass(ChatSessionSummaryDTO.class);
+        verify(chatSessionSummaryMapper).insert(captor.capture());
+        assertThat(captor.getValue().getStructuredSummaryJson()).isEqualTo("{}");
+    }
+
+    @Test
+    void shouldDefaultStructuredSummaryJsonToEmptyObjectOnUpdate() {
+        when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(
+                ChatSessionSummaryDTO.builder()
+                        .sessionId("session-1")
+                        .summarizedUntilSeqNo(4L)
+                        .synopsis("Old")
+                        .anchoredEntitiesJson("{}")
+                        .structuredSummaryJson("{}")
+                        .version(1)
+                        .createdAt(LocalDateTime.now().minusMinutes(5))
+                        .updatedAt(LocalDateTime.now().minusMinutes(3))
+                        .build()
+        );
+        when(chatSessionSummaryMapper.updateBySessionIdAndVersion(any())).thenReturn(1);
+
+        ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
+                .sessionId("session-1")
+                .summarizedUntilSeqNo(8L)
+                .synopsis("New synopsis")
+                .structuredSummaryJson(null)
+                .anchoredEntities(Map.of())
+                .build();
+
+        repository.saveOrUpdate(summary);
+
+        ArgumentCaptor<ChatSessionSummaryDTO> captor = ArgumentCaptor.forClass(ChatSessionSummaryDTO.class);
+        verify(chatSessionSummaryMapper).updateBySessionIdAndVersion(captor.capture());
+        assertThat(captor.getValue().getStructuredSummaryJson()).isEqualTo("{}");
+    }
+
+    @Test
     void shouldUpdateSummaryWithOptimisticVersionIncrement() {
         LocalDateTime createdAt = LocalDateTime.now().minusMinutes(10);
         when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(
                 ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(8L)
-                        .summary("Old summary")
+                        .summarizedUntilSeqNo(8L)
+                        .synopsis("Old summary")
                         .anchoredEntitiesJson("")
                         .version(3)
                         .createdAt(createdAt)
@@ -86,8 +136,8 @@ class MyBatisChatSessionSummaryRepositoryTest {
 
         ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
                 .sessionId("session-1")
-                .lastSeqNo(12L)
-                .summary("New summary")
+                .summarizedUntilSeqNo(12L)
+                .synopsis("New summary")
                 .anchoredEntities(Map.of("amounts", List.of("100")))
                 .build();
 
@@ -104,8 +154,8 @@ class MyBatisChatSessionSummaryRepositoryTest {
         when(chatSessionSummaryMapper.selectBySessionId("session-1")).thenReturn(
                 ChatSessionSummaryDTO.builder()
                         .sessionId("session-1")
-                        .lastSeqNo(8L)
-                        .summary("Old summary")
+                        .summarizedUntilSeqNo(8L)
+                        .synopsis("Old summary")
                         .anchoredEntitiesJson("{}")
                         .version(3)
                         .createdAt(LocalDateTime.now().minusMinutes(10))
@@ -116,8 +166,8 @@ class MyBatisChatSessionSummaryRepositoryTest {
 
         ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
                 .sessionId("session-1")
-                .lastSeqNo(12L)
-                .summary("New summary")
+                .summarizedUntilSeqNo(12L)
+                .synopsis("New summary")
                 .anchoredEntities(Map.of())
                 .build();
 

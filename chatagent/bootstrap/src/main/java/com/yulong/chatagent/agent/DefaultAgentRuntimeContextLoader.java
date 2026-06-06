@@ -135,7 +135,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         builder.append(effectivePrompt).append("\n\n");
 
         // 2. L2 历史摘要：补充已经滑出 L1 窗口的长对话背景。
-        if (StringUtils.hasText(sessionSummary) && !sessionSummary.contains("No historical context summary available")) {
+        //    V2 resolver returns empty when neither synopsis nor active nonblank segments exist.
+        if (StringUtils.hasText(sessionSummary)) {
             builder.append("[Historical Context Summary]\n")
                     .append(sessionSummary).append("\n\n");
         }

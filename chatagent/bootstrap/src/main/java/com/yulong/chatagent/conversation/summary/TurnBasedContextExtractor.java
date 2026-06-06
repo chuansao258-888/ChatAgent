@@ -37,19 +37,30 @@ public class TurnBasedContextExtractor {
         return chatMessageRepository.countTurnsBySessionId(sessionId);
     }
 
+    /**
+     * Extract all summarizable turns for a session, regardless of summary watermark.
+     * Used by {@link CompactionBoundaryResolver} to determine which turns are stable vs L1 tail.
+     */
+    public List<AtomicConversationTurn> extractAllTurns(String sessionId) {
+        List<ChatMessageDTO> allMessages = chatMessageRepository.findBySessionId(sessionId);
+        return groupIntoTurns(allMessages);
+    }
+
     public List<AtomicConversationTurn> extractPendingTurns(String sessionId, long anchorSeqNo) {
         List<ChatMessageDTO> pendingMessages = summaryWatermarkService.loadPendingMessages(sessionId, anchorSeqNo);
-        if (pendingMessages.isEmpty()) {
+        return groupIntoTurns(pendingMessages);
+    }
+
+    private List<AtomicConversationTurn> groupIntoTurns(List<ChatMessageDTO> messages) {
+        if (messages.isEmpty()) {
             return List.of();
         }
 
         Map<String, List<ChatMessageDTO>> grouped = new LinkedHashMap<>();
-        for (ChatMessageDTO message : pendingMessages) {
+        for (ChatMessageDTO message : messages) {
             if (!StringUtils.hasText(message.getTurnId())) {
-                // 没有 turnId 的消息无法稳定归属到某一轮，摘要链直接忽略。
                 continue;
             }
-            // 用 LinkedHashMap 保留数据库扫描顺序，让后续 turn 顺序与原会话顺序一致。
             grouped.computeIfAbsent(message.getTurnId(), ignored -> new ArrayList<>()).add(message);
         }
 

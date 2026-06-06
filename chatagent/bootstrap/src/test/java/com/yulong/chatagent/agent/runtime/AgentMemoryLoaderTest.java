@@ -3,6 +3,8 @@ package com.yulong.chatagent.agent.runtime;
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,10 +13,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -23,11 +27,17 @@ class AgentMemoryLoaderTest {
     @Mock
     private ChatMessageRepository chatMessageRepository;
 
+    private ToolResultCompactor toolResultCompactor;
+
     private AgentMemoryLoader agentMemoryLoader;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
-        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository);
+        ObjectProvider<MeterRegistry> meterProvider = mock(ObjectProvider.class);
+        when(meterProvider.getIfAvailable()).thenReturn(new SimpleMeterRegistry());
+        toolResultCompactor = new ToolResultCompactor(200, 80, 80, meterProvider);
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor);
     }
 
     @Test
@@ -85,6 +95,127 @@ class AgentMemoryLoaderTest {
 
         assertThat(memory).hasSize(1);
         assertThat(memory.get(0).getText()).isEqualTo("Need status update");
+    }
+
+    @Test
+    void shouldCompactOversizedToolResultInMemory() {
+        AgentDTO agent = agentWithBudget(10000);
+        String largeResponse = "X".repeat(500);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "Check order"),
+                assistantWithToolCalls("m2", "turn-1", "Looking up",
+                        new AssistantMessage.ToolCall("call-1", "function", "lookup", "{}")),
+                toolMessage("m3", "turn-1", new ToolResponseMessage.ToolResponse("call-1", "lookup", largeResponse))
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        // Should have user, assistant, and compacted tool response
+        assertThat(memory).hasSize(3);
+        Message toolMessageResult = memory.get(2);
+        assertThat(toolMessageResult).isInstanceOf(ToolResponseMessage.class);
+        ToolResponseMessage toolResult = (ToolResponseMessage) toolMessageResult;
+        // Content should be compacted via ToolResultCompactor
+        assertThat(toolResult.getResponses().get(0).responseData())
+                .startsWith("[Tool result compacted for context budget]");
+        assertThat(toolResult.getResponses().get(0).responseData())
+                .contains("Original chars: 500");
+    }
+
+    @Test
+    void shouldPreserveToolCallIdAfterCompaction() {
+        AgentDTO agent = agentWithBudget(10000);
+        String largeResponse = "Y".repeat(500);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "Query"),
+                assistantWithToolCalls("m2", "turn-1", "Working",
+                        new AssistantMessage.ToolCall("call-42", "function", "search", "{}")),
+                toolMessage("m3", "turn-1", new ToolResponseMessage.ToolResponse("call-42", "search", largeResponse))
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        ToolResponseMessage toolMsg = (ToolResponseMessage) memory.get(2);
+        assertThat(toolMsg.getResponses()).hasSize(1);
+        assertThat(toolMsg.getResponses().get(0).id()).isEqualTo("call-42");
+        assertThat(toolMsg.getResponses().get(0).name()).isEqualTo("search");
+    }
+
+    @Test
+    void shouldNotCompactSmallToolResult() {
+        AgentDTO agent = agentWithBudget(10000);
+        String smallResponse = "Result: OK";
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "Check"),
+                assistantWithToolCalls("m2", "turn-1", "Checking",
+                        new AssistantMessage.ToolCall("call-1", "function", "check", "{}")),
+                toolMessage("m3", "turn-1", new ToolResponseMessage.ToolResponse("call-1", "check", smallResponse))
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        ToolResponseMessage toolMsg = (ToolResponseMessage) memory.get(2);
+        // Small response should pass through unchanged
+        assertThat(toolMsg.getResponses().get(0).responseData()).isEqualTo(smallResponse);
+    }
+
+    @Test
+    void shouldNotCompactPersistedToolResultContent() {
+        // Verify the original ChatMessageDTO content is not modified:
+        // compaction only affects the derived Spring AI message list.
+        AgentDTO agent = agentWithBudget(10000);
+        String largeResponse = "Z".repeat(500);
+        ChatMessageDTO toolMsg = toolMessage("m3", "turn-1",
+                new ToolResponseMessage.ToolResponse("call-1", "search", largeResponse));
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "Query"),
+                assistantWithToolCalls("m2", "turn-1", "Working",
+                        new AssistantMessage.ToolCall("call-1", "function", "search", "{}")),
+                toolMsg
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        // The Spring AI message is compacted
+        ToolResponseMessage compactedMsg = (ToolResponseMessage) memory.get(2);
+        assertThat(compactedMsg.getResponses().get(0).responseData()).startsWith("[Tool result compacted");
+
+        // The original DTO content is unchanged — no DB mutation
+        assertThat(toolMsg.getMetadata().getToolResponse().responseData()).isEqualTo(largeResponse);
+    }
+
+    @Test
+    void shouldCompactToolResultWhenTurnExceedsTokenBudget() {
+        // Budget-pressure path: tool response below maxChars (200) but turn exceeds budget.
+        // Budget=160 -> effective=128. Raw turn-1 plus turn-2 exceeds that.
+        // Budget compaction shrinks the tool response enough for both turns to fit.
+        String mediumResponse = "X".repeat(150); // below maxChars=200
+        AgentDTO agent = agentWithBudget(160);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "Search"),
+                assistantWithToolCalls("m2", "turn-1", "Looking",
+                        new AssistantMessage.ToolCall("call-1", "function", "search", "{}")),
+                toolMessage("m3", "turn-1",
+                        new ToolResponseMessage.ToolResponse("call-1", "search", mediumResponse)),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.USER, "Hi"),
+                message("m5", "turn-2", ChatMessageDTO.RoleType.ASSISTANT, "ok")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        // Both turns should be included (turn-1 after budget compaction)
+        assertThat(memory).extracting(Message::getText).contains("Hi", "ok", "Search", "Looking");
+
+        // Turn-1's tool response must be budget-compacted (below maxChars but triggered by budget)
+        ToolResponseMessage toolResult = memory.stream()
+                .filter(ToolResponseMessage.class::isInstance)
+                .map(ToolResponseMessage.class::cast)
+                .findFirst().orElse(null);
+        assertThat(toolResult).isNotNull();
+        assertThat(toolResult.getResponses().get(0).responseData())
+                .startsWith("[Tool result compacted for context budget]");
+        // Tool call ID must be preserved
+        assertThat(toolResult.getResponses().get(0).id()).isEqualTo("call-1");
     }
 
     private AgentDTO agentWithBudget(int tokenBudget) {

@@ -4,6 +4,7 @@ import com.yulong.chatagent.access.ResourceAccessGuard;
 import com.yulong.chatagent.agent.application.InternalAssistantService;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionSummarySegmentRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.file.port.ChatSessionFileRepository;
 import com.yulong.chatagent.rag.application.DocumentStorageService;
@@ -32,6 +33,7 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
 
     private final ChatSessionRepository chatSessionRepository;
     private final ChatSessionSummaryRepository chatSessionSummaryRepository;
+    private final ChatSessionSummarySegmentRepository chatSessionSummarySegmentRepository;
     private final ChatSessionConverter chatSessionConverter;
     private final InternalAssistantService internalAssistantService;
     private final ChatSessionFileRepository chatSessionFileRepository;
@@ -86,8 +88,9 @@ public class ChatSessionFacadeServiceImpl implements ChatSessionFacadeService {
             throw new BizException("Failed to delete chat session");
         }
 
-        // Phase 3C: Clean up historical context summary
+        // Phase 3C: Clean up historical context summary and segments
         chatSessionSummaryRepository.deleteBySessionId(chatSessionId);
+        chatSessionSummarySegmentRepository.deleteBySessionId(chatSessionId);
 
         cleanupDetachedSessionFiles(chatSessionId, sessionFiles);
     }

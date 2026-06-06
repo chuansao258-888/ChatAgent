@@ -375,6 +375,66 @@ class DefaultAgentRuntimeContextLoaderTest {
         assertThat(context.systemPrompt()).doesNotContain("[Relevant Long-Term Memory]");
     }
 
+    @Test
+    void shouldIncludeSegmentDetailInHistoricalSummary() {
+        AgentDTO agent = minimalAgent();
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
+        when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("");
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn(
+                "Session synopsis\n\n[Segment 9..12] Latest segment detail");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        assertThat(context.systemPrompt()).contains("[Historical Context Summary]");
+        assertThat(context.systemPrompt()).contains("Session synopsis");
+        assertThat(context.systemPrompt()).contains("[Segment 9..12] Latest segment detail");
+    }
+
+    @Test
+    void shouldOmitHistoricalSummaryWhenResolverReturnsEmpty() {
+        AgentDTO agent = minimalAgent();
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("hello")));
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        assertThat(context.systemPrompt()).doesNotContain("[Historical Context Summary]");
+    }
+
+    @Test
+    void shouldNotDuplicateL1ContentInSummary() {
+        // Verify that L2 summary content (from resolver) does not overlap with
+        // L1 memory content. The summary covers turns BEFORE the L1 window;
+        // L1 memory is the recent tail loaded by agentMemoryLoader.
+        AgentDTO agent = minimalAgent();
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        // L1 tail: turns 13..20 (most recent)
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(
+                new UserMessage("latest question about reimbursement"),
+                new AssistantMessage("latest answer about reimbursement")));
+        when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("");
+        // L2 summary: covers turns 1..12 (stable, outside L1)
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn(
+                "Early discussion about onboarding\n\n[Segment 9..12] Onboarding details");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        // L2 summary content present
+        assertThat(context.systemPrompt()).contains("Early discussion about onboarding");
+        assertThat(context.systemPrompt()).contains("[Segment 9..12] Onboarding details");
+        // L1 memory content present
+        assertThat(context.memory()).hasSize(2);
+        assertThat(context.memory().get(0).getText()).isEqualTo("latest question about reimbursement");
+        // No overlap: L2 summary text does not contain L1 turn content
+        assertThat(context.systemPrompt()).doesNotContain("latest question about reimbursement");
+        assertThat(context.systemPrompt()).doesNotContain("latest answer about reimbursement");
+    }
+
     private AgentDTO minimalAgent() {
         return AgentDTO.builder()
                 .id("agent-1")

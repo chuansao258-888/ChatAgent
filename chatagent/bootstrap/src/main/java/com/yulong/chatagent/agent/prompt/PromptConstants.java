@@ -50,6 +50,7 @@ public final class PromptConstants {
 
     // ── 会话摘要 ───────────────────────────────────────────────────────
     public static final String SUMMARIZER_MEMORY = "summarizer/rolling-memory.md";
+    public static final String SUMMARIZER_SEGMENT_MEMORY = "summarizer/segment-memory.md";
 
     // ── L3 长期记忆提取 ─────────────────────────────────────────────────
     public static final String L3_MEMORY_EXTRACTOR = "memory/l3-extractor.md";

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionSummarySegmentRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
 import com.yulong.chatagent.conversation.summary.IncrementalSummarizer;
 import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -88,14 +90,21 @@ class MemorySummaryEvalTest {
             TurnBasedContextExtractor contextExtractor = mock(TurnBasedContextExtractor.class);
             SummaryWatermarkService watermarkService = mock(SummaryWatermarkService.class);
             InMemorySummaryRepository summaryRepository = new InMemorySummaryRepository();
+            ChatSessionSummarySegmentRepository segmentRepository = mock(ChatSessionSummarySegmentRepository.class);
+            when(segmentRepository.insert(any())).thenReturn(true);
             IncrementalSummarizer summarizer = new IncrementalSummarizer(
                     promptLoader,
                     contextExtractor,
                     watermarkService,
                     summaryRepository,
+                    segmentRepository,
                     chatModelRouter,
                     "",
-                    500
+                    1200,
+                    2000,
+                    2,    // maxRetries
+                    3,    // maxConsecutiveFailures
+                    300   // failureBackoffSeconds
             );
 
             String sessionId = "memory-eval-" + dialogue.id();
@@ -120,7 +129,7 @@ class MemorySummaryEvalTest {
                 CheckpointResult checkpoint = new CheckpointResult();
                 checkpoint.turnId = evalTurn.turn().turnId();
                 checkpoint.summarized = summarized;
-                checkpoint.summary = current == null ? "" : safeTrim(current.getSummary());
+                checkpoint.summary = current == null ? "" : safeTrim(current.getSynopsis());
                 checkpoint.expectedSummaryMentions = evalTurn.expectedSummaryMentions();
                 checkpoint.expectedMentionCount = evalTurn.expectedSummaryMentions().size();
                 checkpoint.matchedMentions = matchedItems(checkpoint.summary, evalTurn.expectedSummaryMentions());
@@ -136,7 +145,7 @@ class MemorySummaryEvalTest {
             }
 
             ChatSessionSummaryDTO finalState = summaryRepository.findBySessionId(sessionId);
-            dialogueResult.finalSummary = finalState == null ? "" : safeTrim(finalState.getSummary());
+            dialogueResult.finalSummary = finalState == null ? "" : safeTrim(finalState.getSynopsis());
             dialogueResult.finalSummaryChars = dialogueResult.finalSummary.length();
             dialogueResult.anchoredEntities = finalState == null || finalState.getAnchoredEntities() == null
                     ? Map.of()
@@ -439,8 +448,8 @@ class MemorySummaryEvalTest {
             }
             return ChatSessionSummaryDTO.builder()
                     .sessionId(source.getSessionId())
-                    .lastSeqNo(source.getLastSeqNo())
-                    .summary(source.getSummary())
+                    .summarizedUntilSeqNo(source.getSummarizedUntilSeqNo())
+                    .synopsis(source.getSynopsis())
                     .anchoredEntities(anchorsCopy)
                     .anchoredEntitiesJson(source.getAnchoredEntitiesJson())
                     .version(source.getVersion())
