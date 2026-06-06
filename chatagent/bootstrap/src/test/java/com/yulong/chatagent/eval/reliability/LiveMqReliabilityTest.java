@@ -1,8 +1,9 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.reliability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.rabbitmq.client.GetResponse;
+import com.yulong.chatagent.eval.support.ReportArtifactWriter;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.config.RabbitMqTopologyConfiguration;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
@@ -78,12 +79,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * cannot cover: PostgreSQL SKIP LOCKED, RabbitMQ confirms, TTL/DLQ routing, and
  * Redis Lua lock operations.
  *
- * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-mq-live \
- *      -Dtest=LiveMqReliabilityEvalTest
+ * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=reliability-live \
+ *      -Dtest=LiveMqReliabilityTest
  */
-@Tag("eval-mq-live")
+@Tag("reliability")
+@Tag("reliability-live")
 @Testcontainers(disabledWithoutDocker = true)
-class LiveMqReliabilityEvalTest {
+class LiveMqReliabilityTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -180,7 +182,7 @@ class LiveMqReliabilityEvalTest {
         report.put("overall", overall);
         report.put("scenarios", results);
 
-        Path reportPath = EvalReportWriter.writeReport("mq-live-reliability-eval", report);
+        Path reportPath = ReportArtifactWriter.writeReport("mq-live-reliability", report);
         System.out.println("=== Live MQ/Redis Reliability Evaluation ===");
         System.out.println("Report: " + reportPath);
         System.out.println(OBJECT_MAPPER.writeValueAsString(overall));
@@ -686,7 +688,7 @@ class LiveMqReliabilityEvalTest {
 
         private void executeSqlFile(String classpathResource) throws Exception {
             String rawSql = new String(
-                    java.util.Objects.requireNonNull(LiveMqReliabilityEvalTest.class.getClassLoader()
+                    java.util.Objects.requireNonNull(LiveMqReliabilityTest.class.getClassLoader()
                                     .getResourceAsStream(classpathResource))
                             .readAllBytes(),
                     StandardCharsets.UTF_8

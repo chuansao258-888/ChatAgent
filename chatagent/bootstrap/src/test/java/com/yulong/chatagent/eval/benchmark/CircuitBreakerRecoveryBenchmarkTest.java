@@ -1,4 +1,4 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.benchmark;
 
 import com.yulong.chatagent.rag.retrieve.RerankerCircuitBreaker;
 import com.yulong.chatagent.rag.retrieve.RerankerProperties;
@@ -24,9 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Measures timing and correctness of state transitions under controlled conditions.
  *
  * <p>No external infrastructure needed — pure unit test.
- * <br>Run: mvn test -pl bootstrap -Dgroups=eval-reranker -Dtest=CircuitBreakerRecoveryBenchmarkTest
+ * <br>Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=benchmark -Dtest=CircuitBreakerRecoveryBenchmarkTest
  */
-@Tag("eval-reranker")
+@Tag("benchmark")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CircuitBreakerRecoveryBenchmarkTest {
 

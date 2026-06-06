@@ -1,4 +1,4 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -10,16 +10,16 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Writes evaluation reports as timestamped JSON files under target/eval-reports/.
+ * Writes retained benchmark and reliability reports under target/eval-reports/.
  */
-public final class EvalReportWriter {
+public final class ReportArtifactWriter {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
 
-    private EvalReportWriter() {}
+    private ReportArtifactWriter() {}
 
     public static Path writeReport(String reportName, Object report) {
         try {
@@ -29,7 +29,7 @@ public final class EvalReportWriter {
             MAPPER.writeValue(file.toFile(), report);
             return file;
         } catch (IOException e) {
-            throw new RuntimeException("Failed to write eval report: " + reportName, e);
+            throw new RuntimeException("Failed to write evaluation artifact: " + reportName, e);
         }
     }
 

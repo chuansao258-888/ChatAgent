@@ -1,8 +1,9 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.reliability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.rabbitmq.client.Channel;
+import com.yulong.chatagent.eval.support.ReportArtifactWriter;
 import com.yulong.chatagent.knowledge.port.KnowledgeChunkRepository;
 import com.yulong.chatagent.knowledge.port.KnowledgeDocumentRepository;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
@@ -58,11 +59,12 @@ import static org.mockito.Mockito.when;
  * ack/nack/reject, retry-publish, lock-release, and DLQ decisions without requiring
  * a live RabbitMQ or Redis instance.
  *
- * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-mq-chaos \
- *      -Dtest=MqChaosEvalTest
+ * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=reliability,chaos \
+ *      -Dtest=MqChaosReliabilityTest
  */
-@Tag("eval-mq-chaos")
-class MqChaosEvalTest {
+@Tag("reliability")
+@Tag("chaos")
+class MqChaosReliabilityTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -282,7 +284,7 @@ class MqChaosEvalTest {
         report.put("byCategory", byCategory);
         report.put("scenarios", results);
 
-        Path reportPath = EvalReportWriter.writeReport("mq-chaos-eval", report);
+        Path reportPath = ReportArtifactWriter.writeReport("mq-chaos-reliability", report);
         System.out.println("=== MQ Chaos Evaluation ===");
         System.out.println("Report: " + reportPath);
         System.out.println("Overall:");
@@ -468,7 +470,7 @@ class MqChaosEvalTest {
             return new MqTaskLockLease(
                     "chatagent:mq:task-lock:" + identity.taskType() + ":" + identity.idempotencyKey(),
                     "token-1",
-                    "MqChaosEvalTest:node-a",
+                    "MqChaosReliabilityTest:node-a",
                     identity
             );
         }

@@ -1,7 +1,8 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.reliability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.yulong.chatagent.eval.support.ReportArtifactWriter;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
 import com.yulong.chatagent.mq.lock.MqSessionExecLockAcquisition;
@@ -39,11 +40,12 @@ import static org.mockito.Mockito.when;
  * algorithm with a concurrent in-memory mock of Redis SETNX/GET. This keeps the test
  * deterministic and fast while exercising actual lock classification under contention.
  *
- * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-session-lock-stress \
- *      -Dtest=SessionLockStressEvalTest
+ * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=reliability,stress \
+ *      -Dtest=SessionLockStressReliabilityTest
  */
-@Tag("eval-session-lock-stress")
-class SessionLockStressEvalTest {
+@Tag("reliability")
+@Tag("stress")
+class SessionLockStressReliabilityTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -75,7 +77,7 @@ class SessionLockStressEvalTest {
         report.put("overall", overall);
         report.put("scenarios", results);
 
-        Path reportPath = EvalReportWriter.writeReport("session-lock-stress-eval", report);
+        Path reportPath = ReportArtifactWriter.writeReport("session-lock-stress-reliability", report);
         System.out.println("=== Session Lock Stress Evaluation ===");
         System.out.println("Report: " + reportPath);
         System.out.println("Overall:");

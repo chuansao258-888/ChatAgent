@@ -1,5 +1,6 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.benchmark;
 
+import com.yulong.chatagent.eval.support.ReportArtifactWriter;
 import com.yulong.chatagent.rag.retrieve.BgeHttpRetrievalReranker;
 import com.yulong.chatagent.rag.retrieve.NoopRetrievalReranker;
 import com.yulong.chatagent.rag.retrieve.RerankerCircuitBreaker;
@@ -30,10 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  *
  * <p>No external infrastructure needed — uses unreachable stub endpoint and tripped circuit breaker.
- * <br>Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-reranker-fallback -Dtest=RerankerFallbackChainEvalTest
+ * <br>Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=benchmark -Dtest=RerankerFallbackChainBenchmarkTest
  */
-@Tag("eval-reranker-fallback")
-class RerankerFallbackChainEvalTest {
+@Tag("benchmark")
+class RerankerFallbackChainBenchmarkTest {
 
     private static final double NANOS_TO_MS = 1_000_000.0;
     private static final int WARMUP = 50;
@@ -84,7 +85,7 @@ class RerankerFallbackChainEvalTest {
         Map<String, Object> recoveryReport = benchmarkRecoveryCycle(candidates, query);
         report.put("recoveryCycle", recoveryReport);
 
-        var reportPath = EvalReportWriter.writeReport("reranker-fallback-chain-eval", report);
+        var reportPath = ReportArtifactWriter.writeReport("reranker-fallback-chain-benchmark", report);
 
         System.out.println("\n=== Reranker Fallback Chain Evaluation ===");
         System.out.printf("Candidates: %d, Iterations: %d%n", candidates.size(), ITERATIONS);

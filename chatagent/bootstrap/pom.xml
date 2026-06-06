@@ -16,7 +16,7 @@
     <description>Spring Boot bootstrap and business module for ChatAgent</description>
 
     <properties>
-        <surefire.excludedGroups>golden,eval-intent,eval-rag-retrieval,eval-rag-e2e,eval-agent,eval-memory,eval-mq-live,eval-mq-chaos,eval-multiturn,eval-query-rewrite,eval-response-quality,eval-tool,stress,chaos</surefire.excludedGroups>
+        <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval</surefire.excludedGroups>
     </properties>
 
     <dependencies>

@@ -1,7 +1,8 @@
-package com.yulong.chatagent.eval;
+package com.yulong.chatagent.eval.reliability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.yulong.chatagent.eval.support.ReportArtifactWriter;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.outbox.OutboxPollingPublisher;
 import com.yulong.chatagent.mq.outbox.OutboxRecordService;
@@ -43,11 +44,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * delivery, retry, terminal failure, stale-claim recovery, and multi-publisher
  * duplicate suppression before the slower live RabbitMQ/PostgreSQL benchmark.
  *
- * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=eval-mq-outbox \
- *      -Dtest=OutboxReliabilityEvalTest
+ * Run: mvn test -pl bootstrap -Dsurefire.excludedGroups= -Dgroups=reliability \
+ *      -Dtest=OutboxReliabilityTest
  */
-@Tag("eval-mq-outbox")
-class OutboxReliabilityEvalTest {
+@Tag("reliability")
+class OutboxReliabilityTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -145,7 +146,7 @@ class OutboxReliabilityEvalTest {
         report.put("byCategory", byCategory(results));
         report.put("scenarios", results);
 
-        Path reportPath = EvalReportWriter.writeReport("mq-outbox-reliability-eval", report);
+        Path reportPath = ReportArtifactWriter.writeReport("mq-outbox-reliability", report);
         System.out.println("=== MQ Outbox Reliability Evaluation ===");
         System.out.println("Report: " + reportPath);
         System.out.println("Overall:");
