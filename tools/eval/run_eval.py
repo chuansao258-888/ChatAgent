@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from chatagent_eval.ragas_runner import DEFAULT_RAGAS_METRICS, RagasRunnerConfig, run_ragas
+from chatagent_eval.text_recall_runner import DEFAULT_TEXT_RECALL_DATASET_ID, TextRecallConfig, run_text_recall
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,6 +24,18 @@ def main(argv: list[str] | None = None) -> int:
     ragas_smoke.add_argument("--embedding-model", default=os.getenv("CHATAGENT_EVAL_RAGAS_EMBEDDING_MODEL"))
     ragas_smoke.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
     ragas_smoke.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
+    text_recall = subparsers.add_parser("text-recall-smoke", help="Run deterministic text recall over real v2 source files")
+    text_recall.add_argument("--dataset-root", default=Path("artifacts/eval/phase3"), type=Path)
+    text_recall.add_argument("--output-root", default=Path("artifacts/eval/phase6"), type=Path)
+    text_recall.add_argument("--run-id", default=os.getenv("CHATAGENT_EVAL_RUN_ID", "text-recall-smoke"))
+    text_recall.add_argument("--dataset-id", default=DEFAULT_TEXT_RECALL_DATASET_ID)
+    text_recall.add_argument("--chunk-size", type=int, default=2000)
+    text_recall.add_argument("--chunk-overlap", type=int, default=200)
+    text_recall.add_argument("--top-k", type=int, default=5)
+    text_recall.add_argument("--max-samples", type=int, default=_optional_int("CHATAGENT_EVAL_MAX_CASES"))
+    text_recall.add_argument("--splits", default="", help="Comma-separated split filter; empty means all splits")
+    text_recall.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
+    text_recall.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
 
     args = parser.parse_args(argv)
     if args.command == "ragas-smoke":
@@ -39,6 +52,21 @@ def main(argv: list[str] | None = None) -> int:
             git_sha=args.git_sha,
         )
         run_dir = run_ragas(input_run_dir=args.input_run_dir, output_root=args.output_root, config=config)
+        print(run_dir)
+        return 0
+    if args.command == "text-recall-smoke":
+        config = TextRecallConfig(
+            run_id=args.run_id,
+            dataset_id=args.dataset_id,
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+            top_k=args.top_k,
+            max_samples=args.max_samples,
+            splits=tuple(split.strip() for split in args.splits.split(",") if split.strip()),
+            git_branch=args.git_branch,
+            git_sha=args.git_sha,
+        )
+        run_dir = run_text_recall(dataset_root=args.dataset_root, output_root=args.output_root, config=config)
         print(run_dir)
         return 0
     return 2
