@@ -70,6 +70,39 @@ def write_run_artifacts(
     return run_dir
 
 
+def build_report(
+    *,
+    run_id: str,
+    suite: str,
+    mode: str,
+    status: str,
+    dataset_id: str,
+    dataset_hash: str,
+    config_fingerprint: str,
+    metrics: Mapping[str, Any],
+    threshold_results: Iterable[Mapping[str, Any]] = (),
+    tuning: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    report = {
+        "runId": run_id,
+        "suite": suite,
+        "mode": mode,
+        "status": status,
+        "datasetId": dataset_id,
+        "datasetHash": dataset_hash,
+        "configFingerprint": config_fingerprint,
+        "metrics": dict(metrics),
+        "thresholdResults": list(threshold_results),
+    }
+    if tuning is not None:
+        report["tuning"] = dict(tuning)
+    return report
+
+
+def write_json_artifact(path: Path, value: Mapping[str, Any]) -> None:
+    _write_json(path, value)
+
+
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
