@@ -2,7 +2,7 @@
 
 ## Overall Status
 
-Phase 1–6 complete. Phase 7 pending.
+Phase 1–7 complete.
 
 Authoritative plan:
 
@@ -18,7 +18,7 @@ Authoritative plan:
 | 4 | Runtime Tool-Result Microcompact | **Complete** |
 | 5 | Failure Protection And Retry | **Complete** |
 | 6 | Runtime Rendering And L3 Alignment | **Complete** |
-| 7 | Documentation And Broad Verification | Pending |
+| 7 | Documentation And Broad Verification | **Complete** |
 
 ## Decisions Made
 
@@ -56,6 +56,18 @@ Authoritative plan:
 | L3 alignment verified at two levels: AsyncSummaryListener publishes per-segment events with filtered raw turns, LongTermMemoryPromotionService receives raw AtomicConversationTurn objects with stable L2 range | Confirmed |
 
 ## Files Changed
+
+### Phase 7: Documentation And Broad Verification
+
+Modified files:
+
+- `docs/plans/IMPLEMENTATION_MEMORY_COMPACTION_V2.md` — overall status updated to complete, Phase 7 marked complete, broad verification results recorded.
+
+Implementation notes:
+
+- `docs/env_variables.txt` already covers all 20 memory variables (7 existing + 13 V2). No changes needed.
+- Implementation document has been kept in sync with each phase delivery. Phase 7 adds only the broad verification command and result.
+- Manual checks remain not run — they require a running application with a live conversation exceeding `l1-window-turns`.
 
 ### Phase 6: Runtime Rendering And L3 Alignment
 
@@ -186,7 +198,7 @@ Modified files:
 - `chatagent/bootstrap/src/main/resources/mapper/ChatSessionSummarySegmentMapper.xml` — added `ON CONFLICT ON CONSTRAINT uk_chat_session_summary_segment_range DO NOTHING` for idempotent segment insert
 - `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/SummaryWatermarkService.java` — reads `getSummarizedUntilSeqNo()` instead of `getLastSeqNo()`
 - `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/summary/IncrementalSummarizer.java` — writes `synopsis` instead of `summary`, `summarizedUntilSeqNo` instead of `lastSeqNo`; preserves `segmentCount` from existing row with null guard; resets `consecutiveFailures` to 0 on successful compaction
-- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/runtime/AgentSessionSummaryResolver.java` — removed `PromptLoader` dependency and fallback prompt; returns empty string when no synopsis exists (V2 contract)
+- `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/runtime/AgentSessionSummaryResolver.java` — removed `PromptLoader` dependency and fallback prompt; returns empty string when neither synopsis nor active nonblank segments exist (V2 contract)
 - `chatagent/bootstrap/src/main/java/com/yulong/chatagent/agent/DefaultAgentRuntimeContextLoader.java` — removed stale `contains("No historical context summary available")` string filter from historical summary check
 - `chatagent/bootstrap/src/main/java/com/yulong/chatagent/conversation/application/ChatSessionFacadeServiceImpl.java` — injects `ChatSessionSummarySegmentRepository`; deletes segments on session deletion
 - `chatagent/bootstrap/src/main/resources/application.yaml` — added `chatagent.memory.compaction.v2.*` config block (13 properties, all with env var overrides and defaults)
@@ -265,6 +277,13 @@ Phase 1 updated tests (16 across 4 files):
 - `MemorySummaryEvalTest`: 4 references updated for `summarizedUntilSeqNo`/`synopsis`/`getSynopsis()` field names
 
 ## Verification Commands
+
+Phase 7 broad verification:
+
+```powershell
+.\mvnw.cmd -pl bootstrap test
+# Result: 796 tests, 0 failures, 0 errors
+```
 
 Phase 6 targeted verification:
 
@@ -449,6 +468,7 @@ Planned manual checks:
 | 2026-06-06 | Implementation | Phase 6 complete: `AgentSessionSummaryResolver` now returns synopsis + up to N latest segment summaries (bounded by `runtime-max-segments` config), each with `[Segment start..end]` prefix. No change to `DefaultAgentRuntimeContextLoader` (transparent resolver output). L3 alignment verified: raw `AtomicConversationTurn` objects and stable L2 range. No-L1-duplication invariant tested. 9 new tests across 3 test classes. Targeted 47 tests passing. |
 | 2026-06-06 | Review fix | Fixed P2: `AgentSessionSummaryResolver` now queries segments before checking synopsis — returns segment text when synopsis is blank/null but active nonblank segments exist (was returning empty). Fixed P3: blank segments are filtered before the N limit is applied, so a blank newest segment never crowds out an older valid segment. 3 new regression tests. Targeted 50 tests passing. |
 | 2026-06-06 | Review fix | Fixed P3: segment-only summary no longer has leading blank lines — `\n\n` separator only appended when result is non-empty. Tests strengthened to exact `isEqualTo` assertions. Fixed P3: updated stale comments in `DefaultAgentRuntimeContextLoader` and decision table in implementation doc to reflect segment-only summary path. Targeted 50 tests passing. |
+| 2026-06-06 | Implementation | Phase 7 complete: documentation finalized, env variables already covered (20/20), broad verification 796 tests 0 failures. Manual checks remain not run. |
 
 ## Deferred Items
 
