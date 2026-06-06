@@ -1,0 +1,57 @@
+{
+  "id": "agent-modules-v1",
+  "version": "1",
+  "primaryMetric": "agentModules.intentExactPathAccuracy",
+  "direction": "maximize",
+  "parameters": [
+    {
+      "id": "intentHistoryTurns",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [0, 2, 6],
+      "rationale": "Controls how much prior dialogue is visible to intent and ambiguity diagnostics."
+    },
+    {
+      "id": "intentMinEvidenceTerms",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [1, 2, 4],
+      "rationale": "Controls how much historical evidence is required before a multi-turn intent path is trusted."
+    },
+    {
+      "id": "rewriteHistoryTurns",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [0, 2, 6],
+      "rationale": "Controls how many previous turns may contribute query rewrite anchors."
+    },
+    {
+      "id": "rewriteMaxAnchors",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [0, 1, 3],
+      "rationale": "Controls how many real conversation anchors may be inserted into a rewritten query."
+    },
+    {
+      "id": "rewriteMaxExtraTerms",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [0, 2, 4],
+      "rationale": "Controls how much query expansion beyond the raw query and approved anchors is allowed."
+    },
+    {
+      "id": "toolCandidateLimit",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [0, 1],
+      "rationale": "Controls whether the suite is allowed to emit the expected knowledge-search tool call."
+    },
+    {
+      "id": "multiturnCorefWindowTurns",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [0, 2, 6],
+      "rationale": "Controls how far back multi-turn coreference diagnostics may look."
+    }
+  ]
+}

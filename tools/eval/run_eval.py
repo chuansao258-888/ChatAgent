@@ -4,6 +4,11 @@ import argparse
 import os
 from pathlib import Path
 
+from chatagent_eval.agent_module_runner import (
+    DEFAULT_AGENT_MODULE_DATASET_ID,
+    AgentModuleConfig,
+    run_agent_modules,
+)
 from chatagent_eval.memory_runner import DEFAULT_MEMORY_DATASET_ID, MemoryConfig, run_memory
 from chatagent_eval.ragas_runner import DEFAULT_RAGAS_METRICS, RagasRunnerConfig, run_ragas
 from chatagent_eval.text_recall_runner import DEFAULT_TEXT_RECALL_DATASET_ID, TextRecallConfig, run_text_recall
@@ -50,6 +55,26 @@ def main(argv: list[str] | None = None) -> int:
     memory.add_argument("--splits", default="", help="Comma-separated split filter; empty means all splits")
     memory.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
     memory.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
+    agent_modules = subparsers.add_parser(
+        "agent-modules-smoke",
+        help="Run deterministic intent, rewrite, tool-call, and multi-turn module evals",
+    )
+    agent_modules.add_argument("--dataset-root", default=Path("artifacts/eval/phase3"), type=Path)
+    agent_modules.add_argument("--output-root", default=Path("artifacts/eval/phase8"), type=Path)
+    agent_modules.add_argument("--run-id", default=os.getenv("CHATAGENT_EVAL_RUN_ID", "agent-modules-smoke"))
+    agent_modules.add_argument("--dataset-id", default=DEFAULT_AGENT_MODULE_DATASET_ID)
+    agent_modules.add_argument("--intent-history-turns", type=int, default=6)
+    agent_modules.add_argument("--intent-min-evidence-terms", type=int, default=1)
+    agent_modules.add_argument("--rewrite-history-turns", type=int, default=6)
+    agent_modules.add_argument("--rewrite-max-anchors", type=int, default=3)
+    agent_modules.add_argument("--rewrite-max-extra-terms", type=int, default=0)
+    agent_modules.add_argument("--tool-candidate-limit", type=int, default=1)
+    agent_modules.add_argument("--multiturn-coref-window-turns", type=int, default=6)
+    agent_modules.add_argument("--enable-ragas-agent-metrics", action="store_true")
+    agent_modules.add_argument("--max-samples", type=int, default=_optional_int("CHATAGENT_EVAL_MAX_CASES"))
+    agent_modules.add_argument("--splits", default="", help="Comma-separated split filter; empty means all splits")
+    agent_modules.add_argument("--git-branch", default=os.getenv("GIT_BRANCH", "unknown"))
+    agent_modules.add_argument("--git-sha", default=os.getenv("GIT_COMMIT", "unknown"))
 
     args = parser.parse_args(argv)
     if args.command == "ragas-smoke":
@@ -97,6 +122,26 @@ def main(argv: list[str] | None = None) -> int:
             git_sha=args.git_sha,
         )
         run_dir = run_memory(dataset_root=args.dataset_root, output_root=args.output_root, config=config)
+        print(run_dir)
+        return 0
+    if args.command == "agent-modules-smoke":
+        config = AgentModuleConfig(
+            run_id=args.run_id,
+            dataset_id=args.dataset_id,
+            intent_history_turns=args.intent_history_turns,
+            intent_min_evidence_terms=args.intent_min_evidence_terms,
+            rewrite_history_turns=args.rewrite_history_turns,
+            rewrite_max_anchors=args.rewrite_max_anchors,
+            rewrite_max_extra_terms=args.rewrite_max_extra_terms,
+            tool_candidate_limit=args.tool_candidate_limit,
+            multiturn_coref_window_turns=args.multiturn_coref_window_turns,
+            ragas_agent_metrics=args.enable_ragas_agent_metrics,
+            max_samples=args.max_samples,
+            splits=tuple(split.strip() for split in args.splits.split(",") if split.strip()),
+            git_branch=args.git_branch,
+            git_sha=args.git_sha,
+        )
+        run_dir = run_agent_modules(dataset_root=args.dataset_root, output_root=args.output_root, config=config)
         print(run_dir)
         return 0
     return 2
