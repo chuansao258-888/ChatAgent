@@ -19,6 +19,7 @@ EVAL_RESOURCE_ROOT = PROJECT_ROOT / "chatagent" / "bootstrap" / "src" / "test" /
 TUNING_RESOURCE_IDS = {
     "agent-modules": "agent-modules-v1",
     "memory-v2": "memory-v2-v1",
+    "rag-retrieval": "rag-retrieval-v1",
     "text-recall": "text-recall-v1",
 }
 

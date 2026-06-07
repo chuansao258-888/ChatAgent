@@ -1,7 +1,7 @@
 {
   "id": "rag-retrieval-v1",
   "version": "1",
-  "primaryMetric": "ndcgAtK",
+  "primaryMetric": "ragRetrieval.ndcgAtK",
   "direction": "maximize",
   "parameters": [
     {

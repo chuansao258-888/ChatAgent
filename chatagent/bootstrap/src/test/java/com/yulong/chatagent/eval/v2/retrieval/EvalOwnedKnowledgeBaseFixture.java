@@ -16,13 +16,48 @@ import java.util.regex.Pattern;
 
 /**
  * Eval-only in-memory index with a strict ownership boundary for smoke runs.
+ *
+ * <p>Supports two embedding modes:
+ * <ul>
+ *   <li>{@code hash} (default): deterministic bag-of-tokens hash embedding, 128 dimensions.
+ *       Use for CI regression tests with no external dependencies.</li>
+ *   <li>{@code ollama}: real Ollama bge-m3 embedding, 1024 dimensions.
+ *       Use for genuine retrieval quality measurement; requires a running Ollama instance.</li>
+ * </ul>
  */
 final class EvalOwnedKnowledgeBaseFixture implements KnowledgeBaseMilvusIndexService, AutoCloseable {
 
     static final String OWNED_PREFIX = "eval-v2-";
 
-    private static final int EMBEDDING_DIMENSION = 128;
+    static final int HASH_EMBEDDING_DIMENSION = 128;
+    static final int OLLAMA_EMBEDDING_DIMENSION = 1024;
+
     private static final Pattern TOKEN_SPLITTER = Pattern.compile("[^\\p{L}\\p{N}]+");
+
+    private final int embeddingDimension;
+    private final EmbeddingFunction embeddingFunction;
+
+    EvalOwnedKnowledgeBaseFixture() {
+        this(EvalOwnedKnowledgeBaseFixture::embedText, HASH_EMBEDDING_DIMENSION);
+    }
+
+    EvalOwnedKnowledgeBaseFixture(EmbeddingFunction embeddingFunction, int embeddingDimension) {
+        if (embeddingDimension <= 0) {
+            throw new IllegalArgumentException("Evaluation embedding dimension must be positive");
+        }
+        this.embeddingFunction = embeddingFunction;
+        this.embeddingDimension = embeddingDimension;
+    }
+
+    int embeddingDimension() {
+        return embeddingDimension;
+    }
+
+    float[] embed(String text) {
+        float[] embedding = embeddingFunction.apply(text);
+        validateEmbeddingDimension(embedding);
+        return embedding;
+    }
 
     private final Map<String, KnowledgeBaseMilvusChunkDocument> chunksById = new LinkedHashMap<>();
     private final Set<String> ownedKnowledgeBaseIds = new LinkedHashSet<>();
@@ -42,9 +77,9 @@ final class EvalOwnedKnowledgeBaseFixture implements KnowledgeBaseMilvusIndexSer
     }
 
     static float[] embedText(String text) {
-        float[] embedding = new float[EMBEDDING_DIMENSION];
+        float[] embedding = new float[HASH_EMBEDDING_DIMENSION];
         for (String token : tokens(text)) {
-            embedding[Math.floorMod(token.hashCode(), EMBEDDING_DIMENSION)] += 1.0f;
+            embedding[Math.floorMod(token.hashCode(), HASH_EMBEDDING_DIMENSION)] += 1.0f;
         }
         double norm = 0.0d;
         for (float value : embedding) {
@@ -79,6 +114,7 @@ final class EvalOwnedKnowledgeBaseFixture implements KnowledgeBaseMilvusIndexSer
             if (!ownedKnowledgeBaseIds.contains(chunk.knowledgeBaseId())) {
                 throw new IllegalStateException("Evaluation knowledge base was not created: " + chunk.knowledgeBaseId());
             }
+            validateEmbeddingDimension(chunk.embedding());
             chunksById.put(chunk.chunkId(), chunk);
         }
     }
@@ -109,6 +145,7 @@ final class EvalOwnedKnowledgeBaseFixture implements KnowledgeBaseMilvusIndexSer
         if (queryEmbedding == null || queryEmbedding.length == 0) {
             return List.of();
         }
+        validateEmbeddingDimension(queryEmbedding);
         return rankedHits(knowledgeBaseIds, topK, chunk -> cosine(queryEmbedding, chunk.embedding()), "dense");
     }
 
@@ -182,6 +219,15 @@ final class EvalOwnedKnowledgeBaseFixture implements KnowledgeBaseMilvusIndexSer
         }
     }
 
+    private void validateEmbeddingDimension(float[] embedding) {
+        if (embedding == null || embedding.length != embeddingDimension) {
+            throw new IllegalArgumentException(
+                    "Evaluation embedding dimension mismatch: expected " + embeddingDimension
+                            + " but was " + (embedding == null ? "null" : embedding.length)
+            );
+        }
+    }
+
     private static double cosine(float[] left, float[] right) {
         if (right == null || left.length != right.length) {
             return 0.0d;
@@ -216,5 +262,10 @@ final class EvalOwnedKnowledgeBaseFixture implements KnowledgeBaseMilvusIndexSer
     }
 
     private record ScoredChunk(KnowledgeBaseMilvusChunkDocument chunk, double score) {
+    }
+
+    @FunctionalInterface
+    interface EmbeddingFunction {
+        float[] apply(String text);
     }
 }

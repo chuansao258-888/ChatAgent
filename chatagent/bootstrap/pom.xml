@@ -182,4 +182,13 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>eval-real</id>
+            <properties>
+                <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval</surefire.excludedGroups>
+            </properties>
+        </profile>
+    </profiles>
 </project>

@@ -64,6 +64,15 @@ public class KnowledgeBaseSimilaritySearcher {
      * other retrieval scopes.
      */
     public List<MilvusSearchHit> searchCandidateHitsByKnowledgeBaseIds(List<String> knowledgeBaseIds, String queryText) {
+        return searchRankedCandidateHitsByKnowledgeBaseIds(knowledgeBaseIds, queryText).stream()
+                .map(RankedCandidateHit::hit)
+                .toList();
+    }
+
+    /**
+     * Returns fused candidates together with the raw dense/BM25 rank signals used to compute RRF.
+     */
+    public List<RankedCandidateHit> searchRankedCandidateHitsByKnowledgeBaseIds(List<String> knowledgeBaseIds, String queryText) {
         if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
             return List.of();
         }
@@ -75,7 +84,7 @@ public class KnowledgeBaseSimilaritySearcher {
             int effectiveCandidateK = Math.max(topK, candidateK);
             List<MilvusSearchHit> denseHits = indexService.searchByKnowledgeBaseIds(knowledgeBaseIds, embedding, effectiveCandidateK);
             List<MilvusSearchHit> bm25Hits = indexService.searchByKnowledgeBaseIdsBm25(knowledgeBaseIds, queryText, effectiveCandidateK);
-            List<MilvusSearchHit> fusedHits = fuseHits(denseHits, bm25Hits, effectiveCandidateK);
+            List<RankedCandidateHit> fusedHits = fuseRankedHits(denseHits, bm25Hits, effectiveCandidateK);
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
             log.info("Hybrid similarity candidates by knowledge bases prepared: traceId={}, knowledgeBaseCount={}, topK={}, candidateK={}, denseHits={}, bm25Hits={}, fusedHits={}, durationMs={}",
                     TraceContext.getTraceId(), knowledgeBaseIds.size(), topK, effectiveCandidateK, denseHits.size(), bm25Hits.size(), fusedHits.size(), durationMs);
@@ -88,27 +97,44 @@ public class KnowledgeBaseSimilaritySearcher {
         return List.of();
     }
 
-    private List<MilvusSearchHit> fuseHits(List<MilvusSearchHit> denseHits, List<MilvusSearchHit> bm25Hits, int limit) {
-        Map<String, RankedHit> fused = new LinkedHashMap<>();
-        addHitsByRrf(fused, denseHits);
-        addHitsByRrf(fused, bm25Hits);
+    private List<RankedCandidateHit> fuseRankedHits(List<MilvusSearchHit> denseHits, List<MilvusSearchHit> bm25Hits, int limit) {
+        Map<String, RankedCandidateHit> fused = new LinkedHashMap<>();
+        addHitsByRrf(fused, denseHits, true);
+        addHitsByRrf(fused, bm25Hits, false);
         return fused.values().stream()
-                .sorted(Comparator.comparingDouble(RankedHit::score).reversed())
+                .sorted(Comparator.comparingDouble(RankedCandidateHit::fusedScore).reversed())
                 .limit(limit)
-                .map(RankedHit::hit)
                 .toList();
     }
 
-    private void addHitsByRrf(Map<String, RankedHit> fused, List<MilvusSearchHit> hits) {
+    private void addHitsByRrf(Map<String, RankedCandidateHit> fused, List<MilvusSearchHit> hits, boolean dense) {
         for (int i = 0; i < hits.size(); i++) {
             MilvusSearchHit hit = hits.get(i);
             if (!StringUtils.hasText(hit.chunkId())) {
                 continue;
             }
+            int rank = i + 1;
             double rrfScore = 1.0d / (rrfK + i + 1);
-            fused.compute(hit.chunkId(), (chunkId, existing) -> existing == null
-                    ? new RankedHit(hit, rrfScore)
-                    : new RankedHit(existing.hit(), existing.score() + rrfScore));
+            fused.compute(hit.chunkId(), (chunkId, existing) -> {
+                if (existing == null) {
+                    return new RankedCandidateHit(
+                            hit,
+                            dense ? rank : null,
+                            dense ? null : rank,
+                            dense ? hit.score() : null,
+                            dense ? null : hit.score(),
+                            rrfScore
+                    );
+                }
+                return new RankedCandidateHit(
+                        existing.hit(),
+                        dense ? rank : existing.denseRank(),
+                        dense ? existing.bm25Rank() : rank,
+                        dense ? hit.score() : existing.denseScore(),
+                        dense ? existing.bm25Score() : hit.score(),
+                        existing.fusedScore() + rrfScore
+                );
+            });
         }
     }
 
@@ -133,6 +159,13 @@ public class KnowledgeBaseSimilaritySearcher {
         );
     }
 
-    private record RankedHit(MilvusSearchHit hit, double score) {
+    public record RankedCandidateHit(
+            MilvusSearchHit hit,
+            Integer denseRank,
+            Integer bm25Rank,
+            Double denseScore,
+            Double bm25Score,
+            double fusedScore
+    ) {
     }
 }

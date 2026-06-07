@@ -17,6 +17,17 @@
     "splitManifestHash": { "type": "string", "minLength": 1 },
     "recordCount": { "type": "integer" },
     "groupCount": { "type": "integer" },
-    "splits": { "type": "object" }
+    "splits": { "type": "object" },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "modelName", "embeddingModel", "exportTimestamp"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "modelName": { "type": "string", "minLength": 1 },
+        "embeddingModel": { "type": "string", "minLength": 1 },
+        "exportTimestamp": { "type": "string", "minLength": 1 }
+      }
+    }
   }
 }

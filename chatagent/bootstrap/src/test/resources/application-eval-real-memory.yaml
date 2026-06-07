@@ -1,0 +1,17 @@
+# Spring profile for Phase 10b memory real-export evaluation.
+# Activated via @ActiveProfiles("eval-real-memory") in MemoryExportEvalTest.
+#
+# Enables Milvus and L3 memory while reusing the default PostgreSQL datasource
+# from application.yaml. Uses a dedicated eval-owned Milvus collection to
+# isolate eval vector data from production.
+
+milvus:
+  enabled: true
+
+chatagent:
+  memory:
+    l3:
+      enabled: true
+
+# Override the user-memory Milvus collection to keep eval data isolated.
+milvus.user-memory.collection: chat_user_memory_eval

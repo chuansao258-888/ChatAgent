@@ -11,6 +11,7 @@ import run_eval
 from chatagent_eval.datasets import sha256_file
 from chatagent_eval.parameters import validate_parameter_registry, validate_registry_coverage, validate_tuning_policy
 from chatagent_eval.promotion import split_audit, validate_search_splits
+from chatagent_eval.rag_retrieval_runner import RagRetrievalConfig, run_rag_retrieval
 from chatagent_eval.schemas import load_json, validate
 from chatagent_eval.tuning import bootstrap_confidence_interval, build_experiment_trials, pareto_frontier, select_champion
 from chatagent_eval.tuning_runner import TuningConfig, run_tuning_experiment
@@ -37,6 +38,7 @@ class TuningRunnerTest(unittest.TestCase):
         for suite, resource_id in (
             ("agent-modules", "agent-modules-v1"),
             ("memory-v2", "memory-v2-v1"),
+            ("rag-retrieval", "rag-retrieval-v1"),
             ("text-recall", "text-recall-v1"),
         ):
             space = load_json(RESOURCE_ROOT / "parameter-spaces" / f"{resource_id}.json")
@@ -201,6 +203,198 @@ class TuningRunnerTest(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertTrue((temp_path / "out" / "cli-tuning" / "promotion-decision.md").exists())
 
+    def test_cli_tune_suite_runs_rag_retrieval_real_export_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_rag_retrieval_export_root(temp_path / "phase10")
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = run_eval.main(
+                    [
+                        "tune-suite",
+                        "--suite",
+                        "rag-retrieval",
+                        "--dataset-root",
+                        str(dataset_root),
+                        "--output-root",
+                        str(temp_path / "out"),
+                        "--experiment-id",
+                        "rag-retrieval-tuning",
+                        "--combination-budget",
+                        "1",
+                        "--max-samples-per-trial",
+                        "4",
+                        "--holdout-max-samples",
+                        "1",
+                        "--confidence-resamples",
+                        "20",
+                    ]
+                )
+
+            self.assertEqual(0, exit_code)
+            experiment_dir = temp_path / "out" / "rag-retrieval-tuning"
+            manifest = load_json(experiment_dir / "experiment-manifest.json")
+            dataset_manifest = load_json(dataset_root / "manifests" / "datasets" / "beir-scifact-rag-v1.json")
+            holdout = load_json(experiment_dir / "holdout-verification.json")
+            trials = _read_jsonl(experiment_dir / "trials.jsonl")
+            trial_report = load_json(experiment_dir / "search-runs" / "trial-0001" / "report.json")
+
+            validate(dataset_manifest, load_json(RESOURCE_ROOT / "schemas" / "eval-dataset-manifest.schema.json"))
+            self.assertEqual("beir-scifact-rag-v1", manifest["datasetId"])
+            self.assertEqual(dataset_manifest["datasetHash"], manifest["datasetHash"])
+            self.assertEqual(0, holdout["overlapCount"])
+            self.assertTrue(all(trial["status"] == "completed" for trial in trials))
+            self.assertIn("ragRetrieval.ndcgAtK", trial_report["metrics"])
+            self.assertTrue((experiment_dir / "promotion-decision.md").exists())
+
+    def test_rag_retrieval_replay_rejects_retrieved_only_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_rag_retrieval_export_root(
+                temp_path / "phase10",
+                candidate_mode="retrieved-only",
+            )
+
+            with self.assertRaisesRegex(ValueError, "candidate contexts"):
+                run_rag_retrieval(
+                    dataset_root=dataset_root,
+                    output_root=temp_path / "out",
+                    config=RagRetrievalConfig(
+                        run_id="retrieved-only",
+                        splits=("calibration",),
+                        max_samples=1,
+                    ),
+                )
+
+    def test_rag_retrieval_replay_rejects_candidates_without_score_or_rank_signal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_rag_retrieval_export_root(
+                temp_path / "phase10",
+                candidate_mode="no-signals",
+            )
+
+            with self.assertRaisesRegex(ValueError, "denseRank/bm25Rank"):
+                run_rag_retrieval(
+                    dataset_root=dataset_root,
+                    output_root=temp_path / "out",
+                    config=RagRetrievalConfig(
+                        run_id="no-signals",
+                        splits=("calibration",),
+                        max_samples=1,
+                    ),
+                )
+
+    def test_rag_retrieval_replay_rejects_candidate_rank_only_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_rag_retrieval_export_root(
+                temp_path / "phase10",
+                candidate_mode="candidate-rank-only",
+            )
+
+            with self.assertRaisesRegex(ValueError, "denseRank/bm25Rank"):
+                run_rag_retrieval(
+                    dataset_root=dataset_root,
+                    output_root=temp_path / "out",
+                    config=RagRetrievalConfig(
+                        run_id="candidate-rank-only",
+                        splits=("calibration",),
+                        max_samples=1,
+                    ),
+                )
+
+    def test_rag_retrieval_replay_uses_raw_dense_bm25_ranks_for_rrf(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_rag_retrieval_export_root(
+                temp_path / "phase10",
+                candidate_mode="conflicting-ranks",
+            )
+
+            low_rrf_dir = run_rag_retrieval(
+                dataset_root=dataset_root,
+                output_root=temp_path / "out",
+                config=RagRetrievalConfig(
+                    run_id="rrf-low",
+                    top_k=1,
+                    candidate_k=2,
+                    rrf_k=1,
+                    splits=("calibration",),
+                    max_samples=1,
+                ),
+            )
+            high_rrf_dir = run_rag_retrieval(
+                dataset_root=dataset_root,
+                output_root=temp_path / "out",
+                config=RagRetrievalConfig(
+                    run_id="rrf-high",
+                    top_k=1,
+                    candidate_k=2,
+                    rrf_k=100,
+                    splits=("calibration",),
+                    max_samples=1,
+                ),
+            )
+
+            low_sample = _read_jsonl(low_rrf_dir / "samples.jsonl")[0]
+            high_sample = _read_jsonl(high_rrf_dir / "samples.jsonl")[0]
+
+            self.assertEqual("doc-calibration", low_sample["retrievedContexts"][0]["id"])
+            self.assertEqual("doc-calibration-distractor-a", high_sample["retrievedContexts"][0]["id"])
+            self.assertEqual(1.0, low_sample["metadata"]["hitAtK"])
+            self.assertEqual(0.0, high_sample["metadata"]["hitAtK"])
+
+    def test_memory_v2_policy_does_not_hard_gate_extraction_f1(self) -> None:
+        """Regression: L3 extraction F1 must be a secondary metric, not a hard gate."""
+        policy = load_json(RESOURCE_ROOT / "tuning-policies" / "memory-v2-v1.json")
+        hard_gates = policy.get("hardGates", {})
+        secondary_metrics = [item["metric"] for item in policy.get("secondaryMetrics", [])]
+        self.assertNotIn("memory.l3ExtractionF1", hard_gates,
+                         "L3 extraction F1 must not be a hard gate — real models are not perfect")
+        self.assertIn("memory.l3ExtractionF1", secondary_metrics,
+                      "L3 extraction F1 should be tracked as a secondary metric for ranking")
+        self.assertNotIn("memory.l2ContradictionRate", hard_gates,
+                         "L2 contradiction rate must not be a hard gate — real summaries may contain contradictions")
+        self.assertIn("memory.l2ContradictionRate", secondary_metrics,
+                      "L2 contradiction rate should be tracked as a secondary metric for ranking")
+
+    def test_cli_tune_suite_runs_memory_v2(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_dataset_root(temp_path / "phase3")
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = run_eval.main(
+                    [
+                        "tune-suite",
+                        "--suite",
+                        "memory-v2",
+                        "--dataset-root",
+                        str(dataset_root),
+                        "--output-root",
+                        str(temp_path / "out"),
+                        "--experiment-id",
+                        "memory-tuning-test",
+                        "--combination-budget",
+                        "1",
+                        "--max-samples-per-trial",
+                        "4",
+                        "--holdout-max-samples",
+                        "1",
+                        "--confidence-resamples",
+                        "20",
+                    ]
+                )
+
+            self.assertEqual(0, exit_code)
+            experiment_dir = temp_path / "out" / "memory-tuning-test"
+            holdout = load_json(experiment_dir / "holdout-verification.json")
+            candidate = load_json(experiment_dir / "champion-candidate.yaml")
+            self.assertTrue((experiment_dir / "promotion-decision.md").exists())
+            self.assertEqual(0, holdout["overlapCount"])
+            self.assertIn(candidate["status"], ("proposed", "rejected"))
+            trials = _read_jsonl(experiment_dir / "trials.jsonl")
+            self.assertTrue(all(trial["status"] == "completed" for trial in trials))
+
 
 def _write_dataset_root(path: Path) -> Path:
     rows = [
@@ -248,6 +442,58 @@ def _write_dataset_root(path: Path) -> Path:
     return path
 
 
+def _write_rag_retrieval_export_root(path: Path, candidate_mode: str = "candidate-contexts") -> Path:
+    rows = [
+        _retrieval_row("calibration-a", "group-calibration", "calibration", "doc-calibration", "scientific-fact-checking", candidate_mode),
+        _retrieval_row("development-a", "group-development", "development", "doc-development", "scientific-fact-checking", candidate_mode),
+        _retrieval_row("holdout-a", "group-holdout", "holdout", "doc-holdout", "scientific-fact-checking", candidate_mode),
+        _retrieval_row("challenge-a", "group-challenge", "challenge", "doc-challenge", "scientific-fact-checking", candidate_mode),
+    ]
+    dataset_path = path / "datasets" / "rag" / "beir-scifact-rag-v1.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    split_manifest = {
+        "schemaVersion": 1,
+        "datasetId": "beir-scifact-rag-v1",
+        "splits": {
+            "calibration": {"groupHash": "sha256:rag-calibration", "groupIds": ["group-calibration"]},
+            "development": {"groupHash": "sha256:rag-development", "groupIds": ["group-development"]},
+            "holdout": {"groupHash": "sha256:rag-holdout", "groupIds": ["group-holdout"]},
+            "challenge": {"groupHash": "sha256:rag-challenge", "groupIds": ["group-challenge"]},
+        },
+    }
+    split_path = path / "manifests" / "splits" / "beir-scifact-rag-v1.json"
+    split_path.parent.mkdir(parents=True, exist_ok=True)
+    split_path.write_text(json.dumps(split_manifest), encoding="utf-8")
+    manifest = {
+        "schemaVersion": 1,
+        "datasetId": "beir-scifact-rag-v1",
+        "version": 1,
+        "sourceIds": ["beir-scifact"],
+        "recordSchema": "eval-retrieval-dataset-record.schema.json",
+        "localPath": "datasets/rag/beir-scifact-rag-v1.jsonl",
+        "datasetHash": sha256_file(dataset_path),
+        "splitManifestPath": "manifests/splits/beir-scifact-rag-v1.json",
+        "splitManifestHash": sha256_file(split_path),
+        "recordCount": len(rows),
+        "groupCount": len(rows),
+        "splits": {
+            split: {"recordCount": 1, "groupCount": 1, "groupHash": details["groupHash"]}
+            for split, details in split_manifest["splits"].items()
+        },
+        "provenance": {
+            "provider": "ollama",
+            "modelName": "bge-m3",
+            "embeddingModel": "bge-m3",
+            "exportTimestamp": "2026-06-07T00:00:00Z",
+        },
+    }
+    manifest_path = path / "manifests" / "datasets" / "beir-scifact-rag-v1.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
 def _row(sample_id: str, group_id: str, split: str, multi_turn: str, answerable: bool) -> dict:
     turns = [{"speaker": "user", "text": "Where do the Arizona Cardinals play?"}]
     if multi_turn != "N/A":
@@ -273,6 +519,128 @@ def _row(sample_id: str, group_id: str, split: str, multi_turn: str, answerable:
             "sourceTaskId": sample_id,
         },
     }
+
+
+def _retrieval_row(sample_id: str, group_id: str, split: str, reference_id: str, domain: str, candidate_mode: str) -> dict:
+    row = {
+        "sampleId": sample_id,
+        "datasetId": "beir-scifact-rag-v1",
+        "sourceGroupId": group_id,
+        "split": split,
+        "userInput": f"Does {reference_id} support the scientific claim?",
+        "referenceContextIds": [reference_id],
+        "metadata": {
+            "domain": domain,
+            "sourceType": "phase10-real-export-fixture",
+            "latencyMs": 12.0,
+        },
+    }
+    candidates = _retrieval_candidates(reference_id, candidate_mode=candidate_mode)
+    if candidate_mode == "retrieved-only":
+        row["retrievedContexts"] = candidates[:1]
+    else:
+        row["metadata"]["candidateContexts"] = candidates
+    return row
+
+
+def _retrieval_candidates(reference_id: str, candidate_mode: str = "candidate-contexts") -> list[dict]:
+    if candidate_mode == "conflicting-ranks":
+        return [
+            {
+                "id": reference_id,
+                "text": f"Evidence passage for {reference_id}.",
+                "sourceId": "eval-v2-scifact",
+                "score": 0.50,
+                "rankSignals": {
+                    "candidateRank": 1,
+                    "denseRank": 1,
+                    "bm25Rank": 100,
+                    "denseScore": 0.99,
+                    "bm25Score": 0.01,
+                    "fusedScore": 0.50,
+                },
+            },
+            {
+                "id": f"{reference_id}-distractor-a",
+                "text": "Nearby but irrelevant scientific passage.",
+                "sourceId": "eval-v2-scifact",
+                "score": 0.48,
+                "rankSignals": {
+                    "candidateRank": 2,
+                    "denseRank": 5,
+                    "bm25Rank": 5,
+                    "denseScore": 0.60,
+                    "bm25Score": 0.60,
+                    "fusedScore": 0.48,
+                },
+            },
+        ]
+    candidates = [
+        {
+            "id": reference_id,
+            "text": f"Evidence passage for {reference_id}.",
+            "sourceId": "eval-v2-scifact",
+            "score": 0.92,
+            "rankSignals": {
+                "candidateRank": 1,
+                "denseRank": 1,
+                "bm25Rank": 1,
+                "denseScore": 0.92,
+                "bm25Score": 0.90,
+                "fusedScore": 0.92,
+            },
+        },
+        {
+            "id": f"{reference_id}-distractor-a",
+            "text": "Nearby but irrelevant scientific passage.",
+            "sourceId": "eval-v2-scifact",
+            "score": 0.71,
+            "rankSignals": {
+                "candidateRank": 2,
+                "denseRank": 2,
+                "bm25Rank": 2,
+                "denseScore": 0.71,
+                "bm25Score": 0.69,
+                "fusedScore": 0.71,
+            },
+        },
+        {
+            "id": f"{reference_id}-distractor-b",
+            "text": "Another unrelated passage.",
+            "sourceId": "eval-v2-scifact",
+            "score": 0.35,
+            "rankSignals": {
+                "candidateRank": 3,
+                "denseRank": 3,
+                "bm25Rank": 3,
+                "denseScore": 0.35,
+                "bm25Score": 0.34,
+                "fusedScore": 0.35,
+            },
+        },
+        {
+            "id": f"{reference_id}-distractor-c",
+            "text": "A low scoring passage.",
+            "sourceId": "eval-v2-scifact",
+            "score": 0.10,
+            "rankSignals": {
+                "candidateRank": 4,
+                "denseRank": 4,
+                "bm25Rank": 4,
+                "denseScore": 0.10,
+                "bm25Score": 0.09,
+                "fusedScore": 0.10,
+            },
+        },
+    ]
+    if candidate_mode == "candidate-rank-only":
+        for candidate in candidates:
+            candidate["rankSignals"] = {"candidateRank": candidate["rankSignals"]["candidateRank"]}
+    if candidate_mode == "no-signals":
+        for candidate in candidates:
+            candidate.pop("score", None)
+            candidate.pop("rankSignals", None)
+    return candidates
 
 
 def _read_jsonl(path: Path) -> list[dict]:

@@ -13,6 +13,52 @@
     "turns": { "type": "array", "minItems": 1, "items": { "type": "object" } },
     "expectedResponse": { "type": "string" },
     "referenceContextIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
-    "metadata": { "type": "object" }
+    "metadata": { "type": "object" },
+    "moduleOutputs": {
+      "description": "Real-model outputs from Phase 10b Java export runner. Absent for deterministic Phase 3 rows. When present, all sub-fields are required.",
+      "type": "object",
+      "required": ["l1Summary", "l3Extraction", "provider"],
+      "additionalProperties": false,
+      "properties": {
+        "l1Summary": {
+          "type": "object",
+          "required": ["synopsis"],
+          "properties": {
+            "updated": { "type": "boolean" },
+            "turnCount": { "type": "integer" },
+            "segmentCount": { "type": "integer" },
+            "synopsis": { "type": "string", "minLength": 1 },
+            "range": { "type": "object" }
+          }
+        },
+        "l3Extraction": {
+          "type": "object",
+          "required": ["memories"],
+          "properties": {
+            "success": { "type": "boolean" },
+            "memories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string" },
+                  "content": { "type": "string" },
+                  "tags": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "provider": {
+          "type": "object",
+          "required": ["summaryModel", "extractorModel", "embeddingModel"],
+          "properties": {
+            "summaryModel": { "type": "string", "minLength": 1 },
+            "extractorModel": { "type": "string", "minLength": 1 },
+            "embeddingModel": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
   }
 }

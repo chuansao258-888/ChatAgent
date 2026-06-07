@@ -152,12 +152,21 @@ def _evaluate_row(row: Mapping[str, Any], config: MemoryConfig) -> dict[str, Any
     l1_included = _select_l1_turns(l1_expected, config.l1_budget_chars)
     stable_turns = turns[: max(0, len(turns) - config.l1_window_turns)]
     segments = _l2_segments(stable_turns, config.l2_segment_turns)
-    synopsis = _l2_synopsis(segments)
+
+    has_real = _has_module_outputs(row)
+    if has_real:
+        synopsis = _real_l2_synopsis(row, segments)
+        expected_memories = _expected_l3_memories(turns, row)
+        extracted_memories = _real_l3_memories(row)
+        repeated_extraction = _real_l3_memories(row)
+    else:
+        synopsis = _l2_synopsis(segments)
+        expected_memories = _expected_l3_memories(turns, row)
+        extracted_memories = _extract_l3_memories(turns, row)
+        repeated_extraction = _extract_l3_memories(turns, row)
+
     l2_reference_facts = _reference_facts_from_turns(stable_turns)
     l2_summary_facts = _reference_facts_from_text(synopsis)
-    expected_memories = _expected_l3_memories(turns, row)
-    extracted_memories = _extract_l3_memories(turns, row)
-    repeated_extraction = _extract_l3_memories(turns, row)
     ranked_memories = _rank_memories(_last_user_text(turns), extracted_memories)
     relevant_memory_ids = _relevant_memory_ids(_last_user_text(turns), expected_memories)
 
@@ -651,3 +660,84 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+# ── Real-export mode helpers ──────────────────────────────────────────────
+
+
+def _has_module_outputs(row: Mapping[str, Any]) -> bool:
+    """Returns True when the row carries valid real Java-exported L2/L3 outputs.
+
+    Key absent → False (deterministic path, no error).
+    Key present but null, empty, or incomplete → ValueError (malformed real-export).
+    """
+    if "moduleOutputs" not in row:
+        return False
+    outputs = row["moduleOutputs"]
+    if outputs is None:
+        raise ValueError(
+            f"Row {row.get('sampleId', 'unknown')!r} has null moduleOutputs. "
+            f"Either provide complete real-export outputs or omit moduleOutputs for deterministic mode."
+        )
+    if not isinstance(outputs, dict):
+        raise ValueError(
+            f"Row {row.get('sampleId', 'unknown')!r} has non-dict moduleOutputs: "
+            f"{type(outputs).__name__}. Either provide complete real-export outputs "
+            f"or omit moduleOutputs for deterministic mode."
+        )
+    if not outputs:
+        raise ValueError(
+            f"Row {row.get('sampleId', 'unknown')!r} has empty moduleOutputs. "
+            f"Either provide complete real-export outputs or omit moduleOutputs for deterministic mode."
+        )
+    _validate_module_outputs(outputs, row.get("sampleId", "unknown"))
+    return True
+
+
+def _validate_module_outputs(outputs: Mapping[str, Any], sample_id: str) -> None:
+    """Validate that moduleOutputs has all required sub-fields for real-export mode."""
+    missing: list[str] = []
+    l1 = outputs.get("l1Summary")
+    if not isinstance(l1, dict) or not l1.get("synopsis"):
+        missing.append("l1Summary.synopsis")
+    l3 = outputs.get("l3Extraction")
+    if not isinstance(l3, dict) or "memories" not in l3:
+        missing.append("l3Extraction.memories")
+    provider = outputs.get("provider")
+    if not isinstance(provider, dict):
+        missing.append("provider")
+    else:
+        for key in ("summaryModel", "extractorModel", "embeddingModel"):
+            if not provider.get(key):
+                missing.append(f"provider.{key}")
+    if missing:
+        raise ValueError(
+            f"Row {sample_id!r} has incomplete moduleOutputs, missing: {', '.join(missing)}. "
+            f"Either provide complete real-export outputs or omit moduleOutputs for deterministic mode."
+        )
+
+
+def _real_l2_synopsis(row: Mapping[str, Any], segments: Sequence[Mapping[str, Any]]) -> str:
+    """Extract the real LLM-generated L2 synopsis from module outputs."""
+    synopsis = str(row["moduleOutputs"]["l1Summary"]["synopsis"]).strip()
+    if not synopsis:
+        raise ValueError(
+            f"Row {row.get('sampleId', 'unknown')!r} has empty l1Summary.synopsis "
+            f"after validation — this should not happen"
+        )
+    return synopsis
+
+
+def _real_l3_memories(row: Mapping[str, Any]) -> list[MemoryCandidate]:
+    """Extract real LLM-generated L3 memories from module outputs."""
+    raw_memories = row["moduleOutputs"]["l3Extraction"].get("memories", [])
+    memories: list[MemoryCandidate] = []
+    for mem in raw_memories:
+        content = str(mem.get("content", "")).strip()
+        mem_type = str(mem.get("type", "fact"))
+        tags = tuple(mem.get("tags", []))
+        if not content:
+            continue
+        digest = hashlib.sha256(f"{mem_type}:{_normalize(content)}".encode("utf-8")).hexdigest()[:16]
+        memories.append(MemoryCandidate(memory_id=f"mem-{digest}", content=content, memory_type=mem_type, tags=tags))
+    return _dedupe_memories(memories)

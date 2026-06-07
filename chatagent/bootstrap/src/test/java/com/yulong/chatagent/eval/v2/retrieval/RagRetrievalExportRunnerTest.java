@@ -86,6 +86,30 @@ class RagRetrievalExportRunnerTest {
             assertThat(sample.path("retrievedContexts").get(0).has("sourceId")).isTrue();
             assertThat(sample.path("retrievedContexts").get(0).has("score")).isTrue();
             assertThat(sample.path("metadata").path("latencyMs").isNumber()).isTrue();
+            assertThat(sample.path("metadata").path("candidateContexts").size()).isGreaterThan(1);
+            JsonNode firstCandidateSignals = sample.path("metadata").path("candidateContexts").get(0).path("rankSignals");
+            assertThat(firstCandidateSignals.path("candidateRank").intValue()).isEqualTo(1);
+            assertThat(firstCandidateSignals.path("denseRank").isInt()).isTrue();
+            assertThat(firstCandidateSignals.path("bm25Rank").isInt()).isTrue();
+            assertThat(firstCandidateSignals.path("denseScore").isNumber()).isTrue();
+            assertThat(firstCandidateSignals.path("bm25Score").isNumber()).isTrue();
+            assertThat(firstCandidateSignals.path("fusedScore").isNumber()).isTrue();
+
+            Path datasetManifestPath = baseline.runDirectory().resolve("manifests/datasets/unit-retrieval.json");
+            Path splitManifestPath = baseline.runDirectory().resolve("manifests/splits/unit-retrieval.json");
+            Path datasetPath = baseline.runDirectory().resolve("datasets/rag/unit-retrieval.jsonl");
+            assertThat(datasetManifestPath).exists();
+            assertThat(splitManifestPath).exists();
+            assertThat(datasetPath).exists();
+            JsonNode datasetManifest = objectMapper.readTree(datasetManifestPath.toFile());
+            assertThat(datasetManifest.path("provenance").path("provider").asText()).isEqualTo("deterministic");
+            assertThat(datasetManifest.path("sourceIds").get(0).asText()).isEqualTo("unit-retrieval");
+            assertThat(datasetManifest.path("localPath").asText()).isEqualTo("datasets/rag/unit-retrieval.jsonl");
+            JsonNode datasetRow = objectMapper.readTree(Files.readAllLines(datasetPath).get(0));
+            assertThat(datasetRow.has("retrievedContexts")).isFalse();
+            assertThat(datasetRow.path("metadata").path("candidateContexts").size()).isGreaterThan(1);
+            assertThat(datasetRow.path("metadata").path("candidateContexts").get(0).path("rankSignals").has("denseRank")).isTrue();
+            assertThat(datasetRow.path("metadata").path("candidateContexts").get(0).path("rankSignals").has("bm25Rank")).isTrue();
         }
     }
 
@@ -99,6 +123,29 @@ class RagRetrievalExportRunnerTest {
 
         fixture.close();
         assertThat(fixture.chunkCount()).isZero();
+    }
+
+    @Test
+    void fixtureRejectsMixedEmbeddingDimensions() {
+        EvalOwnedKnowledgeBaseFixture badEmbedder = new EvalOwnedKnowledgeBaseFixture(ignored -> new float[]{1.0f}, 2);
+        assertThatThrownBy(() -> badEmbedder.embed("query"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("embedding dimension mismatch");
+
+        EvalOwnedKnowledgeBaseFixture fixture = new EvalOwnedKnowledgeBaseFixture(ignored -> new float[]{1.0f, 0.0f}, 2);
+        assertThatThrownBy(() -> fixture.createKnowledgeBase(KNOWLEDGE_BASE_ID, List.of(
+                chunk("wrong-dimension", "Wrong dimension", "Wrong dimension text.", new float[]{1.0f})
+        )))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("embedding dimension mismatch");
+
+        EvalOwnedKnowledgeBaseFixture searchable = new EvalOwnedKnowledgeBaseFixture(ignored -> new float[]{1.0f, 0.0f}, 2);
+        searchable.createKnowledgeBase(KNOWLEDGE_BASE_ID, List.of(
+                chunk("doc-two-dimensional", "Two dimensional", "Two dimensional text.", new float[]{1.0f, 0.0f})
+        ));
+        assertThatThrownBy(() -> searchable.searchByKnowledgeBaseIds(List.of(KNOWLEDGE_BASE_ID), new float[]{1.0f}, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("embedding dimension mismatch");
     }
 
     private EvalOwnedKnowledgeBaseFixture fixture() {
@@ -120,7 +167,7 @@ class RagRetrievalExportRunnerTest {
                         "Which study supports the alpha treatment?",
                         List.of("doc-a"),
                         List.of("supports the treatment"),
-                        Map.of("sourceType", "fixture-only")
+                        Map.of("sourceType", "fixture-only", "sourceGroupId", "group-alpha")
                 ),
                 new RagRetrievalExportRunner.RetrievalCase(
                         "sample-beta",
@@ -129,7 +176,7 @@ class RagRetrievalExportRunnerTest {
                         "Which beta study rejects the claim?",
                         List.of("doc-b"),
                         List.of("rejects the claim"),
-                        Map.of("sourceType", "fixture-only")
+                        Map.of("sourceType", "fixture-only", "sourceGroupId", "group-beta")
                 )
         );
     }
@@ -147,7 +194,7 @@ class RagRetrievalExportRunnerTest {
                 "sha256:unit",
                 List.of(KNOWLEDGE_BASE_ID),
                 config,
-                Map.of("retrievalBackend", "in-memory-eval-fixture"),
+                Map.of("retrievalBackend", "in-memory-eval-fixture", "sourceIds", List.of("unit-retrieval")),
                 null
         );
     }
@@ -177,6 +224,11 @@ class RagRetrievalExportRunnerTest {
 
     private KnowledgeBaseMilvusChunkDocument chunk(String documentId, String title, String text) {
         String searchable = title + " " + text;
+        return chunk(documentId, title, text, EvalOwnedKnowledgeBaseFixture.embedText(searchable));
+    }
+
+    private KnowledgeBaseMilvusChunkDocument chunk(String documentId, String title, String text, float[] embedding) {
+        String searchable = title + " " + text;
         return new KnowledgeBaseMilvusChunkDocument(
                 documentId + "#0",
                 KNOWLEDGE_BASE_ID,
@@ -190,7 +242,7 @@ class RagRetrievalExportRunnerTest {
                 searchable,
                 true,
                 0L,
-                EvalOwnedKnowledgeBaseFixture.embedText(searchable)
+                embedding
         );
     }
 }

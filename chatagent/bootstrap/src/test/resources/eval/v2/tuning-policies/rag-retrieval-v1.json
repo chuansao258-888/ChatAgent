@@ -1,0 +1,21 @@
+{
+  "id": "rag-retrieval-v1",
+  "suite": "rag-retrieval",
+  "parameterSpaceId": "rag-retrieval-v1",
+  "primaryMetric": "ragRetrieval.ndcgAtK",
+  "direction": "maximize",
+  "baselineParameters": {
+    "topK": 3,
+    "candidateK": 12,
+    "rrfK": 60
+  },
+  "secondaryMetrics": [
+    { "metric": "ragRetrieval.hitAtK", "direction": "maximize" },
+    { "metric": "ragRetrieval.recallAtK", "direction": "maximize" },
+    { "metric": "ragRetrieval.mrr", "direction": "maximize" }
+  ],
+  "hardGates": {},
+  "categoryMetric": "ragRetrieval.ndcgAtK",
+  "categoryRegressionTolerance": 0.05,
+  "holdoutTolerance": 0.05
+}

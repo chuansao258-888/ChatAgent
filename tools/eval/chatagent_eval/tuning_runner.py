@@ -20,6 +20,7 @@ from chatagent_eval.promotion import (
     split_audit,
     write_experiment_artifacts,
 )
+from chatagent_eval.rag_retrieval_runner import RagRetrievalConfig, run_rag_retrieval
 from chatagent_eval.text_recall_runner import TextRecallConfig, run_text_recall
 from chatagent_eval.tuning import (
     bootstrap_confidence_interval,
@@ -28,7 +29,7 @@ from chatagent_eval.tuning import (
     select_champion,
 )
 
-SUPPORTED_SUITES = {"agent-modules", "memory-v2", "text-recall"}
+SUPPORTED_SUITES = {"agent-modules", "memory-v2", "rag-retrieval", "text-recall"}
 SUITE_CONFIG_FIELDS = {
     "agent-modules": {
         "intentHistoryTurns": "intent_history_turns",
@@ -44,6 +45,11 @@ SUITE_CONFIG_FIELDS = {
         "l1BudgetChars": "l1_budget_chars",
         "l2SegmentTurns": "l2_segment_turns",
         "l3TopK": "l3_top_k",
+    },
+    "rag-retrieval": {
+        "topK": "top_k",
+        "candidateK": "candidate_k",
+        "rrfK": "rrf_k",
     },
     "text-recall": {
         "chunkSize": "chunk_size",
@@ -62,6 +68,10 @@ SAMPLE_METRIC_PATHS = {
     "textRecall.retrievalContextPhraseRecall": ("metadata", "retrieval", "recall"),
     "textRecall.citationSupportRecall": ("metadata", "citation", "recall"),
     "textRecall.chunkSpanRecall": ("metadata", "chunk", "recall"),
+    "ragRetrieval.ndcgAtK": ("metadata", "ndcgAtK"),
+    "ragRetrieval.hitAtK": ("metadata", "hitAtK"),
+    "ragRetrieval.recallAtK": ("metadata", "recallAtK"),
+    "ragRetrieval.mrr": ("metadata", "mrr"),
 }
 
 
@@ -406,6 +416,12 @@ def _run_suite(
             output_root=output_root,
             config=TextRecallConfig(**common, **kwargs),
         )
+    elif suite == "rag-retrieval":
+        run_dir = run_rag_retrieval(
+            dataset_root=dataset_root,
+            output_root=output_root,
+            config=RagRetrievalConfig(**common, **kwargs),
+        )
     else:
         raise ValueError(f"unsupported tuning suite: {suite}")
     elapsed_ms = (time.perf_counter() - start) * 1000.0
@@ -568,6 +584,7 @@ def _dataset_id(suite: str) -> str:
     return {
         "agent-modules": "memory-v2-dialogues",
         "memory-v2": "memory-v2-dialogues",
+        "rag-retrieval": "beir-scifact-rag-v1",
         "text-recall": "sec-companyfacts-text-recall-v1",
     }[suite]
 

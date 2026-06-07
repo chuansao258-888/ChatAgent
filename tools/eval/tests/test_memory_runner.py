@@ -9,7 +9,7 @@ from pathlib import Path
 
 import run_eval
 from chatagent_eval.datasets import sha256_file
-from chatagent_eval.memory_runner import MemoryConfig, _contradiction_rate, run_memory
+from chatagent_eval.memory_runner import MemoryConfig, _contradiction_rate, _has_module_outputs, _validate_module_outputs, run_memory
 from chatagent_eval.schemas import load_json, validate
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -96,6 +96,165 @@ class MemoryRunnerTest(unittest.TestCase):
         self.assertEqual(0.0, _contradiction_rate("If you are a citizen, file form A. If you are not a citizen, file form B."))
         self.assertEqual(1.0, _contradiction_rate("The plan is approved. The plan is not approved."))
 
+    def test_real_export_metrics_use_module_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Run deterministic (no moduleOutputs) on same fixture data
+            det_root = _write_real_export_dataset_root(Path(temp_dir) / "det-phase3")
+            # Strip moduleOutputs to force deterministic path
+            det_dataset_path = det_root / "datasets" / "memory" / "memory-v2-dialogues.jsonl"
+            det_rows = _read_jsonl(det_dataset_path)
+            det_rows[0].pop("moduleOutputs", None)
+            det_dataset_path.write_text(json.dumps(det_rows[0]) + "\n", encoding="utf-8")
+            det_run_dir = run_memory(
+                dataset_root=det_root,
+                output_root=Path(temp_dir) / "det-out",
+                config=MemoryConfig(run_id="det-compare", l1_window_turns=1, l3_top_k=1, l2_segment_turns=1),
+            )
+            det_report = json.loads((det_run_dir / "report.json").read_text(encoding="utf-8"))
+
+            # Run real-export (with moduleOutputs)
+            real_root = _write_real_export_dataset_root(Path(temp_dir) / "real-phase3")
+            run_dir = run_memory(
+                dataset_root=real_root,
+                output_root=Path(temp_dir) / "real-out",
+                config=MemoryConfig(run_id="real-mem-1", l1_window_turns=1, l3_top_k=1, l2_segment_turns=1),
+            )
+
+            report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+            samples = _read_jsonl(run_dir / "samples.jsonl")
+
+            # The real synopsis is "Cardinals played in London in 2017" — deterministic would
+            # include the agent response text verbatim. L2 fact recall should differ.
+            self.assertIsNotNone(report["metrics"]["memory.l2FactRecall"])
+            # Prove real outputs change the metric vs deterministic
+            self.assertNotEqual(
+                report["metrics"]["memory.l2FactRecall"],
+                det_report["metrics"]["memory.l2FactRecall"],
+                "Real-export L2 fact recall should differ from deterministic",
+            )
+
+            # Verify the sample metadata shows the real synopsis was used
+            self.assertIsNotNone(samples[0]["metadata"]["l3"]["extractionF1"])
+
+    def test_real_export_row_validates_against_memory_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_root = _write_real_export_dataset_root(Path(temp_dir) / "phase3")
+            dataset_path = dataset_root / "datasets" / "memory" / "memory-v2-dialogues.jsonl"
+            rows = _read_jsonl(dataset_path)
+            self.assertTrue(_has_module_outputs(rows[0]),
+                            "Real-export fixture row should have detectable module outputs")
+
+            # Validate against the memory dataset record schema
+            record_schema = load_json(RESOURCE_ROOT / "schemas" / "eval-memory-dataset-record.schema.json")
+            validate(rows[0], record_schema)
+
+    def test_empty_module_outputs_raises_value_error(self) -> None:
+        """moduleOutputs: {} should raise ValueError (malformed real-export), not silently fall back."""
+        row = _base_row()
+        row["moduleOutputs"] = {}
+        with self.assertRaisesRegex(ValueError, "empty moduleOutputs"):
+            _has_module_outputs(row)
+
+    def test_null_module_outputs_raises_value_error(self) -> None:
+        """moduleOutputs: null should raise ValueError (malformed real-export), not silently fall back."""
+        row = _base_row()
+        row["moduleOutputs"] = None
+        with self.assertRaisesRegex(ValueError, "null moduleOutputs"):
+            _has_module_outputs(row)
+
+    def test_partial_module_outputs_l1_missing_synopsis_raises(self) -> None:
+        """moduleOutputs with l1Summary but no synopsis should raise ValueError."""
+        row = _base_row()
+        row["moduleOutputs"] = {
+            "l1Summary": {"updated": True},
+            "l3Extraction": {"memories": [{"type": "fact", "content": "x", "tags": []}]},
+            "provider": {"summaryModel": "m", "extractorModel": "m", "embeddingModel": "m"},
+        }
+        with self.assertRaisesRegex(ValueError, "l1Summary.synopsis"):
+            _has_module_outputs(row)
+
+    def test_partial_module_outputs_missing_provider_model_raises(self) -> None:
+        """moduleOutputs with provider missing embeddingModel should raise ValueError."""
+        row = _base_row()
+        row["moduleOutputs"] = {
+            "l1Summary": {"synopsis": "A summary."},
+            "l3Extraction": {"memories": []},
+            "provider": {"summaryModel": "m", "extractorModel": "m"},
+        }
+        with self.assertRaisesRegex(ValueError, "provider.embeddingModel"):
+            _has_module_outputs(row)
+
+
+def _write_real_export_dataset_root(path: Path) -> Path:
+    """Creates a Phase 3-compatible dataset root with moduleOutputs from a real Java export."""
+    row = {
+        "sampleId": "real-mem-1",
+        "datasetId": "memory-v2-dialogues",
+        "sourceGroupId": "conversation-real",
+        "split": "development",
+        "turns": [
+            {"speaker": "user", "text": "I prefer concise answers about football teams."},
+            {"speaker": "agent", "text": "The Arizona Cardinals played in London at Twickenham Stadium in 2017."},
+        ],
+        "expectedResponse": "Yes, the Cardinals played in London.",
+        "referenceContextIds": ["doc-1"],
+        "metadata": {
+            "answerability": ["ANSWERABLE"],
+            "domain": "mtrag-test",
+            "multiTurn": ["N/A"],
+            "questionType": ["Factoid"],
+            "sourceTaskId": "task-1",
+        },
+        "moduleOutputs": {
+            "l1Summary": {
+                "updated": True,
+                "turnCount": 1,
+                "segmentCount": 1,
+                "synopsis": "Cardinals played in London in 2017.",
+                "range": {"sessionId": "eval-memory-test", "lastSummarizedSeqNo": 0, "anchorSeqNo": 2},
+            },
+            "l3Extraction": {
+                "success": True,
+                "memories": [
+                    {"type": "fact", "content": "Arizona Cardinals played in London at Twickenham Stadium in 2017", "tags": ["sports", "nfl"]},
+                    {"type": "preference", "content": "User prefers concise answers about football teams", "tags": ["preference"]},
+                ],
+            },
+            "provider": {
+                "summaryModel": "deepseek-chat",
+                "extractorModel": "deepseek-chat",
+                "embeddingModel": "bge-m3",
+            },
+        },
+    }
+    dataset_path = path / "datasets" / "memory" / "memory-v2-dialogues.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    manifest = {
+        "schemaVersion": 1,
+        "datasetId": "memory-v2-dialogues",
+        "version": 2,
+        "sourceIds": ["mtrag-human"],
+        "recordSchema": "eval-memory-dataset-record.schema.json",
+        "localPath": "datasets/memory/memory-v2-dialogues.jsonl",
+        "datasetHash": sha256_file(dataset_path),
+        "splitManifestPath": "manifests/splits/memory-v2-dialogues.json",
+        "splitManifestHash": "sha256:split",
+        "recordCount": 1,
+        "groupCount": 1,
+        "splits": {"development": {"recordCount": 1, "groupCount": 1, "groupHash": "sha256:group"}},
+        "provenance": {
+            "provider": "deepseek",
+            "modelName": "deepseek-chat",
+            "embeddingModel": "bge-m3",
+            "exportTimestamp": "2026-06-08T00:00:00Z",
+        },
+    }
+    manifest_path = path / "manifests" / "datasets" / "memory-v2-dialogues.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
 
 def _write_dataset_root(path: Path) -> Path:
     row = {
@@ -140,6 +299,23 @@ def _write_dataset_root(path: Path) -> Path:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
+
+
+def _base_row() -> dict:
+    """Minimal valid row without moduleOutputs for rejection tests."""
+    return {
+        "sampleId": "rejection-test-1",
+        "datasetId": "memory-v2-dialogues",
+        "sourceGroupId": "conversation-test",
+        "split": "development",
+        "turns": [
+            {"speaker": "user", "text": "Hello."},
+            {"speaker": "agent", "text": "Hi there."},
+        ],
+        "expectedResponse": "Hi",
+        "referenceContextIds": [],
+        "metadata": {},
+    }
 
 
 def _read_jsonl(path: Path) -> list[dict]:

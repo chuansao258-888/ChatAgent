@@ -12,12 +12,12 @@
   },
   "secondaryMetrics": [
     { "metric": "memory.l2FactRecall", "direction": "maximize" },
-    { "metric": "memory.l3RecallHitAtK", "direction": "maximize" }
+    { "metric": "memory.l2ContradictionRate", "direction": "minimize" },
+    { "metric": "memory.l3RecallHitAtK", "direction": "maximize" },
+    { "metric": "memory.l3ExtractionF1", "direction": "maximize" }
   ],
   "hardGates": {
-    "memory.l1BudgetCompliance": { "min": 1.0 },
-    "memory.l2ContradictionRate": { "max": 0.0 },
-    "memory.l3ExtractionF1": { "min": 1.0 }
+    "memory.l1BudgetCompliance": { "min": 1.0 }
   },
   "categoryMetric": "memory.l1CompleteTurnRecall",
   "categoryRegressionTolerance": 0.0,

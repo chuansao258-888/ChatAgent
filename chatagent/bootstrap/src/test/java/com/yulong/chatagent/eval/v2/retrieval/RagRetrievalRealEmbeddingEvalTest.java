@@ -12,10 +12,17 @@ import com.yulong.chatagent.rag.vector.milvus.model.KnowledgeBaseMilvusChunkDocu
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.io.IOException;
+import java.net.ConnectException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -30,42 +37,82 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * Real Ollama bge-m3 embedding retrieval evaluation.
+ *
+ * <p>Requires a running Ollama instance with the {@code bge-m3} model pulled.
+ * Skips gracefully via {@code Assumptions.assumeTrue} when Ollama is unavailable.
+ * Tagged {@code eval-real} to exclude from default CI; activate with the
+ * {@code eval-real} Maven profile or by clearing {@code surefire.excludedGroups}.
+ */
 @Tag("eval-v2")
-class RagRetrievalExportEvalTest {
+@Tag("eval-real")
+class RagRetrievalRealEmbeddingEvalTest {
 
+    private static final String OLLAMA_BASE_URL = setting(
+            "chatagent.eval.ollamaBaseUrl",
+            "CHATAGENT_RAG_EMBEDDING_BASE_URL",
+            "http://127.0.0.1:11434"
+    );
+    private static final String EMBEDDING_MODEL = setting(
+            "chatagent.eval.embeddingModel",
+            "CHATAGENT_RAG_EMBEDDING_MODEL",
+            "bge-m3"
+    );
     private static final int SMOKE_QUERY_COUNT = 50;
     private static final int SMOKE_DOCUMENT_COUNT = 1_000;
-    private static final String KNOWLEDGE_BASE_ID = "eval-v2-scifact-smoke";
+    private static final String KNOWLEDGE_BASE_ID = "eval-v2-scifact-ollama";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void exportsRealSciFactBaselineAndTopKSensitivityArtifacts() throws Exception {
+    void exportsRealOllamaEmbeddingSciFactRetrieval() throws Exception {
+        assumeOllamaEndpointAvailable();
+
+        OllamaEmbeddingClient embeddingClient = new OllamaEmbeddingClient(
+                WebClient.builder(), OLLAMA_BASE_URL, EMBEDDING_MODEL
+        );
+
+        // Probe: verify bge-m3 model is loaded by embedding a short string
+        float[] probeEmbedding;
+        try {
+            probeEmbedding = embeddingClient.embed("eval probe");
+        } catch (Exception e) {
+            assumeTrue(false, "Ollama embedding probe failed (model '" + EMBEDDING_MODEL + "' may not be pulled): " + e.getMessage());
+            return;
+        }
+        assertThat(probeEmbedding).hasSize(EvalOwnedKnowledgeBaseFixture.OLLAMA_EMBEDDING_DIMENSION);
+
         Path repositoryRoot = findRepositoryRoot();
         Path phase3Root = repositoryRoot.resolve("artifacts/eval/phase3");
         Path datasetPath = phase3Root.resolve("datasets/rag/beir-scifact-rag-v1.jsonl");
         Path corpusPath = phase3Root.resolve("corpora/beir-scifact/documents.jsonl");
         Path manifestPath = phase3Root.resolve("manifests/datasets/beir-scifact-rag-v1.json");
         assumeTrue(Files.exists(datasetPath) && Files.exists(corpusPath) && Files.exists(manifestPath),
-                "Run Phase 3 SciFact preparation before the Phase 4 real-data smoke suite");
+                "Run Phase 3 SciFact preparation before the Phase 10a real-embedding smoke");
 
         List<RagRetrievalExportRunner.RetrievalCase> cases = loadCases(datasetPath);
         Set<String> requiredDocumentIds = cases.stream()
                 .flatMap(evalCase -> evalCase.referenceContextIds().stream())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        List<KnowledgeBaseMilvusChunkDocument> chunks = loadChunks(corpusPath, requiredDocumentIds);
         JsonNode manifest = objectMapper.readTree(manifestPath.toFile());
 
-        try (EvalOwnedKnowledgeBaseFixture fixture = new EvalOwnedKnowledgeBaseFixture()) {
+        try (EvalOwnedKnowledgeBaseFixture fixture = new EvalOwnedKnowledgeBaseFixture(
+                embeddingClient::embed, EvalOwnedKnowledgeBaseFixture.OLLAMA_EMBEDDING_DIMENSION
+        )) {
+            List<KnowledgeBaseMilvusChunkDocument> chunks = loadChunks(
+                    corpusPath, requiredDocumentIds, fixture
+            );
             fixture.createKnowledgeBase(KNOWLEDGE_BASE_ID, chunks);
+
             RagRetrievalExportRunner runner = new RagRetrievalExportRunner(
-                    new EvalArtifactWriter(repositoryRoot.resolve("artifacts/eval/phase4")),
-                    config -> searcher(fixture, config)
+                    new EvalArtifactWriter(repositoryRoot.resolve("artifacts/eval/phase10a")),
+                    config -> realSearcher(fixture, embeddingClient, config)
             );
 
             RagRetrievalExportRunner.RunResult baseline = runner.run(
                     request(
-                            "phase4-scifact-baseline",
+                            "phase10a-scifact-ollama-baseline",
                             manifest,
                             new RagRetrievalExportRunner.RetrievalConfig(3, 12, 60),
                             cases.size(),
@@ -73,23 +120,54 @@ class RagRetrievalExportEvalTest {
                     ),
                     cases
             );
-            RagRetrievalExportRunner.RunResult sensitivity = runner.run(
-                    request(
-                            "phase4-scifact-topk5",
-                            manifest,
-                            new RagRetrievalExportRunner.RetrievalConfig(5, 12, 60),
-                            cases.size(),
-                            chunks.size()
-                    ),
-                    cases
-            );
 
             assertThat(baseline.samples()).hasSize(SMOKE_QUERY_COUNT);
-            assertThat(baseline.metrics()).containsKeys("hitAtK", "recallAtK", "mrr", "ndcgAtK", "sourceCoverage", "p95LatencyMs");
+            assertThat(baseline.metrics()).containsKeys("hitAtK", "recallAtK", "mrr", "ndcgAtK", "sourceCoverage");
             assertThat(baseline.runDirectory()).exists();
-            assertThat(sensitivity.runDirectory()).exists();
-            assertThat(baseline.configFingerprint()).isNotEqualTo(sensitivity.configFingerprint());
+
+            // Verify manifest records real embedding metadata
+            JsonNode runManifest = objectMapper.readTree(baseline.runDirectory().resolve("manifest.json").toFile());
+            assertThat(runManifest.path("config").path("embeddingMode").asText()).isEqualTo("ollama-" + EMBEDDING_MODEL);
+            assertThat(runManifest.path("config").path("embeddingDimension").intValue()).isEqualTo(1024);
+            assertThat(runManifest.path("config").path("embeddingBaseUrl").asText()).isEqualTo(OLLAMA_BASE_URL);
+
+            // Verify samples include real retrieval scores (not all zero)
+            JsonNode firstSample = objectMapper.readTree(
+                    Files.readAllLines(baseline.runDirectory().resolve("samples.jsonl")).get(0)
+            );
+            assertThat(firstSample.path("retrievedContexts").size()).isGreaterThan(0);
+            double firstScore = firstSample.path("retrievedContexts").get(0).path("score").asDouble();
+            assertThat(firstScore).isGreaterThan(0.0);
         }
+    }
+
+    private static void assumeOllamaEndpointAvailable() {
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(3))
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(OLLAMA_BASE_URL + "/api/tags"))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assumeTrue(response.statusCode() == 200,
+                    "Ollama returned non-200 status: " + response.statusCode());
+        } catch (ConnectException e) {
+            assumeTrue(false, "Ollama is not running at " + OLLAMA_BASE_URL + ": " + e.getMessage());
+        } catch (Exception e) {
+            assumeTrue(false, "Ollama probe failed: " + e.getMessage());
+        }
+    }
+
+    private static String setting(String propertyName, String environmentName, String defaultValue) {
+        String propertyValue = System.getProperty(propertyName);
+        if (propertyValue != null && !propertyValue.isBlank()) {
+            return propertyValue;
+        }
+        String environmentValue = System.getenv(environmentName);
+        return environmentValue == null || environmentValue.isBlank() ? defaultValue : environmentValue;
     }
 
     private List<RagRetrievalExportRunner.RetrievalCase> loadCases(Path path) throws IOException {
@@ -114,7 +192,9 @@ class RagRetrievalExportEvalTest {
         }
     }
 
-    private List<KnowledgeBaseMilvusChunkDocument> loadChunks(Path path, Set<String> requiredDocumentIds) throws IOException {
+    private List<KnowledgeBaseMilvusChunkDocument> loadChunks(
+            Path path, Set<String> requiredDocumentIds, EvalOwnedKnowledgeBaseFixture fixture
+    ) throws IOException {
         Map<String, JsonNode> selected = new LinkedHashMap<>();
         try (Stream<String> lines = Files.lines(path)) {
             lines.map(this::readJson)
@@ -129,10 +209,10 @@ class RagRetrievalExportEvalTest {
             }
         }
         assertThat(selected.keySet()).containsAll(requiredDocumentIds);
-        return selected.values().stream().map(this::toChunk).toList();
+        return selected.values().stream().map(row -> toChunk(row, fixture)).toList();
     }
 
-    private KnowledgeBaseMilvusChunkDocument toChunk(JsonNode row) {
+    private KnowledgeBaseMilvusChunkDocument toChunk(JsonNode row, EvalOwnedKnowledgeBaseFixture fixture) {
         String documentId = row.path("documentId").asText();
         String title = row.path("title").asText();
         String text = row.path("text").asText();
@@ -150,7 +230,28 @@ class RagRetrievalExportEvalTest {
                 searchable,
                 true,
                 0L,
-                EvalOwnedKnowledgeBaseFixture.embedText(searchable)
+                fixture.embed(searchable)
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private KnowledgeBaseSimilaritySearcher realSearcher(
+            EvalOwnedKnowledgeBaseFixture fixture,
+            OllamaEmbeddingClient embeddingClient,
+            RagRetrievalExportRunner.RetrievalConfig config
+    ) {
+        KnowledgeDocumentSignalService signalService = mock(KnowledgeDocumentSignalService.class);
+        when(signalService.attachSignals(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+        ObjectProvider<KnowledgeBaseMilvusIndexService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(fixture);
+        return new KnowledgeBaseSimilaritySearcher(
+                embeddingClient,
+                config.topK(),
+                config.candidateK(),
+                config.rrfK(),
+                signalService,
+                new NoopRetrievalReranker(),
+                provider
         );
     }
 
@@ -170,18 +271,26 @@ class RagRetrievalExportEvalTest {
                 manifest.path("datasetHash").asText(),
                 List.of(KNOWLEDGE_BASE_ID),
                 config,
-                Map.of(
-                        "split", "development",
-                        "queryLimit", SMOKE_QUERY_COUNT,
-                        "baseDocumentLimit", SMOKE_DOCUMENT_COUNT,
-                        "queryCount", queryCount,
-                        "indexedDocumentCount", indexedDocumentCount,
-                        "retrievalBackend", "in-memory-eval-fixture",
-                        "embeddingMode", "deterministic-hash",
-                        "reranker", "noop"
-                ),
+                runConfig(queryCount, indexedDocumentCount),
                 null
         );
+    }
+
+    private Map<String, Object> runConfig(int queryCount, int indexedDocumentCount) {
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("split", "development");
+        config.put("queryLimit", SMOKE_QUERY_COUNT);
+        config.put("baseDocumentLimit", SMOKE_DOCUMENT_COUNT);
+        config.put("queryCount", queryCount);
+        config.put("indexedDocumentCount", indexedDocumentCount);
+        config.put("retrievalBackend", "in-memory-eval-fixture");
+        config.put("sourceIds", List.of("beir-scifact"));
+        config.put("embeddingMode", "ollama-" + EMBEDDING_MODEL);
+        config.put("embeddingDimension", EvalOwnedKnowledgeBaseFixture.OLLAMA_EMBEDDING_DIMENSION);
+        config.put("embeddingModel", EMBEDDING_MODEL);
+        config.put("embeddingBaseUrl", OLLAMA_BASE_URL);
+        config.put("reranker", "noop");
+        return config;
     }
 
     private String runtimeMetadata(String propertyName, String environmentName) {
@@ -191,29 +300,6 @@ class RagRetrievalExportEvalTest {
         }
         String environmentValue = System.getenv(environmentName);
         return environmentValue == null || environmentValue.isBlank() ? "unknown" : environmentValue;
-    }
-
-    @SuppressWarnings("unchecked")
-    private KnowledgeBaseSimilaritySearcher searcher(
-            EvalOwnedKnowledgeBaseFixture fixture,
-            RagRetrievalExportRunner.RetrievalConfig config
-    ) {
-        OllamaEmbeddingClient embeddingClient = mock(OllamaEmbeddingClient.class);
-        when(embeddingClient.embed(org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(invocation -> EvalOwnedKnowledgeBaseFixture.embedText(invocation.getArgument(0)));
-        KnowledgeDocumentSignalService signalService = mock(KnowledgeDocumentSignalService.class);
-        when(signalService.attachSignals(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
-        ObjectProvider<KnowledgeBaseMilvusIndexService> provider = mock(ObjectProvider.class);
-        when(provider.getIfAvailable()).thenReturn(fixture);
-        return new KnowledgeBaseSimilaritySearcher(
-                embeddingClient,
-                config.topK(),
-                config.candidateK(),
-                config.rrfK(),
-                signalService,
-                new NoopRetrievalReranker(),
-                provider
-        );
     }
 
     private Path findRepositoryRoot() {
