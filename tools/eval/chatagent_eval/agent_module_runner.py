@@ -17,7 +17,7 @@ from chatagent_eval.reports import build_manifest, build_report, write_json_arti
 DEFAULT_AGENT_MODULE_DATASET_ID = "memory-v2-dialogues"
 DEFAULT_PARAMETER_SPACE_ID = "agent-modules-v1"
 ARTIFACT_FILES = ("manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl", "report.json")
-KNOWLEDGE_SEARCH_TOOL = "knowledge.search"
+KNOWLEDGE_SEARCH_TOOL = "SessionFileSearchTool"
 CONTENT_WORD = re.compile(r"[A-Za-z][A-Za-z0-9'-]{2,}")
 STOPWORDS = {
     "about",
@@ -268,6 +268,8 @@ def _expected_outputs(row: Mapping[str, Any], config: AgentModuleConfig) -> dict
 def _module_outputs(row: Mapping[str, Any], config: AgentModuleConfig, expected: Mapping[str, Any]) -> dict[str, Any]:
     explicit = row.get("moduleOutputs")
     if isinstance(explicit, Mapping):
+        if _is_real_export(explicit):
+            return _adapt_real_export(explicit, expected)
         return _merge_outputs(expected, explicit)
 
     turns = list(row.get("turns", []))
@@ -297,6 +299,64 @@ def _module_outputs(row: Mapping[str, Any], config: AgentModuleConfig, expected:
             "topicSwitch": expected["multiTurn"]["topicSwitch"],
             "wrongHistorySuppressed": True,
         },
+    }
+
+
+def _is_real_export(module_outputs: Mapping[str, Any]) -> bool:
+    """Detect Phase 10c real-export data by presence of provider key."""
+    return "provider" in module_outputs
+
+
+def _adapt_real_export(explicit: Mapping[str, Any], expected: Mapping[str, Any]) -> dict[str, Any]:
+    """Map Phase 10c Java real-export fields to runner's observed field names.
+
+    Required fields in explicit: intent, queryRewrite, toolList, provider.
+    Raises ValueError if required fields are missing.
+    """
+    for field in ("intent", "queryRewrite", "toolList"):
+        if field not in explicit:
+            raise ValueError(f"Real-export moduleOutputs missing required field: {field}")
+
+    intent_data = explicit["intent"]
+    if not isinstance(intent_data, Mapping):
+        raise ValueError("Real-export moduleOutputs.intent must be a mapping")
+
+    # Map intent from real routing result.
+    # Keep expected domain/outcome/multiturn (row-level properties the model doesn't produce),
+    # override kind and outOfScope from real routing (model outputs).
+    kind = str(intent_data.get("kind") or "")
+    routed = bool(intent_data.get("routed"))
+    observed_intent = dict(expected["intent"])
+    observed_intent["kind"] = kind
+    observed_intent["outOfScope"] = kind == "SYSTEM" or not routed
+    expected_path = expected["intent"].get("path", [])
+    observed_intent["path"] = [
+        expected_path[0] if len(expected_path) > 0 else "",
+        kind,
+        expected_path[2] if len(expected_path) > 2 else "unknown",
+        expected_path[3] if len(expected_path) > 3 else "N/A",
+    ]
+
+    # Map queryRewrite -> rewrite.query
+    rewrite = dict(expected["rewrite"])
+    rewrite["query"] = str(explicit["queryRewrite"] or "")
+
+    # Map toolList -> toolCalls
+    tool_list = explicit["toolList"]
+    if not isinstance(tool_list, list):
+        raise ValueError("Real-export moduleOutputs.toolList must be a list")
+    tool_calls = [{"name": str(name)} for name in tool_list]
+
+    # MultiTurn: pass through if present, otherwise expected
+    multi_turn = dict(expected["multiTurn"])
+    if "multiTurn" in explicit and isinstance(explicit["multiTurn"], Mapping):
+        multi_turn.update(explicit["multiTurn"])
+
+    return {
+        "intent": observed_intent,
+        "rewrite": rewrite,
+        "toolCalls": tool_calls,
+        "multiTurn": multi_turn,
     }
 
 

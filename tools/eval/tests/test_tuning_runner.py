@@ -395,6 +395,60 @@ class TuningRunnerTest(unittest.TestCase):
             trials = _read_jsonl(experiment_dir / "trials.jsonl")
             self.assertTrue(all(trial["status"] == "completed" for trial in trials))
 
+    def test_agent_modules_policy_does_not_hard_gate_intent_accuracy(self) -> None:
+        """Regression: intent accuracy and tool F1 must not be hard gates."""
+        policy = load_json(RESOURCE_ROOT / "tuning-policies" / "agent-modules-v1.json")
+        hard_gates = policy.get("hardGates", {})
+        secondary_metrics = [item["metric"] for item in policy.get("secondaryMetrics", [])]
+        self.assertNotIn("agentModules.intentExactPathAccuracy", hard_gates,
+                         "Intent accuracy must not be a hard gate — real models are not perfect")
+        self.assertNotIn("agentModules.toolCallF1", hard_gates,
+                         "Tool call F1 must not be a hard gate — real models are not perfect")
+        self.assertIn("agentModules.toolCallF1", secondary_metrics,
+                      "Tool call F1 should be tracked as a secondary metric for ranking")
+
+    def test_cli_tune_suite_runs_agent_modules(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_agent_modules_export_root(temp_path / "phase3")
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = run_eval.main(
+                    [
+                        "tune-suite",
+                        "--suite",
+                        "agent-modules",
+                        "--dataset-root",
+                        str(dataset_root),
+                        "--output-root",
+                        str(temp_path / "out"),
+                        "--experiment-id",
+                        "agent-modules-tuning",
+                        "--combination-budget",
+                        "1",
+                        "--max-samples-per-trial",
+                        "2",
+                        "--holdout-max-samples",
+                        "1",
+                        "--confidence-resamples",
+                        "20",
+                    ]
+                )
+
+            self.assertEqual(0, exit_code)
+            experiment_dir = temp_path / "out" / "agent-modules-tuning"
+            trials = _read_jsonl(experiment_dir / "trials.jsonl")
+            candidate = load_json(experiment_dir / "champion-candidate.yaml")
+            holdout = load_json(experiment_dir / "holdout-verification.json")
+            self.assertTrue(all(trial["status"] == "completed" for trial in trials))
+            self.assertEqual("agent-modules", candidate["suite"])
+            self.assertEqual("pending", candidate["reviewStatus"])
+            self.assertEqual(0, holdout["overlapCount"])
+            # Non-perfect metrics should not block champion selection
+            intent_accuracy = trials[0]["metrics"].get("agentModules.intentExactPathAccuracy", 1.0)
+            tool_f1 = trials[0]["metrics"].get("agentModules.toolCallF1", 1.0)
+            self.assertLess(intent_accuracy, 1.0)
+            self.assertLess(tool_f1, 1.0)
+
 
 def _write_dataset_root(path: Path) -> Path:
     rows = [
@@ -641,6 +695,86 @@ def _retrieval_candidates(reference_id: str, candidate_mode: str = "candidate-co
             candidate.pop("score", None)
             candidate.pop("rankSignals", None)
     return candidates
+
+
+def _write_agent_modules_export_root(path: Path) -> Path:
+    """Write a Phase 10c real-export style dataset root for agent-modules tuning."""
+    rows = [
+        _agent_modules_row("am-calibration-1", "group-calibration", "calibration", True, "TOOL"),
+        _agent_modules_row("am-development-1", "group-development", "development", True, "TOOL"),
+        _agent_modules_row("am-holdout-1", "group-holdout", "holdout", True, "TOOL"),
+        _agent_modules_row("am-challenge-1", "group-challenge", "challenge", False, "SYSTEM"),
+    ]
+    dataset_path = path / "datasets" / "agent-modules" / "memory-v2-dialogues.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    split_manifest = {
+        "schemaVersion": 1,
+        "datasetId": "memory-v2-dialogues",
+        "splits": {
+            "calibration": {"groupHash": "sha256:am-calibration", "groupIds": ["group-calibration"]},
+            "development": {"groupHash": "sha256:am-development", "groupIds": ["group-development"]},
+            "holdout": {"groupHash": "sha256:am-holdout", "groupIds": ["group-holdout"]},
+            "challenge": {"groupHash": "sha256:am-challenge", "groupIds": ["group-challenge"]},
+        },
+    }
+    split_path = path / "manifests" / "splits" / "memory-v2-dialogues.json"
+    split_path.parent.mkdir(parents=True, exist_ok=True)
+    split_path.write_text(json.dumps(split_manifest), encoding="utf-8")
+    manifest = {
+        "schemaVersion": 1,
+        "datasetId": "memory-v2-dialogues",
+        "version": 2,
+        "sourceIds": ["mtrag-human"],
+        "recordSchema": "eval-agent-module-dataset-record.schema.json",
+        "localPath": "datasets/agent-modules/memory-v2-dialogues.jsonl",
+        "datasetHash": sha256_file(dataset_path),
+        "splitManifestPath": "manifests/splits/memory-v2-dialogues.json",
+        "splitManifestHash": sha256_file(split_path),
+        "recordCount": len(rows),
+        "groupCount": len(rows),
+        "splits": {
+            split: {"recordCount": 1, "groupCount": 1, "groupHash": details["groupHash"]}
+            for split, details in split_manifest["splits"].items()
+        },
+    }
+    manifest_path = path / "manifests" / "datasets" / "memory-v2-dialogues.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def _agent_modules_row(sample_id: str, group_id: str, split: str, answerable: bool, real_kind: str) -> dict:
+    """Build a real-export agent-modules row with intentional metric variation."""
+    turns = [{"speaker": "user", "text": "Where do the Arizona Cardinals play?"}]
+    return {
+        "sampleId": sample_id,
+        "datasetId": "memory-v2-dialogues",
+        "sourceGroupId": group_id,
+        "split": split,
+        "turns": turns,
+        "expectedResponse": "State Farm Stadium." if answerable else "I do not have the answer.",
+        "referenceContextIds": ["doc-1"] if answerable else [],
+        "metadata": {
+            "answerability": ["ANSWERABLE" if answerable else "UNANSWERABLE"],
+            "domain": f"domain-{split}",
+            "multiTurn": ["N/A"],
+            "questionType": ["Explanation"],
+            "sourceTaskId": sample_id,
+        },
+        "moduleOutputs": {
+            "intent": {
+                "routed": True,
+                "requiresClarification": False,
+                "kind": real_kind,
+                "pathLabel": f"General > {'Assistance' if real_kind == 'TOOL' else 'Other'} > {'Tool Use' if real_kind == 'TOOL' else 'Direct Response'}",
+                "allowedTools": [],
+            },
+            "queryRewrite": "Find information about Arizona Cardinals stadium location",
+            "toolList": [],
+            "provider": {"classifierModel": "test-model", "rewriteModel": "test-model"},
+        },
+    }
 
 
 def _read_jsonl(path: Path) -> list[dict]:

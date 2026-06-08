@@ -114,6 +114,51 @@ class AgentModuleRunnerTest(unittest.TestCase):
         validate(space, load_json(RESOURCE_ROOT / "schemas" / "eval-parameter-space.schema.json"))
         validate_parameter_space(space)
 
+    def test_real_export_module_outputs_scored_correctly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_root = _write_real_export_dataset_root(Path(temp_dir) / "phase3")
+            run_dir = run_agent_modules(
+                dataset_root=dataset_root,
+                output_root=Path(temp_dir) / "out",
+                config=AgentModuleConfig(run_id="real-export-scoring"),
+            )
+
+            report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+            failures = _read_jsonl(run_dir / "failures.jsonl")
+            categories = {failure["errorCategory"] for failure in failures}
+            # Row 1: model routed to TOOL but expected KB → intent path mismatch
+            self.assertLess(report["metrics"]["agentModules.intentExactPathAccuracy"], 1.0)
+            # Row 1: model returned empty toolList but expected SessionFileSearchTool -> tool mismatch
+            self.assertLess(report["metrics"]["agentModules.toolCallF1"], 1.0)
+            self.assertIn("intent_path_mismatch", categories)
+            self.assertIn("tool_call_mismatch", categories)
+
+    def test_real_export_missing_required_field_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_root = _write_real_export_dataset_root(
+                Path(temp_dir) / "phase3", drop_field="queryRewrite"
+            )
+            with self.assertRaisesRegex(ValueError, "queryRewrite"):
+                run_agent_modules(
+                    dataset_root=dataset_root,
+                    output_root=Path(temp_dir) / "out",
+                    config=AgentModuleConfig(run_id="real-export-missing"),
+                )
+
+    def test_real_export_correct_tool_name_scores_f1_1(self) -> None:
+        """Real-export row with production tool name SessionFileSearchTool must score toolCallF1 == 1.0."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_root = _write_real_export_correct_tool_root(Path(temp_dir) / "phase3")
+            run_dir = run_agent_modules(
+                dataset_root=dataset_root,
+                output_root=Path(temp_dir) / "out",
+                config=AgentModuleConfig(run_id="real-export-correct-tool"),
+            )
+
+            report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+            # Both rows route correctly (KB for row 1, SYSTEM for row 2), tool names match
+            self.assertEqual(1.0, report["metrics"]["agentModules.toolCallF1"])
+
 
 def _write_dataset_root(path: Path, *, include_bad_module_outputs: bool = False) -> Path:
     rows = [
@@ -169,6 +214,179 @@ def _write_dataset_root(path: Path, *, include_bad_module_outputs: bool = False)
         "sourceIds": ["mtrag-human"],
         "recordSchema": "eval-memory-dataset-record.schema.json",
         "localPath": "datasets/memory/memory-v2-dialogues.jsonl",
+        "datasetHash": sha256_file(dataset_path),
+        "splitManifestPath": "manifests/splits/memory-v2-dialogues.json",
+        "splitManifestHash": "sha256:split",
+        "recordCount": len(rows),
+        "groupCount": len(rows),
+        "splits": {"development": {"recordCount": len(rows), "groupCount": len(rows), "groupHash": "sha256:group"}},
+    }
+    manifest_path = path / "manifests" / "datasets" / "memory-v2-dialogues.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def _write_real_export_dataset_root(path: Path, *, drop_field: str | None = None) -> Path:
+    """Write a dataset root with Phase 10c real-export style moduleOutputs."""
+    module_outputs_row1: dict[str, Any] = {
+        "intent": {
+            "routed": True,
+            "requiresClarification": False,
+            "kind": "TOOL",
+            "pathLabel": "General > Assistance > Tool Use",
+            "allowedTools": [],
+        },
+        "queryRewrite": "Find information about Arizona Cardinals stadium",
+        "toolList": [],
+        "provider": {"classifierModel": "test-model", "rewriteModel": "test-model"},
+    }
+    module_outputs_row2: dict[str, Any] = {
+        "intent": {
+            "routed": True,
+            "requiresClarification": False,
+            "kind": "SYSTEM",
+            "pathLabel": "General > Other > Direct Response",
+            "allowedTools": [],
+        },
+        "queryRewrite": "Tell me a joke.",
+        "toolList": [],
+        "provider": {"classifierModel": "test-model", "rewriteModel": "test-model"},
+    }
+    if drop_field:
+        module_outputs_row1.pop(drop_field, None)
+        module_outputs_row2.pop(drop_field, None)
+    rows = [
+        {
+            "sampleId": "real-export-1",
+            "datasetId": "memory-v2-dialogues",
+            "sourceGroupId": "conversation-1",
+            "split": "development",
+            "turns": [
+                {"speaker": "user", "text": "Where do the Arizona Cardinals play?"},
+            ],
+            "expectedResponse": "State Farm Stadium in Glendale, Arizona.",
+            "referenceContextIds": ["doc-1"],
+            "metadata": {
+                "answerability": ["ANSWERABLE"],
+                "domain": "mtrag-test",
+                "multiTurn": ["N/A"],
+                "questionType": ["Explanation"],
+                "sourceTaskId": "task-1",
+            },
+            "moduleOutputs": module_outputs_row1,
+        },
+        {
+            "sampleId": "real-export-2",
+            "datasetId": "memory-v2-dialogues",
+            "sourceGroupId": "conversation-2",
+            "split": "development",
+            "turns": [{"speaker": "user", "text": "Tell me a joke."}],
+            "expectedResponse": "I'm sorry, but I don't have the answer.",
+            "referenceContextIds": [],
+            "metadata": {
+                "answerability": ["UNANSWERABLE"],
+                "domain": "mtrag-test",
+                "multiTurn": ["N/A"],
+                "questionType": ["Non-Question"],
+                "sourceTaskId": "task-2",
+            },
+            "moduleOutputs": module_outputs_row2,
+        },
+    ]
+    dataset_path = path / "datasets" / "agent-modules" / "memory-v2-dialogues.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    manifest = {
+        "schemaVersion": 1,
+        "datasetId": "memory-v2-dialogues",
+        "version": 2,
+        "sourceIds": ["mtrag-human"],
+        "recordSchema": "eval-agent-module-dataset-record.schema.json",
+        "localPath": "datasets/agent-modules/memory-v2-dialogues.jsonl",
+        "datasetHash": sha256_file(dataset_path),
+        "splitManifestPath": "manifests/splits/memory-v2-dialogues.json",
+        "splitManifestHash": "sha256:split",
+        "recordCount": len(rows),
+        "groupCount": len(rows),
+        "splits": {"development": {"recordCount": len(rows), "groupCount": len(rows), "groupHash": "sha256:group"}},
+    }
+    manifest_path = path / "manifests" / "datasets" / "memory-v2-dialogues.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def _write_real_export_correct_tool_root(path: Path) -> Path:
+    """Real-export dataset where model routes correctly and uses production tool name."""
+    rows = [
+        {
+            "sampleId": "correct-tool-1",
+            "datasetId": "memory-v2-dialogues",
+            "sourceGroupId": "conversation-1",
+            "split": "development",
+            "turns": [{"speaker": "user", "text": "Where do the Arizona Cardinals play?"}],
+            "expectedResponse": "State Farm Stadium in Glendale, Arizona.",
+            "referenceContextIds": ["doc-1"],
+            "metadata": {
+                "answerability": ["ANSWERABLE"],
+                "domain": "mtrag-test",
+                "multiTurn": ["N/A"],
+                "questionType": ["Explanation"],
+                "sourceTaskId": "task-1",
+            },
+            "moduleOutputs": {
+                "intent": {
+                    "routed": True,
+                    "requiresClarification": False,
+                    "kind": "KB",
+                    "pathLabel": "General > Information > Knowledge Search",
+                    "allowedTools": ["SessionFileSearchTool"],
+                },
+                "queryRewrite": "Find information about Arizona Cardinals stadium location",
+                "toolList": ["SessionFileSearchTool"],
+                "provider": {"classifierModel": "test-model", "rewriteModel": "test-model"},
+            },
+        },
+        {
+            "sampleId": "correct-tool-2",
+            "datasetId": "memory-v2-dialogues",
+            "sourceGroupId": "conversation-2",
+            "split": "development",
+            "turns": [{"speaker": "user", "text": "Tell me a joke."}],
+            "expectedResponse": "I'm sorry, but I don't have the answer.",
+            "referenceContextIds": [],
+            "metadata": {
+                "answerability": ["UNANSWERABLE"],
+                "domain": "mtrag-test",
+                "multiTurn": ["N/A"],
+                "questionType": ["Non-Question"],
+                "sourceTaskId": "task-2",
+            },
+            "moduleOutputs": {
+                "intent": {
+                    "routed": True,
+                    "requiresClarification": False,
+                    "kind": "SYSTEM",
+                    "pathLabel": "General > Other > Direct Response",
+                    "allowedTools": [],
+                },
+                "queryRewrite": "Tell me a joke.",
+                "toolList": [],
+                "provider": {"classifierModel": "test-model", "rewriteModel": "test-model"},
+            },
+        },
+    ]
+    dataset_path = path / "datasets" / "agent-modules" / "memory-v2-dialogues.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    manifest = {
+        "schemaVersion": 1,
+        "datasetId": "memory-v2-dialogues",
+        "version": 2,
+        "sourceIds": ["mtrag-human"],
+        "recordSchema": "eval-agent-module-dataset-record.schema.json",
+        "localPath": "datasets/agent-modules/memory-v2-dialogues.jsonl",
         "datasetHash": sha256_file(dataset_path),
         "splitManifestPath": "manifests/splits/memory-v2-dialogues.json",
         "splitManifestHash": "sha256:split",

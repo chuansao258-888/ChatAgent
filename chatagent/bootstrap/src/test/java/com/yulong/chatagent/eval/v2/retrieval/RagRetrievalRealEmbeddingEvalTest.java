@@ -38,15 +38,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Real Ollama bge-m3 embedding retrieval evaluation.
+ * QUARANTINED — benchmark-only, NOT part of Phase 10 acceptance.
  *
- * <p>Requires a running Ollama instance with the {@code bge-m3} model pulled.
- * Skips gracefully via {@code Assumptions.assumeTrue} when Ollama is unavailable.
- * Tagged {@code eval-real} to exclude from default CI; activate with the
- * {@code eval-real} Maven profile or by clearing {@code surefire.excludedGroups}.
+ * <p>Real Ollama bge-m3 embedding retrieval evaluation on SciFact.
+ * Per the 2026-06-08 plan-review decision the new Phase 10a uses production
+ * document ingestion (MinerU + MQ + Milvus), not SciFact JSONL benchmark rows.
+ *
+ * <p>Tagged with {@code eval-benchmark} to separate from active {@code eval-v2}
+ * evaluation suites. Requires a running Ollama instance with {@code bge-m3}.
  */
-@Tag("eval-v2")
-@Tag("eval-real")
+@Tag("eval-benchmark")
 class RagRetrievalRealEmbeddingEvalTest {
 
     private static final String OLLAMA_BASE_URL = setting(
@@ -59,8 +60,10 @@ class RagRetrievalRealEmbeddingEvalTest {
             "CHATAGENT_RAG_EMBEDDING_MODEL",
             "bge-m3"
     );
-    private static final int SMOKE_QUERY_COUNT = 50;
-    private static final int SMOKE_DOCUMENT_COUNT = 1_000;
+    private static final int SMOKE_QUERY_COUNT = Integer.parseInt(
+            System.getProperty("chatagent.eval.ragRetrievalQueryCount", "50"));
+    private static final int SMOKE_DOCUMENT_COUNT = Integer.parseInt(
+            System.getProperty("chatagent.eval.ragRetrievalDocumentCount", "1000"));
     private static final String KNOWLEDGE_BASE_ID = "eval-v2-scifact-ollama";
 
     private final ObjectMapper objectMapper = new ObjectMapper();

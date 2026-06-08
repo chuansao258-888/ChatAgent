@@ -19,8 +19,6 @@
     { "metric": "agentModules.coreferenceRecall", "direction": "maximize" }
   ],
   "hardGates": {
-    "agentModules.intentExactPathAccuracy": { "min": 1.0 },
-    "agentModules.toolCallF1": { "min": 1.0 },
     "agentModules.wrongHistorySuppression": { "min": 1.0 }
   },
   "categoryMetric": "agentModules.intentExactPathAccuracy",

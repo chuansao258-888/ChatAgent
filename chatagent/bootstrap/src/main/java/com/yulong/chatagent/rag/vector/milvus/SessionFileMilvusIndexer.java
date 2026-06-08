@@ -58,12 +58,7 @@ public class SessionFileMilvusIndexer {
                 sessionFile.getOriginalFilename());
         List<IndexedChunkDocument> indexedChunks = indexedChunkAssembler.assemble(sessionId, sessionFile, chunks);
         List<MilvusChunkDocument> documents = new ArrayList<>(indexedChunks.size());
-        for (IndexedChunkDocument indexedChunk : indexedChunks) {
-            documents.add(milvusChunkMapper.toMilvusDocument(
-                    indexedChunk,
-                    embeddingClient.embed(indexedChunk.resolvedRetrievalText())
-            ));
-        }
+        embedChunksInBatches(indexedChunks, documents);
 
         milvusIndexService.upsertChunks(documents);
         log.info("Milvus indexing finished: sessionId={}, sessionFileId={}, chunkCount={}, durationMs={}",
@@ -84,6 +79,27 @@ public class SessionFileMilvusIndexer {
         MilvusIndexService milvusIndexService = milvusIndexServiceProvider.getIfAvailable();
         if (milvusIndexService != null) {
             milvusIndexService.deleteBySessionId(sessionId);
+        }
+    }
+
+    // ── Batch embedding ────────────────────────────────────────────────
+
+    private static final int BATCH_SIZE = 32;
+
+    private void embedChunksInBatches(List<IndexedChunkDocument> indexedChunks,
+                                      List<MilvusChunkDocument> documents) {
+        for (int batchStart = 0; batchStart < indexedChunks.size(); batchStart += BATCH_SIZE) {
+            int batchEnd = Math.min(batchStart + BATCH_SIZE, indexedChunks.size());
+            List<String> texts = new ArrayList<>(batchEnd - batchStart);
+            for (int i = batchStart; i < batchEnd; i++) {
+                texts.add(indexedChunks.get(i).resolvedRetrievalText());
+            }
+            float[][] embeddings = embeddingClient.embedBatch(texts);
+            for (int i = batchStart; i < batchEnd; i++) {
+                int batchIdx = i - batchStart;
+                documents.add(milvusChunkMapper.toMilvusDocument(
+                        indexedChunks.get(i), embeddings[batchIdx]));
+            }
         }
     }
 }

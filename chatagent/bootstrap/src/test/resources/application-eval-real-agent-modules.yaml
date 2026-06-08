@@ -1,0 +1,6 @@
+# Spring profile for Phase 10c agent module real-export evaluation.
+# Activated via @ActiveProfiles("eval-real-agent-modules") in AgentModuleExportEvalTest.
+#
+# Only requires PostgreSQL (agent + intent_node tables), Redis (intent tree cache),
+# and a configured LLM provider (IntentRouter classifier + QueryRewriter).
+# No Milvus, Ollama, or L3 memory beans are needed.

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatagent.local/eval/v2/eval-agent-module-dataset-record.schema.json",
+  "title": "ChatAgent Agent Module Dataset Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sampleId", "datasetId", "sourceGroupId", "split", "turns", "expectedResponse", "referenceContextIds", "metadata"],
+  "properties": {
+    "sampleId": { "type": "string", "minLength": 1 },
+    "datasetId": { "type": "string", "minLength": 1 },
+    "sourceGroupId": { "type": "string", "minLength": 1 },
+    "split": { "type": "string", "enum": ["calibration", "development", "holdout", "challenge"] },
+    "turns": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "expectedResponse": { "type": "string" },
+    "referenceContextIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "metadata": { "type": "object" },
+    "moduleOutputs": {
+      "description": "Real-model outputs from Phase 10c agent module Java export runner. Absent for deterministic Phase 3 rows. When present, all sub-fields are required.",
+      "type": "object",
+      "required": ["intent", "queryRewrite", "toolList", "provider"],
+      "additionalProperties": false,
+      "properties": {
+        "intent": {
+          "type": "object",
+          "required": ["routed"],
+          "properties": {
+            "routed": { "type": "boolean" },
+            "requiresClarification": { "type": "boolean" },
+            "kind": { "type": ["string", "null"], "enum": ["KB", "TOOL", "SYSTEM", null] },
+            "pathLabel": { "type": ["string", "null"] },
+            "scopedKbIds": { "type": "array", "items": { "type": "string" } },
+            "scopePolicy": { "type": ["string", "null"] },
+            "allowedTools": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "queryRewrite": { "type": ["string", "null"], "description": "LLM-rewritten query, null when routing did not resolve." },
+        "toolList": { "type": "array", "items": { "type": "string" }, "description": "Tool callback names from AgentToolCallbackFactory." },
+        "provider": {
+          "type": "object",
+          "required": ["classifierModel", "rewriteModel"],
+          "properties": {
+            "classifierModel": { "type": "string", "minLength": 1 },
+            "rewriteModel": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

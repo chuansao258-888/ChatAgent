@@ -16,7 +16,7 @@
     <description>Spring Boot bootstrap and business module for ChatAgent</description>
 
     <properties>
-        <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval,eval-v2</surefire.excludedGroups>
+        <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval,eval-v2,eval-benchmark</surefire.excludedGroups>
     </properties>
 
     <dependencies>
@@ -187,7 +187,7 @@
         <profile>
             <id>eval-real</id>
             <properties>
-                <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval</surefire.excludedGroups>
+                <surefire.excludedGroups>benchmark,reliability,reliability-live,stress,chaos,legacy-eval,eval-benchmark</surefire.excludedGroups>
             </properties>
         </profile>
     </profiles>

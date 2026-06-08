@@ -53,12 +53,7 @@ public class KnowledgeBaseMilvusIndexer {
                 chunks.size());
         List<IndexedChunkDocument> indexedChunks = indexedChunkAssembler.assemble(knowledgeBaseId, knowledgeDocument, chunks);
         List<KnowledgeBaseMilvusChunkDocument> documents = new ArrayList<>(indexedChunks.size());
-        for (IndexedChunkDocument indexedChunk : indexedChunks) {
-            documents.add(milvusChunkMapper.toMilvusDocument(
-                    indexedChunk,
-                    embeddingClient.embed(indexedChunk.resolvedRetrievalText())
-            ));
-        }
+        embedChunksInBatches(indexedChunks, documents);
 
         indexService.upsertChunks(documents);
         log.info("Knowledge-base Milvus indexing finished: knowledgeBaseId={}, documentId={}, chunkCount={}, durationMs={}",
@@ -90,5 +85,26 @@ public class KnowledgeBaseMilvusIndexer {
         log.info("Knowledge-base Milvus delete started: knowledgeBaseId={}", knowledgeBaseId);
         indexService.deleteByKnowledgeBaseId(knowledgeBaseId);
         log.info("Knowledge-base Milvus delete completed: knowledgeBaseId={}", knowledgeBaseId);
+    }
+
+    // ── Batch embedding ────────────────────────────────────────────────
+
+    private static final int BATCH_SIZE = 32;
+
+    private void embedChunksInBatches(List<IndexedChunkDocument> indexedChunks,
+                                      List<KnowledgeBaseMilvusChunkDocument> documents) {
+        for (int batchStart = 0; batchStart < indexedChunks.size(); batchStart += BATCH_SIZE) {
+            int batchEnd = Math.min(batchStart + BATCH_SIZE, indexedChunks.size());
+            List<String> texts = new ArrayList<>(batchEnd - batchStart);
+            for (int i = batchStart; i < batchEnd; i++) {
+                texts.add(indexedChunks.get(i).resolvedRetrievalText());
+            }
+            float[][] embeddings = embeddingClient.embedBatch(texts);
+            for (int i = batchStart; i < batchEnd; i++) {
+                int batchIdx = i - batchStart;
+                documents.add(milvusChunkMapper.toMilvusDocument(
+                        indexedChunks.get(i), embeddings[batchIdx]));
+            }
+        }
     }
 }
