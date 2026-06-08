@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -121,5 +122,62 @@ class OllamaEmbeddingClientNanFallbackLogTest {
             assertThat(args).noneMatch(arg ->
                     arg instanceof String s && s.contains("SENSITIVE_INPUT"));
         }
+    }
+
+    @Test
+    void nanEncodingHttp500_usesControlledFallback() throws Exception {
+        OllamaEmbeddingClient client = clientWithEmbeddingMono(Mono.error(new RuntimeException(
+                "Ollama HTTP 500 — {\"error\":\"failed to encode response: json: unsupported value: NaN\"}")));
+
+        float[] result = client.embed(SENSITIVE_INPUT);
+
+        assertThat(result).hasSize(1024);
+        assertThat(result).containsOnly(0.0f);
+        assertThat(client.nanFallbackCount()).isEqualTo(1);
+
+        List<ILoggingEvent> warnEvents = listAppender.list.stream()
+                .filter(e -> e.getLevel() == Level.WARN)
+                .toList();
+        assertThat(warnEvents).hasSize(1);
+        assertThat(warnEvents.get(0).getFormattedMessage())
+                .contains("inputLen=")
+                .contains("inputSha256=")
+                .doesNotContain("SENSITIVE_INPUT");
+    }
+
+    @Test
+    void nonNanHttp500_isNotSilentlyFallbacked() throws Exception {
+        OllamaEmbeddingClient client = clientWithEmbeddingMono(Mono.error(new RuntimeException(
+                "Ollama HTTP 500 — {\"error\":\"model overloaded\"}")));
+
+        assertThatThrownBy(() -> client.embed(SENSITIVE_INPUT))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Ollama HTTP 500")
+                .hasMessageContaining("model overloaded");
+        assertThat(client.nanFallbackCount()).isZero();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static OllamaEmbeddingClient clientWithEmbeddingMono(Mono<?> mono) throws Exception {
+        OllamaEmbeddingClient client = new OllamaEmbeddingClient(
+                WebClient.builder(), "http://localhost:1", "bge-m3");
+
+        WebClient mockWebClient = mock(WebClient.class);
+        WebClient.RequestBodyUriSpec uriSpec = mock(WebClient.RequestBodyUriSpec.class);
+        WebClient.RequestBodySpec bodySpec = mock(WebClient.RequestBodySpec.class);
+        WebClient.RequestHeadersSpec<?> headersSpec = mock(WebClient.RequestHeadersSpec.class);
+        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+
+        when(mockWebClient.post()).thenReturn(uriSpec);
+        when(uriSpec.uri("/api/embeddings")).thenReturn(bodySpec);
+        doReturn(headersSpec).when(bodySpec).bodyValue(any());
+        when(headersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.onStatus(any(), any())).thenReturn(responseSpec);
+        when(responseSpec.bodyToMono(any(Class.class))).thenReturn((Mono) mono);
+
+        Field webClientField = OllamaEmbeddingClient.class.getDeclaredField("webClient");
+        webClientField.setAccessible(true);
+        webClientField.set(client, mockWebClient);
+        return client;
     }
 }

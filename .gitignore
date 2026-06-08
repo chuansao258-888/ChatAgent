@@ -41,6 +41,7 @@ Thumbs.db
 **/.pytest_cache/
 
 artifacts/eval/
+chatagent/artifacts/
 
 ui/.chrome-profile/
 

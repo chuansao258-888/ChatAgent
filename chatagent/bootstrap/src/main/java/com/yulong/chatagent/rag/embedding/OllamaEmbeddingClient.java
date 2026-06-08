@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
@@ -37,6 +38,7 @@ public class OllamaEmbeddingClient {
 
     private final WebClient webClient;
     private final String embeddingModel;
+    private static final int MAX_EMBEDDING_RESPONSE_BYTES = 8 * 1024 * 1024;
 
     /** Count of NaN-only zero-vector fallbacks since client creation. */
     private final AtomicLong nanFallbackCount = new AtomicLong(0);
@@ -68,6 +70,10 @@ public class OllamaEmbeddingClient {
         this.webClient = builder
                 .baseUrl(baseUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(configurer -> configurer.defaultCodecs()
+                                .maxInMemorySize(MAX_EMBEDDING_RESPONSE_BYTES))
+                        .build())
                 .build();
         this.embeddingModel = embeddingModel;
     }
@@ -93,24 +99,18 @@ public class OllamaEmbeddingClient {
      */
     public float[] embed(String text) {
 
-        // --- Attempt 1: normal call ---
-        float[] vec = embedOnce(text);
-        if (!hasNaN(vec)) {
-            return vec;
-        }
-
-        // --- Attempt 2: retry once for transient NaN ---
-        try { Thread.sleep(200); } catch (InterruptedException ignored) {}
-        vec = embedOnce(text);
-        if (!hasNaN(vec)) {
-            return vec;
-        }
-
-        // --- Attempt 3: last retry ---
-        try { Thread.sleep(400); } catch (InterruptedException ignored) {}
-        vec = embedOnce(text);
-        if (!hasNaN(vec)) {
-            return vec;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                float[] vec = embedOnce(text);
+                if (!hasNaN(vec)) {
+                    return vec;
+                }
+            } catch (RuntimeException e) {
+                if (!isOllamaNanEncodingFailure(e)) {
+                    throw e;
+                }
+            }
+            sleepBeforeRetry(attempt);
         }
 
         // --- Controlled NaN fallback ---
@@ -133,6 +133,31 @@ public class OllamaEmbeddingClient {
         float[] vec = resp.getEmbedding();
         Assert.notNull(vec, "Embedding vector cannot be null");
         return vec;
+    }
+
+    private static void sleepBeforeRetry(int attempt) {
+        if (attempt >= 2) {
+            return;
+        }
+        try {
+            Thread.sleep(attempt == 0 ? 200 : 400);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static boolean isOllamaNanEncodingFailure(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null
+                    && message.contains("Ollama HTTP 500")
+                    && message.contains("unsupported value: NaN")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static boolean hasNaN(float[] vec) {

@@ -30,6 +30,7 @@ class TuningRunnerTest(unittest.TestCase):
                 "text-recall-v1.json",
                 "memory-v2-v1.json",
                 "agent-modules-v1.json",
+                "doc-ingestion-retrieval-v1.json",
             )
         ]
         validate(registry, load_json(RESOURCE_ROOT / "schemas" / "eval-parameter-registry.schema.json"))
@@ -40,6 +41,7 @@ class TuningRunnerTest(unittest.TestCase):
             ("memory-v2", "memory-v2-v1"),
             ("rag-retrieval", "rag-retrieval-v1"),
             ("text-recall", "text-recall-v1"),
+            ("doc-ingestion-retrieval", "doc-ingestion-retrieval-v1"),
         ):
             space = load_json(RESOURCE_ROOT / "parameter-spaces" / f"{resource_id}.json")
             policy = load_json(RESOURCE_ROOT / "tuning-policies" / f"{resource_id}.json")
@@ -449,6 +451,45 @@ class TuningRunnerTest(unittest.TestCase):
             self.assertLess(intent_accuracy, 1.0)
             self.assertLess(tool_f1, 1.0)
 
+    def test_cli_tune_suite_runs_doc_ingestion_retrieval(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_doc_ingestion_export_root(temp_path / "phase10a")
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = run_eval.main(
+                    [
+                        "tune-suite",
+                        "--suite",
+                        "doc-ingestion-retrieval",
+                        "--dataset-root",
+                        str(dataset_root),
+                        "--output-root",
+                        str(temp_path / "out"),
+                        "--experiment-id",
+                        "doc-ingestion-tuning",
+                        "--combination-budget",
+                        "1",
+                        "--max-samples-per-trial",
+                        "3",
+                        "--holdout-max-samples",
+                        "1",
+                        "--confidence-resamples",
+                        "20",
+                    ]
+                )
+
+            self.assertEqual(0, exit_code)
+            experiment_dir = temp_path / "out" / "doc-ingestion-tuning"
+            manifest = load_json(experiment_dir / "experiment-manifest.json")
+            holdout = load_json(experiment_dir / "holdout-verification.json")
+            trials = _read_jsonl(experiment_dir / "trials.jsonl")
+            trial_report = load_json(experiment_dir / "search-runs" / "trial-0001" / "report.json")
+            self.assertEqual("doc-ingestion-retrieval-v1", manifest["datasetId"])
+            self.assertEqual(0, holdout["overlapCount"])
+            self.assertTrue(all(trial["status"] == "completed" for trial in trials))
+            self.assertIn("docIngestion.contextRecallAtK", trial_report["metrics"])
+            self.assertTrue((experiment_dir / "promotion-decision.md").exists())
+
 
 def _write_dataset_root(path: Path) -> Path:
     rows = [
@@ -742,6 +783,120 @@ def _write_agent_modules_export_root(path: Path) -> Path:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
+
+
+def _write_doc_ingestion_export_root(path: Path) -> Path:
+    rows = [
+        _doc_ingestion_row("doc-calibration", "group-calibration", "calibration", "PDF"),
+        _doc_ingestion_row("doc-development", "group-development", "development", "XLSX"),
+        _doc_ingestion_row("doc-holdout", "group-holdout", "holdout", "SEC_HTML"),
+        _doc_ingestion_row("doc-challenge", "group-challenge", "challenge", "WEB_MD"),
+    ]
+    dataset_path = path / "datasets" / "doc-ingestion" / "doc-ingestion-retrieval-v1.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    split_manifest = {
+        "schemaVersion": 1,
+        "datasetId": "doc-ingestion-retrieval-v1",
+        "splits": {
+            "calibration": {"groupHash": "sha256:doc-calibration", "groupIds": ["group-calibration"]},
+            "development": {"groupHash": "sha256:doc-development", "groupIds": ["group-development"]},
+            "holdout": {"groupHash": "sha256:doc-holdout", "groupIds": ["group-holdout"]},
+            "challenge": {"groupHash": "sha256:doc-challenge", "groupIds": ["group-challenge"]},
+        },
+    }
+    split_path = path / "manifests" / "splits" / "doc-ingestion-retrieval-v1.json"
+    split_path.parent.mkdir(parents=True, exist_ok=True)
+    split_path.write_text(json.dumps(split_manifest), encoding="utf-8")
+    manifest = {
+        "schemaVersion": 1,
+        "datasetId": "doc-ingestion-retrieval-v1",
+        "version": 1,
+        "sourceIds": ["phase10a-fixture"],
+        "recordSchema": "eval-doc-ingestion-dataset-record.schema.json",
+        "localPath": "datasets/doc-ingestion/doc-ingestion-retrieval-v1.jsonl",
+        "datasetHash": sha256_file(dataset_path),
+        "splitManifestPath": "manifests/splits/doc-ingestion-retrieval-v1.json",
+        "splitManifestHash": sha256_file(split_path),
+        "recordCount": len(rows),
+        "groupCount": len(rows),
+        "splits": {
+            split: {"recordCount": 1, "groupCount": 1, "groupHash": details["groupHash"]}
+            for split, details in split_manifest["splits"].items()
+        },
+        "provenance": {
+            "provider": "ollama",
+            "modelName": "bge-m3",
+            "embeddingModel": "bge-m3",
+            "exportTimestamp": "2026-06-09T00:00:00Z",
+        },
+    }
+    manifest_path = path / "manifests" / "datasets" / "doc-ingestion-retrieval-v1.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def _doc_ingestion_row(reference_id: str, group_id: str, split: str, fmt: str) -> dict:
+    return {
+        "sampleId": f"{reference_id}-sample",
+        "datasetId": "doc-ingestion-retrieval-v1",
+        "sourceGroupId": group_id,
+        "split": split,
+        "fileId": reference_id,
+        "fileFormat": fmt,
+        "sourceUrl": f"https://example.test/{reference_id}",
+        "userInput": f"What does {reference_id} say?",
+        "referenceContextIds": [reference_id],
+        "metadata": {
+            "format": fmt,
+            "referenceContent": f"Evidence passage for {reference_id}.",
+            "generationMethod": "template-question",
+            "sourceUrl": f"https://example.test/{reference_id}",
+            "sourceGroup": "phase10a-fixture",
+            "knowledgeBaseId": "kb-fixture",
+            "referenceDocId": reference_id,
+            "referenceDocFilename": f"{reference_id}.txt",
+            "candidateContexts": _doc_ingestion_candidates(reference_id),
+            "mqEnabled": True,
+            "mineruEnabled": fmt == "PDF",
+            "mq": {"consumerCompleted": True, "parseStatus": "COMPLETED", "chunkCount": 2, "milvusInserted": True},
+            "mineru": {"enabled": fmt == "PDF", "selected": fmt == "PDF", "visualChunkCount": 1 if fmt == "PDF" else 0},
+        },
+    }
+
+
+def _doc_ingestion_candidates(reference_id: str) -> list[dict]:
+    return [
+        {
+            "id": reference_id,
+            "chunkId": reference_id,
+            "content": f"Evidence passage for {reference_id}.",
+            "score": 0.95,
+            "rankSignals": {
+                "candidateRank": 1,
+                "denseRank": 1,
+                "bm25Rank": 2,
+                "denseScore": 0.95,
+                "bm25Score": 0.80,
+                "fusedScore": 0.95,
+            },
+        },
+        {
+            "id": f"{reference_id}-other",
+            "chunkId": f"{reference_id}-other",
+            "content": "Distractor passage.",
+            "score": 0.50,
+            "rankSignals": {
+                "candidateRank": 2,
+                "denseRank": 2,
+                "bm25Rank": 1,
+                "denseScore": 0.50,
+                "bm25Score": 0.90,
+                "fusedScore": 0.50,
+            },
+        },
+    ]
 
 
 def _agent_modules_row(sample_id: str, group_id: str, split: str, answerable: bool, real_kind: str) -> dict:

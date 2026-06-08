@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eval-doc-ingestion-dataset-record.schema.json",
+  "title": "EvalDocIngestionDatasetRecord",
+  "description": "Phase 10a production document ingestion retrieval dataset record. Each row represents one evidence-grounded query against real multi-format documents ingested through the production pipeline. Follows the Phase 3 dataset record contract.",
+  "type": "object",
+  "required": ["sampleId", "datasetId", "sourceGroupId", "split", "userInput", "referenceContextIds", "metadata"],
+  "properties": {
+    "sampleId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this query row."
+    },
+    "datasetId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Dataset identifier (doc-ingestion-retrieval-v1)."
+    },
+    "sourceGroupId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source group identifier (document ID, used for split grouping)."
+    },
+    "split": {
+      "type": "string",
+      "enum": ["calibration", "development", "holdout", "challenge"],
+      "description": "Dataset split assignment."
+    },
+    "userInput": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The evidence-grounded query text derived from the reference chunk content."
+    },
+    "referenceContextIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "The chunk IDs that this query should retrieve. At least one reference chunk ID is required for meaningful chunk-level recall scoring."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Doc-ingestion-specific metadata including source provenance, format, and retrieved contexts.",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "File format family (TXT, PDF, HTML, MD, DOCX, XLSX, etc.)."
+        },
+        "referenceContent": {
+          "type": "string",
+          "description": "Full text content of the reference chunk."
+        },
+        "generationMethod": {
+          "type": "string",
+          "description": "How the query was generated: direct-evidence-preflight or template-question."
+        },
+        "sourceUrl": {
+          "type": ["string", "null"],
+          "description": "Original download URL of the source document."
+        },
+        "sourceSha256": {
+          "type": ["string", "null"],
+          "description": "SHA-256 hash of the downloaded file content."
+        },
+        "sourceGroup": {
+          "type": ["string", "null"],
+          "description": "Source group identifier (e.g., project-gutenberg, sec-edgar, pmc)."
+        },
+        "license": {
+          "type": ["string", "null"],
+          "description": "License or terms of the source document."
+        },
+        "knowledgeBaseId": {
+          "type": "string",
+          "description": "The eval-owned knowledge base ID used for ingestion."
+        },
+        "referenceDocId": {
+          "type": "string",
+          "description": "The document ID containing the reference chunk."
+        },
+        "referenceDocFilename": {
+          "type": "string",
+          "description": "Original filename of the source document."
+        },
+        "retrievedContexts": {
+          "type": "array",
+          "description": "Top-K retrieved contexts from the production hybrid search with chunk IDs.",
+          "items": {
+            "type": "object",
+            "required": ["chunkId", "documentId", "content"],
+            "properties": {
+              "chunkId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The chunk ID for chunk-level metric matching."
+              },
+              "documentId": {
+                "type": ["string", "null"],
+                "description": "The document ID of the retrieved chunk."
+              },
+              "documentName": {
+                "type": ["string", "null"]
+              },
+              "chunkIndex": {
+                "type": ["integer", "null"]
+              },
+              "score": {
+                "type": ["number", "null"]
+              },
+              "content": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "candidateContexts": {
+          "type": "array",
+          "description": "Candidate pool from the production hybrid search, including raw dense/BM25 rank signals used for replay tuning.",
+          "items": {
+            "type": "object",
+            "required": ["id", "chunkId", "content", "rankSignals"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "chunkId": { "type": "string", "minLength": 1 },
+              "documentId": { "type": ["string", "null"] },
+              "documentName": { "type": ["string", "null"] },
+              "chunkIndex": { "type": ["integer", "null"] },
+              "score": { "type": ["number", "null"] },
+              "content": { "type": "string" },
+              "rankSignals": {
+                "type": "object",
+                "required": ["candidateRank"],
+                "properties": {
+                  "candidateRank": { "type": "integer", "minimum": 1 },
+                  "denseRank": { "type": ["integer", "null"], "minimum": 1 },
+                  "bm25Rank": { "type": ["integer", "null"], "minimum": 1 },
+                  "denseScore": { "type": ["number", "null"] },
+                  "bm25Score": { "type": ["number", "null"] },
+                  "fusedScore": { "type": ["number", "null"] }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "parser": {
+          "type": "string",
+          "description": "Document parser used (e.g., TikaDocumentParser, PdfDocumentParser)."
+        },
+        "chunker": {
+          "type": "string",
+          "description": "Chunker strategy used (e.g., PlainTextChunker, StructureAwareMarkdownChunker)."
+        },
+        "chunkerTargetChars": {
+          "type": "integer",
+          "description": "Target chunk size in characters."
+        },
+        "chunkerOverlapChars": {
+          "type": "integer",
+          "description": "Chunk overlap in characters."
+        },
+        "chunkerMaxRowsPerChunk": {
+          "type": "integer",
+          "description": "Maximum rows per chunk for row-based XLSX chunking."
+        },
+        "chunkerOverlapRows": {
+          "type": "integer",
+          "description": "Overlap rows for row-based XLSX chunking."
+        },
+        "embeddingModel": {
+          "type": "string",
+          "description": "Embedding model name (e.g., bge-m3)."
+        },
+        "embeddingProvider": {
+          "type": "string",
+          "description": "Embedding provider (e.g., ollama)."
+        },
+        "embeddingDimension": {
+          "type": "integer",
+          "description": "Embedding vector dimension."
+        },
+        "vectorIndex": {
+          "type": "string",
+          "description": "Vector index backend (e.g., milvus)."
+        },
+        "vectorMetric": {
+          "type": "string",
+          "description": "Vector similarity metric (e.g., COSINE)."
+        },
+        "ingestionPath": {
+          "type": "string",
+          "description": "Ingestion path used (e.g., ingestSync, mq-outbox)."
+        },
+        "mqEnabled": {
+          "type": "boolean",
+          "description": "Whether MQ/outbox path was used for ingestion."
+        },
+        "mineruEnabled": {
+          "type": "boolean",
+          "description": "Whether MinerU visual-track parsing was used."
+        },
+        "mq": {
+          "type": "object",
+          "description": "Outbox/RabbitMQ provenance for accepted full-chain rows.",
+          "properties": {
+            "outboxEventId": { "type": ["string", "null"] },
+            "idempotencyKey": { "type": ["string", "null"] },
+            "outboxStatus": { "type": ["string", "null"] },
+            "consumerCompleted": { "type": "boolean" },
+            "parseStatus": { "type": "string" },
+            "chunkCount": { "type": "integer", "minimum": 1 },
+            "milvusInserted": { "type": "boolean" },
+            "outboxCreatedAt": { "type": ["string", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "mineru": {
+          "type": "object",
+          "description": "MinerU/VDP route provenance for PDF or visual-track rows.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "selected": { "type": "boolean" },
+            "engineId": { "type": ["string", "null"] },
+            "visualChunkCount": { "type": "integer", "minimum": 0 },
+            "evidenceFields": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

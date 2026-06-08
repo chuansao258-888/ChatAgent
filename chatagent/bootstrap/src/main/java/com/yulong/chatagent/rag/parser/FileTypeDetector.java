@@ -15,7 +15,7 @@ import java.util.Set;
 @Slf4j
 public class FileTypeDetector {
 
-    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("md", "markdown", "txt", "pdf", "doc", "docx", "pptx", "xlsx");
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("md", "markdown", "txt", "pdf", "doc", "docx", "pptx", "xlsx", "html", "htm", "csv");
     private static final Set<String> SESSION_IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp", "bmp");
     private static final Set<String> REJECTED_EXTENSIONS = Set.of(
             "exe", "dll", "bin", "zip", "rar", "7z", "tar", "gz",
@@ -38,6 +38,8 @@ public class FileTypeDetector {
             "text/markdown",
             "text/x-markdown",
             "text/plain",
+            "text/html",
+            "text/csv",
             "application/pdf",
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -180,6 +182,13 @@ public class FileTypeDetector {
                     || "application/zip".equals(detectedMime)
                     || "application/x-zip-compressed".equals(detectedMime)
                     || "application/octet-stream".equals(detectedMime);
+            case "html", "htm" -> "text/html".equals(detectedMime)
+                    || detectedMime.startsWith("text/")
+                    || "application/xhtml+xml".equals(detectedMime)
+                    || "application/octet-stream".equals(detectedMime);
+            case "csv" -> "text/csv".equals(detectedMime)
+                    || "text/plain".equals(detectedMime)
+                    || "application/octet-stream".equals(detectedMime);
             default -> false;
         };
     }
@@ -193,6 +202,8 @@ public class FileTypeDetector {
             case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
             case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
             case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "html", "htm" -> "text/html";
+            case "csv" -> "text/csv";
             default -> StringUtils.hasText(detectedMime) ? detectedMime : declaredMimeType;
         };
     }

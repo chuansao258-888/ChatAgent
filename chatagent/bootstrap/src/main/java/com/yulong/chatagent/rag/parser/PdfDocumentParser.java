@@ -48,6 +48,7 @@ public class PdfDocumentParser implements DocumentParser {
                              @Value("${chatagent.rag.vdp.char-density-threshold:150}") int charDensityThreshold,
                              @Value("${chatagent.rag.vdp.short-text-fast-track-threshold:80}") int shortTextFastTrackThreshold,
                              @Value("${chatagent.rag.vdp.whitespace-alignment-line-threshold:2}") int whitespaceAlignedLineThreshold,
+                             @Value("${chatagent.rag.vdp.force-visual-track:false}") boolean forceVisualTrack,
                              @Value("${chatagent.rag.vdp.pdf-page-max-in-flight:2}") int pageMaxInFlight,
                              @Value("${chatagent.rag.vdp.pdf-page-timeout-ms:5000}") long pageDispatchTimeoutMs,
                              @Value("${chatagent.rag.vdp.knowledge-document-timeout-ms:300000}") long knowledgeDocumentTimeoutMs,
@@ -61,6 +62,7 @@ public class PdfDocumentParser implements DocumentParser {
                 charDensityThreshold,
                 shortTextFastTrackThreshold,
                 whitespaceAlignedLineThreshold,
+                forceVisualTrack,
                 pageMaxInFlight,
                 pageDispatchTimeoutMs,
                 knowledgeDocumentTimeoutMs,
@@ -217,9 +219,39 @@ public class PdfDocumentParser implements DocumentParser {
                       long knowledgeDocumentTimeoutMs,
                       float renderDpi,
                       MeterRegistry meterRegistry) {
+        this(
+                engineRouter,
+                vdpPageCacheService,
+                vdpPageDispatchExecutor,
+                vdpBatchExecutor,
+                charDensityThreshold,
+                shortTextFastTrackThreshold,
+                whitespaceAlignedLineThreshold,
+                false,
+                pageMaxInFlight,
+                pageDispatchTimeoutMs,
+                knowledgeDocumentTimeoutMs,
+                renderDpi,
+                meterRegistry
+        );
+    }
+
+    PdfDocumentParser(VdpEngineRouter engineRouter,
+                      VdpPageCacheService vdpPageCacheService,
+                      Executor vdpPageDispatchExecutor,
+                      Executor vdpBatchExecutor,
+                      int charDensityThreshold,
+                      int shortTextFastTrackThreshold,
+                      int whitespaceAlignedLineThreshold,
+                      boolean forceVisualTrack,
+                      int pageMaxInFlight,
+                      long pageDispatchTimeoutMs,
+                      long knowledgeDocumentTimeoutMs,
+                      float renderDpi,
+                      MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
         PdfPageRenderer pageRenderer = new PdfPageRenderer(renderDpi);
-        this.qualityRouter = new PdfQualityRouter(charDensityThreshold, shortTextFastTrackThreshold, whitespaceAlignedLineThreshold);
+        this.qualityRouter = new PdfQualityRouter(charDensityThreshold, shortTextFastTrackThreshold, whitespaceAlignedLineThreshold, forceVisualTrack);
         this.textExtractor = new PdfPageTextExtractor();
         PdfVdpCache vdpCache = new PdfVdpCache(vdpPageCacheService, pageRenderer.renderDpi());
         PdfVdpBatchPlanner batchPlanner = new PdfVdpBatchPlanner(vdpCache);

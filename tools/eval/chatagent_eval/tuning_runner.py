@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from chatagent_eval.agent_module_runner import AgentModuleConfig, run_agent_modules
+from chatagent_eval.doc_ingestion_runner import DocIngestionConfig, run_doc_ingestion_retrieval
 from chatagent_eval.memory_runner import MemoryConfig, run_memory
 from chatagent_eval.parameters import validate_parameter_registry, validate_registry_coverage, validate_tuning_policy
 from chatagent_eval.promotion import (
@@ -29,7 +30,7 @@ from chatagent_eval.tuning import (
     select_champion,
 )
 
-SUPPORTED_SUITES = {"agent-modules", "memory-v2", "rag-retrieval", "text-recall"}
+SUPPORTED_SUITES = {"agent-modules", "doc-ingestion-retrieval", "memory-v2", "rag-retrieval", "text-recall"}
 SUITE_CONFIG_FIELDS = {
     "agent-modules": {
         "intentHistoryTurns": "intent_history_turns",
@@ -45,6 +46,11 @@ SUITE_CONFIG_FIELDS = {
         "l1BudgetChars": "l1_budget_chars",
         "l2SegmentTurns": "l2_segment_turns",
         "l3TopK": "l3_top_k",
+    },
+    "doc-ingestion-retrieval": {
+        "topK": "top_k",
+        "candidateK": "candidate_k",
+        "rrfK": "rrf_k",
     },
     "rag-retrieval": {
         "topK": "top_k",
@@ -72,6 +78,10 @@ SAMPLE_METRIC_PATHS = {
     "ragRetrieval.hitAtK": ("metadata", "hitAtK"),
     "ragRetrieval.recallAtK": ("metadata", "recallAtK"),
     "ragRetrieval.mrr": ("metadata", "mrr"),
+    "docIngestion.hitAtK": ("metadata", "docIngestion", "hitAtK"),
+    "docIngestion.contextRecallAtK": ("metadata", "docIngestion", "contextRecallAtK"),
+    "docIngestion.mrr": ("metadata", "docIngestion", "mrr"),
+    "docIngestion.phraseRecall": ("metadata", "docIngestion", "phraseRecall"),
 }
 
 
@@ -410,6 +420,12 @@ def _run_suite(
             output_root=output_root,
             config=MemoryConfig(**common, **kwargs),
         )
+    elif suite == "doc-ingestion-retrieval":
+        run_dir = run_doc_ingestion_retrieval(
+            dataset_root=dataset_root,
+            output_root=output_root,
+            config=DocIngestionConfig(**common, **kwargs),
+        )
     elif suite == "text-recall":
         run_dir = run_text_recall(
             dataset_root=dataset_root,
@@ -566,7 +582,7 @@ def _category_metrics(samples: Sequence[Mapping[str, Any]], metric: str) -> dict
             continue
         metadata = sample.get("metadata") or {}
         source_metadata = metadata.get("sourceMetadata") or {}
-        category = str(source_metadata.get("domain") or metadata.get("sourceUrl") or "all")
+        category = str(source_metadata.get("domain") or metadata.get("format") or metadata.get("sourceUrl") or "all")
         grouped[category].append(float(value))
     return {category: sum(values) / len(values) for category, values in sorted(grouped.items())}
 
@@ -583,6 +599,7 @@ def _nested(value: Mapping[str, Any], path: Sequence[str]) -> Any:
 def _dataset_id(suite: str) -> str:
     return {
         "agent-modules": "memory-v2-dialogues",
+        "doc-ingestion-retrieval": "doc-ingestion-retrieval-v1",
         "memory-v2": "memory-v2-dialogues",
         "rag-retrieval": "beir-scifact-rag-v1",
         "text-recall": "sec-companyfacts-text-recall-v1",

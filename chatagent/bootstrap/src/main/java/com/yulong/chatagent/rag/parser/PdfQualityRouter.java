@@ -19,11 +19,20 @@ class PdfQualityRouter {
     private final int charDensityThreshold;
     private final int shortTextFastTrackThreshold;
     private final int whitespaceAlignedLineThreshold;
+    private final boolean forceVisualTrack;
 
     PdfQualityRouter(int charDensityThreshold, int shortTextFastTrackThreshold, int whitespaceAlignedLineThreshold) {
+        this(charDensityThreshold, shortTextFastTrackThreshold, whitespaceAlignedLineThreshold, false);
+    }
+
+    PdfQualityRouter(int charDensityThreshold,
+                     int shortTextFastTrackThreshold,
+                     int whitespaceAlignedLineThreshold,
+                     boolean forceVisualTrack) {
         this.charDensityThreshold = Math.max(1, charDensityThreshold);
         this.shortTextFastTrackThreshold = Math.max(1, shortTextFastTrackThreshold);
         this.whitespaceAlignedLineThreshold = Math.max(1, whitespaceAlignedLineThreshold);
+        this.forceVisualTrack = forceVisualTrack;
     }
 
     PageRoutingDecision decideRoute(String nativeText) {
@@ -32,6 +41,9 @@ class PdfQualityRouter {
         int alignedWhitespaceLines = countAlignedWhitespaceLines(trimmed);
         if (!StringUtils.hasText(trimmed)) {
             return new PageRoutingDecision(PageRoute.VISUAL_TRACK, "EMPTY_NATIVE_TEXT", alignedWhitespaceLines);
+        }
+        if (forceVisualTrack) {
+            return new PageRoutingDecision(PageRoute.VISUAL_TRACK, "FORCED_VISUAL_TRACK", alignedWhitespaceLines);
         }
         if (alignedWhitespaceLines >= whitespaceAlignedLineThreshold) {
             return new PageRoutingDecision(PageRoute.VISUAL_TRACK, "ALIGNED_WHITESPACE", alignedWhitespaceLines);

@@ -1,0 +1,29 @@
+{
+  "id": "doc-ingestion-retrieval-v1",
+  "version": "1",
+  "primaryMetric": "docIngestion.contextRecallAtK",
+  "direction": "maximize",
+  "parameters": [
+    {
+      "id": "topK",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [3, 5, 8],
+      "rationale": "Controls final retrieved chunk depth for grounded recall rows."
+    },
+    {
+      "id": "candidateK",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [8, 12, 24],
+      "rationale": "Controls replay candidate-pool depth from the real export."
+    },
+    {
+      "id": "rrfK",
+      "classification": "quality-tunable",
+      "type": "integer",
+      "values": [20, 60, 100],
+      "rationale": "Controls reciprocal-rank-fusion smoothing over dense and BM25 rank signals."
+    }
+  ]
+}

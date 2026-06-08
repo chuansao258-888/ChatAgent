@@ -1,0 +1,46 @@
+# Spring profile for Phase 10a production document ingestion evaluation.
+# Activated via @ActiveProfiles("eval-real-doc-ingestion") in ProductionDocumentIngestionEvalTest.
+#
+# Requires PostgreSQL, Redis, RabbitMQ, Ollama bge-m3, Milvus, and MinerU.
+# This profile intentionally uses the production facade/outbox/RabbitMQ ingestion
+# path; direct ingestSync is not acceptance evidence for Phase 10a.
+
+milvus:
+  enabled: true
+
+chatagent:
+  mq:
+    enabled: true
+    outbox:
+      poll-interval-ms: 250
+      batch-size: 4
+    consumers:
+      ingest-prefetch: 1
+      ingest-concurrency: 1
+      agent-prefetch: 1
+      agent-concurrency: 1
+    dispatchers:
+      agent-run-enabled: false
+  rag:
+    vdp:
+      char-density-threshold: 1000000
+      short-text-fast-track-threshold: 1
+      whitespace-alignment-line-threshold: 1
+      force-visual-track: true
+      pdf-page-max-in-flight: 1
+      pdf-page-timeout-ms: 30000
+      knowledge-document-timeout-ms: 300000
+      pdf-page-dispatch-core-pool-size: 1
+      pdf-page-dispatch-max-pool-size: 1
+      pdf-batch-core-pool-size: 1
+      pdf-batch-max-pool-size: 1
+      mineru:
+        enabled: true
+        base-url: ${CHATAGENT_RAG_VDP_MINERU_BASE_URL:http://127.0.0.1:8000}
+        poll-interval-ms: 1000
+        max-poll-attempts: 300
+    ingestion:
+      contextual-enricher:
+        enabled: false
+      document-enhancer:
+        enabled: false
