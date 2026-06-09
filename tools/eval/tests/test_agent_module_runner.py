@@ -133,7 +133,8 @@ class AgentModuleRunnerTest(unittest.TestCase):
             self.assertIn("intent_path_mismatch", categories)
             self.assertIn("tool_call_mismatch", categories)
 
-    def test_real_export_missing_required_field_raises(self) -> None:
+    def test_real_export_missing_query_rewrite_raises(self) -> None:
+        """Missing queryRewrite key is malformed real-export data and must fail."""
         with tempfile.TemporaryDirectory() as temp_dir:
             dataset_root = _write_real_export_dataset_root(
                 Path(temp_dir) / "phase3", drop_field="queryRewrite"
@@ -142,7 +143,33 @@ class AgentModuleRunnerTest(unittest.TestCase):
                 run_agent_modules(
                     dataset_root=dataset_root,
                     output_root=Path(temp_dir) / "out",
-                    config=AgentModuleConfig(run_id="real-export-missing"),
+                    config=AgentModuleConfig(run_id="real-export-missing-qr"),
+                )
+
+    def test_real_export_empty_query_rewrite_is_resilient(self) -> None:
+        """Present-but-empty queryRewrite is valid for unresolved real routing."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_root = _write_real_export_dataset_root(
+                Path(temp_dir) / "phase3", override_field=("queryRewrite", "")
+            )
+            run_dir = run_agent_modules(
+                dataset_root=dataset_root,
+                output_root=Path(temp_dir) / "out",
+                config=AgentModuleConfig(run_id="real-export-empty-qr"),
+            )
+            self.assertTrue((run_dir / "metrics.json").exists())
+
+    def test_real_export_missing_intent_raises(self) -> None:
+        """Missing intent in real-export must raise ValueError."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dataset_root = _write_real_export_dataset_root(
+                Path(temp_dir) / "phase3", drop_field="intent"
+            )
+            with self.assertRaisesRegex(ValueError, "intent"):
+                run_agent_modules(
+                    dataset_root=dataset_root,
+                    output_root=Path(temp_dir) / "out",
+                    config=AgentModuleConfig(run_id="real-export-missing-intent"),
                 )
 
     def test_real_export_correct_tool_name_scores_f1_1(self) -> None:
@@ -227,7 +254,12 @@ def _write_dataset_root(path: Path, *, include_bad_module_outputs: bool = False)
     return path
 
 
-def _write_real_export_dataset_root(path: Path, *, drop_field: str | None = None) -> Path:
+def _write_real_export_dataset_root(
+    path: Path,
+    *,
+    drop_field: str | None = None,
+    override_field: tuple[str, Any] | None = None,
+) -> Path:
     """Write a dataset root with Phase 10c real-export style moduleOutputs."""
     module_outputs_row1: dict[str, Any] = {
         "intent": {
@@ -256,6 +288,10 @@ def _write_real_export_dataset_root(path: Path, *, drop_field: str | None = None
     if drop_field:
         module_outputs_row1.pop(drop_field, None)
         module_outputs_row2.pop(drop_field, None)
+    if override_field:
+        field, value = override_field
+        module_outputs_row1[field] = value
+        module_outputs_row2[field] = value
     rows = [
         {
             "sampleId": "real-export-1",

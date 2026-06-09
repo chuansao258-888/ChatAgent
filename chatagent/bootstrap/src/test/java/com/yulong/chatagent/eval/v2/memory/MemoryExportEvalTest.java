@@ -109,6 +109,9 @@ class MemoryExportEvalTest {
 
     private static final String DATASET_ID = "memory-v2-dialogues";
     private static final int SMOKE_DIALOGUE_COUNT = 10;
+    /** System property for full-export max samples (0 = all rows). */
+    private static final int MAX_SAMPLES = Integer.parseInt(
+            System.getProperty("chatagent.eval.memoryMaxSamples", "0"));
     private static final int L3_TOP_K = 3;
     /** Splits that must appear in the exported dataset root for tune-suite compatibility. */
     private static final Set<String> REQUIRED_SPLITS = Set.of("calibration", "development", "holdout");
@@ -391,6 +394,88 @@ class MemoryExportEvalTest {
                     .as("Exported split manifest must include '%s' split for tune-suite", required)
                     .isTrue();
         }
+    }
+
+    /**
+     * Opt-in full Phase 10b export over the complete MTRAG dataset.
+     *
+     * <p>Requires live PostgreSQL, Ollama bge-m3, Milvus, and the configured
+     * LLM provider. The accepted live verification took about 79 minutes for
+     * 842 rows.</p>
+     */
+    @Test
+    void exportsFullMemoryPipeline() throws Exception {
+        assumeOllamaEmbeddingAvailable();
+        int maxSamples = MAX_SAMPLES > 0 ? MAX_SAMPLES : Integer.MAX_VALUE;
+        Path repositoryRoot = findRepositoryRoot();
+        Path phase3Root = repositoryRoot.resolve("artifacts/eval/phase3");
+        Path datasetPath = phase3Root.resolve("datasets/memory/memory-v2-dialogues.jsonl");
+        Path manifestPath = phase3Root.resolve("manifests/datasets/memory-v2-dialogues.json");
+        assumeTrue(Files.exists(datasetPath) && Files.exists(manifestPath),
+                "Run Phase 3 MTRAG memory preparation before the Phase 10b full export");
+
+        List<JsonNode> rows = loadDatasetRows(datasetPath, maxSamples);
+        JsonNode manifest = OBJECT_MAPPER.readTree(manifestPath.toFile());
+        List<String> sourceIdList = toStrings(manifest.path("sourceIds"));
+        List<Map<String, Object>> samples = new ArrayList<>();
+        String exportTimestamp = Instant.now().toString();
+        String runId = "phase10b-memory-full";
+
+        for (int index = 0; index < rows.size(); index++) {
+            JsonNode row = rows.get(index);
+            String sessionId = EVAL_PREFIX + UUID.randomUUID().toString().substring(0, 8);
+            createdSessionIds.add(sessionId);
+            ensureSession(sessionId);
+            long maxSeqNo = insertDialogueMessages(sessionId, row);
+            SummaryResult l1Result = summarizer.summarizeWithDetails(sessionId, maxSeqNo);
+
+            ExtractionResult l3Result = l1Result.turns().isEmpty()
+                    ? ExtractionResult.failure()
+                    : extractor.extract(l1Result.turns());
+
+            if (l3Result.success() && !l3Result.memories().isEmpty()) {
+                indexL3Memories(l3Result.memories(), sessionId, embeddingClient, userMemoryIndexService);
+            }
+
+            samples.add(toSample(row, l1Result, l3Result));
+        }
+
+        assertThat(samples).hasSize(rows.size());
+
+        EvalArtifactWriter artifactWriter = new EvalArtifactWriter(
+                repositoryRoot.resolve("artifacts/eval/phase10b"));
+        Map<String, Object> config = runConfig(sourceIdList, samples.size());
+        String configFingerprint = EvalConfigFingerprint.sha256(config);
+        Map<String, Object> metrics = Map.of("sampleCount", samples.size());
+        EvalRunManifest runManifest = new EvalRunManifest(
+                runId, "memory", "full", exportTimestamp,
+                runtimeMetadata("chatagent.eval.gitBranch", "GIT_BRANCH"),
+                runtimeMetadata("chatagent.eval.gitSha", "GIT_COMMIT"),
+                manifest.path("datasetId").asText(),
+                manifest.path("datasetHash").asText(),
+                config, configFingerprint, Map.of(), Map.of(),
+                List.of("manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl"),
+                null
+        );
+        Path runDirectory = artifactWriter.writeRun(runManifest, metrics, samples, List.of());
+        writeDatasetRoot(runDirectory, manifest.path("datasetId").asText(), sourceIdList, rows, samples, exportTimestamp);
+
+        assertThat(samples).isNotEmpty();
+        assertThat(runDirectory).exists();
+        assertThat(runDirectory.resolve("manifest.json")).exists();
+        assertThat(runDirectory.resolve("samples.jsonl")).exists();
+        assertThat(runDirectory.resolve("datasets/memory/" + DATASET_ID + ".jsonl")).exists();
+        assertThat(runDirectory.resolve("manifests/datasets/" + DATASET_ID + ".json")).exists();
+        // Verify exported split manifest has all required splits for tune-suite compatibility
+        JsonNode exportedSplitManifest = OBJECT_MAPPER.readTree(
+                runDirectory.resolve("manifests/splits/" + DATASET_ID + ".json").toFile());
+        for (String required : REQUIRED_SPLITS) {
+            assertThat(exportedSplitManifest.path("splits").has(required))
+                    .as("Exported split manifest must include '%s' split for tune-suite", required)
+                    .isTrue();
+        }
+        System.out.printf("[%s] Full memory export complete: %d samples, artifacts at %s%n",
+                runId, samples.size(), runDirectory);
     }
 
     @Test
@@ -881,6 +966,10 @@ class MemoryExportEvalTest {
      * then fills remaining slots up to {@link #SMOKE_DIALOGUE_COUNT} in original order.
      */
     private List<JsonNode> loadDatasetRows(Path path) throws Exception {
+        return loadDatasetRows(path, SMOKE_DIALOGUE_COUNT);
+    }
+
+    private List<JsonNode> loadDatasetRows(Path path, int maxSamples) throws Exception {
         List<JsonNode> allRows = new ArrayList<>();
         try (Stream<String> lines = Files.lines(path)) {
             lines.forEach(line -> {
@@ -888,7 +977,8 @@ class MemoryExportEvalTest {
                 catch (Exception e) { throw new RuntimeException(e); }
             });
         }
-        return balanceSplits(allRows, SMOKE_DIALOGUE_COUNT);
+        int budget = maxSamples > 0 ? maxSamples : allRows.size();
+        return balanceSplits(allRows, budget);
     }
 
     /**
@@ -939,11 +1029,15 @@ class MemoryExportEvalTest {
     }
 
     private Map<String, Object> runConfig(List<String> sourceIds) {
+        return runConfig(sourceIds, SMOKE_DIALOGUE_COUNT);
+    }
+
+    private Map<String, Object> runConfig(List<String> sourceIds, int actualSampleCount) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("embeddingModel", EMBEDDING_MODEL);
         config.put("summaryModel", SUMMARY_MODEL);
         config.put("extractorModel", EXTRACTOR_MODEL);
-        config.put("sampleCount", SMOKE_DIALOGUE_COUNT);
+        config.put("sampleCount", actualSampleCount);
         config.put("sourceIds", sourceIds);
         return config;
     }

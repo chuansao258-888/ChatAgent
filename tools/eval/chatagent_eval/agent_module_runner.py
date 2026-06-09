@@ -13,9 +13,23 @@ from typing import Any
 from chatagent_eval.deterministic_metrics import phrase_recall
 from chatagent_eval.parameters import config_fingerprint
 from chatagent_eval.reports import build_manifest, build_report, write_json_artifact, write_run_artifacts
+from chatagent_eval.schemas import load_json, validate
 
 DEFAULT_AGENT_MODULE_DATASET_ID = "memory-v2-dialogues"
 DEFAULT_PARAMETER_SPACE_ID = "agent-modules-v1"
+
+
+def _schema_root() -> Path:
+    current = Path(__file__).resolve()
+    schema_parts = ("chatagent", "bootstrap", "src", "test", "resources", "eval", "v2", "schemas")
+    for parent in current.parents:
+        candidate = parent.joinpath(*schema_parts)
+        if candidate.exists():
+            return candidate
+    return current.parent / "__missing_eval_schema_root__"
+
+
+SCHEMA_ROOT = _schema_root()
 ARTIFACT_FILES = ("manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl", "report.json")
 KNOWLEDGE_SEARCH_TOOL = "SessionFileSearchTool"
 CONTENT_WORD = re.compile(r"[A-Za-z][A-Za-z0-9'-]{2,}")
@@ -105,6 +119,7 @@ class AgentModuleConfig:
 def run_agent_modules(*, dataset_root: Path, output_root: Path, config: AgentModuleConfig) -> Path:
     dataset_manifest = _read_json(dataset_root / "manifests" / "datasets" / f"{config.dataset_id}.json")
     rows = _select_rows(_read_jsonl(dataset_root / dataset_manifest["localPath"]), config)
+    _validate_agent_module_rows(rows, str(dataset_manifest["recordSchema"]))
     config_dict = config.as_dict() | {
         "datasetManifestHash": dataset_manifest["datasetHash"],
         "recordSchema": dataset_manifest["recordSchema"],
@@ -310,8 +325,9 @@ def _is_real_export(module_outputs: Mapping[str, Any]) -> bool:
 def _adapt_real_export(explicit: Mapping[str, Any], expected: Mapping[str, Any]) -> dict[str, Any]:
     """Map Phase 10c Java real-export fields to runner's observed field names.
 
-    Required fields in explicit: intent, queryRewrite, toolList, provider.
-    Raises ValueError if required fields are missing.
+    Required fields in explicit: intent, queryRewrite, toolList.
+    Empty/null queryRewrite values are allowed, but the key must be present
+    so malformed Java exports fail before tuning.
     """
     for field in ("intent", "queryRewrite", "toolList"):
         if field not in explicit:
@@ -712,3 +728,22 @@ def _read_json(path: Path) -> Any:
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def _validate_agent_module_rows(rows: Sequence[Mapping[str, Any]], record_schema: str) -> None:
+    # The deterministic legacy rows used by this runner predate the 10c record schema.
+    # Only real 10c exports carry eval-agent-module-dataset-record.schema.json.
+    if record_schema != "eval-agent-module-dataset-record.schema.json":
+        return
+    schema_path = SCHEMA_ROOT / record_schema
+    if not schema_path.exists():
+        raise ValueError(f"record schema not found: {record_schema}")
+    schema = load_json(schema_path)
+    for index, row in enumerate(rows, start=1):
+        try:
+            validate(row, schema)
+        except ValueError as exception:
+            sample_id = row.get("sampleId", "<missing>")
+            raise ValueError(
+                f"row {index} sampleId={sample_id} violates {record_schema}: {exception}"
+            ) from exception

@@ -83,6 +83,9 @@ class AgentModuleExportEvalTest {
     private static final String DATASET_ID = "memory-v2-dialogues";
     private static final String DATASET_SUBDIR = "agent-modules";
     private static final int SMOKE_DIALOGUE_COUNT = 10;
+    /** System property for full-export max samples (0 = all rows). */
+    private static final int MAX_SAMPLES = Integer.parseInt(
+            System.getProperty("chatagent.eval.agentModuleMaxSamples", "0"));
     /** Splits that must appear in the exported dataset root for tune-suite compatibility. */
     private static final Set<String> REQUIRED_SPLITS = Set.of("calibration", "development", "holdout");
     private static final int MIN_PER_SPLIT = 2;
@@ -322,6 +325,100 @@ class AgentModuleExportEvalTest {
         }
     }
 
+    /**
+     * Opt-in full Phase 10c export over the complete MTRAG dataset.
+     *
+     * <p>Requires live PostgreSQL, Redis, and the configured LLM provider. The
+     * accepted live verification took about 43 minutes for 842 rows.</p>
+     */
+    @Test
+    void exportsFullAgentModulePipeline() throws Exception {
+        int maxSamples = MAX_SAMPLES > 0 ? MAX_SAMPLES : Integer.MAX_VALUE;
+        Path repositoryRoot = findRepositoryRoot();
+        Path phase3Root = repositoryRoot.resolve("artifacts/eval/phase3");
+        Path datasetPath = phase3Root.resolve("datasets/memory/memory-v2-dialogues.jsonl");
+        Path manifestPath = phase3Root.resolve("manifests/datasets/memory-v2-dialogues.json");
+        assertThat(Files.exists(datasetPath) && Files.exists(manifestPath))
+                .as("Run Phase 3 MTRAG memory preparation before Phase 10c full export")
+                .isTrue();
+
+        List<JsonNode> rows = loadDatasetRows(datasetPath, maxSamples);
+        JsonNode manifest = OBJECT_MAPPER.readTree(manifestPath.toFile());
+        List<String> sourceIdList = toStrings(manifest.path("sourceIds"));
+        List<Map<String, Object>> samples = new ArrayList<>();
+        String exportTimestamp = Instant.now().toString();
+        String runId = "phase10c-agent-module-full";
+
+        AgentDTO agentConfig = AgentDTO.builder()
+                .id(SYSTEM_AGENT_ID)
+                .name("eval-agent")
+                .allowedTools(List.of("knowledge.search"))
+                .build();
+
+        for (int index = 0; index < rows.size(); index++) {
+            JsonNode row = rows.get(index);
+            String query = extractLastUserText(row);
+
+            // Step 1: Intent routing
+            IntentRoutingResult routing = intentRouter.route(SYSTEM_AGENT_ID, query);
+
+            // Step 2: Query rewrite (only when resolved)
+            String rewrittenQuery = null;
+            if (routing.hasResolution()) {
+                rewrittenQuery = queryRewriter.rewrite(query, routing.resolution());
+            }
+
+            // Step 3: Tool callbacks (only when resolved)
+            List<String> toolNames = List.of();
+            if (routing.hasResolution()) {
+                List<ToolCallback> callbacks = toolCallbackFactory.create(agentConfig, routing.resolution());
+                toolNames = callbacks.stream()
+                        .map(cb -> cb.getToolDefinition().name())
+                        .collect(Collectors.toList());
+            }
+
+            samples.add(toSample(row, routing, rewrittenQuery, toolNames));
+        }
+
+        assertThat(samples).hasSize(rows.size());
+
+        // Write run artifacts
+        EvalArtifactWriter artifactWriter = new EvalArtifactWriter(
+                repositoryRoot.resolve("artifacts/eval/phase10c"));
+        Map<String, Object> config = runConfig(sourceIdList, samples.size());
+        String configFingerprint = EvalConfigFingerprint.sha256(config);
+        Map<String, Object> metrics = Map.of("sampleCount", samples.size());
+        EvalRunManifest runManifest = new EvalRunManifest(
+                runId, "agent-modules", "full", exportTimestamp,
+                runtimeMetadata("chatagent.eval.gitBranch", "GIT_BRANCH"),
+                runtimeMetadata("chatagent.eval.gitSha", "GIT_COMMIT"),
+                manifest.path("datasetId").asText(),
+                manifest.path("datasetHash").asText(),
+                config, configFingerprint, Map.of(), Map.of(),
+                List.of("manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl"),
+                null
+        );
+        Path runDirectory = artifactWriter.writeRun(runManifest, metrics, samples, List.of());
+        writeDatasetRoot(runDirectory, manifest.path("datasetId").asText(), sourceIdList, rows, samples, exportTimestamp);
+
+        assertThat(samples).isNotEmpty();
+        assertThat(runDirectory).exists();
+        assertThat(runDirectory.resolve("manifest.json")).exists();
+        assertThat(runDirectory.resolve("samples.jsonl")).exists();
+        assertThat(runDirectory.resolve("datasets/" + DATASET_SUBDIR + "/" + DATASET_ID + ".jsonl")).exists();
+        assertThat(runDirectory.resolve("manifests/datasets/" + DATASET_ID + ".json")).exists();
+        // Verify exported split manifest has all required splits
+        JsonNode exportedSplitManifest = OBJECT_MAPPER.readTree(
+                runDirectory.resolve("manifests/splits/" + DATASET_ID + ".json").toFile());
+        for (String required : REQUIRED_SPLITS) {
+            assertThat(exportedSplitManifest.path("splits").has(required))
+                    .as("Exported split manifest must include '%s' split for tune-suite", required)
+                    .isTrue();
+        }
+        System.out.printf("[%s] Full agent-module export complete: %d samples, artifacts at %s%n",
+                runId, samples.size(), runDirectory);
+    }
+
     // ── Intent tree fixture ────────────────────────────────────────────
 
     // Fixed UUIDs for eval intent tree nodes (must be valid UUIDs for the intent_node.id column).
@@ -445,7 +542,7 @@ class AgentModuleExportEvalTest {
 
         Map<String, Object> moduleOutputs = new LinkedHashMap<>();
         moduleOutputs.put("intent", serializeRoutingResult(routing));
-        moduleOutputs.put("queryRewrite", rewrittenQuery);
+        moduleOutputs.put("queryRewrite", rewrittenQuery != null ? rewrittenQuery : "");
         moduleOutputs.put("toolList", toolNames);
         moduleOutputs.put("provider", Map.of(
                 "classifierModel", LLM_MODEL,
@@ -707,6 +804,10 @@ class AgentModuleExportEvalTest {
     }
 
     private List<JsonNode> loadDatasetRows(Path path) throws Exception {
+        return loadDatasetRows(path, SMOKE_DIALOGUE_COUNT);
+    }
+
+    private List<JsonNode> loadDatasetRows(Path path, int maxSamples) throws Exception {
         List<JsonNode> allRows = new ArrayList<>();
         try (Stream<String> lines = Files.lines(path)) {
             lines.forEach(line -> {
@@ -714,7 +815,8 @@ class AgentModuleExportEvalTest {
                 catch (Exception e) { throw new RuntimeException(e); }
             });
         }
-        return balanceSplits(allRows, SMOKE_DIALOGUE_COUNT);
+        int budget = maxSamples > 0 ? maxSamples : allRows.size();
+        return balanceSplits(allRows, budget);
     }
 
     private List<JsonNode> balanceSplits(List<JsonNode> allRows, int budget) {
@@ -752,10 +854,14 @@ class AgentModuleExportEvalTest {
     }
 
     private Map<String, Object> runConfig(List<String> sourceIds) {
+        return runConfig(sourceIds, SMOKE_DIALOGUE_COUNT);
+    }
+
+    private Map<String, Object> runConfig(List<String> sourceIds, int actualSampleCount) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("classifierModel", LLM_MODEL);
         config.put("rewriteModel", LLM_MODEL);
-        config.put("sampleCount", SMOKE_DIALOGUE_COUNT);
+        config.put("sampleCount", actualSampleCount);
         config.put("sourceIds", sourceIds);
         return config;
     }
