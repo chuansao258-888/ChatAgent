@@ -840,11 +840,16 @@ class AgentModuleExportEvalTest {
 
     private Path findRepositoryRoot() {
         Path current = Path.of("").toAbsolutePath().normalize();
-        while (current != null && !Files.exists(current.resolve("AGENTS.md"))) {
+        while (current != null && !isRepositoryRoot(current)) {
             current = current.getParent();
         }
-        assertThat(current).as("Repository root with AGENTS.md was not found").isNotNull();
+        assertThat(current).as("Repository root was not found").isNotNull();
         return current;
+    }
+
+    private boolean isRepositoryRoot(Path path) {
+        return Files.exists(path.resolve("README.md"))
+                && Files.exists(path.resolve("chatagent").resolve("pom.xml"));
     }
 
     private List<String> toStrings(JsonNode values) {

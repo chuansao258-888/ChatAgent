@@ -275,8 +275,8 @@ rg --files chatagent/bootstrap/src/test/java/com/yulong/chatagent/eval
 rg --files chatagent/bootstrap/src/test/resources/eval
 rg -n '@Tag\("eval-|EvalReportWriter|GoldenDatasetLoader|rag-golden|memory-golden|multiturn-golden|intent-golden|tool-golden|RetrievalQuality|ResponseQuality|MemorySummary|ToolCallEvalTest|IntentRouting|MultiturnDialogue|QueryRewrite|ContextualEnrichment|PdfExtractionQuality|RerankerAb|LatencyBaseline|RetrievalQualityIntegration' chatagent/bootstrap/src/test chatagent/bootstrap/pom.xml
 git diff --name-only
-$env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'; .\mvnw.cmd -pl bootstrap "-Dsurefire.excludedGroups=" "-Dtest=CircuitBreakerRecoveryBenchmarkTest,RerankerFallbackChainBenchmarkTest,MqChaosReliabilityTest,OutboxReliabilityTest,SessionLockStressReliabilityTest" test
-$env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'; .\mvnw.cmd -pl bootstrap "-Dtest=CircuitBreakerRecoveryBenchmarkTest" test
+$env:JAVA_HOME='<jdk-17-home>'; .\mvnw.cmd -pl bootstrap "-Dsurefire.excludedGroups=" "-Dtest=CircuitBreakerRecoveryBenchmarkTest,RerankerFallbackChainBenchmarkTest,MqChaosReliabilityTest,OutboxReliabilityTest,SessionLockStressReliabilityTest" test
+$env:JAVA_HOME='<jdk-17-home>'; .\mvnw.cmd -pl bootstrap "-Dtest=CircuitBreakerRecoveryBenchmarkTest" test
 ```
 
 Phase 1 static verification results:
@@ -310,7 +310,7 @@ Phase 2 verification commands run:
 ```powershell
 python -m unittest discover -s tests -v
 python -m compileall -q chatagent_eval tests
-$env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'
+$env:JAVA_HOME='<jdk-17-home>'
 & '<maven-wrapper-distribution>\bin\mvn.cmd' -pl bootstrap "-Dtest=DeterministicEvalMetricsTest,EvalThresholdEvaluatorTest,EvalConfigFingerprintTest,EvalArtifactWriterTest,EvalSchemaFixtureTest" test
 & '<maven-wrapper-distribution>\bin\mvn.cmd' -pl bootstrap test
 git diff --check
@@ -366,7 +366,7 @@ Phase 3 verification:
 python -m chatagent_eval.prepare_phase3 --catalog-root ..\..\chatagent\bootstrap\src\test\resources\eval\v2\corpora\catalog --output-root ..\..\artifacts\eval\phase3 --sources beir-scifact mtrag-human
 python -m unittest discover -s tests -v
 python -m compileall -q chatagent_eval tests
-$env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'
+$env:JAVA_HOME='<jdk-17-home>'
 & '<maven-wrapper-distribution>\bin\mvn.cmd' -pl bootstrap -Dtest='com.yulong.chatagent.eval.v2.*Test' test
 & '<maven-wrapper-distribution>\bin\mvn.cmd' -pl bootstrap test
 git diff --check
@@ -412,7 +412,7 @@ Actual real-data smoke results:
 Phase 4 verification:
 
 ```powershell
-$env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'
+$env:JAVA_HOME='<jdk-17-home>'
 .\mvnw.cmd -pl bootstrap -Dtest='com.yulong.chatagent.eval.v2.retrieval.RagRetrievalExportRunnerTest' test
 .\mvnw.cmd -pl bootstrap -Dtest='com.yulong.chatagent.eval.v2.*Test,com.yulong.chatagent.eval.v2.retrieval.RagRetrievalExportRunnerTest' test
 $branch=(git branch --show-current); $sha=(git rev-parse HEAD)

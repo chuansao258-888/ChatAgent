@@ -88,7 +88,7 @@ Smoke test:
 
 ```powershell
 $env:CHATAGENT_RAG_VDP_MINERU_SMOKE = "true"
-$env:JAVA_HOME = "C:\Users\guany\.jdks\ms-17.0.18"
+$env:JAVA_HOME = "<jdk-17-home>"
 cd .\chatagent
 .\mvnw.cmd -pl bootstrap -am "-Dsurefire.failIfNoSpecifiedTests=false" "-Dtest=MinerUVdpEngineSmoke" test
 ```

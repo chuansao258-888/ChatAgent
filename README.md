@@ -789,14 +789,6 @@ ChatAgent/
 │   ├── bge-reranker-server/            # BGE reranker HTTP service
 │   └── mineru/                         # MinerU PDF parsing service
 │
-├── deploy/
-│   └── local/
-│       └── docker-compose-rabbitmq.yml # Local RabbitMQ Docker Compose
-│
-├── scripts/
-│   └── dev/
-│       └── start-local-gpu-backend.ps1 # Local GPU startup script
-│
 ├── MCP/                                # MCP tool server examples
 │   └── weather-server/                 # Weather tool (HTTP+SSE)
 │
@@ -943,7 +935,7 @@ CHATAGENT_RAG_RERANKER_BASE_URL=http://localhost:7997
 ### Start RabbitMQ
 
 ```bash
-docker compose -f deploy/local/docker-compose-rabbitmq.yml up -d
+docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3.13-management
 ```
 
 Start PostgreSQL, Redis, Milvus, Ollama, and any optional GPU services separately according to your local environment.
@@ -954,12 +946,6 @@ Start PostgreSQL, Redis, Milvus, Ollama, and any optional GPU services separatel
 cd chatagent
 .\mvnw.cmd -pl framework,infra -am -DskipTests install
 .\mvnw.cmd -pl bootstrap spring-boot:run
-```
-
-Or use the local GPU startup script from the repository root:
-
-```powershell
-.\scripts\dev\start-local-gpu-backend.ps1
 ```
 
 ### Start Frontend

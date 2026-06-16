@@ -307,11 +307,16 @@ class RagRetrievalRealEmbeddingEvalTest {
 
     private Path findRepositoryRoot() {
         Path current = Path.of("").toAbsolutePath().normalize();
-        while (current != null && !Files.exists(current.resolve("AGENTS.md"))) {
+        while (current != null && !isRepositoryRoot(current)) {
             current = current.getParent();
         }
-        assumeTrue(current != null, "Repository root with AGENTS.md was not found");
+        assumeTrue(current != null, "Repository root was not found");
         return current;
+    }
+
+    private boolean isRepositoryRoot(Path path) {
+        return Files.exists(path.resolve("README.md"))
+                && Files.exists(path.resolve("chatagent").resolve("pom.xml"));
     }
 
     private JsonNode readJson(String line) {
