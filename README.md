@@ -785,25 +785,25 @@ ChatAgent/
 │   └── package.json
 │
 ├── tools/                              # External tools
+│   ├── eval/                           # Evaluation runners and fixtures
 │   ├── bge-reranker-server/            # BGE reranker HTTP service
 │   └── mineru/                         # MinerU PDF parsing service
+│
+├── deploy/
+│   └── local/
+│       └── docker-compose-rabbitmq.yml # Local RabbitMQ Docker Compose
+│
+├── scripts/
+│   └── dev/
+│       └── start-local-gpu-backend.ps1 # Local GPU startup script
 │
 ├── MCP/                                # MCP tool server examples
 │   └── weather-server/                 # Weather tool (HTTP+SSE)
 │
 ├── docs/                               # Documentation
-│   ├── arch/                           # Architecture docs (17 files)
-│   ├── plans/                          # Design plans (13 files)
-│   └── summary/                        # Module summaries (13 files)
+│   └── plans/                          # Design and implementation plans
 │
 ├── postman/                            # Postman API collection
-├── data/                               # Runtime data
-│   ├── documents/                      # Uploaded file storage
-│   ├── milvus/                         # Milvus data
-│   └── rabbitmq/                       # RabbitMQ data
-│
-├── docker-compose-rabbitmq.yml         # RabbitMQ Docker
-├── start-local-gpu-backend.ps1         # Local GPU startup script
 ├── README.md                           # English README (default)
 └── README_ZH.md                        # Chinese README
 ```
@@ -856,7 +856,7 @@ SSRF protection + AES-256-GCM credential encryption + Schema drift detection + T
 
 ### 10. Centralized Prompt Management
 
-All 46 AI prompts are extracted from Java source code into 24 `.md` files under `resources/prompts/`, organized by domain (agent/intent/rag/vlm/summarizer/fallbacks). A `PromptLoader` component handles loading with `{{variable}}` template substitution and `ConcurrentHashMap` in-memory caching. Every prompt follows an enterprise-grade structure with unified Role / Rules / Guardrails / Output Format sections. The V16 migration sets the default agent's `system_prompt` to NULL to enable centralized loading. See [Prompt Management Module Summary](docs/summary/11-prompt-management.md) for details.
+All 46 AI prompts are extracted from Java source code into 24 `.md` files under `resources/prompts/`, organized by domain (agent/intent/rag/vlm/summarizer/fallbacks). A `PromptLoader` component handles loading with `{{variable}}` template substitution and `ConcurrentHashMap` in-memory caching. Every prompt follows an enterprise-grade structure with unified Role / Rules / Guardrails / Output Format sections. The V16 migration sets the default agent's `system_prompt` to NULL to enable centralized loading.
 
 ---
 
@@ -943,7 +943,7 @@ CHATAGENT_RAG_RERANKER_BASE_URL=http://localhost:7997
 ### Start RabbitMQ
 
 ```bash
-docker compose -f docker-compose-rabbitmq.yml up -d
+docker compose -f deploy/local/docker-compose-rabbitmq.yml up -d
 ```
 
 Start PostgreSQL, Redis, Milvus, Ollama, and any optional GPU services separately according to your local environment.
@@ -959,7 +959,7 @@ cd chatagent
 Or use the local GPU startup script from the repository root:
 
 ```powershell
-.\start-local-gpu-backend.ps1
+.\scripts\dev\start-local-gpu-backend.ps1
 ```
 
 ### Start Frontend

@@ -785,25 +785,25 @@ ChatAgent/
 │   └── package.json
 │
 ├── tools/                              # 外部工具
+│   ├── eval/                           # 评测 runner 与 fixtures
 │   ├── bge-reranker-server/            # BGE 重排序 HTTP 服务
 │   └── mineru/                         # MinerU PDF 解析服务
+│
+├── deploy/
+│   └── local/
+│       └── docker-compose-rabbitmq.yml # 本地 RabbitMQ Docker Compose
+│
+├── scripts/
+│   └── dev/
+│       └── start-local-gpu-backend.ps1 # 本地 GPU 启动脚本
 │
 ├── MCP/                                # MCP 工具服务器示例
 │   └── weather-server/                 # 天气工具 (HTTP+SSE)
 │
 ├── docs/                               # 文档
-│   ├── arch/                           # 架构文档 (17个)
-│   ├── plans/                          # 设计方案 (13个)
-│   └── summary/                        # 模块总结 (13个)
+│   └── plans/                          # 设计与实施记录
 │
 ├── postman/                            # Postman API 集合
-├── data/                               # 运行时数据
-│   ├── documents/                      # 上传文件存储
-│   ├── milvus/                         # Milvus 数据
-│   └── rabbitmq/                       # RabbitMQ 数据
-│
-├── docker-compose-rabbitmq.yml         # RabbitMQ Docker
-├── start-local-gpu-backend.ps1         # 本地GPU启动脚本
 ├── README.md                           # 英文 README（默认入口）
 └── README_ZH.md                        # 中文 README
 ```
@@ -856,7 +856,7 @@ SSRF 防护 + AES-256-GCM 凭据加密 + Schema 漂移检测 + 令牌桶限流 +
 
 ### 10. Prompt 集中管理
 
-所有 46 个 AI prompt 从 Java 源码中提取，统一存放在 `resources/prompts/` 目录（24 个 `.md` 文件），按业务域分类（agent/intent/rag/vlm/summarizer/fallbacks）。通过 `PromptLoader` 组件加载，支持 `{{variable}}` 模板变量替换和 `ConcurrentHashMap` 内存缓存。每个 prompt 均按企业级标准重写，具备统一的 Role / Rules / Guardrails / Output Format 结构。V16 迁移将默认 agent 的 `system_prompt` 设为 NULL 以启用集中加载。详见 [Prompt 集中管理模块总结](docs/summary/11-prompt-management.md)。
+所有 46 个 AI prompt 从 Java 源码中提取，统一存放在 `resources/prompts/` 目录（24 个 `.md` 文件），按业务域分类（agent/intent/rag/vlm/summarizer/fallbacks）。通过 `PromptLoader` 组件加载，支持 `{{variable}}` 模板变量替换和 `ConcurrentHashMap` 内存缓存。每个 prompt 均按企业级标准重写，具备统一的 Role / Rules / Guardrails / Output Format 结构。V16 迁移将默认 agent 的 `system_prompt` 设为 NULL 以启用集中加载。
 
 ---
 
@@ -943,7 +943,7 @@ CHATAGENT_RAG_RERANKER_BASE_URL=http://localhost:7997
 ### 启动 RabbitMQ
 
 ```bash
-docker compose -f docker-compose-rabbitmq.yml up -d
+docker compose -f deploy/local/docker-compose-rabbitmq.yml up -d
 ```
 
 PostgreSQL、Redis、Milvus、Ollama 以及可选 GPU 服务请按本地环境单独启动。
@@ -959,7 +959,7 @@ cd chatagent
 或在仓库根目录使用本地 GPU 启动脚本：
 
 ```powershell
-.\start-local-gpu-backend.ps1
+.\scripts\dev\start-local-gpu-backend.ps1
 ```
 
 ### 启动前端

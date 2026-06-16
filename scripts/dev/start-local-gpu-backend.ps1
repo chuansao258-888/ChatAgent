@@ -1,10 +1,11 @@
 param(
     [string]$SpringProfiles = "local-gpu",
-    [string]$JavaHome = "C:\Users\guany\.jdks\ms-17.0.18",
+    [string]$JavaHome = "",
     [switch]$Offline
 )
 
-$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
 $backendDir = Join-Path $repoRoot "chatagent"
 
 if (-not (Test-Path $backendDir)) {
@@ -24,7 +25,7 @@ function Resolve-JavaHomePath {
     }
 
     if ([string]::IsNullOrWhiteSpace($candidate)) {
-        return $null
+        throw "JAVA_HOME is not set. Set JAVA_HOME or pass -JavaHome <path-to-jdk-17>."
     }
 
     $normalized = $candidate.TrimEnd('\')
