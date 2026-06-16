@@ -1,0 +1,178 @@
+{
+  "datasetId": "memory-semantic-calibration-v1",
+  "version": 1,
+  "rubric": {
+    "supported": "The claim is directly entailed by cited source turns.",
+    "partial": "The claim is broadly consistent but missing a required qualifier, entity, time bound, or source detail.",
+    "unsupported": "The claim is not evidenced by the cited source turns.",
+    "contradicted": "The claim conflicts with cited source turns."
+  },
+  "review": {
+    "status": "autonomous-cross-reviewed",
+    "reviewer": "codex",
+    "humanReviewed": false,
+    "note": "Clear regression calibration examples; the plan-required human spot-check remains outstanding."
+  },
+  "examples": [
+    {
+      "id": "supported-l2-01",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The project deadline is June 30."}],
+      "claim": "The project deadline is June 30.",
+      "expectedLabel": "supported",
+      "expectedRationale": "The deadline and date are stated directly."
+    },
+    {
+      "id": "supported-l2-02",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "agent", "text": "The service stores application data in PostgreSQL."}],
+      "claim": "Application data is stored in PostgreSQL.",
+      "expectedLabel": "supported",
+      "expectedRationale": "The claim is a faithful paraphrase."
+    },
+    {
+      "id": "supported-l2-03",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I corrected the preferred launch color from red to blue."}],
+      "claim": "The preferred launch color is blue.",
+      "expectedLabel": "supported",
+      "expectedRationale": "The latest correction establishes blue."
+    },
+    {
+      "id": "supported-l3-01",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I prefer tea without sugar."}],
+      "claim": "The user prefers tea without sugar.",
+      "expectedLabel": "supported",
+      "expectedRationale": "The durable preference is stated directly."
+    },
+    {
+      "id": "supported-l3-02",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I live in Singapore."}],
+      "claim": "The user lives in Singapore.",
+      "expectedLabel": "supported",
+      "expectedRationale": "The residence fact is stated directly."
+    },
+    {
+      "id": "partial-l2-01",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The deadline is June 30 at 5 PM Singapore time."}],
+      "claim": "The deadline is June 30.",
+      "expectedLabel": "partial",
+      "expectedRationale": "The required time and timezone qualifiers are missing."
+    },
+    {
+      "id": "partial-l2-02",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The budget is $500 excluding taxes and delivery."}],
+      "claim": "The budget is $500.",
+      "expectedLabel": "partial",
+      "expectedRationale": "The exclusions are required qualifiers."
+    },
+    {
+      "id": "partial-l2-03",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The team will visit London only if the security review is approved."}],
+      "claim": "The team will visit London.",
+      "expectedLabel": "partial",
+      "expectedRationale": "The required approval condition is omitted."
+    },
+    {
+      "id": "partial-l3-01",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I prefer concise answers specifically for Java debugging."}],
+      "claim": "The user prefers concise answers.",
+      "expectedLabel": "partial",
+      "expectedRationale": "The Java debugging scope is omitted."
+    },
+    {
+      "id": "partial-l3-02",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "When cooking for Alex, I avoid peanuts because Alex has an allergy."}],
+      "claim": "The user avoids peanuts.",
+      "expectedLabel": "partial",
+      "expectedRationale": "The claim omits that the avoidance is scoped to cooking for Alex."
+    },
+    {
+      "id": "unsupported-l2-01",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The implementation review is scheduled for Thursday."}],
+      "claim": "The implementation uses Rust.",
+      "expectedLabel": "unsupported",
+      "expectedRationale": "The implementation language is not discussed."
+    },
+    {
+      "id": "unsupported-l2-02",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "Priya owns the deployment checklist."}],
+      "claim": "The deployment is due Friday.",
+      "expectedLabel": "unsupported",
+      "expectedRationale": "No deadline is provided."
+    },
+    {
+      "id": "unsupported-l3-01",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I use a ceramic mug at work."}],
+      "claim": "The user prefers coffee.",
+      "expectedLabel": "unsupported",
+      "expectedRationale": "The beverage preference is not discussed."
+    },
+    {
+      "id": "unsupported-l3-02",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I will be working from Tokyo next month."}],
+      "claim": "The user owns a dog.",
+      "expectedLabel": "unsupported",
+      "expectedRationale": "Pet ownership is not discussed."
+    },
+    {
+      "id": "unsupported-l3-03",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I renewed my passport last month."}],
+      "claim": "The user is traveling to Singapore.",
+      "expectedLabel": "unsupported",
+      "expectedRationale": "No travel plan or destination is discussed."
+    },
+    {
+      "id": "contradicted-l2-01",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The meeting was moved from Monday to Tuesday."}],
+      "claim": "The meeting is on Monday.",
+      "expectedLabel": "contradicted",
+      "expectedRationale": "The source explicitly supersedes Monday with Tuesday."
+    },
+    {
+      "id": "contradicted-l2-02",
+      "target": "l2",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "The budget was reduced from $1,000 to $800."}],
+      "claim": "The current budget is $1,000.",
+      "expectedLabel": "contradicted",
+      "expectedRationale": "The source explicitly establishes the current budget as $800."
+    },
+    {
+      "id": "contradicted-l3-01",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I prefer tea and do not drink coffee."}],
+      "claim": "The user prefers coffee.",
+      "expectedLabel": "contradicted",
+      "expectedRationale": "The source explicitly says the user does not drink coffee."
+    },
+    {
+      "id": "contradicted-l3-02",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "I no longer live in London; I moved to Bristol."}],
+      "claim": "The user lives in London.",
+      "expectedLabel": "contradicted",
+      "expectedRationale": "The source explicitly states London is no longer current."
+    },
+    {
+      "id": "contradicted-l3-03",
+      "target": "l3",
+      "sourceTurns": [{"id": "t1", "speaker": "user", "text": "Please replace my earlier red preference with blue."}],
+      "claim": "The user's current preference is red.",
+      "expectedLabel": "contradicted",
+      "expectedRationale": "The source explicitly replaces red with blue."
+    }
+  ]
+}

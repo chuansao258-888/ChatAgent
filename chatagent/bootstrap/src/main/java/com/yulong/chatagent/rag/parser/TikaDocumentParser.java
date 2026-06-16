@@ -75,6 +75,6 @@ public class TikaDocumentParser implements DocumentParser {
 
     @Override
     public boolean supports(DetectedFileType type) {
-        return type != null && !type.rejected() && !type.isMarkdown() && !type.isPdf() && !type.isImage();
+        return type != null && !type.rejected() && !type.isMarkdown() && !type.isPdf() && !type.isImage() && !type.isHtml();
     }
 }

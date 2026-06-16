@@ -8,6 +8,7 @@ out/
 .agent-workflow/
 AGENTS.md
 CLAUDE.md
+GEMINI.md
 CONTEXT.md
 
 .DS_Store
@@ -42,6 +43,8 @@ Thumbs.db
 
 artifacts/eval/
 chatagent/artifacts/
+/chatagent/bootstrap/artifacts/
+/chatagent/bootstrap/data/
 
 ui/.chrome-profile/
 

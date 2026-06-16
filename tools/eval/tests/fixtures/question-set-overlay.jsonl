@@ -1,0 +1,2 @@
+ { "newValue": "Which number is listed for Δ?", "tuningAllowed": true, "reviewer": "Fixture Reviewer", "reason": "clarity", "field": "question", "oldValue": "Which value is listed for Δ?", "id": "q-dev" }
+{"reviewer":"Fixture Reviewer","id":"q-cal","oldValue":"Café access requires approval.","newValue":"Approval is required for café access.","reason":"clarity","tuningAllowed":true,"field":"referenceAnswer"}

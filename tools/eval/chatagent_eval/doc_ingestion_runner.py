@@ -9,6 +9,7 @@ phraseRecall, per-format breakdowns), and writes standardized run artifacts.
 from __future__ import annotations
 
 import json
+import hashlib
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -19,8 +20,15 @@ from typing import Any
 from chatagent_eval.deterministic_metrics import hit_at_k, recall_at_k, reciprocal_rank
 from chatagent_eval.parameters import config_fingerprint
 from chatagent_eval.reports import build_manifest, build_report, write_json_artifact, write_run_artifacts
+from chatagent_eval.schemas import validate as _schema_validate
 
 ARTIFACT_FILES = ("manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl", "report.json")
+
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "chatagent" / "bootstrap" / "src" / "test" / "resources"
+    / "eval" / "v2" / "schemas" / "eval-doc-ingestion-dataset-record.schema.json"
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +41,7 @@ class DocIngestionConfig:
     rrf_k: int = 60
     max_samples: int | None = None
     splits: tuple[str, ...] = ()
+    repair_overlay_path: Path | None = None
     git_branch: str = "unknown"
     git_sha: str = "unknown"
 
@@ -54,6 +63,8 @@ class DocIngestionConfig:
             "rrfK": self.rrf_k,
             "maxSamples": self.max_samples,
             "splits": list(self.splits),
+            "repairOverlayName": self.repair_overlay_path.name if self.repair_overlay_path else None,
+            "repairOverlayHash": _file_hash(self.repair_overlay_path) if self.repair_overlay_path else None,
             "replaySource": "real-export-doc-ingestion",
         }
 
@@ -123,6 +134,19 @@ def run_doc_ingestion_retrieval(
 # ── Internal helpers ────────────────────────────────────────────────────────
 
 
+def _validate_rows_against_schema(rows: Sequence[Mapping[str, Any]]) -> None:
+    """Validate rows against the dataset record schema (fail-closed).
+
+    Enforces required fields (including ``metadata.generationMethod``),
+    enum constraints, provenance conditionals, and structural rules.
+    """
+    if not _SCHEMA_PATH.exists():
+        raise ValueError(f"dataset record schema not found: {_SCHEMA_PATH}")
+    schema = _read_json(_SCHEMA_PATH)
+    for row in rows:
+        _schema_validate(dict(row), schema)
+
+
 def _load_rows(dataset_root: Path, config: DocIngestionConfig) -> list[Mapping[str, Any]]:
     """Load rows via the Phase 3 dataset manifest."""
     manifest_path = dataset_root / "manifests" / "datasets" / f"{config.dataset_id}.json"
@@ -137,6 +161,17 @@ def _load_rows(dataset_root: Path, config: DocIngestionConfig) -> list[Mapping[s
         raise ValueError(f"dataset JSONL not found: {jsonl_path}")
 
     rows: list[Mapping[str, Any]] = _read_jsonl(jsonl_path)
+    _validate_rows_against_schema(rows)
+
+    if config.repair_overlay_path:
+        rows = _apply_repair_overlay(rows, config.repair_overlay_path)
+        # Re-validate only repaired rows (those with repairOverlay metadata).
+        repaired_rows = [
+            r for r in rows
+            if isinstance(r.get("metadata"), dict) and "repairOverlay" in r["metadata"]
+        ]
+        if repaired_rows:
+            _validate_rows_against_schema(repaired_rows)
 
     if config.splits:
         rows = [r for r in rows if r.get("split") in config.splits]
@@ -144,6 +179,125 @@ def _load_rows(dataset_root: Path, config: DocIngestionConfig) -> list[Mapping[s
     if config.max_samples is not None:
         rows = rows[: config.max_samples]
     return rows
+
+
+def _apply_repair_overlay(rows: Sequence[Mapping[str, Any]], overlay_path: Path) -> list[Mapping[str, Any]]:
+    if not overlay_path.exists():
+        raise ValueError(f"doc-ingestion repair overlay not found: {overlay_path}")
+    overlay_records = _read_jsonl(overlay_path) if overlay_path.suffix == ".jsonl" else _read_json(overlay_path)
+    if not isinstance(overlay_records, list):
+        raise ValueError("doc-ingestion repair overlay must be a JSON array or JSONL records")
+    repairs: dict[str, Mapping[str, Any]] = {}
+    for record in overlay_records:
+        if not isinstance(record, Mapping):
+            raise ValueError("doc-ingestion repair overlay record must be an object")
+        sample_id = str(record.get("sampleId") or "")
+        if not sample_id:
+            raise ValueError("doc-ingestion repair overlay record missing sampleId")
+        if sample_id in repairs:
+            raise ValueError(f"duplicate doc-ingestion repair overlay sampleId: {sample_id}")
+        repairs[sample_id] = record
+
+    repaired: list[Mapping[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        sample_id = str(row.get("sampleId") or "")
+        repair = repairs.get(sample_id)
+        if repair is None:
+            repaired.append(row)
+            continue
+        seen.add(sample_id)
+        split = str(row.get("split") or "")
+        if split not in {"calibration", "development"}:
+            raise ValueError(f"repair overlay attempted to modify sealed split {split}: {sample_id}")
+        if repair.get("tuningAllowed") is not True:
+            raise ValueError(f"repair overlay record must set tuningAllowed=true: {sample_id}")
+        decision = str(repair.get("decision") or "")
+        if decision == "exclude_row":
+            continue
+        if decision == "reference_chunk_wrong":
+            repaired.append(_apply_reference_chunk_repair(row, repair))
+            continue
+        raise ValueError(f"unsupported doc-ingestion repair decision for {sample_id}: {decision}")
+
+    unknown = sorted(set(repairs) - seen)
+    if unknown:
+        raise ValueError(f"repair overlay references unknown sampleIds: {unknown[:5]}")
+    return repaired
+
+
+def _apply_reference_chunk_repair(row: Mapping[str, Any], repair: Mapping[str, Any]) -> Mapping[str, Any]:
+    replacement = str(repair.get("newReferenceChunkId") or repair.get("replacementReferenceChunkId") or "")
+    if not replacement:
+        raise ValueError(f"reference_chunk_wrong repair missing newReferenceChunkId: {row.get('sampleId')}")
+    metadata = dict(row.get("metadata") or {})
+    contexts = list(_candidate_contexts(metadata))
+    replacement_context = next(
+        (context for context in contexts if str(context.get("chunkId") or context.get("id") or "") == replacement),
+        None,
+    )
+    new_reference_content = str(repair.get("newReferenceContent") or "")
+    if not new_reference_content and replacement_context is not None:
+        new_reference_content = str(replacement_context.get("content") or "")
+    if not new_reference_content:
+        raise ValueError(
+            f"reference_chunk_wrong repair requires newReferenceContent when replacement is not in candidateContexts: {row.get('sampleId')}"
+        )
+
+    repaired = dict(row)
+    previous_reference_ids = list(row.get("referenceContextIds") or [])
+    repaired["referenceContextIds"] = [replacement]
+    metadata["referenceContent"] = new_reference_content
+    metadata["repairOverlay"] = {
+        "decision": "reference_chunk_wrong",
+        "previousReferenceContextIds": previous_reference_ids,
+        "newReferenceChunkId": replacement,
+        "reason": repair.get("reason"),
+        "reviewedBy": repair.get("reviewedBy"),
+    }
+    repaired["metadata"] = metadata
+    _validate_repair_content(repaired)
+    return repaired
+
+
+def _validate_repair_content(row: Mapping[str, Any]) -> None:
+    """Content-level validation after repair overlay application.
+
+    Checks for source leaks (filename/hash in userInput) and evidence
+    support (referenceAnswer meaningful words in referenceContent).
+    """
+    metadata = row.get("metadata", {})
+    user_input = str(row.get("userInput", ""))
+    user_input_folded = user_input.casefold()
+    sample_id = str(row.get("sampleId", "?"))
+
+    # Source leak: userInput must not contain source filename or hash.
+    filename = str(metadata.get("referenceDocFilename", ""))
+    if len(filename) >= 4 and filename.casefold() in user_input_folded:
+        raise ValueError(
+            f"repair overlay source leak for {sample_id}: "
+            f"userInput contains referenceDocFilename"
+        )
+    source_hash = str(metadata.get("sourceSha256", ""))
+    if len(source_hash) >= 8 and source_hash.casefold() in user_input_folded:
+        raise ValueError(
+            f"repair overlay source leak for {sample_id}: "
+            f"userInput contains sourceSha256"
+        )
+
+    # Evidence: referenceAnswer meaningful words must overlap with referenceContent.
+    ref_answer = str(metadata.get("referenceAnswer", ""))
+    ref_content = str(metadata.get("referenceContent", ""))
+    if ref_answer and ref_content:
+        meaningful = {w for w in ref_answer.lower().split() if len(w) >= 4}
+        if meaningful:
+            content_lower = ref_content.lower()
+            found = sum(1 for w in meaningful if w in content_lower)
+            if found == 0:
+                raise ValueError(
+                    f"repair overlay evidence failure for {sample_id}: "
+                    f"referenceAnswer has no meaningful word overlap with referenceContent"
+                )
 
 
 def _evaluate_row(row: Mapping[str, Any], config: DocIngestionConfig) -> dict[str, Any]:
@@ -180,24 +334,28 @@ def _evaluate_row(row: Mapping[str, Any], config: DocIngestionConfig) -> dict[st
         "phraseRecall": phrase_recall,
     }
 
+    sample_metadata = {
+        "sourceGroupId": row.get("sourceGroupId"),
+        "format": fmt,
+        "generationMethod": metadata.get("generationMethod"),
+        "sourceMetadata": {
+            "domain": fmt,
+            "sourceUrl": metadata.get("sourceUrl"),
+            "mqEnabled": metadata.get("mqEnabled"),
+            "mineruEnabled": metadata.get("mineruEnabled"),
+        },
+        "docIngestion": metrics,
+        **metrics,
+    }
+    if "repairOverlay" in metadata:
+        sample_metadata["repairOverlay"] = metadata["repairOverlay"]
+
     sample = {
         "sampleId": row.get("sampleId", ""),
         "userInput": row.get("userInput", ""),
         "referenceContextIds": reference_context_ids,
         "retrievedContexts": ranked[: config.top_k],
-        "metadata": {
-            "sourceGroupId": row.get("sourceGroupId"),
-            "format": fmt,
-            "generationMethod": metadata.get("generationMethod"),
-            "sourceMetadata": {
-                "domain": fmt,
-                "sourceUrl": metadata.get("sourceUrl"),
-                "mqEnabled": metadata.get("mqEnabled"),
-                "mineruEnabled": metadata.get("mineruEnabled"),
-            },
-            "docIngestion": metrics,
-            **metrics,
-        },
+        "metadata": sample_metadata,
     }
 
     failures = []
@@ -354,6 +512,14 @@ def _optional_float(value: Any) -> float | None:
 
 def _optional_int(value: Any) -> int | None:
     return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _read_json(path: Path) -> Any:

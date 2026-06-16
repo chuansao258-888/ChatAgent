@@ -1,0 +1,54 @@
+{
+  "baseHash": "19776e100cc1742e5b3f60bf2b2956d7b8e3ba29e439678fe8abc4a3a932ff5a",
+  "calibrationHash": "cf8e0585f116e57d1d589e4c7580b1861ba33430a4752b8df0e34edf01cebb3b",
+  "developmentHash": "e022d3c0295aaae6b7b76e37772e5852e66ae21a0f4e539a548c7f327f0cc6f2",
+  "evidenceExportDatasetHash": "sha256:377267228cc159d4ba4ae56b78ee746bce4ccf1e5b6c2c137178c03c2f100a14",
+  "evidenceExportManifestPath": "C:\\Users\\guany\\OneDrive - Nanyang Technological University\\桌面\\ChatAgent\\artifacts\\eval\\phase10d\\b3.2-full-chunk-live-20260614-r4\\doc-ingestion-full-6443609c\\b3-export-manifest.json",
+  "frozenAt": "2026-06-15T11:46:47.351360+00:00",
+  "generatedBy": "gemini-cli-b3.3-corpus-v3-review-freeze",
+  "holdoutHash": "8265d124feae868c1866ec416f51949c402166848052b8e0b3e4d420a6774e7f",
+  "manualReplacementCount": 1,
+  "manualReplacementReceiptHash": "1f758a98db9a808c9a3893e97a80d67d906ca0ac73d8992f6cbd006a7ea818fb",
+  "perFormatCounts": {
+    "DOCX": 100,
+    "PDF": 100,
+    "SEC_HTML": 100,
+    "WEB_MD": 100,
+    "XLSX": 100
+  },
+  "perFormatSplitCounts": {
+    "DOCX": {
+      "calibration": 74,
+      "development": 10,
+      "holdout": 16
+    },
+    "PDF": {
+      "calibration": 33,
+      "development": 18,
+      "holdout": 49
+    },
+    "SEC_HTML": {
+      "calibration": 64,
+      "development": 26,
+      "holdout": 10
+    },
+    "WEB_MD": {
+      "calibration": 55,
+      "development": 12,
+      "holdout": 33
+    },
+    "XLSX": {
+      "calibration": 44,
+      "development": 17,
+      "holdout": 39
+    }
+  },
+  "perSplitCounts": {
+    "calibration": 270,
+    "development": 83,
+    "holdout": 147
+  },
+  "reviewReceiptHash": "a96d6de5cd3270158bbbbc9b500822da49d2f6e0ca28cc8762ec684e4846cf7b",
+  "totalQuestions": 500,
+  "version": "manual-accepted-questions-v1.manifest"
+}

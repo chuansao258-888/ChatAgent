@@ -1,0 +1,15 @@
+{
+  "baseHash": "237a540f0df09386f4daf662c33cbffc94716e6b8120a028ef712dd0b5ad6bc8",
+  "effectiveBaseHash": "5f6fdd4925c971b0e90d5d6156919775cc9fca649acd1d828c61f7bfddb71e85",
+  "overlayHash": "2a549f71326f62ac16a9518dda13366ec6ad889f4e5cf6bb1e42eec93b1af9ce",
+  "splitHashes": {
+    "calibrationHash": "aba3567084ffe2b0ad0f20a33a54274598e274134e793276a86806ac0977bd70",
+    "developmentHash": "aa4d7894d0ae8fb4c5c2e19f9a8892a304cef724251dcd734374ea45659db1d6",
+    "holdoutHash": "50c7c993c11be1ad977a7c11732effa09f8e1d1e9461ae76cf4595060b6bba03"
+  },
+  "textHashes": {
+    "question": "b6858b03a6cae635deeaeab09a74e598979b72c917cbfff0bb3fe2cd05111dbc",
+    "referenceAnswer": "43aa1c6c71d21dd0fad9c37547d786ae51b3c101074a20e3e6bfb12051334fee",
+    "referenceContent": "a0112b86277ea21ff34c6142b6bd544af856231e29c891f97d70108829835304"
+  }
+}

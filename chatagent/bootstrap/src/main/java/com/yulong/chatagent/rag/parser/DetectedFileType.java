@@ -59,4 +59,9 @@ public record DetectedFileType(
         return "xlsx".equals(extension)
                 || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(mimeType);
     }
+
+    public boolean isHtml() {
+        return "html".equals(extension) || "htm".equals(extension)
+                || "text/html".equals(mimeType);
+    }
 }

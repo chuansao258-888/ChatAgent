@@ -241,6 +241,7 @@ public class DefaultMilvusIndexService implements MilvusIndexService {
         }
 
         // Sparse retrieval delegates tokenization and BM25 vectorization to Milvus.
+        MilvusBm25Encoding.requireUtf8DefaultCharset();
         ensureCollection();
         SearchResp response = milvusClient.search(SearchReq.builder()
                 .databaseName(properties.getDatabase())
@@ -281,6 +282,7 @@ public class DefaultMilvusIndexService implements MilvusIndexService {
             return List.of();
         }
 
+        MilvusBm25Encoding.requireUtf8DefaultCharset();
         ensureCollection();
         SearchResp response = milvusClient.search(SearchReq.builder()
                 .databaseName(properties.getDatabase())

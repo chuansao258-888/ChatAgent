@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,7 +40,8 @@ class LongTermMemoryExtractorTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        extractor = new LongTermMemoryExtractor(promptLoader, chatModelRouter, objectMapper, "deepseek-chat");
+        extractor = new LongTermMemoryExtractor(
+                promptLoader, chatModelRouter, objectMapper, "deepseek-chat", "memory/l3-extractor.md");
     }
 
     // ── parseResponse tests ──────────────────────────────────────────
@@ -244,5 +246,14 @@ class LongTermMemoryExtractorTest {
         assertThat(result.success()).isTrue();
         assertThat(result.memories()).hasSize(1);
         assertThat(result.memories().get(0).type()).isEqualTo("preference");
+    }
+
+    @Test
+    void shouldRenderConfiguredPromptCandidate() {
+        when(promptLoader.render(anyString(), any())).thenReturn("prompt");
+
+        extractor.buildPrompt(TURNS);
+
+        verify(promptLoader).render(org.mockito.ArgumentMatchers.eq("memory/l3-extractor.md"), any());
     }
 }

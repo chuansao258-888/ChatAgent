@@ -43,7 +43,12 @@ public enum ParserType {
     /**
      * Specialized parser for spreadsheet .xlsx sources.
      */
-    SPREADSHEET("Spreadsheet");
+    SPREADSHEET("Spreadsheet"),
+
+    /**
+     * Specialized parser for HTML sources, converting to semantic Markdown via jsoup.
+     */
+    HTML("Html");
 
     /**
      * Stable parser type name used by the selector.

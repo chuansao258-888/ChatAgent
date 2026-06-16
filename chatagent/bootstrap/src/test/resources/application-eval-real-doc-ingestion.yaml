@@ -7,6 +7,9 @@
 
 milvus:
   enabled: true
+  bm25-enabled: true
+  knowledge-base:
+    collection: chat_knowledge_chunk_eval_bm25_v3
 
 chatagent:
   mq:

@@ -8,15 +8,15 @@
       "id": "topK",
       "classification": "quality-tunable",
       "type": "integer",
-      "values": [3, 5, 8],
-      "rationale": "Controls final retrieved chunk depth for grounded recall rows."
+      "values": [3, 5, 8, 10],
+      "rationale": "Controls final retrieved chunk depth for grounded recall rows. Phase 10d-B2 excludes topK=12 from promotion candidates unless a later reviewed answer-quality run approves it."
     },
     {
       "id": "candidateK",
       "classification": "quality-tunable",
       "type": "integer",
-      "values": [8, 12, 24],
-      "rationale": "Controls replay candidate-pool depth from the real export."
+      "values": [12, 24],
+      "rationale": "Preserves the production baseline at 12 while Phase 10d-B2 measures a larger real candidate pool at 24. Values 32 and 50 require separate budget-approved live exports."
     },
     {
       "id": "rrfK",

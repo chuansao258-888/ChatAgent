@@ -47,6 +47,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -106,6 +107,14 @@ class MemoryExportEvalTest {
             "CHATAGENT_MEMORY_L3_EXTRACTOR_MODEL",
             "deepseek-chat"
     );
+    private static final String EXTRACTOR_PROMPT = System.getProperty(
+            "chatagent.memory.l3.extractor-prompt", "memory/l3-extractor.md");
+    private static final String FULL_RUN_ID = validatedRunId(
+            System.getProperty("chatagent.eval.memoryRunId", "phase10b-memory-full"));
+    private static final Set<String> FULL_EXPORT_SPLITS = parseSplits(
+            System.getProperty("chatagent.eval.memorySplits", ""));
+    private static final String L3_ONLY_SOURCE = System.getProperty("chatagent.eval.memoryL3OnlySource", "");
+    private static final String L3_ONLY_SELECTION = System.getProperty("chatagent.eval.memoryL3OnlySelection", "");
 
     private static final String DATASET_ID = "memory-v2-dialogues";
     private static final int SMOKE_DIALOGUE_COUNT = 10;
@@ -414,12 +423,15 @@ class MemoryExportEvalTest {
         assumeTrue(Files.exists(datasetPath) && Files.exists(manifestPath),
                 "Run Phase 3 MTRAG memory preparation before the Phase 10b full export");
 
-        List<JsonNode> rows = loadDatasetRows(datasetPath, maxSamples);
+        List<JsonNode> rows = selectFullExportRows(readDatasetRows(datasetPath), maxSamples, FULL_EXPORT_SPLITS);
         JsonNode manifest = OBJECT_MAPPER.readTree(manifestPath.toFile());
         List<String> sourceIdList = toStrings(manifest.path("sourceIds"));
         List<Map<String, Object>> samples = new ArrayList<>();
         String exportTimestamp = Instant.now().toString();
-        String runId = "phase10b-memory-full";
+        String runId = FULL_RUN_ID;
+        assertThat(FULL_EXPORT_SPLITS.isEmpty() || !"phase10b-memory-full".equals(runId))
+                .as("Filtered tuning exports must use a unique run ID")
+                .isTrue();
 
         for (int index = 0; index < rows.size(); index++) {
             JsonNode row = rows.get(index);
@@ -442,9 +454,15 @@ class MemoryExportEvalTest {
 
         assertThat(samples).hasSize(rows.size());
 
-        EvalArtifactWriter artifactWriter = new EvalArtifactWriter(
-                repositoryRoot.resolve("artifacts/eval/phase10b"));
-        Map<String, Object> config = runConfig(sourceIdList, samples.size());
+        Path artifactRoot = repositoryRoot.resolve("artifacts/eval/phase10b");
+        assertThat(artifactRoot.resolve(runId))
+                .as("Full memory export must not overwrite an existing artifact")
+                .doesNotExist();
+        EvalArtifactWriter artifactWriter = new EvalArtifactWriter(artifactRoot);
+        Map<String, Object> config = runConfig(
+                sourceIdList,
+                samples.size(),
+                FULL_EXPORT_SPLITS.isEmpty() ? List.of("all") : new ArrayList<>(FULL_EXPORT_SPLITS));
         String configFingerprint = EvalConfigFingerprint.sha256(config);
         Map<String, Object> metrics = Map.of("sampleCount", samples.size());
         EvalRunManifest runManifest = new EvalRunManifest(
@@ -469,13 +487,95 @@ class MemoryExportEvalTest {
         // Verify exported split manifest has all required splits for tune-suite compatibility
         JsonNode exportedSplitManifest = OBJECT_MAPPER.readTree(
                 runDirectory.resolve("manifests/splits/" + DATASET_ID + ".json").toFile());
-        for (String required : REQUIRED_SPLITS) {
+        Set<String> expectedSplits = FULL_EXPORT_SPLITS.isEmpty() ? REQUIRED_SPLITS : FULL_EXPORT_SPLITS;
+        for (String required : expectedSplits) {
             assertThat(exportedSplitManifest.path("splits").has(required))
-                    .as("Exported split manifest must include '%s' split for tune-suite", required)
+                    .as("Exported split manifest must include selected '%s' split", required)
                     .isTrue();
         }
+        assertThat(exportedSplitManifest.path("splits").size())
+                .as("Exported split manifest must not contain unselected splits")
+                .isEqualTo(expectedSplits.size());
         System.out.printf("[%s] Full memory export complete: %d samples, artifacts at %s%n",
                 runId, samples.size(), runDirectory);
+    }
+
+    /**
+     * Opt-in final-round tuning export that calls only the production L3 extractor.
+     *
+     * <p>The exact calibration/development sample IDs come from a hash-bound selection
+     * artifact. Existing L1 output is copied from the frozen source export; no L2
+     * summarization, embedding, indexing, or holdout access occurs.</p>
+     */
+    @Test
+    void exportsL3OnlyCandidateSubset() throws Exception {
+        assumeTrue(!L3_ONLY_SOURCE.isBlank() && !L3_ONLY_SELECTION.isBlank(),
+                "Set memoryL3OnlySource and memoryL3OnlySelection for an L3-only candidate export");
+        Path repositoryRoot = findRepositoryRoot();
+        Path sourcePath = resolveRepositoryPath(repositoryRoot, L3_ONLY_SOURCE);
+        Path selectionPath = resolveRepositoryPath(repositoryRoot, L3_ONLY_SELECTION);
+        List<String> selectionIds = readSelectionIds(selectionPath);
+        List<JsonNode> rows = selectExactL3OnlyRows(readDatasetRows(sourcePath), selectionIds);
+        List<Map<String, Object>> samples = new ArrayList<>();
+        List<Map<String, Object>> failures = new ArrayList<>();
+
+        for (JsonNode row : rows) {
+            ExtractionResult result = extractor.extract(toAtomicTurns(row));
+            samples.add(toL3OnlySample(row, result));
+            if (!result.success()) {
+                failures.add(Map.of(
+                        "sampleId", row.path("sampleId").asText(),
+                        "metric", "memory.l3Extraction",
+                        "errorCategory", "l3_extractor_failure"
+                ));
+            }
+        }
+
+        String exportTimestamp = Instant.now().toString();
+        String runId = FULL_RUN_ID;
+        Path artifactRoot = repositoryRoot.resolve("artifacts/eval/phase10b");
+        assertThat(artifactRoot.resolve(runId))
+                .as("L3-only candidate export must not overwrite an existing artifact")
+                .doesNotExist();
+        JsonNode sourceManifest = OBJECT_MAPPER.readTree(sourcePath.getParent().resolve("manifest.json").toFile());
+        List<String> sourceIds = toStrings(sourceManifest.path("config").path("sourceIds"));
+        Map<String, Object> config = runConfig(
+                sourceIds,
+                samples.size(),
+                rows.stream().map(row -> row.path("split").asText()).distinct().toList());
+        config.put("l3Only", true);
+        config.put("sourceExport", repositoryRoot.relativize(sourcePath).toString().replace('\\', '/'));
+        config.put("sourceExportHash", sha256(sourcePath));
+        config.put("selectionArtifact", repositoryRoot.relativize(selectionPath).toString().replace('\\', '/'));
+        config.put("selectionArtifactHash", sha256(selectionPath));
+        config.put("selectionCount", selectionIds.size());
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("sampleCount", samples.size());
+        metrics.put("extractionFailureCount", failures.size());
+        EvalRunManifest runManifest = new EvalRunManifest(
+                runId, "memory", "l3-only-candidate", exportTimestamp,
+                runtimeMetadata("chatagent.eval.gitBranch", "GIT_BRANCH"),
+                runtimeMetadata("chatagent.eval.gitSha", "GIT_COMMIT"),
+                sourceManifest.path("datasetId").asText(),
+                sourceManifest.path("datasetHash").asText(),
+                config, EvalConfigFingerprint.sha256(config), Map.of(), Map.of(),
+                List.of("manifest.json", "metrics.json", "samples.jsonl", "failures.jsonl"),
+                null
+        );
+        Path runDirectory = new EvalArtifactWriter(artifactRoot).writeRun(runManifest, metrics, samples, failures);
+        writeDatasetRoot(
+                runDirectory,
+                sourceManifest.path("datasetId").asText(),
+                sourceIds,
+                rows,
+                samples,
+                exportTimestamp);
+
+        assertThat(samples).hasSize(selectionIds.size());
+        assertThat(samples).allMatch(sample -> ALLOWED_L3_ONLY_SPLITS.contains(sample.get("split").toString()));
+        assertThat(runDirectory.resolve("samples.jsonl")).exists();
+        System.out.printf("[%s] L3-only candidate export complete: %d samples, %d failures, artifacts at %s%n",
+                runId, samples.size(), failures.size(), runDirectory);
     }
 
     @Test
@@ -631,6 +731,21 @@ class MemoryExportEvalTest {
         ));
         sample.put("moduleOutputs", moduleOutputs);
 
+        return sample;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toL3OnlySample(JsonNode row, ExtractionResult l3Result) {
+        Map<String, Object> sample = OBJECT_MAPPER.convertValue(row, LinkedHashMap.class);
+        Map<String, Object> originalOutputs = (Map<String, Object>) sample.get("moduleOutputs");
+        assertThat(originalOutputs).as("L3-only source row must contain moduleOutputs").isNotNull();
+        assertThat(originalOutputs.get("l1Summary")).as("L3-only source row must contain frozen L1 output").isNotNull();
+        Map<String, Object> moduleOutputs = new LinkedHashMap<>(originalOutputs);
+        moduleOutputs.put("l3Extraction", serializeExtractionResult(l3Result));
+        Map<String, Object> provider = new LinkedHashMap<>((Map<String, Object>) originalOutputs.get("provider"));
+        provider.put("extractorModel", EXTRACTOR_MODEL);
+        moduleOutputs.put("provider", provider);
+        sample.put("moduleOutputs", moduleOutputs);
         return sample;
     }
 
@@ -970,15 +1085,133 @@ class MemoryExportEvalTest {
     }
 
     private List<JsonNode> loadDatasetRows(Path path, int maxSamples) throws Exception {
-        List<JsonNode> allRows = new ArrayList<>();
+        List<JsonNode> allRows = readDatasetRows(path);
+        int budget = maxSamples > 0 ? maxSamples : allRows.size();
+        return balanceSplits(allRows, budget);
+    }
+
+    private List<JsonNode> readDatasetRows(Path path) throws Exception {
+        List<JsonNode> rows = new ArrayList<>();
         try (Stream<String> lines = Files.lines(path)) {
             lines.forEach(line -> {
-                try { allRows.add(OBJECT_MAPPER.readTree(line)); }
+                try { rows.add(OBJECT_MAPPER.readTree(line)); }
                 catch (Exception e) { throw new RuntimeException(e); }
             });
         }
-        int budget = maxSamples > 0 ? maxSamples : allRows.size();
-        return balanceSplits(allRows, budget);
+        return rows;
+    }
+
+    static List<JsonNode> selectFullExportRows(List<JsonNode> allRows, int maxSamples, Set<String> splits) {
+        List<JsonNode> selected = splits.isEmpty()
+                ? new ArrayList<>(allRows)
+                : allRows.stream()
+                        .filter(row -> splits.contains(row.path("split").asText()))
+                        .collect(Collectors.toCollection(ArrayList::new));
+        int budget = maxSamples > 0 ? Math.min(maxSamples, selected.size()) : selected.size();
+        return new ArrayList<>(selected.subList(0, budget));
+    }
+
+    private static final Set<String> ALLOWED_L3_ONLY_SPLITS = Set.of("calibration", "development");
+
+    static List<JsonNode> selectExactL3OnlyRows(List<JsonNode> allRows, List<String> selectionIds) {
+        if (selectionIds.isEmpty() || selectionIds.size() != new LinkedHashSet<>(selectionIds).size()) {
+            throw new IllegalArgumentException("L3-only selection IDs must be non-empty and unique");
+        }
+        Map<String, JsonNode> rowsById = new LinkedHashMap<>();
+        for (JsonNode row : allRows) {
+            String sampleId = row.path("sampleId").asText();
+            if (sampleId.isBlank() || rowsById.put(sampleId, row) != null) {
+                throw new IllegalArgumentException("L3-only source sample IDs must be non-empty and unique");
+            }
+        }
+        List<JsonNode> selected = new ArrayList<>();
+        for (String sampleId : selectionIds) {
+            JsonNode row = rowsById.get(sampleId);
+            if (row == null) {
+                throw new IllegalArgumentException("L3-only selection ID missing from source export: " + sampleId);
+            }
+            String split = row.path("split").asText();
+            if (!ALLOWED_L3_ONLY_SPLITS.contains(split)) {
+                throw new IllegalArgumentException("L3-only selection attempted sealed/non-tuning split: " + split);
+            }
+            selected.add(row);
+        }
+        return selected;
+    }
+
+    static List<AtomicConversationTurn> toAtomicTurns(JsonNode row) {
+        List<AtomicConversationTurn> result = new ArrayList<>();
+        List<String> userMessages = new ArrayList<>();
+        long start = 1L;
+        long seq = 0L;
+        for (JsonNode turn : row.path("turns")) {
+            seq++;
+            String speaker = turn.path("speaker").asText();
+            String text = turn.path("text").asText();
+            if ("user".equals(speaker)) {
+                if (!userMessages.isEmpty()) {
+                    result.add(new AtomicConversationTurn("eval-turn-" + result.size(), start, seq - 1,
+                            List.copyOf(userMessages), null));
+                    userMessages.clear();
+                }
+                start = seq;
+                userMessages.add(text);
+            } else {
+                result.add(new AtomicConversationTurn("eval-turn-" + result.size(), start, seq,
+                        List.copyOf(userMessages), text));
+                userMessages.clear();
+                start = seq + 1;
+            }
+        }
+        if (!userMessages.isEmpty()) {
+            result.add(new AtomicConversationTurn("eval-turn-" + result.size(), start, seq,
+                    List.copyOf(userMessages), null));
+        }
+        return result;
+    }
+
+    private List<String> readSelectionIds(Path selectionPath) throws Exception {
+        JsonNode selection = OBJECT_MAPPER.readTree(selectionPath.toFile()).path("sampleIds");
+        assertThat(selection.isArray()).as("L3-only selection artifact must contain sampleIds array").isTrue();
+        return toStrings(selection);
+    }
+
+    static Path resolveRepositoryPath(Path repositoryRoot, String configuredPath) {
+        if (configuredPath == null || configuredPath.isBlank()) {
+            throw new IllegalArgumentException("configured repository path must be non-empty");
+        }
+        Path value = Path.of(configuredPath);
+        Path resolved = (value.isAbsolute() ? value : repositoryRoot.resolve(value)).toAbsolutePath().normalize();
+        if (!resolved.startsWith(repositoryRoot.toAbsolutePath().normalize())) {
+            throw new IllegalArgumentException("configured path escapes repository root");
+        }
+        if (!Files.isRegularFile(resolved)) {
+            throw new IllegalArgumentException("configured repository file does not exist: " + resolved);
+        }
+        return resolved;
+    }
+
+    static Set<String> parseSplits(String value) {
+        if (value == null || value.isBlank()) {
+            return Set.of();
+        }
+        Set<String> splits = Stream.of(value.split(","))
+                .map(String::trim)
+                .filter(split -> !split.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> unknown = new LinkedHashSet<>(splits);
+        unknown.removeAll(Set.of("calibration", "development", "holdout", "challenge"));
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("unknown memory export splits: " + unknown);
+        }
+        return Collections.unmodifiableSet(splits);
+    }
+
+    static String validatedRunId(String value) {
+        if (value == null || !value.matches("[A-Za-z0-9._-]+")) {
+            throw new IllegalArgumentException("unsafe memory export run ID");
+        }
+        return value;
     }
 
     /**
@@ -1029,17 +1262,35 @@ class MemoryExportEvalTest {
     }
 
     private Map<String, Object> runConfig(List<String> sourceIds) {
-        return runConfig(sourceIds, SMOKE_DIALOGUE_COUNT);
+        return runConfig(sourceIds, SMOKE_DIALOGUE_COUNT, List.of("balanced-smoke"));
     }
 
     private Map<String, Object> runConfig(List<String> sourceIds, int actualSampleCount) {
+        return runConfig(sourceIds, actualSampleCount, List.of("all"));
+    }
+
+    private Map<String, Object> runConfig(List<String> sourceIds, int actualSampleCount, List<String> splits) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("embeddingModel", EMBEDDING_MODEL);
         config.put("summaryModel", SUMMARY_MODEL);
         config.put("extractorModel", EXTRACTOR_MODEL);
+        config.put("extractorPrompt", EXTRACTOR_PROMPT);
+        config.put("extractorPromptHash", classpathPromptHash(EXTRACTOR_PROMPT));
+        config.put("splits", splits);
         config.put("sampleCount", actualSampleCount);
         config.put("sourceIds", sourceIds);
         return config;
+    }
+
+    private String classpathPromptHash(String promptPath) {
+        String resourcePath = "prompts/" + promptPath;
+        try (var stream = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath)) {
+            assertThat(stream).as("Configured extractor prompt must exist: %s", resourcePath).isNotNull();
+            return "sha256:" + HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(stream.readAllBytes()));
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to hash configured extractor prompt: " + resourcePath, e);
+        }
     }
 
     private Path findRepositoryRoot() {

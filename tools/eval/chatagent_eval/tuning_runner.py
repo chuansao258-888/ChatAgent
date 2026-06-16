@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections import defaultdict
@@ -98,6 +99,7 @@ class TuningConfig:
     max_samples_per_trial: int | None = 50
     holdout_max_samples: int | None = None
     confidence_resamples: int = 300
+    doc_ingestion_repair_overlay: Path | None = None
     git_branch: str = "unknown"
     git_sha: str = "unknown"
 
@@ -114,6 +116,8 @@ class TuningConfig:
             raise ValueError("holdout_max_samples must be positive when provided")
         if self.confidence_resamples <= 0:
             raise ValueError("confidence_resamples must be positive")
+        if self.doc_ingestion_repair_overlay is not None and self.suite != "doc-ingestion-retrieval":
+            raise ValueError("doc_ingestion_repair_overlay is only supported for doc-ingestion-retrieval")
 
 
 def run_tuning_experiment(
@@ -185,6 +189,18 @@ def run_tuning_experiment(
         output_root=experiment_dir / "verification-runs",
         config=config,
         policy=policy,
+        baseline_category_metrics=baseline_categories,
+    )
+    baseline_holdout = _evaluate_verification_run(
+        name="baseline-holdout",
+        parameters=policy["baselineParameters"],
+        splits=(config.holdout_split,),
+        max_samples=config.holdout_max_samples,
+        dataset_root=dataset_root,
+        output_root=experiment_dir / "verification-runs",
+        config=config,
+        policy=policy,
+        baseline_category_metrics=None,
     )
     holdout = _evaluate_verification_run(
         name="champion-holdout",
@@ -195,6 +211,7 @@ def run_tuning_experiment(
         output_root=experiment_dir / "verification-runs",
         config=config,
         policy=policy,
+        baseline_category_metrics=baseline_holdout["categoryMetrics"],
     )
     challenge = None
     if audit["challengeSplit"]:
@@ -207,11 +224,13 @@ def run_tuning_experiment(
             output_root=experiment_dir / "verification-runs",
             config=config,
             policy=policy,
+            baseline_category_metrics=None,
         )
 
     holdout_verification = _holdout_verification(
         champion=champion,
         replay=replay,
+        baseline_holdout=baseline_holdout,
         holdout=holdout,
         challenge=challenge,
         audit=audit,
@@ -238,6 +257,7 @@ def run_tuning_experiment(
         "registryId": registry["registryId"],
         "datasetId": dataset_manifest["datasetId"],
         "datasetHash": dataset_manifest["datasetHash"],
+        "docIngestionRepairOverlay": _overlay_metadata(config.doc_ingestion_repair_overlay),
         "searchSplits": list(config.search_splits),
         "searchSplitHashes": dict(audit["searchSplitHashes"]),
         "sealedHoldoutSplit": config.holdout_split,
@@ -292,6 +312,7 @@ def _evaluate_trial(
             output_root=output_root,
             git_branch=config.git_branch,
             git_sha=config.git_sha,
+            doc_ingestion_repair_overlay=config.doc_ingestion_repair_overlay,
         )
         sample_values = _sample_metric_values(result["samples"], policy["primaryMetric"])
         confidence = bootstrap_confidence_interval(
@@ -349,6 +370,7 @@ def _evaluate_verification_run(
     output_root: Path,
     config: TuningConfig,
     policy: Mapping[str, Any],
+    baseline_category_metrics: Mapping[str, float] | None,
 ) -> dict[str, Any]:
     result = _run_suite(
         suite=config.suite,
@@ -360,6 +382,7 @@ def _evaluate_verification_run(
         output_root=output_root,
         git_branch=config.git_branch,
         git_sha=config.git_sha,
+        doc_ingestion_repair_overlay=config.doc_ingestion_repair_overlay,
     )
     values = _sample_metric_values(result["samples"], policy["primaryMetric"])
     confidence = bootstrap_confidence_interval(
@@ -367,10 +390,11 @@ def _evaluate_verification_run(
         random_seed=config.random_seed,
         resamples=config.confidence_resamples,
     )
+    categories = _category_metrics(result["samples"], policy["primaryMetric"])
     failures = gate_failures(
         result["metrics"],
-        category_metrics=_category_metrics(result["samples"], policy["primaryMetric"]),
-        baseline_category_metrics=None,
+        category_metrics=categories,
+        baseline_category_metrics=baseline_category_metrics,
         policy=policy,
         latency_p95_ms=result["latencyP95Ms"],
         cost_usd=0.0,
@@ -379,6 +403,7 @@ def _evaluate_verification_run(
         "name": name,
         "splits": list(splits),
         "metrics": result["metrics"],
+        "categoryMetrics": categories,
         "confidenceInterval": confidence,
         "gateFailures": failures,
         "latencyP95Ms": result["latencyP95Ms"],
@@ -398,6 +423,7 @@ def _run_suite(
     output_root: Path,
     git_branch: str,
     git_sha: str,
+    doc_ingestion_repair_overlay: Path | None,
 ) -> dict[str, Any]:
     kwargs = {SUITE_CONFIG_FIELDS[suite][key]: value for key, value in parameters.items()}
     common = {
@@ -424,7 +450,7 @@ def _run_suite(
         run_dir = run_doc_ingestion_retrieval(
             dataset_root=dataset_root,
             output_root=output_root,
-            config=DocIngestionConfig(**common, **kwargs),
+            config=DocIngestionConfig(**common, repair_overlay_path=doc_ingestion_repair_overlay, **kwargs),
         )
     elif suite == "text-recall":
         run_dir = run_text_recall(
@@ -462,6 +488,7 @@ def _holdout_verification(
     *,
     champion: Mapping[str, Any],
     replay: Mapping[str, Any],
+    baseline_holdout: Mapping[str, Any],
     holdout: Mapping[str, Any],
     challenge: Mapping[str, Any] | None,
     audit: Mapping[str, Any],
@@ -497,6 +524,7 @@ def _holdout_verification(
         "primaryMetric": primary,
         "developmentValue": development_value,
         "developmentReplay": replay,
+        "baselineHoldout": baseline_holdout,
         "holdout": holdout,
         "challenge": challenge,
         "verificationGateFailures": verification_gates,
@@ -604,6 +632,26 @@ def _dataset_id(suite: str) -> str:
         "rag-retrieval": "beir-scifact-rag-v1",
         "text-recall": "sec-companyfacts-text-recall-v1",
     }[suite]
+
+
+def _overlay_metadata(path: Path | None) -> Mapping[str, Any] | None:
+    if path is None:
+        return None
+    if not path.exists():
+        raise ValueError(f"doc-ingestion repair overlay not found: {path}")
+    return {
+        "path": str(path),
+        "name": path.name,
+        "sha256": _file_hash(path),
+    }
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def _read_json(path: Path) -> Any:

@@ -4,14 +4,17 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from chatagent_eval.doc_ingestion_runner import (
     DocIngestionConfig,
     _aggregate_metrics,
     _evaluate_row,
+    _apply_repair_overlay,
     _load_rows,
     _per_format_metrics,
     _phrase_recall,
+    _validate_repair_content,
     run_doc_ingestion_retrieval,
 )
 from chatagent_eval.schemas import load_json, validate
@@ -323,6 +326,79 @@ class TestLoadRows(unittest.TestCase):
             rows = _load_rows(root, config)
             self.assertEqual(len(rows), 2)
 
+    def test_repair_overlay_updates_calibration_reference_chunk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-cal-1",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-better",
+                "tuningAllowed": True,
+                "reason": "candidate chunk contains the better boundary",
+                "reviewedBy": "unit-test",
+            }) + "\n", encoding="utf-8")
+            root = _build_dataset_root(tmp, [
+                _sample_row(
+                    sample_id="s-cal-1",
+                    reference_chunk_ids=["chunk-old"],
+                    split_override="calibration",
+                    retrieved=[
+                        {"chunkId": "chunk-better", "documentId": "doc-1", "content": "Better boundary", "score": 0.9},
+                    ],
+                )
+            ])
+            config = DocIngestionConfig(run_id="test", repair_overlay_path=overlay_path)
+            rows = _load_rows(root, config)
+            self.assertEqual(rows[0]["referenceContextIds"], ["chunk-better"])
+            self.assertEqual(rows[0]["metadata"]["referenceContent"], "Better boundary")
+            self.assertEqual(rows[0]["metadata"]["repairOverlay"]["previousReferenceContextIds"], ["chunk-old"])
+
+    def test_repair_overlay_can_exclude_development_row(self):
+        rows = [
+            _sample_row(sample_id="keep", split_override="development"),
+            _sample_row(sample_id="drop", split_override="development", ref_doc_id="doc-2",
+                        reference_chunk_ids=["chunk-2"]),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "drop",
+                "decision": "exclude_row",
+                "tuningAllowed": True,
+                "reason": "objective duplicate boilerplate",
+                "reviewedBy": "unit-test",
+            }) + "\n", encoding="utf-8")
+            repaired = _apply_repair_overlay(rows, overlay_path)
+            self.assertEqual([row["sampleId"] for row in repaired], ["keep"])
+
+    def test_repair_overlay_rejects_holdout_modification(self):
+        rows = [_sample_row(sample_id="s-hold", split_override="holdout")]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-hold",
+                "decision": "exclude_row",
+                "tuningAllowed": True,
+                "reason": "do not do this",
+                "reviewedBy": "unit-test",
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "sealed split"):
+                _apply_repair_overlay(rows, overlay_path)
+
+    def test_repair_overlay_requires_tuning_allowed(self):
+        rows = [_sample_row(sample_id="s-cal", split_override="calibration")]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-cal",
+                "decision": "exclude_row",
+                "tuningAllowed": False,
+                "reason": "not reviewed",
+                "reviewedBy": "unit-test",
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "tuningAllowed=true"):
+                _apply_repair_overlay(rows, overlay_path)
+
 
 class TestRunDocIngestionRetrieval(unittest.TestCase):
     def test_full_run_produces_artifacts(self):
@@ -351,6 +427,33 @@ class TestRunDocIngestionRetrieval(unittest.TestCase):
             self.assertEqual(metrics["status"], "pass")
             self.assertAlmostEqual(metrics["retrieval"]["hitAtK"], 1.0)
             self.assertIn("TXT", metrics["perFormat"])
+
+    def test_repair_overlay_hash_uses_sha256_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _build_dataset_root(tmp, [_sample_row(sample_id="s-1", fmt="TXT")])
+            overlay_path = Path(tmp) / "repairs.jsonl"
+            overlay_path.write_text(
+                json.dumps({
+                    "sampleId": "s-1",
+                    "decision": "reference_chunk_wrong",
+                    "newReferenceChunkId": "chunk-1",
+                    "tuningAllowed": True,
+                    "reason": "reviewed fixture repair",
+                    "reviewedBy": "unit-test",
+                }) + "\n",
+                encoding="utf-8",
+            )
+            output_root = Path(tmp) / "output"
+            output_root.mkdir()
+            run_dir = run_doc_ingestion_retrieval(
+                dataset_root=root,
+                output_root=output_root,
+                config=DocIngestionConfig(run_id="overlay-hash", repair_overlay_path=overlay_path),
+            )
+
+            with open(run_dir / "manifest.json", encoding="utf-8") as f:
+                manifest = json.load(f)
+            self.assertTrue(manifest["config"]["repairOverlayHash"].startswith("sha256:"))
 
 
 class TestSchemaRejection(unittest.TestCase):
@@ -566,6 +669,57 @@ class TestRecordSchemaValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate(record, self._schema)
 
+    @staticmethod
+    def _question_provenance() -> dict:
+        return {
+            "method": "manual-reviewed-no-source-v1",
+            "questionId": "sales-result",
+            "questionSetVersion": "manual-smoke-questions-v1",
+            "sourceIdentityInjected": False,
+            "referenceNeedleInjected": False,
+            "referenceAnswerInjected": False,
+        }
+
+    @staticmethod
+    def _metadata_only_source_identity() -> dict:
+        return {
+            "enabled": False,
+            "method": "metadata-only-source-identity",
+            "sourceHint": "SEC HTML / sec edgar / apple filing 2026",
+        }
+
+    def test_manual_question_requires_no_source_provenance_and_reference_answer(self):
+        record = self._minimal_record()
+        record["metadata"]["generationMethod"] = "manual-reviewed-no-source-v1"
+        self._assert_invalid(record)
+
+        record["metadata"]["queryDisambiguation"] = self._metadata_only_source_identity()
+        record["metadata"]["questionProvenance"] = self._question_provenance()
+        record["metadata"]["referenceAnswer"] = "Sales increased."
+        self._assert_valid(record)
+
+    def test_manual_question_rejects_source_identity_injection_provenance(self):
+        record = self._minimal_record()
+        record["metadata"]["generationMethod"] = "manual-reviewed-no-source-v1"
+        record["metadata"]["queryDisambiguation"] = self._metadata_only_source_identity()
+        record["metadata"]["questionProvenance"] = {
+            **self._question_provenance(),
+            "sourceIdentityInjected": True,
+        }
+        record["metadata"]["referenceAnswer"] = "Sales increased."
+        self._assert_invalid(record)
+
+    def test_manual_question_rejects_reference_answer_injection_provenance(self):
+        record = self._minimal_record()
+        record["metadata"]["generationMethod"] = "manual-reviewed-no-source-v1"
+        record["metadata"]["queryDisambiguation"] = self._metadata_only_source_identity()
+        record["metadata"]["questionProvenance"] = {
+            **self._question_provenance(),
+            "referenceAnswerInjected": True,
+        }
+        record["metadata"]["referenceAnswer"] = "Sales increased."
+        self._assert_invalid(record)
+
     def test_xlsx_record_with_row_based_chunker_metadata_passes(self):
         """XLSX records with chunkerMaxRowsPerChunk/chunkerOverlapRows must pass schema."""
         record = self._minimal_record(
@@ -606,7 +760,18 @@ class TestRecordSchemaValidation(unittest.TestCase):
                 "referenceDocId": "doc-pdf",
                 "referenceDocFilename": "who.pdf",
                 "retrievedContexts": [
-                    {"chunkId": "chunk-1", "documentId": "doc-pdf", "content": "visual text"}
+                    {
+                        "chunkId": "chunk-1",
+                        "documentId": "doc-pdf",
+                        "content": "visual text",
+                        "score": 0.91,
+                        "scoreType": "reranker",
+                        "finalRank": 1,
+                        "candidateRank": 3,
+                        "rerankerScore": 0.91,
+                        "rerankerScoreType": "reranker",
+                        "reranked": True,
+                    }
                 ],
                 "candidateContexts": [
                     {
@@ -638,6 +803,62 @@ class TestRecordSchemaValidation(unittest.TestCase):
         )
         self._assert_valid(record)
 
+    def test_answer_control_record_with_ragas_fields_passes(self):
+        record = self._minimal_record(
+            response="The answer is forty-two.",
+            reference="The expected answer is forty-two.",
+            retrievedContexts=[
+                {
+                    "id": "chunk-1",
+                    "chunkId": "chunk-1",
+                    "documentId": "doc-1",
+                    "text": "The answer is forty-two.",
+                    "score": 0.91,
+                }
+            ],
+            metadata={
+                "format": "TXT",
+                "referenceContent": "The answer is forty-two.",
+                "generationMethod": "template-question",
+                "knowledgeBaseId": "kb-1",
+                "referenceDocId": "doc-1",
+                "referenceDocFilename": "example.txt",
+                "retrievedContexts": [
+                    {"chunkId": "chunk-1", "documentId": "doc-1", "content": "The answer is forty-two."}
+                ],
+                "referenceContexts": ["The answer is forty-two."],
+                "sourceSampleId": "s-1",
+                "controlRun": {"mode": "full-rag", "rerankerEnabled": True},
+                "citations": [{"sourceChunkId": "chunk-1", "marker": "[1]", "supported": True}],
+                "latency": {"retrievalMs": 12.0, "rerankerMs": 4.0, "answerMs": 300.0, "totalMs": 316.0},
+                "tokenCounts": {"promptTokens": 100, "completionTokens": 12, "totalTokens": 112},
+                "answerProvider": {"provider": "deepseek", "modelName": "deepseek-chat"},
+            },
+        )
+        self._assert_valid(record)
+
+    def test_answer_control_record_requires_answer_and_pairing_fields(self):
+        record = self._minimal_record(
+            metadata={
+                "referenceContexts": ["The answer is forty-two."],
+                "controlRun": {"mode": "no-rag"},
+            }
+        )
+        self._assert_invalid(record)
+
+    def test_context_control_record_requires_nonempty_top_level_contexts(self):
+        record = self._minimal_record(
+            response="Answer.",
+            reference="Reference.",
+            retrievedContexts=[],
+            metadata={
+                "referenceContexts": ["Reference."],
+                "sourceSampleId": "s-1",
+                "controlRun": {"mode": "full-rag"},
+            },
+        )
+        self._assert_invalid(record)
+
     def test_txt_record_with_char_based_chunker_metadata_passes(self):
         """TXT records with chunkerTargetChars/chunkerOverlapChars must still pass schema."""
         record = self._minimal_record(
@@ -664,6 +885,339 @@ class TestRecordSchemaValidation(unittest.TestCase):
         record = self._minimal_record()
         del record["sampleId"]
         self._assert_invalid(record)
+
+
+class TestSchemaValidationInPipeline(unittest.TestCase):
+    """Regression: _load_rows must enforce generationMethod and enum via schema."""
+
+    @staticmethod
+    def _llm_row():
+        row = _sample_row(generation_method="llm-generated-llm-reviewed-v1")
+        row["metadata"]["queryDisambiguation"] = {
+            "enabled": False,
+            "method": "metadata-only-source-identity",
+            "sourceHint": "test source",
+        }
+        row["metadata"]["questionProvenance"] = {
+            "method": "llm-assisted-no-source-v1",
+            "questionId": "q-1",
+            "questionSetVersion": "v1",
+            "sourceIdentityInjected": False,
+            "referenceNeedleInjected": False,
+            "referenceAnswerInjected": False,
+        }
+        row["metadata"]["referenceAnswer"] = "The answer is 42."
+        row["metadata"]["llmProvenance"] = {
+            "generatorModel": "gemini-test",
+            "generatorTool": "gemini-cli",
+            "reviewerModel": "gemini-test",
+            "reviewerTool": "gemini-cli",
+            "reviewerPromptVersion": "review-v1",
+        }
+        row["metadata"]["auditStatus"] = "llm-reviewed"
+        return row
+
+    @classmethod
+    def _codex_manual_assisted_row(cls):
+        row = cls._llm_row()
+        row["metadata"]["generationMethod"] = "codex-manual-assisted-llm-reviewed-v1"
+        row["metadata"]["questionProvenance"]["method"] = "codex-manual-assisted-no-source-v1"
+        row["metadata"]["llmProvenance"]["generatorModel"] = "gpt-5-codex"
+        row["metadata"]["llmProvenance"]["generatorTool"] = "codex-desktop"
+        return row
+
+    def _assert_pipeline_invalid(self, row):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _build_dataset_root(tmp, [row])
+            with self.assertRaises(ValueError):
+                _load_rows(root, DocIngestionConfig(run_id="test"))
+
+    def _assert_pipeline_valid(self, row):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _build_dataset_root(tmp, [row])
+            self.assertEqual(1, len(_load_rows(root, DocIngestionConfig(run_id="test"))))
+
+    def test_missing_generation_method_rejected(self):
+        """Row without metadata.generationMethod must fail schema validation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            row = _sample_row()
+            del row["metadata"]["generationMethod"]
+            root = _build_dataset_root(tmp, [row])
+            config = DocIngestionConfig(run_id="test")
+            with self.assertRaises(ValueError):
+                _load_rows(root, config)
+
+    def test_missing_schema_file_fails_closed(self):
+        """Schema enforcement must not silently disable when the schema file is missing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            row = _sample_row()
+            root = _build_dataset_root(tmp, [row])
+            config = DocIngestionConfig(run_id="test")
+            missing_schema = Path(tmp) / "missing-schema.json"
+            with patch("chatagent_eval.doc_ingestion_runner._SCHEMA_PATH", missing_schema):
+                with self.assertRaisesRegex(ValueError, "dataset record schema not found"):
+                    _load_rows(root, config)
+
+    def test_invalid_generation_method_enum_rejected(self):
+        """Row with invalid generationMethod enum value must fail schema validation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            row = _sample_row()
+            row["metadata"]["generationMethod"] = "completely-invalid-method"
+            root = _build_dataset_root(tmp, [row])
+            config = DocIngestionConfig(run_id="test")
+            with self.assertRaises(ValueError):
+                _load_rows(root, config)
+
+    def test_valid_generation_method_passes_non_provenance_enum_values(self):
+        """Non-provenance generationMethod values must pass without extra fields."""
+        valid_methods = [
+            "template-question",
+            "template-question-disambiguated",
+            "direct-evidence-preflight",
+            "direct-evidence-disambiguated",
+            "template",
+        ]
+        for method in valid_methods:
+            with tempfile.TemporaryDirectory() as tmp:
+                row = _sample_row(generation_method=method)
+                root = _build_dataset_root(tmp, [row])
+                config = DocIngestionConfig(run_id="test")
+                rows = _load_rows(root, config)
+                self.assertEqual(len(rows), 1, f"failed for generationMethod={method}")
+
+    def test_manual_reviewed_passes_with_full_provenance(self):
+        """manual-reviewed-no-source-v1 passes when provenance fields are present."""
+        with tempfile.TemporaryDirectory() as tmp:
+            row = _sample_row(generation_method="manual-reviewed-no-source-v1")
+            row["metadata"]["queryDisambiguation"] = {
+                "enabled": False,
+                "method": "metadata-only-source-identity",
+                "sourceHint": "test source",
+            }
+            row["metadata"]["questionProvenance"] = {
+                "method": "manual-reviewed-no-source-v1",
+                "questionId": "q-1",
+                "questionSetVersion": "v1",
+                "sourceIdentityInjected": False,
+                "referenceNeedleInjected": False,
+                "referenceAnswerInjected": False,
+            }
+            row["metadata"]["referenceAnswer"] = "The answer is 42."
+            root = _build_dataset_root(tmp, [row])
+            config = DocIngestionConfig(run_id="test")
+            rows = _load_rows(root, config)
+            self.assertEqual(len(rows), 1)
+
+    def test_llm_reviewed_passes_with_full_provenance(self):
+        self._assert_pipeline_valid(self._llm_row())
+
+    def test_codex_manual_assisted_passes_only_with_matching_provenance(self):
+        self._assert_pipeline_valid(self._codex_manual_assisted_row())
+
+        wrong_codex_method = self._codex_manual_assisted_row()
+        wrong_codex_method["metadata"]["questionProvenance"]["method"] = "llm-assisted-no-source-v1"
+        self._assert_pipeline_invalid(wrong_codex_method)
+
+        wrong_gemini_method = self._llm_row()
+        wrong_gemini_method["metadata"]["questionProvenance"]["method"] = "codex-manual-assisted-no-source-v1"
+        self._assert_pipeline_invalid(wrong_gemini_method)
+
+    def test_llm_provenance_bypass_scenarios_are_rejected(self):
+        mutations = [
+            lambda row: row["metadata"].update(llmProvenance=None),
+            lambda row: row["metadata"].update(auditStatus=None),
+            lambda row: row["metadata"]["llmProvenance"].update(reviewerModel=None),
+            lambda row: row["metadata"]["questionProvenance"].update(method="manual-reviewed-no-source-v1"),
+        ]
+        for mutate in mutations:
+            row = self._llm_row()
+            mutate(row)
+            self._assert_pipeline_invalid(row)
+
+    def test_manual_rows_reject_llm_or_llm_assisted_provenance(self):
+        row = _sample_row(generation_method="manual-reviewed-no-source-v1")
+        row["metadata"]["queryDisambiguation"] = {
+            "enabled": False,
+            "method": "metadata-only-source-identity",
+            "sourceHint": "test source",
+        }
+        row["metadata"]["questionProvenance"] = {
+            "method": "manual-reviewed-no-source-v1",
+            "questionId": "q-1",
+            "questionSetVersion": "v1",
+            "sourceIdentityInjected": False,
+            "referenceNeedleInjected": False,
+            "referenceAnswerInjected": False,
+        }
+        row["metadata"]["referenceAnswer"] = "The answer is 42."
+        with_llm = json.loads(json.dumps(row))
+        with_llm["metadata"]["llmProvenance"] = {
+            "generatorModel": "gemini-test",
+            "generatorTool": "gemini-cli",
+            "reviewerModel": "gemini-test",
+            "reviewerTool": "gemini-cli",
+            "reviewerPromptVersion": "review-v1",
+        }
+        self._assert_pipeline_invalid(with_llm)
+
+        assisted = json.loads(json.dumps(row))
+        assisted["metadata"]["questionProvenance"]["method"] = "llm-assisted-no-source-v1"
+        self._assert_pipeline_invalid(assisted)
+
+
+class TestRepairOverlayContentValidation(unittest.TestCase):
+    """Content validation after repair overlay: source leaks and evidence support."""
+
+    def test_repair_rejects_source_leak_filename_in_user_input(self):
+        """userInput containing referenceDocFilename must be rejected."""
+        row = _sample_row(
+            sample_id="s-leak",
+            split_override="calibration",
+            user_input="What does the confidential-report.pdf document say about revenue?",
+        )
+        row["metadata"]["referenceDocFilename"] = "confidential-report.pdf"
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-leak",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Revenue increased.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source leak"):
+                _apply_repair_overlay(rows, overlay_path)
+
+    def test_repair_rejects_case_variant_source_leak_filename(self):
+        """Filename source leak detection must be case-insensitive."""
+        row = _sample_row(
+            sample_id="s-leak-case",
+            split_override="calibration",
+            user_input="What does CONFIDENTIAL-REPORT.PDF say about revenue?",
+        )
+        row["metadata"]["referenceDocFilename"] = "confidential-report.pdf"
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-leak-case",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Revenue increased.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source leak"):
+                _apply_repair_overlay(rows, overlay_path)
+
+    def test_repair_rejects_source_leak_hash_in_user_input(self):
+        """userInput containing sourceSha256 must be rejected."""
+        row = _sample_row(
+            sample_id="s-hash",
+            split_override="calibration",
+            user_input="What does abc123def4567890 say?",
+        )
+        row["metadata"]["sourceSha256"] = "abc123def4567890"
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-hash",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Some answer.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source leak"):
+                _apply_repair_overlay(rows, overlay_path)
+
+    def test_repair_rejects_case_variant_source_leak_hash(self):
+        """Hash source leak detection must be case-insensitive."""
+        row = _sample_row(
+            sample_id="s-hash-case",
+            split_override="calibration",
+            user_input="What does ABC123DEF4567890 say?",
+        )
+        row["metadata"]["sourceSha256"] = "abc123def4567890"
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-hash-case",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Some answer.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source leak"):
+                _apply_repair_overlay(rows, overlay_path)
+
+    def test_repair_rejects_unevidenced_reference_answer(self):
+        """referenceAnswer with zero meaningful word overlap in new referenceContent must fail."""
+        row = _sample_row(sample_id="s-evid", split_override="calibration")
+        row["metadata"]["referenceAnswer"] = "Quantum entanglement demonstrates non-locality"
+        row["metadata"]["referenceContent"] = "Quantum physics text."
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-evid",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Revenue increased by twenty percent in fiscal year.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "evidence"):
+                _apply_repair_overlay(rows, overlay_path)
+
+    def test_repair_allows_overlapping_reference_answer(self):
+        """referenceAnswer with meaningful word overlap in new referenceContent passes."""
+        row = _sample_row(sample_id="s-ok", split_override="calibration")
+        row["metadata"]["referenceAnswer"] = "Revenue increased significantly"
+        row["metadata"]["referenceContent"] = "Old content."
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-ok",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Revenue increased by twenty percent in fiscal year.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            result = _apply_repair_overlay(rows, overlay_path)
+            self.assertEqual(len(result), 1)
+            self.assertEqual(
+                result[0]["metadata"]["referenceContent"],
+                "Revenue increased by twenty percent in fiscal year.",
+            )
+
+    def test_repair_skips_evidence_check_when_no_reference_answer(self):
+        """No referenceAnswer means no evidence check — repair succeeds."""
+        row = _sample_row(sample_id="s-noans", split_override="calibration")
+        # Ensure no referenceAnswer in metadata.
+        row["metadata"].pop("referenceAnswer", None)
+        rows = [row]
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay_path = Path(tmp) / "repair.jsonl"
+            overlay_path.write_text(json.dumps({
+                "sampleId": "s-noans",
+                "decision": "reference_chunk_wrong",
+                "newReferenceChunkId": "chunk-new",
+                "newReferenceContent": "Completely different topic.",
+                "tuningAllowed": True,
+            }) + "\n", encoding="utf-8")
+            result = _apply_repair_overlay(rows, overlay_path)
+            self.assertEqual(len(result), 1)
+
+    def test_validate_repair_content_directly_rejects_short_filename(self):
+        """Short filenames (<4 chars) should not trigger source leak check."""
+        row = _sample_row(user_input="What is in a.txt?")
+        row["metadata"]["referenceDocFilename"] = "a.txt"
+        # "a.txt" has 5 chars (>= 4), so it WOULD trigger. Use shorter.
+        row["metadata"]["referenceDocFilename"] = "a.t"
+        # Should not raise — filename too short.
+        _validate_repair_content(row)
 
 
 if __name__ == "__main__":

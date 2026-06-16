@@ -13,6 +13,13 @@ def load_json(path: Path) -> Any:
 
 
 def validate(instance: Any, schema: Mapping[str, Any], path: str = "$") -> None:
+    for nested_schema in schema.get("allOf", []):
+        validate(instance, nested_schema, path)
+    if_schema = schema.get("if")
+    if isinstance(if_schema, Mapping) and _matches_schema(instance, if_schema, path):
+        then_schema = schema.get("then")
+        if isinstance(then_schema, Mapping):
+            validate(instance, then_schema, path)
     _validate_type(instance, schema.get("type"), path)
     if "enum" in schema and instance not in schema["enum"]:
         raise ValueError(f"{path} must be one of {schema['enum']}")
@@ -64,3 +71,11 @@ def _matches_type(instance: Any, expected: str) -> bool:
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _matches_schema(instance: Any, schema: Mapping[str, Any], path: str) -> bool:
+    try:
+        validate(instance, schema, path)
+        return True
+    except ValueError:
+        return False

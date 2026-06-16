@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import run_eval
 from chatagent_eval.datasets import sha256_file
@@ -58,6 +59,35 @@ class TuningRunnerTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "overlap"):
             split_audit(manifest, search_splits=("development",), holdout_split="holdout", challenge_split=None)
+
+    def test_doc_ingestion_repair_overlay_rejected_for_other_suites(self) -> None:
+        with self.assertRaisesRegex(ValueError, "only supported for doc-ingestion-retrieval"):
+            TuningConfig(
+                experiment_id="bad-overlay-suite",
+                suite="memory-v2",
+                doc_ingestion_repair_overlay=Path("repairs.jsonl"),
+            )
+
+    def test_doc_ingestion_parameter_space_matches_real_export_candidate_pool(self) -> None:
+        space = load_json(RESOURCE_ROOT / "parameter-spaces" / "doc-ingestion-retrieval-v1.json")
+        values_by_id = {parameter["id"]: parameter["values"] for parameter in space["parameters"]}
+
+        self.assertEqual([3, 5, 8, 10], values_by_id["topK"])
+        self.assertEqual([12, 24], values_by_id["candidateK"])
+
+        trials = build_experiment_trials(
+            space,
+            experiment_id="doc-ingestion-topk-expansion",
+            baseline_parameters={"topK": 3, "candidateK": 12, "rrfK": 60},
+            strategy="grid",
+            combination_budget=24,
+            random_seed=42,
+        )
+
+        self.assertEqual(24, len(trials))
+        for trial in trials:
+            parameters = trial["parameters"]
+            self.assertLessEqual(parameters["topK"], parameters["candidateK"])
 
     def test_trials_confidence_and_pareto_are_reproducible(self) -> None:
         space = {
@@ -174,6 +204,70 @@ class TuningRunnerTest(unittest.TestCase):
                 self.assertIsNone(trial["latencyP95Ms"])
                 self.assertGreater(trial["executionElapsedMs"], 0.0)
                 validate(trial, load_json(RESOURCE_ROOT / "schemas" / "eval-trial.schema.json"))
+
+    def test_holdout_verification_enforces_per_format_regression(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_doc_ingestion_export_root(temp_path / "phase10a")
+
+            def fake_run_suite(**kwargs) -> dict:
+                parameters = kwargs["parameters"]
+                splits = tuple(kwargs["splits"])
+                is_holdout = splits == ("holdout",)
+                is_baseline = parameters["topK"] == 3
+                if is_holdout and is_baseline:
+                    samples = _metric_samples({"SEC_HTML": 1.0, "DOCX": 0.0})
+                elif is_holdout:
+                    samples = _metric_samples({"SEC_HTML": 0.0, "DOCX": 1.0})
+                elif is_baseline:
+                    samples = _metric_samples({"SEC_HTML": 0.4, "DOCX": 0.4})
+                else:
+                    top_k = int(parameters["topK"])
+                    value = 0.5 if top_k == 12 else 0.45
+                    samples = _metric_samples({"SEC_HTML": value, "DOCX": value})
+                metric = sum(
+                    sample["metadata"]["docIngestion"]["contextRecallAtK"] for sample in samples
+                ) / len(samples)
+                return {
+                    "metrics": {
+                        "docIngestion.contextRecallAtK": metric,
+                        "docIngestion.hitAtK": metric,
+                        "docIngestion.mrr": metric,
+                        "docIngestion.phraseRecall": 1.0,
+                        "docIngestion.queryCount": len(samples),
+                    },
+                    "samples": samples,
+                    "failureCount": 0,
+                    "latencyP95Ms": None,
+                    "executionElapsedMs": 1.0,
+                }
+
+            with patch("chatagent_eval.tuning_runner._run_suite", side_effect=fake_run_suite):
+                experiment_dir = run_tuning_experiment(
+                    dataset_root=dataset_root,
+                    output_root=temp_path / "out",
+                    parameter_space_path=RESOURCE_ROOT / "parameter-spaces" / "doc-ingestion-retrieval-v1.json",
+                    policy_path=RESOURCE_ROOT / "tuning-policies" / "doc-ingestion-retrieval-v1.json",
+                    registry_path=RESOURCE_ROOT / "parameter-registry-v1.json",
+                    config=TuningConfig(
+                        experiment_id="holdout-format-regression",
+                        suite="doc-ingestion-retrieval",
+                        strategy="grid",
+                        combination_budget=15,
+                        max_samples_per_trial=4,
+                        holdout_max_samples=2,
+                        confidence_resamples=20,
+                    ),
+                )
+
+            holdout = load_json(experiment_dir / "holdout-verification.json")
+            candidate = load_json(experiment_dir / "champion-candidate.yaml")
+
+            self.assertEqual("warn", holdout["status"])
+            self.assertEqual("rejected", candidate["status"])
+            self.assertIn("baselineHoldout", holdout)
+            self.assertIn("category-regression:SEC_HTML", holdout["holdout"]["gateFailures"])
+            self.assertIn("category-regression:SEC_HTML", holdout["verificationGateFailures"])
 
     def test_cli_tune_suite_runs_without_provider(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -490,6 +584,66 @@ class TuningRunnerTest(unittest.TestCase):
             self.assertIn("docIngestion.contextRecallAtK", trial_report["metrics"])
             self.assertTrue((experiment_dir / "promotion-decision.md").exists())
 
+    def test_cli_tune_suite_applies_doc_ingestion_repair_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dataset_root = _write_doc_ingestion_export_root(temp_path / "phase10a")
+            overlay_path = temp_path / "repairs.jsonl"
+            overlay_path.write_text(
+                json.dumps(
+                    {
+                        "sampleId": "doc-calibration-sample",
+                        "decision": "reference_chunk_wrong",
+                        "newReferenceChunkId": "doc-calibration-other",
+                        "tuningAllowed": True,
+                        "reason": "reviewed duplicate evidence points at the sibling chunk",
+                        "reviewedBy": "phase10d-b-fixture",
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = run_eval.main(
+                    [
+                        "tune-suite",
+                        "--suite",
+                        "doc-ingestion-retrieval",
+                        "--dataset-root",
+                        str(dataset_root),
+                        "--output-root",
+                        str(temp_path / "out"),
+                        "--experiment-id",
+                        "doc-ingestion-overlay-tuning",
+                        "--combination-budget",
+                        "1",
+                        "--max-samples-per-trial",
+                        "2",
+                        "--holdout-max-samples",
+                        "1",
+                        "--confidence-resamples",
+                        "20",
+                        "--doc-ingestion-repair-overlay",
+                        str(overlay_path),
+                    ]
+                )
+
+            self.assertEqual(0, exit_code)
+            experiment_dir = temp_path / "out" / "doc-ingestion-overlay-tuning"
+            manifest = load_json(experiment_dir / "experiment-manifest.json")
+            self.assertEqual("repairs.jsonl", manifest["docIngestionRepairOverlay"]["name"])
+            self.assertTrue(manifest["docIngestionRepairOverlay"]["sha256"].startswith("sha256:"))
+
+            samples = _read_jsonl(experiment_dir / "search-runs" / "trial-0001" / "samples.jsonl")
+            repaired = next(sample for sample in samples if sample["sampleId"] == "doc-calibration-sample")
+            self.assertEqual(["doc-calibration-other"], repaired["referenceContextIds"])
+            self.assertEqual(
+                "reference_chunk_wrong",
+                repaired["metadata"]["repairOverlay"]["decision"],
+            )
+
 
 def _write_dataset_root(path: Path) -> Path:
     rows = [
@@ -535,6 +689,26 @@ def _write_dataset_root(path: Path) -> Path:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
+
+
+def _metric_samples(values_by_format: dict[str, float]) -> list[dict]:
+    samples = []
+    for fmt, value in values_by_format.items():
+        samples.append(
+            {
+                "sampleId": f"{fmt.lower()}-{value}",
+                "metadata": {
+                    "sourceMetadata": {"domain": fmt},
+                    "docIngestion": {
+                        "contextRecallAtK": value,
+                        "hitAtK": value,
+                        "mrr": value,
+                        "phraseRecall": 1.0,
+                    },
+                },
+            }
+        )
+    return samples
 
 
 def _write_rag_retrieval_export_root(path: Path, candidate_mode: str = "candidate-contexts") -> Path:

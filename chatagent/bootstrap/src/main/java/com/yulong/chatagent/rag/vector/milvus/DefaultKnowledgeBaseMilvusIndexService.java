@@ -266,13 +266,18 @@ public class DefaultKnowledgeBaseMilvusIndexService implements KnowledgeBaseMilv
         if (!properties.isBm25Enabled() || knowledgeBaseIds == null || knowledgeBaseIds.isEmpty() || queryText == null || queryText.isBlank() || topK <= 0) {
             return List.of();
         }
+        MilvusBm25Encoding.requireUtf8DefaultCharset();
+        String sanitizedQueryText = sanitizeBm25Text(queryText);
+        if (sanitizedQueryText.isBlank()) {
+            return List.of();
+        }
 
         ensureCollection();
         SearchResp response = milvusClient.search(SearchReq.builder()
                 .databaseName(properties.getDatabase())
                 .collectionName(knowledgeBaseProperties.getCollection())
                 .annsField(KnowledgeBaseMilvusCollectionFields.BM25_SPARSE)
-                .data(List.of(new EmbeddedText(queryText)))
+                .data(List.of(new EmbeddedText(sanitizedQueryText)))
                 .filter(knowledgeBaseIdsFilter(knowledgeBaseIds))
                 .topK(topK)
                 .outputFields(outputFields())
@@ -281,19 +286,81 @@ public class DefaultKnowledgeBaseMilvusIndexService implements KnowledgeBaseMilv
         return toHits(response);
     }
 
+    static String sanitizeBm25Text(String text) {
+        return sanitizeMilvusText(text, TEXT_MAX_LENGTH, true);
+    }
+
+    static String sanitizeMilvusText(String text, int maxUtf8Bytes, boolean collapseWhitespace) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        if (maxUtf8Bytes <= 0) {
+            return "";
+        }
+        StringBuilder sanitized = new StringBuilder(Math.min(text.length(), maxUtf8Bytes));
+        int utf8Bytes = 0;
+        boolean previousWhitespace = collapseWhitespace;
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            boolean invalid = codePoint == 0 || codePoint == 0xFFFD || (codePoint >= Character.MIN_SURROGATE
+                    && codePoint <= Character.MAX_SURROGATE);
+            if (invalid) {
+                codePoint = ' ';
+            }
+            boolean whitespace = Character.isWhitespace(codePoint);
+            if (collapseWhitespace && whitespace) {
+                if (!previousWhitespace) {
+                    if (utf8Bytes + 1 > maxUtf8Bytes) {
+                        break;
+                    }
+                    sanitized.append(' ');
+                    utf8Bytes++;
+                }
+            } else {
+                int codePointUtf8Bytes = utf8Length(codePoint);
+                if (utf8Bytes + codePointUtf8Bytes > maxUtf8Bytes) {
+                    break;
+                }
+                sanitized.appendCodePoint(codePoint);
+                utf8Bytes += codePointUtf8Bytes;
+            }
+            previousWhitespace = whitespace;
+        }
+        return collapseWhitespace ? sanitized.toString().trim() : sanitized.toString();
+    }
+
+    private static int utf8Length(int codePoint) {
+        if (codePoint <= 0x7F) {
+            return 1;
+        }
+        if (codePoint <= 0x7FF) {
+            return 2;
+        }
+        if (codePoint <= 0xFFFF) {
+            return 3;
+        }
+        return 4;
+    }
+
     private JsonObject toRow(KnowledgeBaseMilvusChunkDocument chunk) {
         JsonObject row = new JsonObject();
         row.addProperty(KnowledgeBaseMilvusCollectionFields.CHUNK_ID, chunk.chunkId());
         row.addProperty(KnowledgeBaseMilvusCollectionFields.KNOWLEDGE_BASE_ID, chunk.knowledgeBaseId());
         row.addProperty(KnowledgeBaseMilvusCollectionFields.DOCUMENT_ID, chunk.documentId());
         row.addProperty(KnowledgeBaseMilvusCollectionFields.CHUNK_INDEX, chunk.chunkIndex());
-        row.addProperty(KnowledgeBaseMilvusCollectionFields.DOCUMENT_NAME, chunk.documentName());
-        row.addProperty(KnowledgeBaseMilvusCollectionFields.SECTION_PATH, chunk.sectionPath() == null ? "" : chunk.sectionPath());
-        row.addProperty(KnowledgeBaseMilvusCollectionFields.CONTENT, chunk.content());
-        row.addProperty(KnowledgeBaseMilvusCollectionFields.CONTEXT_TEXT, chunk.contextText() == null ? "" : chunk.contextText());
-        row.addProperty(KnowledgeBaseMilvusCollectionFields.RETRIEVAL_TEXT, chunk.retrievalText());
+        row.addProperty(KnowledgeBaseMilvusCollectionFields.DOCUMENT_NAME,
+                sanitizeMilvusText(chunk.documentName(), DOCUMENT_NAME_MAX_LENGTH, false));
+        row.addProperty(KnowledgeBaseMilvusCollectionFields.SECTION_PATH,
+                sanitizeMilvusText(chunk.sectionPath(), TEXT_MAX_LENGTH, false));
+        row.addProperty(KnowledgeBaseMilvusCollectionFields.CONTENT,
+                sanitizeMilvusText(chunk.content(), TEXT_MAX_LENGTH, false));
+        row.addProperty(KnowledgeBaseMilvusCollectionFields.CONTEXT_TEXT,
+                sanitizeMilvusText(chunk.contextText(), TEXT_MAX_LENGTH, false));
+        row.addProperty(KnowledgeBaseMilvusCollectionFields.RETRIEVAL_TEXT,
+                sanitizeMilvusText(chunk.retrievalText(), TEXT_MAX_LENGTH, false));
         if (properties.isBm25Enabled()) {
-            row.addProperty(KnowledgeBaseMilvusCollectionFields.BM25_TEXT, chunk.bm25Text() == null ? "" : chunk.bm25Text());
+            row.addProperty(KnowledgeBaseMilvusCollectionFields.BM25_TEXT, sanitizeBm25Text(chunk.bm25Text()));
         }
         row.addProperty(KnowledgeBaseMilvusCollectionFields.ENABLED, chunk.enabled());
         row.addProperty(KnowledgeBaseMilvusCollectionFields.CREATED_AT, chunk.createdAtEpochMillis());

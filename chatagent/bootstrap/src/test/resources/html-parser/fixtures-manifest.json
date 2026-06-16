@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "description": "Committed offline HTML parser fixtures for HtmlDocumentParser acceptance tests.",
+  "fixtures": [
+    {
+      "filename": "sec-edgar-10-k-inline-xbrl.html",
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm",
+      "retrievedAt": "2026-06-13",
+      "sha256": "bda1f34435199672c16ecdf2034c650872d2cac8399ed0d179fc25450b080b90",
+      "sizeBytes": 1558924,
+      "license": "Public data — SEC EDGAR filings are public records (17 CFR 2.81)",
+      "status": "public-data",
+      "retainedStructures": [
+        "Inline XBRL taxonomy fragments (ix:nonFraction, ix:nonNumeric)",
+        "Headerless financial tables",
+        "Multi-level headings",
+        "Embedded numeric data (revenue, assets, liabilities)"
+      ]
+    },
+    {
+      "filename": "w3c-specification.html",
+      "sourceUrl": "https://www.w3.org/TR/2024/REC-WCAG22-20241212/",
+      "retrievedAt": "2026-06-13",
+      "sha256": "f5157a3cae79f4e51f972e2bd1e6ae178e3cb7019880924f3720cb691c540d1d",
+      "sizeBytes": 507680,
+      "license": "W3C Document License — W3C Software and Document Notice and License (https://www.w3.org/Consortium/Legal/2015/copyright-software-and-document)",
+      "status": "permissive",
+      "retainedStructures": [
+        "Heading hierarchy (h1–h6)",
+        "Ordered and unordered lists",
+        "Tables with headers",
+        "Inline formatting (strong, em, code, links)",
+        "Navigation and footer elements (for stripping tests)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "version": "manual-smoke-questions-v1",
+  "questions": [
+    {
+      "id": "http-older-clients-multiple-connections",
+      "filename": "rfc7540-http2.txt",
+      "split": "calibration",
+      "question": "Why do older HTTP clients often use multiple connections to a server?",
+      "referenceNeedle": "HTTP/1.1 added request pipelining",
+      "referenceAnswer": "HTTP/1.0 permits only one outstanding request per TCP connection, while HTTP/1.1 pipelining only partially addresses concurrency and still suffers from head-of-line blocking."
+    },
+    {
+      "id": "http-prioritization-limited-resources",
+      "filename": "rfc7540-http2.txt",
+      "split": "calibration",
+      "question": "What role does prioritization play when streams share limited resources?",
+      "referenceNeedle": "Prioritization (Section 5.3) ensures",
+      "referenceAnswer": "Prioritization directs limited resources to the most important streams first."
+    },
+    {
+      "id": "http-origin-components",
+      "filename": "rfc9110-http-semantics.txt",
+      "split": "development",
+      "question": "What three components distinguish one origin from another?",
+      "referenceNeedle": "Two origins are distinct if they differ in scheme, host, or port",
+      "referenceAnswer": "Two origins are distinct when they differ in scheme, host, or port."
+    },
+    {
+      "id": "tax-information-sources",
+      "filename": "irs-publication-1-taxpayer-rights.pdf",
+      "split": "calibration",
+      "question": "How can someone get IRS tax information, forms, and publications, comment on enforcement actions affecting a small business, or report employee misconduct?",
+      "referenceNeedle": "The IRS provides the following sources for forms, publications, and additional information",
+      "referenceAnswer": "Call 1-800-829-1040 for tax questions, call 1-800-829-3676 for forms and publications, visit www.irs.gov, call 1-888-REG-FAIR about enforcement actions affecting a small business, or call 1-800-366-4484 to report IRS employee misconduct."
+    },
+    {
+      "id": "standard-deduction-factors",
+      "filename": "irs-publication-501-dependents.pdf",
+      "split": "development",
+      "question": "Which factors determine the standard deduction amount?",
+      "referenceNeedle": "The standard deduction amount depends on",
+      "referenceAnswer": "It depends on filing status, whether the person is 65 or older or blind, and whether another taxpayer can claim the person as a dependent."
+    },
+    {
+      "id": "accessibility-device-categories",
+      "filename": "wcag-22.html",
+      "split": "calibration",
+      "chunkIndex": 1,
+      "question": "Which device categories are explicitly included in the accessibility guidance?",
+      "referenceNeedle": "desktops, laptops, kiosks, and mobile devices",
+      "referenceAnswer": "The guidance explicitly includes desktops, laptops, kiosks, and mobile devices."
+    },
+    {
+      "id": "accessibility-success-criteria-form",
+      "filename": "wcag-22.html",
+      "split": "calibration",
+      "question": "How are the accessibility success criteria written?",
+      "referenceNeedle": "WCAG 2.2 success criteria are written as testable statements",
+      "referenceAnswer": "They are written as testable statements that are not technology-specific."
+    },
+    {
+      "id": "image-predictor-comparison-order",
+      "filename": "png-third-edition.html",
+      "split": "holdout",
+      "question": "Why must the comparison order in the image predictor remain unchanged?",
+      "referenceNeedle": "The order in which the comparisons are performed is critical",
+      "referenceAnswer": "The comparison order is critical because the function determines which of the vertical, horizontal, or diagonal image gradients is smallest."
+    },
+    {
+      "id": "image-predictor-encoder-decoder",
+      "filename": "png-third-edition.html",
+      "split": "holdout",
+      "question": "Do the encoder and decoder use different image predictor functions?",
+      "referenceNeedle": "Exactly the same PaethPredictor function is used by both encoder and decoder",
+      "referenceAnswer": "No. The encoder and decoder use exactly the same PaethPredictor function."
+    },
+    {
+      "id": "security-requirement-name",
+      "filename": "asyncapi-spec.md",
+      "split": "calibration",
+      "question": "What must each security requirement name correspond to?",
+      "referenceNeedle": "Each name MUST correspond to a security scheme",
+      "referenceAnswer": "Each name must correspond to a security scheme declared under the Components Object."
+    },
+    {
+      "id": "security-requirement-empty-scopes",
+      "filename": "asyncapi-spec.md",
+      "split": "calibration",
+      "question": "When can the scope list for a security requirement be empty?",
+      "referenceNeedle": "If scopes are not needed, the list can be empty",
+      "referenceAnswer": "The list can be empty when scopes are not needed; for other security scheme types, the array must be empty."
+    },
+    {
+      "id": "published-specification-markdown-sources",
+      "filename": "openapi-readme.md",
+      "split": "holdout",
+      "question": "Where are the Markdown sources for published specification versions stored?",
+      "referenceNeedle": "This repository contains [the Markdown sources]",
+      "referenceAnswer": "They are stored in the repository's versions directory."
+    },
+    {
+      "id": "girls-length-1074-median",
+      "filename": "wfl-girls-zscore-expanded-table.xlsx",
+      "split": "calibration",
+      "chunkIndex": 13,
+      "question": "What median value is listed for a length of 107.4 in the girls' table?",
+      "referenceNeedle": "| 107.4 | -0.3833 | 17.3683",
+      "referenceAnswer": "The median value is 17.3683."
+    },
+    {
+      "id": "boys-length-1074-median",
+      "filename": "wfl-boys-zscore-expanded-table.xlsx",
+      "split": "development",
+      "chunkIndex": 13,
+      "question": "What median value is listed for a length of 107.4 in the boys' table?",
+      "referenceNeedle": "| 107.4 | -0.3521 | 17.3909",
+      "referenceAnswer": "The median value is 17.3909."
+    },
+    {
+      "id": "extra-help-next-step",
+      "filename": "determination-lis-ineligibility.docx",
+      "split": "holdout",
+      "question": "What should a person do if they may still qualify for Extra Help?",
+      "referenceNeedle": "You may still qualify for Extra Help, but you must apply to find out",
+      "referenceAnswer": "The person must apply to find out whether they qualify for Extra Help."
+    },
+    {
+      "id": "regional-office-new-jersey-new-york",
+      "filename": "determination-lis-ineligibility.docx",
+      "split": "holdout",
+      "question": "Which regional office serves New Jersey and New York?",
+      "referenceNeedle": "New York Regional Office | NJ, NY",
+      "referenceAnswer": "The New York Regional Office serves New Jersey and New York."
+    }
+  ]
+}

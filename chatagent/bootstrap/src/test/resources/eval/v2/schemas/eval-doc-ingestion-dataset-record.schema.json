@@ -38,8 +38,33 @@
       "items": { "type": "string", "minLength": 1 },
       "description": "The chunk IDs that this query should retrieve. At least one reference chunk ID is required for meaningful chunk-level recall scoring."
     },
+    "response": {
+      "type": "string",
+      "description": "Generated answer text for 10d-B2 RAGAS/control runs. Retrieval-only rows may omit this field."
+    },
+    "reference": {
+      "type": "string",
+      "description": "Reference answer text grounded in the reference chunk for 10d-B2 answer metrics. Retrieval-only rows may omit this field."
+    },
+    "retrievedContexts": {
+      "type": "array",
+      "description": "Top-level RAGAS-compatible retrieved contexts. The runner also accepts metadata.retrievedContexts for legacy retrieval rows.",
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "chunkId": { "type": ["string", "null"] },
+          "documentId": { "type": ["string", "null"] },
+          "text": { "type": "string" },
+          "score": { "type": ["number", "null"] }
+        },
+        "additionalProperties": true
+      }
+    },
     "metadata": {
       "type": "object",
+      "required": ["format", "generationMethod"],
       "description": "Doc-ingestion-specific metadata including source provenance, format, and retrieved contexts.",
       "properties": {
         "format": {
@@ -50,9 +75,57 @@
           "type": "string",
           "description": "Full text content of the reference chunk."
         },
+        "referenceAnswer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Concise reference answer. For manual-reviewed-no-source-v1: human-authored. For llm-generated-llm-reviewed-v1: LLM-generated, validated against referenceContent, and reviewed by a separate Gemini CLI pass."
+        },
         "generationMethod": {
           "type": "string",
-          "description": "How the query was generated: direct-evidence-preflight or template-question."
+          "enum": ["manual-reviewed-no-source-v1", "llm-generated-llm-reviewed-v1", "codex-manual-assisted-llm-reviewed-v1", "template-question", "template-question-disambiguated", "direct-evidence-preflight", "direct-evidence-disambiguated", "template"],
+          "description": "How the query was authored. Only these values are allowed. manual-reviewed-no-source-v1 = fully human-authored; llm-generated-llm-reviewed-v1 = LLM-generated, validated, and reviewed by a separate LLM pass; template-question = auto-generated from template; direct-evidence-preflight = preflight diagnostic; template = analysis fixture."
+        },
+        "queryDisambiguation": {
+          "type": "object",
+          "description": "Legacy-compatible provenance showing that source identity is retained only in metadata and is not applied to userInput.",
+          "properties": {
+            "enabled": { "enum": [false] },
+            "method": { "enum": ["metadata-only-source-identity"] },
+            "sourceHint": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "questionProvenance": {
+          "type": "object",
+          "description": "Provenance for the authored userInput and explicit confirmation that source/reference binding data was not injected.",
+          "required": ["method", "questionId", "questionSetVersion", "sourceIdentityInjected", "referenceNeedleInjected", "referenceAnswerInjected"],
+          "properties": {
+            "method": { "enum": ["manual-reviewed-no-source-v1", "llm-assisted-no-source-v1", "codex-manual-assisted-no-source-v1"] },
+            "questionId": { "type": "string", "minLength": 1 },
+            "questionSetVersion": { "type": "string", "minLength": 1 },
+            "sourceIdentityInjected": { "enum": [false] },
+            "referenceNeedleInjected": { "enum": [false] },
+            "referenceAnswerInjected": { "enum": [false] }
+          },
+          "additionalProperties": false
+        },
+        "llmProvenance": {
+          "type": ["object", "null"],
+          "description": "LLM generation and review provenance. Required and must be non-null when generationMethod is llm-generated-llm-reviewed-v1. Null or absent for manual-reviewed-no-source-v1 rows.",
+          "required": ["generatorModel", "generatorTool"],
+          "properties": {
+            "generatorModel": { "type": "string", "minLength": 1 },
+            "generatorTool": { "type": "string", "minLength": 1 },
+            "reviewerModel": { "type": "string", "minLength": 1 },
+            "reviewerTool": { "type": "string", "minLength": 1 },
+            "reviewerPromptVersion": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "auditStatus": {
+          "type": ["string", "null"],
+          "enum": ["pending", "llm-reviewed", "failed-review", null],
+          "description": "Review status of this question. Only llm-reviewed questions appear in the accepted question set file. Null for legacy/auto-generated rows."
         },
         "sourceUrl": {
           "type": ["string", "null"],
@@ -107,6 +180,41 @@
               "score": {
                 "type": ["number", "null"]
               },
+              "scoreType": {
+                "type": ["string", "null"],
+                "description": "Score source for the final production context, such as reranker, retrieval, or fallback."
+              },
+              "finalRank": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "description": "1-based final rank after production reranking and topK truncation."
+              },
+              "candidateRank": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "description": "1-based rank of the same chunk in the pre-reranker candidate pool when matched."
+              },
+              "rerankerRank": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "description": "1-based final rank assigned after the production reranker path."
+              },
+              "rerankerScore": {
+                "type": ["number", "null"],
+                "description": "Final reranker score when the production reranker supplied one."
+              },
+              "rerankerScoreType": {
+                "type": ["string", "null"],
+                "description": "Final score type after reranking; fallback indicates the reranker did not score this row."
+              },
+              "reranked": {
+                "type": ["boolean", "null"],
+                "description": "True when the final context score came from the reranker."
+              },
+              "fallbackReason": {
+                "type": ["string", "null"],
+                "description": "Score type or reason recorded when the reranker did not produce the final score."
+              },
               "content": {
                 "type": "string"
               }
@@ -143,6 +251,117 @@
             },
             "additionalProperties": true
           }
+        },
+        "referenceContexts": {
+          "type": "array",
+          "description": "Reference context text for RAGAS context recall/precision runs. Items may be strings or context objects.",
+          "minItems": 1,
+          "items": { "type": ["string", "object"] }
+        },
+        "sourceSampleId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Original retrieval sample ID shared by every paired answer-control row."
+        },
+        "controlRun": {
+          "type": "object",
+          "description": "10d-B2 answer-control label used to prove the RAG chain helps final answers.",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["retrieval-only", "no-rag", "full-rag", "wrong-context", "oracle-context", "reranker-off", "reranker-on"]
+            },
+            "variant": { "type": ["string", "null"] },
+            "rerankerEnabled": { "type": ["boolean", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "citations": {
+          "type": "array",
+          "description": "Generated-answer citation evidence. Citation-support metrics compare these IDs to source chunks, not to free-form citation prose.",
+          "items": {
+            "type": "object",
+            "required": ["sourceChunkId"],
+            "properties": {
+              "sourceChunkId": { "type": "string", "minLength": 1 },
+              "marker": { "type": ["string", "null"] },
+              "supported": { "type": ["boolean", "null"] }
+            },
+            "additionalProperties": true
+          }
+        },
+        "latency": {
+          "type": "object",
+          "description": "Per-row timing for cost/latency guardrails.",
+          "properties": {
+            "retrievalMs": { "type": ["number", "null"] },
+            "rerankerMs": { "type": ["number", "null"] },
+            "answerMs": { "type": ["number", "null"] },
+            "totalMs": { "type": ["number", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "retrievalLatency": {
+          "type": "object",
+          "description": "Measured Java production retrieval-path timing copied into answer artifacts.",
+          "required": ["candidatePathMs", "finalProductionPathMs"],
+          "properties": {
+            "candidatePathMs": { "type": "number", "minimum": 0 },
+            "finalProductionPathMs": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "tokenCounts": {
+          "type": "object",
+          "description": "Per-row token usage for prompt/cost guardrails.",
+          "properties": {
+            "promptTokens": { "type": ["integer", "null"] },
+            "completionTokens": { "type": ["integer", "null"] },
+            "totalTokens": { "type": ["integer", "null"] },
+            "retrievedContextTokens": { "type": ["integer", "null"] }
+          },
+          "additionalProperties": true
+        },
+        "contextBudget": {
+          "type": "object",
+          "description": "Recorded context-packing budget and truncation evidence for answer-generation runs.",
+          "required": ["budgetTokens", "originalApproxTokens", "includedApproxTokens", "originalContextCount", "includedContextCount", "truncated"],
+          "properties": {
+            "budgetTokens": { "type": "integer", "minimum": 1 },
+            "originalApproxTokens": { "type": "integer", "minimum": 0 },
+            "includedApproxTokens": { "type": "integer", "minimum": 0 },
+            "originalContextCount": { "type": "integer", "minimum": 0 },
+            "includedContextCount": { "type": "integer", "minimum": 0 },
+            "truncated": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "answerProvider": {
+          "type": "object",
+          "description": "Sanitized answer-generation provider/model provenance.",
+          "properties": {
+            "provider": { "type": "string" },
+            "modelName": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "retrievalProvenance": {
+          "type": "object",
+          "description": "Production retrieval paths and bounds used to create candidate and final contexts.",
+          "properties": {
+            "candidateK": { "type": "integer", "minimum": 1 },
+            "finalTopK": { "type": "integer", "minimum": 1 },
+            "rrfK": { "type": "integer", "minimum": 1 },
+            "rerankerMaxCandidates": { "type": "integer", "minimum": 1 },
+            "rerankerExpected": { "type": "boolean" },
+            "rerankerProvider": { "type": "string", "minLength": 1 },
+            "rerankerModel": { "type": "string", "minLength": 1 },
+            "candidatePath": { "type": "string", "minLength": 1 },
+            "finalPath": { "type": "string", "minLength": 1 },
+            "primaryMetricsSource": { "type": "string" }
+          },
+          "additionalProperties": true
         },
         "parser": {
           "type": "string",
@@ -233,5 +452,169 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "required": ["generationMethod"],
+            "properties": {
+              "generationMethod": {
+                "enum": ["manual-reviewed-no-source-v1"]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "metadata": {
+            "required": ["queryDisambiguation", "questionProvenance", "referenceAnswer"],
+            "properties": {
+              "questionProvenance": {
+                "properties": {
+                  "method": { "enum": ["manual-reviewed-no-source-v1"] }
+                }
+              },
+              "llmProvenance": {
+                "type": "null",
+                "description": "Manual-reviewed rows must not carry LLM provenance."
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "required": ["controlRun"]
+          }
+        }
+      },
+      "then": {
+        "required": ["response", "reference"],
+        "properties": {
+          "metadata": {
+            "required": ["referenceContexts", "sourceSampleId"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "required": ["controlRun"],
+            "properties": {
+              "controlRun": {
+                "required": ["mode"],
+                "properties": {
+                  "mode": {
+                    "enum": ["full-rag", "wrong-context", "oracle-context", "reranker-off", "reranker-on"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["retrievedContexts"],
+        "properties": {
+          "retrievedContexts": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "required": ["generationMethod"],
+            "properties": {
+              "generationMethod": {
+                "enum": ["llm-generated-llm-reviewed-v1"]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "metadata": {
+            "required": ["queryDisambiguation", "questionProvenance", "referenceAnswer", "llmProvenance", "auditStatus"],
+            "properties": {
+              "llmProvenance": {
+                "type": "object",
+                "required": ["generatorModel", "generatorTool", "reviewerModel", "reviewerTool", "reviewerPromptVersion"],
+                "properties": {
+                  "generatorModel": { "type": "string", "minLength": 1 },
+                  "generatorTool": { "type": "string", "minLength": 1 },
+                  "reviewerModel": { "type": "string", "minLength": 1 },
+                  "reviewerTool": { "type": "string", "minLength": 1 },
+                  "reviewerPromptVersion": { "type": "string", "minLength": 1 }
+                }
+              },
+              "auditStatus": {
+                "type": "string",
+                "enum": ["llm-reviewed"]
+              },
+              "questionProvenance": {
+                "properties": {
+                  "method": { "enum": ["llm-assisted-no-source-v1"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "required": ["generationMethod"],
+            "properties": {
+              "generationMethod": {
+                "enum": ["codex-manual-assisted-llm-reviewed-v1"]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "metadata": {
+            "required": ["queryDisambiguation", "questionProvenance", "referenceAnswer", "llmProvenance", "auditStatus"],
+            "properties": {
+              "llmProvenance": {
+                "type": "object",
+                "required": ["generatorModel", "generatorTool", "reviewerModel", "reviewerTool", "reviewerPromptVersion"],
+                "properties": {
+                  "generatorModel": { "type": "string", "minLength": 1 },
+                  "generatorTool": { "type": "string", "minLength": 1 },
+                  "reviewerModel": { "type": "string", "minLength": 1 },
+                  "reviewerTool": { "type": "string", "minLength": 1 },
+                  "reviewerPromptVersion": { "type": "string", "minLength": 1 }
+                }
+              },
+              "auditStatus": {
+                "type": "string",
+                "enum": ["llm-reviewed"]
+              },
+              "questionProvenance": {
+                "properties": {
+                  "method": { "enum": ["codex-manual-assisted-no-source-v1"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": true
 }

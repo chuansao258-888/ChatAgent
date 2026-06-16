@@ -3,7 +3,6 @@ package com.yulong.chatagent.memory.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
@@ -40,15 +39,18 @@ public class LongTermMemoryExtractor {
     private final ChatModelRouter chatModelRouter;
     private final ObjectMapper objectMapper;
     private final String extractorModel;
+    private final String extractorPrompt;
 
     public LongTermMemoryExtractor(PromptLoader promptLoader,
                                    ChatModelRouter chatModelRouter,
                                    ObjectMapper objectMapper,
-                                   @Value("${chatagent.memory.l3.extractor-model:deepseek-chat}") String extractorModel) {
+                                   @Value("${chatagent.memory.l3.extractor-model:deepseek-chat}") String extractorModel,
+                                   @Value("${chatagent.memory.l3.extractor-prompt:memory/l3-extractor.md}") String extractorPrompt) {
         this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;
         this.objectMapper = objectMapper;
         this.extractorModel = extractorModel;
+        this.extractorPrompt = extractorPrompt;
     }
 
     /**
@@ -76,7 +78,7 @@ public class LongTermMemoryExtractor {
     }
 
     String buildPrompt(List<AtomicConversationTurn> turns) {
-        return promptLoader.render(PromptConstants.L3_MEMORY_EXTRACTOR, Map.of(
+        return promptLoader.render(extractorPrompt, Map.of(
                 "formattedTurns", formatTurns(turns)
         ));
     }

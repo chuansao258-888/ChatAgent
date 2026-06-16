@@ -1,0 +1,65 @@
+{
+  "version": "fixture-v1",
+  "questions": [
+    {
+      "id": "q-cal",
+      "evidenceId": "e-cal",
+      "filename": "cal.html",
+      "format": "SEC_HTML",
+      "split": "calibration",
+      "chunkIndex": 1,
+      "question": "What does café access require?\r\nName the condition.",
+      "referenceNeedle": "Café access requires approval.",
+      "referenceAnswer": "Café access requires approval.",
+      "generationMethod": "llm-generated-llm-reviewed-v1",
+      "auditStatus": "llm-reviewed",
+      "llmProvenance": {
+        "generatorModel": "fixture-model",
+        "generatorTool": "fixture-tool",
+        "reviewerModel": "gemini-test",
+        "reviewerTool": "gemini-cli",
+        "reviewerPromptVersion": "review-v1"
+      }
+    },
+    {
+      "id": "q-dev",
+      "evidenceId": "e-dev",
+      "filename": "dev.pdf",
+      "format": "PDF",
+      "split": "development",
+      "chunkIndex": 2,
+      "question": "Which value is listed for Δ?",
+      "referenceNeedle": "The Δ value is 42.",
+      "referenceAnswer": "The Δ value is 42.",
+      "generationMethod": "llm-generated-llm-reviewed-v1",
+      "auditStatus": "llm-reviewed",
+      "llmProvenance": {
+        "generatorModel": "fixture-model",
+        "generatorTool": "fixture-tool",
+        "reviewerModel": "gemini-test",
+        "reviewerTool": "gemini-cli",
+        "reviewerPromptVersion": "review-v1"
+      }
+    },
+    {
+      "id": "q-hold",
+      "evidenceId": "e-hold",
+      "filename": "hold.docx",
+      "format": "DOCX",
+      "split": "holdout",
+      "chunkIndex": 3,
+      "question": "When does the final stage begin?",
+      "referenceNeedle": "The final stage begins after verification.",
+      "referenceAnswer": "It begins after verification.",
+      "generationMethod": "llm-generated-llm-reviewed-v1",
+      "auditStatus": "llm-reviewed",
+      "llmProvenance": {
+        "generatorModel": "fixture-model",
+        "generatorTool": "fixture-tool",
+        "reviewerModel": "gemini-test",
+        "reviewerTool": "gemini-cli",
+        "reviewerPromptVersion": "review-v1"
+      }
+    }
+  ]
+}

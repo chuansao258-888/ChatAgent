@@ -42,6 +42,7 @@ public interface DocumentParser {
             case POWERPOINT -> 40;
             case SPREADSHEET -> 50;
             case IMAGE -> 60;
+            case HTML -> 25;
             case TIKA -> 1000;
         };
     }
