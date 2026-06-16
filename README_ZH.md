@@ -142,6 +142,7 @@ ChatAgent/
 |  |- bge-reranker-server/            # 本地 HTTP reranker 服务
 |  `- mineru/                         # 本地 MinerU 服务脚本
 |- MCP/weather-server/                # 示例 MCP HTTP/SSE 服务
+|- docker-compose.yml                # 本地中间件（PostgreSQL、Redis、RabbitMQ）
 |- README.md
 |- README_ZH.md
 `- LICENSE
@@ -267,7 +268,13 @@ chatagent/bootstrap/src/main/resources/application.yaml
 
 ### 启动本地基础设施
 
-本地开发可以用以下命令快速启动部分依赖：
+仓库根目录提供了 `docker-compose.yml`，可一键启动 PostgreSQL、Redis 和 RabbitMQ：
+
+```bash
+docker compose up -d
+```
+
+也可以单独启动各个依赖：
 
 ```bash
 docker run -d --name chatagent-postgres -p 5432:5432 \

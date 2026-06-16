@@ -185,6 +185,7 @@ ChatAgent/
 |  |- bge-reranker-server/            # Local HTTP reranker service
 |  `- mineru/                         # Local MinerU service scripts
 |- MCP/weather-server/                # Example MCP HTTP/SSE server
+|- docker-compose.yml                # Local middleware (PostgreSQL, Redis, RabbitMQ)
 |- README.md
 |- README_ZH.md
 `- LICENSE
@@ -319,7 +320,14 @@ Python evaluation CLI where noted by `tools/eval`.
 
 ### Start Local Infrastructure
 
-Example commands for a local development machine:
+The repository includes a `docker-compose.yml` that starts PostgreSQL, Redis,
+and RabbitMQ together:
+
+```bash
+docker compose up -d
+```
+
+Or start each dependency individually:
 
 ```bash
 docker run -d --name chatagent-postgres -p 5432:5432 \
