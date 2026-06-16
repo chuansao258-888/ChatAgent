@@ -142,7 +142,6 @@ ChatAgent/
 |  |- bge-reranker-server/            # 本地 HTTP reranker 服务
 |  `- mineru/                         # 本地 MinerU 服务脚本
 |- MCP/weather-server/                # 示例 MCP HTTP/SSE 服务
-|- postman/                           # Postman 集合
 |- README.md
 |- README_ZH.md
 `- LICENSE
@@ -378,8 +377,6 @@ curl http://localhost:8080/api/user/me
 | MCP server | `POST /api/admin/mcp-servers/{serverId}/sync` | Admin |
 | Dashboard | `GET /api/admin/dashboard/overview` | Admin, 可选 `window` |
 | Health | `GET /health` | 基础健康检查 |
-
-`postman/` 目录中的 Postman 集合适合用于手动调试接口。
 
 ## 工作流程
 

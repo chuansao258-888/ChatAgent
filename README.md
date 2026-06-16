@@ -185,7 +185,6 @@ ChatAgent/
 |  |- bge-reranker-server/            # Local HTTP reranker service
 |  `- mineru/                         # Local MinerU service scripts
 |- MCP/weather-server/                # Example MCP HTTP/SSE server
-|- postman/                           # Postman collection
 |- README.md
 |- README_ZH.md
 `- LICENSE
@@ -433,9 +432,6 @@ refresh token is managed by an HttpOnly cookie.
 | MCP servers | `POST /api/admin/mcp-servers/{serverId}/sync` | Admin |
 | Dashboard | `GET /api/admin/dashboard/overview` | Admin, optional `window` |
 | Health | `GET /health` | Basic health response |
-
-The Postman collection in `postman/` is the best starting point for manual API
-exploration.
 
 ## System Architecture
 
