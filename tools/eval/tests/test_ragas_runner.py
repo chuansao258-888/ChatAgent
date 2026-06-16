@@ -63,6 +63,8 @@ class RagasRunnerTest(unittest.TestCase):
         ):
             self.assertEqual("fake-zhipu-primary", _provider_api_key("zhipu"))
             self.assertEqual("https://example.test/api/paas/v4", _provider_base_url("zhipu"))
+        with mock.patch.dict(os.environ, {"CHATAGENT_ZHIPUAI_API_KEY": "fake-zhipu-primary"}, clear=True):
+            self.assertEqual("https://open.bigmodel.cn/api/paas/v4", _provider_base_url("zhipu"))
 
     def test_provider_priority_uses_second_zhipu_then_zai_then_deepseek(self) -> None:
         with mock.patch.dict(
@@ -79,6 +81,8 @@ class RagasRunnerTest(unittest.TestCase):
             self.assertEqual("fake-zai-key", _provider_api_key("zai"))
             self.assertEqual("https://zai.example.test/api/paas/v4", _provider_base_url("zai"))
             self.assertEqual("fake-deepseek-key", _provider_api_key("deepseek"))
+        with mock.patch.dict(os.environ, {"CHATAGENT_ZAI_CODING_API_KEY": "fake-zai-key"}, clear=True):
+            self.assertEqual("https://api.z.ai/api/coding/paas/v4", _provider_base_url("zai"))
 
     def test_converts_doc_ingestion_answer_rows_to_ragas_records(self) -> None:
         sample = _sample("doc-ingestion-1")
@@ -338,8 +342,6 @@ class RagasRunnerTest(unittest.TestCase):
                 os.environ,
                 {
                     "CHATAGENT_ZAI_CODING_API_KEY": "fake-zai-key",
-                    "CHATAGENT_ZAI_CODING_BASE_URL": "https://zai.example.test/api/paas/v4",
-                    "CHATAGENT_ZAI_CODING_MODEL": "glm-4.5-air",
                 },
                 clear=True,
             ):
@@ -361,8 +363,8 @@ class RagasRunnerTest(unittest.TestCase):
             manifest = json.loads((temp_path / "out" / "cli-ragas-zai-defaults" / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(0, exit_code)
             self.assertEqual("zai", manifest["config"]["judgeProvider"])
-            self.assertEqual("glm-4.5-air", manifest["config"]["judgeModel"])
-            self.assertEqual("https://zai.example.test/api/paas/v4", manifest["config"]["judgeBaseUrl"])
+            self.assertEqual("glm-5.2", manifest["config"]["judgeModel"])
+            self.assertEqual("https://api.z.ai/api/coding/paas/v4", manifest["config"]["judgeBaseUrl"])
 
     def test_nan_ragas_scores_are_serialized_as_null_with_failures(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

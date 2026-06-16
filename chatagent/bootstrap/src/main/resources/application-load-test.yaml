@@ -12,15 +12,15 @@ spring:
         auto-startup: false
   datasource:
     hikari:
-      maximum-pool-size: ${CHATAGENT_HIKARI_MAX_POOL:50}
+      maximum-pool-size: 50
       minimum-idle: 10
       connection-timeout: 10000
 
 server:
   tomcat:
     threads:
-      max: ${CHATAGENT_TOMCAT_MAX_THREADS:250}
-    max-connections: ${CHATAGENT_TOMCAT_MAX_CONNECTIONS:4096}
+      max: 250
+    max-connections: 4096
     accept-count: 200
 
 chatagent:

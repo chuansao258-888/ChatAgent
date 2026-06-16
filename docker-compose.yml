@@ -1,0 +1,67 @@
+# Local development middleware for ChatAgent.
+# Starts the three hard dependencies the backend needs to boot: PostgreSQL,
+# Redis, and RabbitMQ. Values mirror the dev defaults in application.yaml and
+# the `docker run` examples in README.md.
+#
+# Usage:
+#   docker compose up -d            # start postgres + redis + rabbitmq
+#   docker compose down             # stop (keeps volumes)
+#   docker compose down -v          # stop and delete data volumes
+#
+# Milvus (vector store) and Ollama (embeddings) are intentionally NOT here:
+# Milvus standalone needs etcd/minio and is heavier to run locally, and Ollama
+# is a model server you typically keep running separately. Enable them in the
+# backend with CHATAGENT_MILVUS_ENABLED and CHATAGENT_RAG_EMBEDDING_BASE_URL.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: chatagent-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: chatagent
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - chatagent-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d chatagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: chatagent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - chatagent-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: chatagent-rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - chatagent-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  chatagent-postgres-data:
+  chatagent-redis-data:
+  chatagent-rabbitmq-data:

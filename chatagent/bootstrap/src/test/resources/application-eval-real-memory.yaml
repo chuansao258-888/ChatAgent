@@ -5,6 +5,10 @@
 # from application.yaml. Uses a dedicated eval-owned Milvus collection to
 # isolate eval vector data from production.
 
+auth:
+  jwt:
+    secret: test-only-jwt-secret-for-eval-memory-000000000000000000
+
 milvus:
   enabled: true
 

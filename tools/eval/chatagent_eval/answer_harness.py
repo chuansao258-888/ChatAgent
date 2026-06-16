@@ -25,6 +25,8 @@ from chatagent_eval.parameters import config_fingerprint
 from chatagent_eval.reports import SAFE_RUN_ID, build_manifest, write_json_artifact, write_run_artifacts
 
 ARTIFACT_FILES = ("manifest.json", "samples.jsonl", "failures.jsonl", "report.json")
+DEFAULT_ZHIPUAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+DEFAULT_ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4"
 
 # ── Control-mode labels ─────────────────────────────────────────────────────
 
@@ -562,10 +564,16 @@ def _provider_base_url(provider: str) -> str | None:
     if provider == "deepseek":
         return os.getenv("CHATAGENT_EVAL_ANSWER_LLM_BASE_URL") or os.getenv("CHATAGENT_DEEPSEEK_BASE_URL") or "https://api.deepseek.com"
     if provider in {"zhipu", "zhipuai"}:
-        return os.getenv("CHATAGENT_EVAL_ANSWER_LLM_BASE_URL") or os.getenv("CHATAGENT_ZHIPUAI_BASE_URL")
+        return (
+            os.getenv("CHATAGENT_EVAL_ANSWER_LLM_BASE_URL")
+            or os.getenv("CHATAGENT_ZHIPUAI_BASE_URL")
+            or DEFAULT_ZHIPUAI_BASE_URL
+        )
     if provider in {"z.ai", "zai", "z-ai", "zai-coding"}:
-        return os.getenv("CHATAGENT_EVAL_ANSWER_LLM_BASE_URL") or _first_env(
-            "CHATAGENT_ZAI_CODING_BASE_URL", "CHATAGENT_ZAI_BASE_URL"
+        return (
+            os.getenv("CHATAGENT_EVAL_ANSWER_LLM_BASE_URL")
+            or _first_env("CHATAGENT_ZAI_CODING_BASE_URL", "CHATAGENT_ZAI_BASE_URL")
+            or DEFAULT_ZAI_CODING_BASE_URL
         )
     return os.getenv("CHATAGENT_EVAL_ANSWER_LLM_BASE_URL")
 

@@ -5,6 +5,10 @@
 # This profile intentionally uses the production facade/outbox/RabbitMQ ingestion
 # path; direct ingestSync is not acceptance evidence for Phase 10a.
 
+auth:
+  jwt:
+    secret: test-only-jwt-secret-for-eval-doc-ingestion-0000000000
+
 milvus:
   enabled: true
   bm25-enabled: true
@@ -39,7 +43,7 @@ chatagent:
       pdf-batch-max-pool-size: 1
       mineru:
         enabled: true
-        base-url: ${CHATAGENT_RAG_VDP_MINERU_BASE_URL:http://127.0.0.1:8000}
+        base-url: http://127.0.0.1:8000
         poll-interval-ms: 1000
         max-poll-attempts: 300
     ingestion:

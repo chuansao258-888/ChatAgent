@@ -1,993 +1,652 @@
 # ChatAgent
 
-<p align="right">
-  English | <a href="README_ZH.md"><strong>中文</strong></a>
-</p>
+[Chinese README](README_ZH.md)
 
-<p align="center">
-  <strong>Enterprise AI Intelligent Workspace</strong>
-</p>
+ChatAgent is a full-stack AI assistant platform. It combines a Spring Boot
+backend, a React web client, RAG over uploaded documents and managed knowledge
+bases, long-term memory, MCP tool integration, and a reproducible evaluation
+toolchain for RAG, memory, and agent behavior.
 
-<p align="center">
-  Multi-Model Routing · RAG Knowledge Retrieval · Intent Routing · MCP Tool Integration · Async Task Processing
-</p>
+The project is useful as a reference implementation for building an agentic
+chat system that is not only interactive, but also measurable: ingestion,
+retrieval, reranking, answer generation, memory extraction, intent routing, and
+tool behavior all have dedicated runtime code and evaluation support.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Java-17-blue" />
-  <img src="https://img.shields.io/badge/Spring_Boot-3.5-green" />
-  <img src="https://img.shields.io/badge/Spring_AI-1.1-orange" />
-  <img src="https://img.shields.io/badge/React-19-61dafb" />
-  <img src="https://img.shields.io/badge/PostgreSQL-15+-336791" />
-  <img src="https://img.shields.io/badge/Milvus-2.6-00A1EA" />
-  <img src="https://img.shields.io/badge/RabbitMQ-3.13-FF6600" />
-  <img src="https://img.shields.io/badge/Redis-7+-DC382D" />
-</p>
+## Features
 
----
+- Multi-turn chat sessions with server-sent events (SSE) streaming.
+- JWT authentication with access tokens and HttpOnly refresh-token cookies.
+- ReAct-style agent runtime plus a DeepThink execution mode for planning,
+  execution, reflection, verification, and final synthesis.
+- RAG over session files and admin-managed knowledge bases.
+- Document ingestion for common office/web formats using Apache Tika, Apache
+  POI, JSoup, Flexmark, optional MinerU PDF parsing, and optional VLM parsing.
+- Embedding and vector retrieval through Ollama-compatible embedding endpoints
+  and Milvus.
+- Optional HTTP reranking through a local BGE reranker service.
+- Intent tree management with draft, publish, and activate flows.
+- Long-term memory with L1 recent context, L2 compaction, and L3 extracted
+  memory items.
+- MCP server management, tool catalog sync, test calls, rate limiting, circuit
+  breaker protection, rollout control, and credential encryption hooks.
+- Admin console for users, dashboard metrics, assistant templates, knowledge
+  bases, intent tree, MCP operations, and chat routing.
+- Python evaluation module for deterministic retrieval/text metrics, official
+  Ragas runs, memory semantic judging, agent module checks, document ingestion
+  analysis, and tuning workflows.
 
-## Table of Contents
+## Project Highlights
 
-- [Overview](#overview)
-- [Tech Stack](#tech-stack)
-- [System Architecture](#system-architecture)
-- [Core Flow Diagrams](#core-flow-diagrams)
-- [Database Design](#database-design)
-- [API Design](#api-design)
-- [Project Structure](#project-structure)
-- [Technical Highlights](#technical-highlights)
-- [Design Patterns](#design-patterns)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
+### First-Packet Model Routing
 
----
+ChatAgent treats model availability as a runtime routing problem instead of a
+static provider choice. The backend keeps a ranked candidate set and probes the
+selected model by waiting for the first streamed packet within a bounded window.
+This protects the user-facing chat flow from providers that accept a request but
+stall before streaming useful output.
 
-## Overview
+Key design points:
 
-ChatAgent is an **enterprise-grade AI intelligent workspace backend** built on Spring Boot 3.5 + Spring AI 1.1. Regular users interact with the AI assistant through a chat interface, supporting file uploads, knowledge base retrieval, and external tool calls. Administrators manage knowledge bases, intent routing trees, agent configurations, MCP external tool integrations, and system monitoring through the admin panel.
+| Mechanism | What it does |
+| --- | --- |
+| Candidate priority | Orders provider/model candidates by configured priority and required capability. |
+| First-packet probe | Marks a streaming attempt healthy only after the first packet arrives before the timeout. |
+| Circuit states | Tracks closed, open, and half-open model health so degraded candidates can cool down before retry. |
+| Runtime overrides | Admin chat-routing APIs can override or clear candidate choices without code changes. |
+| Metrics | Micrometer counters/timers record routing attempts, latency, circuit events, and circuit decisions. |
 
-### Core Capabilities
+This means provider failover is based on observable streaming behavior, not only
+on HTTP connection success. It is especially important for long-running LLM calls
+where a "200 OK" response is not enough to prove that the model is usable.
 
-| Capability | Description |
-|-----------|-------------|
-| **Multi-Model Intelligent Routing** | DeepSeek / ZhipuAI GLM multi-provider support, first-packet probe auto-switching, three-state circuit breaker protection |
-| **RAG Knowledge Retrieval** | Full ingestion pipeline (PDF/Markdown/Tika/VLM/MinerU), Milvus hybrid search (Dense+BM25), BGE reranking |
-| **Hierarchical Intent Routing** | DOMAIN → CATEGORY → TOPIC three-level routing, heuristic + LLM dual-stage classification, clarification interaction |
-| **AI Agent (ReAct)** | Reasoning-Acting loop, built-in tools (knowledge retrieval / SQL / email / filesystem) + MCP external tool dynamic integration |
-| **Async Task Processing** | RabbitMQ transactional outbox, three-state distributed locks, structured retry + DLQ |
-| **User Authentication** | JWT + Refresh Token dual-token architecture, RBAC role control, Redis token storage |
-| **Operations Dashboard** | Real-time performance metrics, session trends, MCP alerts, model routing status |
+### Reliable MQ, Outbox, And Watchdog
 
----
+The project uses RabbitMQ for asynchronous agent dispatch and document
+ingestion, with PostgreSQL as the transactional source of truth for pending
+messages. The core pattern is a transactional outbox: business state and the
+message intent are committed together, then a polling publisher claims outbox
+rows and publishes them to RabbitMQ with publisher confirms.
 
-## Tech Stack
+Important reliability details:
 
-### Backend
+| Component | Responsibility |
+| --- | --- |
+| Transactional outbox | Prevents losing an agent or ingestion task after the user message/document state is saved. |
+| Publisher confirm handling | Treats broker ack as sent; nack, return, or timeout becomes retryable state. |
+| Retry and DLQ queues | Separate retry queues and a dead-letter queue keep poison messages observable. |
+| Idempotency keys | Replayed messages preserve event identity so consumers can deduplicate safely. |
+| Distributed locks | Agent-run, ingestion-task, and session-execution locks prevent duplicate workers from owning the same unit of work. |
+| Lock watchdog | Periodically renews owned locks and reports lost ownership or failed renewal. |
+| MQ admin surface | Admin code can inspect outbox states, retry/DLQ depths, and replay DLQ messages when appropriate. |
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| Language | Java | 17 |
-| Framework | Spring Boot | 3.5.8 |
-| AI Framework | Spring AI | 1.1.0 |
-| ORM | MyBatis | - |
-| Relational DB | PostgreSQL | 15+ |
-| Vector DB | Milvus (hybrid search) | 2.6 |
-| Message Queue | RabbitMQ | 3.13 |
-| Cache | Redis | 7+ |
-| DB Migration | Flyway | - |
-| Embedding | Ollama + bge-m3 | 1024-dim |
-| Reranker | BGE-reranker-v2-m3 (GPU) | - |
-| PDF Parsing | MinerU / VLM / Apache Tika / PDFBox | - |
-| Authentication | JWT (jjwt) | - |
-| Build | Maven multi-module | - |
+The resulting behavior is intentionally conservative: a turn can survive process
+restarts, broker interruptions, publish-confirm timeouts, and worker overlap
+without silently dropping work or running the same session turn twice.
 
-### Frontend
+### RAG Chain
 
-| Technology | Version |
-|-----------|---------|
-| React | 19 |
-| Vite | 7 |
-| TypeScript | 5.9 |
-| Ant Design | 6 |
-| TailwindCSS | 4 |
-| Recharts | 3 |
-| @ant-design/x | 2 (AI chat components) |
+RAG is implemented as a production chain rather than a single retrieval helper.
+It supports both user session files and admin-managed knowledge bases.
 
-### LLM Providers
-
-| Provider | Models | Use Case |
-|----------|--------|----------|
-| DeepSeek | deepseek-chat, deepseek-reasoner | Chat, reasoning, agent |
-| ZhipuAI | glm-4.6, glm-5.1 | Chat, reasoning, visual parsing |
-
----
-
-## System Architecture
-
-### Overall Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Frontend (React 19)                          │
-│       Admin Panel (Dashboard/Knowledge/Intent Tree/MCP/Users)       │
-│       User Interface (Chat/File Upload/Citation Panel)              │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ HTTP / SSE
-┌──────────────────────────────▼──────────────────────────────────────┐
-│                      Spring Boot Backend                             │
-│                                                                      │
-│  ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐              │
-│  │ Auth     │ │Chat       │ │ Admin    │ │ SSE      │              │
-│  │ JWT+RBAC │ │Session/Msg│ │ Dashboard│ │ Stream   │              │
-│  └────┬─────┘ └─────┬─────┘ └────┬─────┘ └────┬─────┘              │
-│       │             │            │             │                     │
-│  ┌────▼─────────────▼────────────▼─────────────▼───────────────┐    │
-│  │                 Orchestration Layer                           │    │
-│  │  ConversationOrchestrator ─ IntentRouter ─ EventDispatcher   │    │
-│  │  SessionConcurrencyGuard ─ IncrementalSummarizer             │    │
-│  └────────────────────────────┬────────────────────────────────┘    │
-│                               │                                      │
-│  ┌────────────────────────────▼────────────────────────────────┐    │
-│  │                 Agent Runtime (ReAct Loop)                    │    │
-│  │  ThinkingEngine ─ ToolExecutionEngine ─ MessageBridge         │    │
-│  │  Three-layer Memory (L1 Short-term / L2 Summary / L3 Profile)│    │
-│  └────────────┬─────────────────────────┬──────────────────────┘    │
-│               │                         │                            │
-│  ┌────────────▼──────────┐  ┌───────────▼──────────────────────┐    │
-│  │  LLM Routing (infra)  │  │       RAG Knowledge Engine       │    │
-│  │  First-packet probe   │  │  Parse → Chunk → Enhance → Embed │    │
-│  │  Circuit breaker      │  │  Hybrid Search + RRF + Rerank    │    │
-│  │  Raw SSE streaming    │  │  Milvus (Dense + BM25)           │    │
-│  └───────────────────────┘  └──────────────────────────────────┘    │
-│                                                                      │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────┐     │
-│  │  MCP Integration  │  │  MQ Async Proc.  │  │  User Auth     │     │
-│  │  HTTP/SSE dual    │  │  Txnal Outbox    │  │  Dual JWT      │     │
-│  │  CB+RateLimit+SSRF│  │  Dist. Lock+DLQ  │  │  Redis Token   │     │
-│  └──────────────────┘  └──────────────────┘  └────────────────┘     │
-└──────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+  Upload["Upload file / KB document"] --> Parse["Parse and quality-route"]
+  Parse --> Chunk["Structure-aware chunking"]
+  Chunk --> Enhance["Optional contextual enhancement"]
+  Enhance --> Embed["Embedding endpoint"]
+  Embed --> Store["Milvus vector store"]
+  Store --> Retrieve["Hybrid retrieval: topK / candidateK / RRF"]
+  Retrieve --> Rerank["Optional BGE reranker"]
+  Rerank --> Answer["Answer prompt with cited context"]
 ```
 
-### Maven Module Layout
+The ingestion side normalizes Office, HTML, Markdown, text, and PDF-like inputs
+with Apache Tika, Apache POI, JSoup, Flexmark, and optional MinerU/VLM parsing
+for more difficult PDFs. The retrieval side separates recall-oriented candidate
+collection from precision-oriented reranking, so tuning can adjust top-k,
+candidate-k, RRF, reranker thresholds, timeouts, and fallback behavior
+independently.
 
-```
-chatagent/
-├── chatagent-bootstrap   ← Spring Boot startup + all business domains
-│   ├── access/           ← RBAC (@RequireRole + ResourceAccessGuard)
-│   ├── admin/            ← Admin backend (Dashboard/Users/MCP/Routing)
-│   ├── agent/            ← Agent runtime (ReAct loop/tools/memory)
-│   ├── conversation/     ← Conversation orchestration (messages/SSE/summary)
-│   ├── file/             ← Session file upload management
-│   ├── intent/           ← Intent routing (hierarchical tree/classification)
-│   ├── knowledge/        ← Knowledge base/document CRUD + ingestion
-│   ├── mcp/              ← MCP tool integration (transport/runtime/drift)
-│   ├── mq/               ← RabbitMQ (outbox/distributed locks/retry)
-│   ├── rag/              ← RAG (parsing/chunking/embedding/retrieval/reranking)
-│   ├── support/          ← Shared DTOs/Entities/Mappers/Health
-│   └── user/             ← User authentication (JWT/BCrypt/role management)
-│
-├── chatagent-framework   ← Cross-cutting concerns (SSE/exceptions/tracing/API response)
-│
-└── chatagent-infra       ← Infrastructure (LLM routing/email)
-    └── chat/routing/     ← First-packet probe/circuit breaker/streaming
-```
+### Intent Recognition And Routing
 
----
+Intent recognition sits before heavyweight agent execution. The assistant can
+classify a turn, ask for clarification, bind the turn to an active intent-tree
+topic, choose knowledge-base scope, and rewrite the query before RAG.
 
-## Core Flow Diagrams
+The intent tree has an operational lifecycle:
 
-### User Message Processing
+| Level | Purpose |
+| --- | --- |
+| Domain | Broad business area. |
+| Category | Mid-level grouping under a domain. |
+| Topic | Runtime-routable leaf; only topics bind knowledge bases. |
 
-```
-User sends message POST /api/chat-messages
-│
-▼
-SessionConcurrencyGuard (Redis distributed lock)
-│
-▼
-ConversationOrchestratorService.handleUserTurn()
-│ ① Validate → ② Build context (session+message+history) → ③ Consistency check
-│
-▼
-ConversationTurnPreparationService.prepare()
-│
-├─── Check pending clarification (Redis, 5min TTL)
-│    └── Match user clarification reply → continue routing
-│
-├─── IntentRouter.route() — hierarchical intent routing
-│    ├── Heuristic scoring (bigram Jaccard, score ≥ 1.2 → pass-through)
-│    └── LLM fallback classification (only when heuristic is inconclusive)
-│
-├─── Needs clarification → Save PendingIntentResolution → return option list
-├─── SYSTEM intent → Template rendering → direct reply
-└─── KB/TOOL intent → QueryRewriter rewrite → dispatch Agent
-     │
-     ▼
-SwitchingChatEventDispatcher (Local / MQ switchable)
-     │
-     ▼
-ChatEventProcessor.process()
-     │
-     ▼
-ChatAgentFactory.create()
-│ Load: Agent config + L1 memory + L2 summary + L3 profile + tools + system prompt
-│
-▼
-ChatAgent.run() — ReAct loop (max 20 steps)
-│
-│  ┌──────────────────────────────────────────┐
-│  │           Single Step Iteration          │
-│  │                                          │
-│  │  AgentThinkingEngine.think()              │
-│  │    → No tools → stream final answer → END│
-│  │    → Has tools → stream+buffer            │
-│  │       → Pure text → becomes final answer  │
-│  │       → Tool calls → rollback → execute   │
-│  │                                          │
-│  │  AgentToolExecutionEngine.execute()       │
-│  │    → SessionFileTools → RAG + citations   │
-│  │    → DataBaseTools → read-only SQL        │
-│  │    → MCP tools → remote call (CB+limit)   │
-│  └──────────────────────────────────────────┘
-│
-▼
-Persist result + SSE push + metric recording + async summary trigger
-```
+Admins edit a draft tree, publish a versioned snapshot, and activate the
+published version used by runtime routing. Clarification outcomes short-circuit
+the normal agent path and return a direct clarifying response, which avoids
+spending tool/RAG/model budget on under-specified turns.
 
-### RAG Ingestion Pipeline
+### RAGAS And Evaluation Metrics
 
-```
-File Upload
-│
-▼
-FileSizeGuard (30MB hard limit)
-│
-▼
-FileTypeDetector (Magic-byte + extension + MIME)
-│
-▼
-DocumentParserSelector ────────────────────────────────────────
-│                     │            │            │       │       │
-▼                     ▼            ▼            ▼       ▼       ▼
-PdfDocumentParser MarkdownParser  TikaParser  ImageParser   (rejected)
-│                     │            │            │
-├─ PDFBox text extract │            │            │
-├─ QualityRouter/page │            │            │
-│  ├─ High density → Fast-Track    │            │
-│  └─ Low density → Visual-Track   │            │
-│     ├─ VlmVdpEngine (page VLM)   │            │
-│     └─ MinerUVdpEngine (batch)   │            │
-└─ SegmentAssembler   │            │            │
-│                     │            │            │
-└─────────────────────┴────────────┴────────────┘
-                      │
-                      ▼
-            ParseResult + List<ParseSegment>
-                      │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
- Document        Smart           Chunk-level
- Enhancement     Chunking        Contextual
- (LlmDocument    (SegmentAware   Enrichment
-  Enhancer)      ChunkerRouter)  (LlmContextual
-        │             │          ChunkEnricher)
-        └─────────────┼─────────────┘
-                      ▼
-            Ollama Embedding (bge-m3, 1024-dim)
-                      │
-                      ▼
-            Milvus Upsert (dual collections)
-            ├─ chat_file_chunk (session files)
-            └─ chat_knowledge_chunk (knowledge base)
-```
+The evaluation module is designed to make the RAG chain measurable. The current
+B3.4 answer-quality scope focuses on full-RAG answer rows and scores only:
 
-### RAG Retrieval Pipeline
+| Metric | Meaning |
+| --- | --- |
+| `faithfulness` | Whether the generated answer is supported by the retrieved context. |
+| `factual_correctness` | Whether the generated answer matches the reference answer/facts. |
 
-```
-User Query
-│
-▼
-Ollama Embedding → query vector
-│
-┌────────────────────────────────────────────┐
-│          Milvus Hybrid Search              │
-│                                            │
-│  ┌─────────────────┐ ┌──────────────┐      │
-│  │ Session File     │ │ Knowledge    │      │
-│  │ Dense + BM25    │ │ Dense + BM25 │      │
-│  │ → RRF fusion    │ │ → RRF fusion │      │
-│  └────────┬────────┘ └──────┬───────┘      │
-│           │                 │              │
-│           └────────┬────────┘              │
-│                    ▼                       │
-│            Global RRF Fusion                │
-│                    │                       │
-│                    ▼                       │
-│      Document Signal Injection (Redis)     │
-└────────────────────┬───────────────────────┘
-                     │
-                     ▼
-          Reranking (degradation chain)
-          ├─ BGE HTTP (circuit breaker + confidence filter)
-          ├─ LLM Reranker (fallback)
-          └─ Noop (final fallback, preserves RRF order)
-                     │
-                     ▼
-          RetrievalHitFormatter (with numbered citations)
-                     │
-                     ▼
-          Return to Agent → generate cited answer
-```
+Older No-RAG, wrong-context, oracle, reranker A/B controls and extra RAGAS
+metrics are intentionally out of the active scope unless they are explicitly
+reopened.
 
-### First-Packet Probe Routing
+The deterministic retrieval metrics follow standard IR definitions:
 
-```
-Candidates: [glm-5.1 (P:5), deepseek-reasoner (P:10)]
-│
-▼ ① ModelSelector: filter + sort + pin first-choice
-│
-▼ ② Iterate candidates:
+| Metric | Calculation |
+| --- | --- |
+| Hit@K | `1` if at least one relevant item appears in the top K results, otherwise `0`; averaged across queries. |
+| Recall@K | Relevant items retrieved in top K divided by total relevant items for that query. |
+| Precision@K | Relevant items retrieved in top K divided by K. |
+| MRR | Reciprocal rank of the first relevant result; `1/rank`, or `0` if none is found. |
+| NDCG@K | Discounted gain of ranked relevant results normalized by the best possible ranking. |
 
-┌── glm-5.1 ──────────────────────────────────────────┐
-│  healthStore.tryAcquire() → CLOSED → allow          │
-│  FirstPacketAwaiter + ProbeBufferingCallback         │
-│  ProviderDirectStreamSupport.submit() (raw SSE)      │
-│  awaiter.await(60s)                                  │
-│  ├── Packet arrived → commit() → flush buffer → ✓   │
-│  └── Timeout/failure → dispose() → discard → ✗      │
-└──────────────────────────────────────────────────────┘
-         │ (failed)
-         ▼
-┌── deepseek-reasoner ────────────────────────────────┐
-│  healthStore.tryAcquire() → allow                    │
-│  First-packet probe ...                              │
-│  → Packet arrived → commit() → ✓                    │
-└──────────────────────────────────────────────────────┘
-         │
-         ▼ (all failed)
-  callback.onError()
-```
-
-### MQ Async Processing Topology
-
-```
-┌──────────────────────────────────────────────────────┐
-│  Producer (inside business @Transactional)            │
-│                                                      │
-│  OutboxEventPublisher.publish()                      │
-│    → INSERT t_mq_outbox (PENDING) ← same transaction │
-│    → ON CONFLICT DO NOTHING (UUIDv5 deterministic)   │
-│                                                      │
-│  OutboxPollingPublisher (every 2s)                   │
-│    → SELECT ... FOR UPDATE SKIP LOCKED               │
-│    → RabbitMQ publish + confirm                      │
-│    → markSent                                        │
-└───────────────────────────┬──────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────┐
-│                    RabbitMQ Topology                  │
-│                                                      │
-│  chat.direct ─┬─ chat.agent.dispatch (DLX→retry)     │
-│               └─ knowledge.ingest.task (DLX→retry)   │
-│                                                      │
-│  retry.direct ─┬─ retry.agent.10s (TTL=10s→chat)     │
-│                └─ retry.ingest.30s (TTL=30s→chat)    │
-│                                                      │
-│  dlx.direct ─── chat.dlq (final dead letter)         │
-└───────────────────────────┬──────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────┐
-│  Consumer (AbstractRetryingMqConsumer)                │
-│                                                      │
-│  ① Read message identity (7 immutable headers)        │
-│  ② Task Lock acquire (3-state: ACQUIRED/DUPLICATE/   │
-│     WAIT)                                             │
-│  ③ Session Exec Lock acquire (for agent.run)          │
-│  ④ LockWatchdog start (renew every 20s)              │
-│  ⑤ processTask()                                     │
-│  ⑥ Success → markCompleted + ack                     │
-│  ⑦ Retryable → publish to retry exchange + ack       │
-│  ⑧ Terminal → reject to DLQ + markFailed             │
-└──────────────────────────────────────────────────────┘
-```
-
----
-
-## Database Design
-
-### ER Diagram
-
-```
-┌──────────┐     ┌──────────────┐     ┌────────────────┐
-│  t_user  │────<│    agent     │────<│  chat_session  │
-│──────────│     │──────────────│     │────────────────│
-│ id (PK)  │     │ id (PK)      │     │ id (PK)        │
-│ username │     │ user_id (FK) │     │ user_id (FK)   │
-│ password │     │ system_prompt│     │ agent_id (FK)  │
-│ role     │     │ model        │     │ title          │
-│ status   │     │ allowed_tools│     │ metadata       │
-│ deleted  │     │ chat_options │     └───────┬────────┘
-└────┬─────┘     └──────┬───────┘             │
-     │                  │                     │
-     │    ┌─────────────┤                     │
-     │    ▼             ▼                     ▼
-     │ ┌──────────┐ ┌──────────┐     ┌────────────────┐
-     │ │user_prof.│ │agent_kb  │     │  chat_message  │
-     │ │──────────│ │──────────│     │────────────────│
-     │ │user_id(FK│ │agent_id  │     │ id (PK)        │
-     │ │ summary  │ │kb_id(FK) │     │ session_id(FK) │
-     │ └──────────┘ └──────────┘     │ seq_no (auto)  │
-     │                                │ turn_id        │
-     │                                │ role           │
-     │                                │ content        │
-     │                                │ metadata       │
-     │                                └───────┬────────┘
-     │                                        │
-     │                        ┌───────────────┤
-     │                        ▼               ▼
-     │               ┌──────────────┐ ┌───────────────────┐
-     │               │chat_session  │ │chat_session_summary│
-     │               │    _file     │ │───────────────────│
-     │               │──────────────│ │ session_id (PK,FK)│
-     │               │ id (PK)      │ │ last_seq_no       │
-     │               │ session_id   │ │ summary           │
-     │               │ filename     │ │ anchored_entities │
-     │               │ storage_path │ │ version           │
-     │               │ parse_status │ └───────────────────┘
-     │               └──────┬───────┘
-     │                      ▼
-     │               ┌──────────────┐
-     │               │  file_chunk  │
-     │               │──────────────│
-     │               │ id (PK)      │
-     │               │file_id (FK)  │
-     │               │ chunk_index  │
-     │               │ content      │
-     │               │ metadata     │
-     │               └──────────────┘
-     │
-     │    ┌──────────────────────────────────────────────┐
-     │    │            Knowledge System                   │
-     │    │                                              │
-     │    │  ┌──────────────┐    ┌───────────────────┐   │
-     │    │  │knowledge_base│───<│knowledge_document  │   │
-     │    │  │──────────────│    │───────────────────│   │
-     │    │  │ id (PK)      │    │ id (PK)           │   │
-     │    │  │ created_by   │    │ kb_id (FK)        │   │
-     │    │  │ name         │    │ filename          │   │
-     │    │  │ status       │    │ parse_status      │   │
-     │    │  └──────┬───────┘    │ content_hash      │   │
-     │    │         │            └───────┬───────────┘   │
-     │    │         │                    │               │
-     │    │         │            ┌───────▼───────────┐   │
-     │    │         │            │ knowledge_chunk    │   │
-     │    │         │            │───────────────────│   │
-     │    │         │            │ id (PK)            │   │
-     │    │         │            │ document_id (FK)   │   │
-     │    │         │            │ chunk_index        │   │
-     │    │         │            │ content            │   │
-     │    │         │            └───────────────────┘   │
-     │    │         │                                    │
-     │    │  ┌──────▼───────────────┐                    │
-     │    │  │ knowledge_document   │                    │
-     │    │  │    _enhancement      │                    │
-     │    │  │──────────────────────│                    │
-     │    │  │ document_id (PK, FK) │                    │
-     │    │  │ keywords (JSONB)     │                    │
-     │    │  │ questions (JSONB)    │                    │
-     │    │  └──────────────────────┘                    │
-     │    └──────────────────────────────────────────────┘
-     │
-     │    ┌──────────────────────────────────────────────┐
-     │    │            Intent Routing Tree                │
-     │    │                                              │
-     │    │  ┌──────────────┐    ┌───────────────────┐   │
-     │    │  │ intent_node  │───<│intent_knowledge   │   │
-     │    │  │──────────────│    │      _base        │   │
-     │    │  │ id (PK)      │    │───────────────────│   │
-     │    │  │ agent_id(FK) │    │ node_id (FK)      │   │
-     │    │  │ parent_id(FK│    │ kb_id (FK)        │   │
-     │    │  │ version      │    └───────────────────┘   │
-     │    │  │ node_level   │                            │
-     │    │  │ name         │  node_level:               │
-     │    │  │ intent_kind  │    DOMAIN → CATEGORY → TOPIC│
-     │    │  │ scope_policy │                            │
-     │    │  │ allowed_tools│                            │
-     │    │  └──────────────┘                            │
-     │    └──────────────────────────────────────────────┘
-     │
-     │    ┌──────────────────────────────────────────────┐
-     │    │            MCP + MQ + Operations              │
-     │    │                                              │
-     │    │  ┌──────────────┐    ┌───────────────────┐   │
-     │    │  │ t_mcp_server │───<│t_mcp_tool_catalog │   │
-     │    │  │──────────────│    │───────────────────│   │
-     │    │  │ slug         │    │ exposed_model_name│   │
-     │    │  │ protocol     │    │ schema_json       │   │
-     │    │  │ endpoint_url │    │ status            │   │
-     │    │  │ credentials  │    └───────────────────┘   │
-     │    │  │ status       │                            │
-     │    │  └──────┬───────┘    ┌───────────────────┐   │
-     │    │         │            │ t_mcp_alert_event  │   │
-     │    │         └───────────>│───────────────────│   │
-     │    │                      │ alert_type        │   │
-     │    │  ┌──────────────┐    │ severity          │   │
-     │    │  │ t_mq_outbox  │    │ status            │   │
-     │    │  │──────────────│    └───────────────────┘   │
-     │    │  │ event_type   │                            │
-     │    │  │ payload      │    ┌───────────────────┐   │
-     │    │  │ status       │    │t_chat_turn_metric  │   │
-     │    │  └──────────────┘    │───────────────────│   │
-     │    │                      │ session_id (FK)   │   │
-     │    │  ┌──────────────┐    │ status            │   │
-     │    │  │agent_template│    │ duration_ms       │   │
-     │    │  │──────────────│    │ knowledge_hit     │   │
-     │    │  │ code (UQ)    │    └───────────────────┘   │
-     │    │  │ system_prompt│                            │
-     │    │  │ intent_tree  │                            │
-     │    │  └──────────────┘                            │
-     │    └──────────────────────────────────────────────┘
-```
-
-### Table Summary (21 Tables)
-
-| # | Table | Description | Key Columns |
-|---|-------|-------------|-------------|
-| 1 | `t_user` | User accounts | username (UQ), password_hash, role (admin/user), status (ACTIVE/DISABLED), deleted |
-| 2 | `user_profile` | User profiles | user_id (PK,FK), summary |
-| 3 | `agent` | AI assistant configs | user_id (FK), system_prompt, model, allowed_tools (JSONB), chat_options (JSONB) |
-| 4 | `chat_session` | Chat sessions | user_id (FK), agent_id (FK), title, metadata (JSONB) |
-| 5 | `chat_message` | Chat messages | session_id (FK), seq_no (auto), turn_id, role, content, metadata (JSONB) |
-| 6 | `chat_session_file` | Session file attachments | session_id (FK), filename, mime_type, size_bytes, storage_path, parse_status |
-| 7 | `file_chunk` | File text chunks | session_file_id (FK), chunk_index, content, metadata (JSONB) |
-| 8 | `knowledge_base` | Knowledge bases | created_by (FK), name, visibility (SHARED), status (ACTIVE) |
-| 9 | `knowledge_document` | Knowledge documents | knowledge_base_id (FK), filename, parse_status, content_hash (SHA256), retry_count, deleted |
-| 10 | `knowledge_chunk` | Knowledge text chunks | knowledge_document_id (FK), chunk_index, content, metadata (JSONB) |
-| 11 | `agent_knowledge_base` | Agent-KB binding | agent_id (PK,FK), knowledge_base_id (PK,FK) — many-to-many |
-| 12 | `intent_node` | Intent routing nodes | agent_id (FK), parent_id (FK→self), version, node_level, intent_kind, scope_policy, allowed_tools (JSONB) |
-| 13 | `intent_knowledge_base` | Intent-KB binding | intent_node_id (FK), knowledge_base_id (FK) |
-| 14 | `chat_session_summary` | Rolling summaries | session_id (PK,FK), last_seq_no, summary, anchored_entities (JSONB), version (optimistic lock) |
-| 15 | `agent_template` | Assistant templates | code (UQ), system_prompt, model, allowed_tools (JSONB), intent_tree (JSONB), built_in |
-| 16 | `t_mq_outbox` | Message outbox | event_type, payload (JSONB), headers (JSONB), status (PENDING/CLAIMED/SENT/FAILED) |
-| 17 | `knowledge_document_enhancement` | Document enhancement signals | knowledge_document_id (PK,FK), keywords (JSONB), questions (JSONB) |
-| 18 | `t_chat_turn_metric` | Per-turn metrics | session_id (FK), user_id (FK), turn_id, status (SUCCESS/ERROR), duration_ms, knowledge_hit |
-| 19 | `t_mcp_server` | MCP servers | slug (UQ-soft), protocol (HTTP/SSE), endpoint_url, encrypted_credentials, status (ACTIVE/DISABLED/FAILED/STALE) |
-| 20 | `t_mcp_tool_catalog` | MCP tool catalog | server_id (FK), exposed_model_name (UQ-soft), schema_json, status (ENABLED/DISABLED/STALE) |
-| 21 | `t_mcp_alert_event` | MCP alerts | server_id (FK), alert_type (SERVER_FAILED/SCHEMA_DRIFT/UNRESOLVED_REFERENCE), severity, status (OPEN/RESOLVED) |
-
----
-
-## API Design
-
-### Authentication (`/api/auth/*`)
-
-No authentication required.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/register` | Register (auto-login) |
-| POST | `/api/auth/login` | Login |
-| POST | `/api/auth/refresh` | Refresh token (from cookie) |
-| POST | `/api/auth/logout` | Logout (revoke refresh token) |
-| GET | `/api/user/me` | Get current user info |
-
-### User Profile
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/user/profile` | Get user profile |
-| PUT | `/api/user/profile` | Update user profile |
-
-### Chat Sessions
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/chat-sessions` | List sessions |
-| GET | `/api/chat-sessions/{id}` | Get session |
-| POST | `/api/chat-sessions` | Create session |
-| DELETE | `/api/chat-sessions/{id}` | Delete session |
-| PATCH | `/api/chat-sessions/{id}` | Update session |
-
-### Chat Messages
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/chat-messages/session/{sessionId}` | List messages |
-| POST | `/api/chat-messages` | Send message (triggers AI response) |
-| DELETE | `/api/chat-messages/{id}` | Delete message |
-| PATCH | `/api/chat-messages/{id}` | Update message |
-
-### SSE Streaming
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/sse/connect/{sessionId}` | Establish SSE connection (receive AI streaming) |
-| GET | `/api/sse/admin/knowledge-bases/{kbId}/documents` | Document status SSE stream (Admin) |
-
-### File Management
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/chat-sessions/{sessionId}/files` | List session files |
-| POST | `/api/chat-sessions/{sessionId}/files/upload` | Upload file (multipart) |
-| DELETE | `/api/chat-sessions/{sessionId}/files/{fileId}` | Detach file |
-
-### Tools
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/tools` | List available optional tools |
-
-### Admin APIs (`/api/admin/*`)
-
-All require `@RequireRole(ADMIN)`.
-
-#### Knowledge Base Management
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/knowledge-bases` | List knowledge bases |
-| GET | `/api/admin/knowledge-bases/{id}` | Get knowledge base |
-| POST | `/api/admin/knowledge-bases` | Create knowledge base |
-| PATCH | `/api/admin/knowledge-bases/{id}` | Update knowledge base |
-| DELETE | `/api/admin/knowledge-bases/{id}` | Delete knowledge base (cascading) |
-| GET | `/api/admin/knowledge-bases/{kbId}/documents` | List documents |
-| POST | `/api/admin/knowledge-bases/{kbId}/documents/upload` | Upload document |
-| POST | `/api/admin/knowledge-bases/{kbId}/documents/{docId}/replace` | Replace document |
-| DELETE | `/api/admin/knowledge-bases/{kbId}/documents/{docId}` | Delete document |
-
-#### Assistant Management
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/assistant/knowledge-bases` | Get assistant's bound knowledge bases |
-| PUT | `/api/admin/assistant/knowledge-bases` | Set assistant's knowledge base bindings |
-| GET | `/api/admin/assistant/templates` | List templates |
-| POST | `/api/admin/assistant/templates` | Create template |
-| GET | `/api/admin/assistant/templates/{id}` | Get template |
-| PATCH | `/api/admin/assistant/templates/{id}` | Update template |
-| DELETE | `/api/admin/assistant/templates/{id}` | Delete template |
-| POST | `/api/admin/assistant/templates/{id}/initialize` | Initialize assistant from template |
-
-#### Intent Routing Tree
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/assistant/intent-tree` | Get intent tree (draft + versions) |
-| POST | `/api/admin/assistant/intent-tree/nodes` | Create node |
-| PATCH | `/api/admin/assistant/intent-tree/nodes/{id}` | Update node |
-| DELETE | `/api/admin/assistant/intent-tree/nodes/{id}` | Delete node + subtree |
-| PUT | `/api/admin/assistant/intent-tree/nodes/{id}/knowledge-bases` | Bind knowledge bases |
-| POST | `/api/admin/assistant/intent-tree/publish` | Publish as new version |
-| GET | `/api/admin/assistant/intent-tree/versions` | List published versions |
-| PUT | `/api/admin/assistant/intent-tree/versions/{ver}/activate` | Activate version |
-
-#### MCP Server Management
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/mcp-servers` | List MCP servers |
-| GET | `/api/admin/mcp-servers/{id}` | Get server details (with tool catalog) |
-| POST | `/api/admin/mcp-servers` | Create MCP server |
-| PATCH | `/api/admin/mcp-servers/{id}` | Update MCP server |
-| DELETE | `/api/admin/mcp-servers/{id}?force=false` | Delete MCP server |
-| POST | `/api/admin/mcp-servers/{id}/test` | Test connectivity |
-| POST | `/api/admin/mcp-servers/{id}/sync` | Sync tool catalog |
-
-#### Model Routing Management
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/chat-routing/state` | Get routing state (includes circuit breaker states) |
-| PUT | `/api/admin/chat-routing/candidates/override` | Apply runtime candidate override |
-| DELETE | `/api/admin/chat-routing/candidates/{id}/override` | Clear override |
-
-#### Dashboard
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/dashboard/overview?window=24h` | KPI overview |
-| GET | `/api/admin/dashboard/performance?window=24h` | Performance metrics |
-| GET | `/api/admin/dashboard/trends?metric=sessions&window=7d` | Trend data |
-| GET | `/api/admin/dashboard/mcp-alerts?limit=20` | MCP alerts |
-
-#### User Management
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/users?page=1&size=10` | List users |
-| POST | `/api/admin/users` | Create user (returns initial password) |
-| PUT | `/api/admin/users/{id}` | Update user (role/avatar) |
-| PUT | `/api/admin/users/{id}/status` | Enable/disable user |
-| PUT | `/api/admin/users/{id}/password/reset` | Reset password |
-| DELETE | `/api/admin/users/{id}` | Soft-delete user |
-
-#### MQ Management (conditionally enabled)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/mq/outbox/retry` | View outbox retry state |
-| POST | `/api/admin/mq/dlq/replay` | Replay dead-letter messages |
-
-### SSE Event Types
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `AI_GENERATED_CONTENT` | ChatMessageVO | AI content snapshot |
-| `AI_THINKING` | thinking text | Reasoning/thinking process |
-| `AI_DONE` | done=true | Turn completed |
-| `AI_ERROR` | error message | Error notification |
-| `TURN_ROLLBACK` | turnId | Rollback streamed content |
-| `DOCUMENT_STATUS_UPDATED` | document status | Document ingestion status change |
-
----
+These metrics are standard information-retrieval measurements and complement
+RAGAS: retrieval metrics explain whether the right evidence was found, while
+RAGAS explains whether the final answer stayed faithful and factually correct.
 
 ## Project Structure
 
-```
+```text
 ChatAgent/
-├── chatagent/                          # Backend Maven multi-module
-│   ├── pom.xml                         # Parent POM (Spring Boot 3.5.8)
-│   ├── bootstrap/                      # Business module
-│   │   ├── pom.xml
-│   │   └── src/main/java/com/yulong/chatagent/
-│   │       ├── access/                 # RBAC access control
-│   │       ├── admin/                  # Admin services
-│   │       ├── agent/                  # Agent runtime (ReAct)
-│   │       ├── conversation/           # Conversation orchestration
-│   │       ├── file/                   # File management
-│   │       ├── intent/                 # Intent routing
-│   │       ├── knowledge/              # Knowledge base management
-│   │       ├── mcp/                    # MCP tool integration
-│   │       ├── mq/                     # Message queue
-│   │       ├── rag/                    # RAG pipeline
-│   │       ├── support/                # Shared infrastructure (DTOs/Entities/Mappers)
-│   │       └── user/                   # User authentication
-│   ├── framework/                      # Cross-cutting concerns
-│   │   └── src/main/java/com/yulong/chatagent/
-│   │       ├── config/                 # Async/CORS config
-│   │       ├── context/                # UserContext
-│   │       ├── errorcode/              # Error codes
-│   │       ├── exception/              # Exception hierarchy
-│   │       ├── model/                  # ApiResponse
-│   │       ├── sse/                    # SSE infrastructure
-│   │       └── trace/                  # Distributed tracing
-│   ├── infra/                          # Infrastructure
-│   │   └── src/main/java/com/yulong/chatagent/
-│   │       ├── chat/                   # ChatClient registry/routing
-│   │       └── mail/                   # Email service
-│   └── bootstrap/src/main/resources/
-│       ├── application.yaml            # Main config (340+ lines)
-│       ├── application-local-gpu.yaml  # Local GPU profile
-│       ├── prompts/                    # Centralized prompts (24 .md files)
-│       │   ├── agent/                  # Agent core prompts + sections
-│       │   ├── intent/                 # Intent classification + query rewrite
-│       │   ├── rag/                    # RAG ingestion + retrieval prompts
-│       │   ├── vlm/                    # VLM visual parsing
-│       │   ├── summarizer/             # Rolling memory summary
-│       │   └── fallbacks/              # Default fallback text
-│       ├── db/migration/               # Flyway migrations (V1-V16)
-│       └── mapper/                     # MyBatis XML (23 mappers)
-│
-├── ui/                                 # Frontend
-│   ├── src/
-│   │   ├── api/                        # HTTP client
-│   │   ├── auth/                       # Token management
-│   │   ├── components/
-│   │   │   ├── admin/                  # Admin pages
-│   │   │   ├── auth/                   # Login page
-│   │   │   └── views/agentChatView/    # Chat view
-│   │   ├── contexts/                   # React Contexts
-│   │   ├── hooks/                      # useAuth, useChatSessions
-│   │   ├── layout/                     # Layout components
-│   │   └── types/                      # TypeScript types
-│   └── package.json
-│
-├── tools/                              # External tools
-│   ├── eval/                           # Evaluation runners and fixtures
-│   ├── bge-reranker-server/            # BGE reranker HTTP service
-│   └── mineru/                         # MinerU PDF parsing service
-│
-├── MCP/                                # MCP tool server examples
-│   └── weather-server/                 # Weather tool (HTTP+SSE)
-│
-├── docs/                               # Documentation
-│   └── plans/                          # Design and implementation plans
-│
-├── postman/                            # Postman API collection
-├── README.md                           # English README (default)
-└── README_ZH.md                        # Chinese README
+|- chatagent/                         # Java backend workspace
+|  |- pom.xml                         # Maven parent project
+|  |- framework/                      # Shared API response, errors, SSE, trace, async, CORS
+|  |- infra/                          # Provider and outbound integrations
+|  `- bootstrap/                      # Spring Boot app and business modules
+|     |- src/main/java/com/yulong/chatagent/
+|     |  |- agent/                    # ReAct, DeepThink, runtime context, prompts
+|     |  |- conversation/             # Sessions, messages, turn orchestration, SSE
+|     |  |- rag/                      # Parsing, chunking, embedding, retrieval, rerank
+|     |  |- memory/                   # L1/L2/L3 memory
+|     |  |- intent/                   # Intent tree, query rewrite, routing
+|     |  |- knowledge/                # Knowledge-base and document management
+|     |  |- mcp/                      # MCP runtime integration
+|     |  |- mq/                       # RabbitMQ/outbox/locks
+|     |  |- user/, admin/, file/      # Auth, admin APIs, session attachments
+|     |  `- support/                  # Shared DTOs, persistence, health
+|     |- src/main/resources/
+|     |  |- application.yaml          # Main runtime configuration
+|     |  |- db/migration/             # Flyway migrations
+|     |  `- prompts/                  # Markdown prompt templates
+|     `- src/test/                    # Backend unit, integration, eval tests
+|- ui/                                # React + Vite frontend
+|- tools/
+|  |- eval/                           # Python evaluation runners and tests
+|  |- bge-reranker-server/            # Local HTTP reranker service
+|  `- mineru/                         # Local MinerU service scripts
+|- MCP/weather-server/                # Example MCP HTTP/SSE server
+|- postman/                           # Postman collection
+|- README.md
+|- README_ZH.md
+`- LICENSE
 ```
 
----
+Local/private documentation, artifacts, model weights, runtime data, virtual
+environments, IDE files, and secret-bearing notes are intentionally ignored by
+Git.
 
-## Technical Highlights
+## Technology Stack
 
-### 1. First-Packet Probe Routing
+| Area | Technology |
+| --- | --- |
+| Backend | Java 17, Spring Boot 3.5.8, Spring Web, WebFlux, Actuator |
+| AI provider layer | Spring AI BOM 1.1.0, DeepSeek-compatible and ZhipuAI-compatible configuration |
+| Persistence | PostgreSQL, MyBatis, Flyway |
+| Cache and coordination | Redis, Caffeine, session guards, distributed locks |
+| Messaging | RabbitMQ, Spring AMQP, outbox and retry/DLQ flows |
+| RAG parsing | Apache Tika, Apache POI, JSoup, Flexmark, optional MinerU, optional VLM parser |
+| Retrieval | Ollama-compatible embeddings, Milvus vector store, optional BGE HTTP reranker |
+| Security | JWT, BCrypt, Spring Security Crypto, role annotations |
+| Observability | Spring Boot Actuator, Micrometer Prometheus registry |
+| Frontend | React 19, TypeScript 5.9, Vite 7, Ant Design 6, Ant Design X, Tailwind CSS 4 |
+| Frontend tests | Vitest, Testing Library, jsdom |
+| Evaluation | Python 3.11, optional `ragas`, optional OpenAI-compatible clients |
+| Local tools | MinerU service scripts, BGE reranker service, example MCP weather server |
 
-In streaming scenarios, candidates are tried serially by priority, waiting for the first valid data packet. On timeout/failure, the buffer is discarded and the next candidate is tried. `ProbeBufferingCallback` ensures the client never receives incomplete data.
-
-### 2. Three-Layer Circuit Breaker Protection
-
-| Layer | Breaker | Protected Target |
-|-------|---------|-----------------|
-| LLM Provider | `ModelHealthStore` (3-state: CLOSED/OPEN/HALF_OPEN) | DeepSeek / GLM |
-| Reranker | `RerankerCircuitBreaker` (sliding window 100s) | BGE Reranker |
-| MCP Tools | `McpServerCircuitBreaker` (per-server independent) | Third-party tools |
-
-All support probeGeneration anti-pollution and flight timeout protection.
-
-### 3. Transactional Outbox Pattern
-
-Business operations and message writes share the same database transaction, guaranteeing at-least-once delivery. `OutboxPollingPublisher` uses `SELECT ... FOR UPDATE SKIP LOCKED` for multi-instance-safe claiming, publisher confirm before markSent.
-
-### 4. Three-State Distributed Locks
-
-RUNNING / COMPLETED / FAILED states ensure idempotent consumption. `LockWatchdog` renews every 20s for long-running tasks. Per-task-type Fail-Open / Fail-Fast policy selection.
-
-### 5. Hybrid Search + RRF Fusion
-
-Milvus supports both Dense vector search and BM25 sparse search simultaneously. RRF (Reciprocal Rank Fusion) merges results from both, with a full reranking degradation chain (BGE → LLM → Noop).
-
-### 6. Dual-Track PDF Parsing
-
-`QualityRouter` evaluates each page: high text density uses Fast-Track (PDFBox native extraction), low density uses Visual-Track (render to image → VLM/MinerU parsing).
-
-### 7. Single Routed Stream
-
-Model output is simultaneously streamed to the UI and buffered. If tool calls are detected, the streamed content is rolled back. If pure text, it becomes the final answer directly — no second model call needed.
-
-### 8. Three-Layer Memory System
-
-L1 Short-term (token budget + turn-based sliding window) / L2 Incremental Summary (event-driven + LLM + deterministic fallback) / L3 User Profile (cross-session persistent).
-
-### 9. Secure MCP Integration
-
-SSRF protection + AES-256-GCM credential encryption + Schema drift detection + Token-bucket rate limiting + Prompt safety warnings.
-
-### 10. Centralized Prompt Management
-
-All 46 AI prompts are extracted from Java source code into 24 `.md` files under `resources/prompts/`, organized by domain (agent/intent/rag/vlm/summarizer/fallbacks). A `PromptLoader` component handles loading with `{{variable}}` template substitution and `ConcurrentHashMap` in-memory caching. Every prompt follows an enterprise-grade structure with unified Role / Rules / Guardrails / Output Format sections. The V16 migration sets the default agent's `system_prompt` to NULL to enable centralized loading.
-
----
-
-## Design Patterns
-
-The project applies classic design patterns at key architectural points to ensure extensibility and maintainability.
-
-### Creational
-
-| Pattern | Implementation | Description |
-|---------|---------------|-------------|
-| **Factory** | `ChatAgentFactory`, `AgentToolCallbackFactory`, `McpToolDefinitionFactory` | Assemble fully-configured Agent / tool lists / MCP metadata from runtime context |
-| **Builder** | 30+ DTO/VO classes (`ChatMessageVO`, `AgentDTO`, `McpServerMetricsSnapshot`, etc.) | Lombok `@Builder` generates fluent construction APIs |
-
-### Structural
-
-| Pattern | Implementation | Description |
-|---------|---------------|-------------|
-| **Facade** | 15+ facade services (`ConversationOrchestratorService`, `AssistantTemplateFacadeServiceImpl`, `DashboardFacadeServiceImpl`, etc.) | One `*FacadeServiceImpl` per business domain — simplified external API orchestrating multiple internal Ports/Services |
-| **Adapter** | `McpToolCallbackAdapter`, `ChatModelProviderRegistry` | Adapts MCP remote calls to Spring AI's `ToolCallback`; unifies DeepSeek / ZhiPu behind a `ProviderBinding` interface |
-| **Proxy** | `ProbeBufferingCallback`, `SwitchingChatEventDispatcher` | First-packet probe proxy for streaming; local/MQ dual-channel switching proxy |
-| **Bridge** | `ChatModelRouter` → `ChatClient` | Decouples LLM provider selection from invocation — routes to different `ChatClient` instances at runtime |
-
-### Behavioral
-
-| Pattern | Implementation | Description |
-|---------|---------------|-------------|
-| **Strategy** | `RetrievalReranker` (BGE / LLM / Noop), `VdpEngine` (VLM / MinerU / Noop), `DocumentParser` (PDF / Markdown / Tika / Image) | Algorithm families encapsulated independently; selected at runtime |
-| **Chain of Responsibility** | Reranker degradation chain: BGE → LLM → Noop; LLM routing: priority-ordered probing | Request passes along a chain; each node decides to handle or forward |
-| **Template Method** | `AbstractRetryingMqConsumer<T>` | Defines MQ consumption skeleton (lock → execute → retry/DLQ); subclasses implement `processTask()` and other hooks |
-| **Observer** | `ChatEventDispatcher` → `ChatEventListener` / `AsyncSummaryListener` + `SseService` | Event-driven conversation processing and front-end SSE push |
-| **State** | `ModelHealthStore` (CLOSED/OPEN/HALF_OPEN), `MqTaskLockState` (RUNNING/COMPLETED/FAILED) | Three-state machines driving circuit breaker and distributed lock behavior transitions |
-
-### Architectural
-
-| Pattern | Implementation | Description |
-|---------|---------------|-------------|
-| **Circuit Breaker** | `ModelHealthStore`, `RerankerCircuitBreaker`, `McpServerCircuitBreaker` | Three independent circuit breaker layers preventing cascading failures |
-| **Transactional Outbox** | `OutboxEventPublisher` + `OutboxPollingPublisher` | Business writes and message intent share the same database transaction |
-| **Port/Adapter (Hexagonal)** | `ChatSessionSummaryRepository`, `AgentRepository` Ports + `MyBatis*Adapter` implementations | Domain logic decoupled from persistence technology |
-| **Registry** | `ChatClientRegistry`, `McpRuntimeToolRegistry`, `McpServerCircuitBreakerRegistry` | Centrally managed named instances with runtime dynamic lookup |
-
----
-
-## Quick Start
+## Installation
 
 ### Prerequisites
 
-| Dependency | Version | Notes |
-|-----------|---------|-------|
-| Java | 17 | JDK 17 |
-| Maven | 3.8+ | Build tool |
-| PostgreSQL | 15+ | Main database (Flyway auto-migration) |
-| Redis | 7+ | Cache + distributed locks + Pub/Sub |
-| Milvus | 2.6 | Vector database |
-| Ollama | - | Embedding (pull `bge-m3` model) |
-| Node.js | 18+ | Frontend build |
+| Dependency | Required for | Notes |
+| --- | --- | --- |
+| JDK 17 | Backend build and runtime | Set `JAVA_HOME` before running Maven. |
+| Maven wrapper | Backend build | `chatagent/mvnw` and `chatagent/mvnw.cmd` are included. |
+| Node.js 20+ | Frontend | The project uses Vite and React 19. |
+| Python 3.11+ | Evaluation tools and local AI helpers | Required for `tools/eval`, MinerU, and reranker services. |
+| PostgreSQL | Application database | Flyway migrations create and evolve the schema. |
+| Redis | Cache, locks, and coordination | Required by the backend configuration. |
+| RabbitMQ | Async agent and ingestion flows | Used by MQ/outbox modules. |
+| Milvus | Vector store | Required when `CHATAGENT_MILVUS_ENABLED=true`. |
+| Ollama or compatible embedding API | Embeddings | Defaults target `http://127.0.0.1:11434`. |
+| Optional GPU | MinerU/reranker acceleration | CPU mode may work but can be slow. |
 
-### Optional GPU Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| BGE Reranker | 7997 | Cross-encoder reranking (GPU) |
-| MinerU | 8000 | PDF batch parsing (GPU) |
-
-### Configure Environment Variables
-
-Set the required environment variables before starting the backend. `chatagent/.env.example` can be used as a local template, but do not commit real API keys.
+### Clone
 
 ```bash
-# Required
-CHATAGENT_DB_URL=jdbc:postgresql://localhost:5432/chatagent
-CHATAGENT_DB_USERNAME=app
-CHATAGENT_DB_PASSWORD=your_password
-CHATAGENT_DEEPSEEK_API_KEY=your_deepseek_key
-CHATAGENT_ZHIPUAI_API_KEY=your_zhipuai_key
-CHATAGENT_JWT_SECRET=your-random-secret-key-at-least-32-chars
-
-# Optional (local GPU defaults are in application.yaml)
-CHATAGENT_RAG_EMBEDDING_BASE_URL=http://localhost:11434
-CHATAGENT_RAG_RERANKER_BASE_URL=http://localhost:7997
+git clone <repository-url>
+cd ChatAgent
 ```
 
-### Start RabbitMQ
+### Backend dependencies
+
+```powershell
+cd chatagent
+.\mvnw.cmd -pl bootstrap -am -DskipTests install
+```
+
+On Linux/macOS:
 
 ```bash
-docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3.13-management
+cd chatagent
+./mvnw -pl bootstrap -am -DskipTests install
 ```
 
-Start PostgreSQL, Redis, Milvus, Ollama, and any optional GPU services separately according to your local environment.
+### Frontend dependencies
+
+```bash
+cd ui
+npm install
+```
+
+### Python evaluation tools
+
+```bash
+cd tools/eval
+python -m venv .venv
+# Windows: .\.venv\Scripts\Activate.ps1
+# Unix: source .venv/bin/activate
+python -m pip install -e .
+python -m pip install -e ".[ragas]"   # only when official Ragas metrics are needed
+```
+
+## Configuration
+
+Runtime configuration is defined in
+`chatagent/bootstrap/src/main/resources/application.yaml` and profile-specific
+YAML files such as `application-local-gpu.yaml`. Non-sensitive defaults live in
+those YAML files: model names, local service URLs, timeouts, MQ names, feature
+switches, RAG top-k/candidate-k/RRF values, reranker thresholds, and MCP
+runtime limits are committed as ordinary configuration.
+
+Environment variables are reserved for secrets, credentials, private deployment
+coordinates, and frontend build-time API routing. `chatagent/.env.example`
+therefore documents only the minimal private values to supply locally; Spring
+Boot still reads process environment variables from your shell, IDE run
+configuration, or deployment system.
+
+Do not commit real API keys, JWT secrets, database passwords, or local provider
+tokens. The local `docs/env_variables.txt` file may contain private values and
+is intentionally ignored.
+
+### Private Environment Variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `CHATAGENT_DB_URL` | Usually | PostgreSQL JDBC URL when the checked-in local default is not suitable. |
+| `CHATAGENT_DB_USERNAME` | Usually | PostgreSQL username. |
+| `CHATAGENT_DB_PASSWORD` | Yes in most setups | PostgreSQL password. |
+| `CHATAGENT_REDIS_PASSWORD` | Depends on Redis | Redis password. |
+| `CHATAGENT_RABBITMQ_USERNAME` | Yes for MQ flows | RabbitMQ username. |
+| `CHATAGENT_RABBITMQ_PASSWORD` | Yes for MQ flows | RabbitMQ password. |
+| `CHATAGENT_MAIL_USERNAME` | If mail is enabled | SMTP username. |
+| `CHATAGENT_MAIL_PASSWORD` | If mail is enabled | SMTP password or app password. |
+| `CHATAGENT_JWT_SECRET` | Yes outside throwaway local runs | Long random JWT signing secret. |
+| `CHATAGENT_DEEPSEEK_API_KEY` | If using DeepSeek | Chat provider credential. |
+| `CHATAGENT_ZHIPUAI_API_KEY` | If using ZhipuAI | Chat/VLM provider credential. |
+| `CHATAGENT_ZHIPUAI_API_KEY_2` | Optional for evaluation | Secondary ZhipuAI provider credential. |
+| `CHATAGENT_ZAI_CODING_API_KEY` | Optional for evaluation | Z.AI Coding Plan provider credential. |
+| `CHATAGENT_RAG_RERANKER_API_KEY` | If the reranker requires auth | Reranker credential. |
+| `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | If MinerU requires auth | MinerU bearer token. |
+| `CHATAGENT_MILVUS_USERNAME` | If Milvus auth is enabled | Milvus username. |
+| `CHATAGENT_MILVUS_PASSWORD` | If Milvus auth is enabled | Milvus password. |
+| `CHATAGENT_MCP_CIPHER_KEY` | Required for encrypted MCP credentials | Secret key for MCP credential encryption. |
+| `VITE_API_BASE_URL` | Frontend optional | Browser API base URL for non-default deployments. |
+
+To change non-sensitive defaults, edit the YAML profile rather than adding new
+environment variables. Evaluation-only provider overrides still live in the
+Python evaluation CLI where noted by `tools/eval`.
+
+## Usage
+
+### Start Local Infrastructure
+
+Example commands for a local development machine:
+
+```bash
+docker run -d --name chatagent-postgres -p 5432:5432 \
+  -e POSTGRES_DB=chatagent \
+  -e POSTGRES_USER=app \
+  -e POSTGRES_PASSWORD=app \
+  postgres:16
+
+docker run -d --name chatagent-redis -p 6379:6379 redis:7
+
+docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 \
+  -e RABBITMQ_DEFAULT_USER=guest \
+  -e RABBITMQ_DEFAULT_PASS=guest \
+  rabbitmq:3.13-management
+```
+
+Milvus and Ollama are installed separately. For an Ollama embedding setup:
+
+```bash
+ollama pull bge-m3
+```
+
+### Start Optional Local AI Services
+
+BGE reranker:
+
+```powershell
+.\tools\bge-reranker-server\start-reranker.ps1
+```
+
+MinerU:
+
+```powershell
+.\tools\mineru\check-mineru-env.ps1
+.\tools\mineru\download-models.ps1 -Source huggingface -ModelType pipeline
+.\tools\mineru\start-mineru-api.ps1
+```
 
 ### Start Backend
 
 ```powershell
 cd chatagent
-.\mvnw.cmd -pl framework,infra -am -DskipTests install
 .\mvnw.cmd -pl bootstrap spring-boot:run
 ```
+
+The backend uses Spring Boot's default port unless overridden by your local
+Spring configuration. The frontend assumes `http://localhost:8080/api` by
+default.
 
 ### Start Frontend
 
 ```bash
 cd ui
-npm install
 npm run dev
 ```
 
-### Access
+Open the Vite URL shown in the terminal, usually `http://localhost:5173`.
 
-| URL | Description |
-|-----|-------------|
-| `http://localhost:5173` | Frontend UI |
-| `http://localhost:8080/health` | Backend health check |
-| `http://localhost:15672` | RabbitMQ management (guest/guest) |
+### Smoke Checks
 
----
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/api/user/me
+```
 
-## Configuration
+`/api/user/me` requires a valid access token after login.
 
-All configuration can be overridden via environment variables with the `CHATAGENT_` prefix. See `chatagent/bootstrap/src/main/resources/application.yaml` for details.
+## API
 
-### Key Configuration Groups
+All JSON endpoints return:
 
-| Prefix | Description |
-|--------|-------------|
-| `CHATAGENT_DB_*` | PostgreSQL connection |
-| `CHATAGENT_DEEPSEEK_*` / `CHATAGENT_ZHIPUAI_*` | LLM provider API keys |
-| `CHATAGENT_RAG_*` | RAG (Embedding/Reranker/VDP) |
-| `CHATAGENT_MILVUS_*` | Milvus vector database |
-| `CHATAGENT_MQ_*` | RabbitMQ + outbox + distributed locks |
-| `CHATAGENT_MCP_*` | MCP tool integration (transport/runtime/drift) |
-| `CHATAGENT_JWT_*` | JWT authentication |
-| `chat.routing.*` | Model routing (first-packet timeout/circuit breaker/candidates) |
-| `chatagent.intent.*` | Intent routing (classification threshold/clarification/rewrite model) |
-| `chatagent.memory.*` | Memory management (L1 window/token budget/summary model) |
-| `chatagent.session-guard.*` | Session concurrency guard (Redis lock TTL/Fail-Open) |
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {}
+}
+```
 
----
+Use `Authorization: Bearer <access-token>` for authenticated requests. The
+refresh token is managed by an HttpOnly cookie.
+
+| Area | Method and Path | Main Parameters |
+| --- | --- | --- |
+| Auth | `POST /api/auth/register` | JSON: `username`, `password` |
+| Auth | `POST /api/auth/login` | JSON: `username`, `password` |
+| Auth | `POST /api/auth/refresh` | Refresh token cookie |
+| Auth | `POST /api/auth/logout` | Refresh token cookie |
+| User | `GET /api/user/me` | Bearer token |
+| Sessions | `GET /api/chat-sessions` | Bearer token |
+| Sessions | `POST /api/chat-sessions` | JSON: `title` |
+| Sessions | `GET/PATCH/DELETE /api/chat-sessions/{chatSessionId}` | JSON patch: `title` |
+| Messages | `GET /api/chat-messages/session/{sessionId}` | Session ID |
+| Messages | `POST /api/chat-messages` | JSON: `sessionId`, `role`, `content`, optional `turnId`, `executionMode`, `metadata` |
+| Messages | `PATCH/DELETE /api/chat-messages/{chatMessageId}` | JSON patch: `content`, `metadata` |
+| SSE | `GET /api/sse/connect/{chatSessionId}` | SSE stream for chat progress and content |
+| Session files | `POST /api/chat-sessions/{sessionId}/files/upload` | Multipart field: `file` |
+| Session files | `GET /api/chat-sessions/{sessionId}/files` | Session ID |
+| Session files | `DELETE /api/chat-sessions/{sessionId}/files/{sessionFileId}` | IDs in path |
+| Knowledge base | `POST /api/admin/knowledge-bases` | Admin, JSON: `name`, `description` |
+| Knowledge base | `GET/PATCH/DELETE /api/admin/knowledge-bases/{knowledgeBaseId}` | Admin |
+| Knowledge documents | `POST /api/admin/knowledge-bases/{knowledgeBaseId}/documents/upload` | Admin, multipart `file` |
+| Knowledge documents | `POST /api/admin/knowledge-bases/{knowledgeBaseId}/documents/{documentId}/replace` | Admin, multipart `file` |
+| Assistant templates | `GET/POST/PATCH/DELETE /api/admin/assistant/templates` | Admin, template fields |
+| Intent tree | `GET /api/admin/assistant/intent-tree` | Admin |
+| Intent tree | `POST/PATCH/DELETE /api/admin/assistant/intent-tree/nodes` | Admin, intent-node payload |
+| Intent tree | `POST /api/admin/assistant/intent-tree/publish` | Admin |
+| MCP servers | `GET/POST/PATCH/DELETE /api/admin/mcp-servers` | Admin, `slug`, `name`, `protocol`, `authType`, `endpointUrl`, `credentials` |
+| MCP servers | `POST /api/admin/mcp-servers/{serverId}/test` | Admin |
+| MCP servers | `POST /api/admin/mcp-servers/{serverId}/sync` | Admin |
+| Dashboard | `GET /api/admin/dashboard/overview` | Admin, optional `window` |
+| Health | `GET /health` | Basic health response |
+
+The Postman collection in `postman/` is the best starting point for manual API
+exploration.
+
+## System Architecture
+
+```mermaid
+flowchart LR
+  UI["React UI"] --> API["Spring Boot API"]
+  API --> Auth["JWT/Auth"]
+  API --> Conv["Conversation Orchestrator"]
+  Conv --> Agent["Agent Runtime: ReAct / DeepThink"]
+  Agent --> Router["Intent Router + Query Rewriter"]
+  Agent --> Memory["L1/L2/L3 Memory"]
+  Agent --> Tools["MCP / Web Search / Built-in Tools"]
+  Router --> RAG["RAG Retrieval"]
+  RAG --> Parser["Document Parsing + Chunking"]
+  Parser --> Embed["Embedding Endpoint"]
+  Embed --> Milvus["Milvus"]
+  RAG --> Reranker["Optional BGE Reranker"]
+  Agent --> LLM["Configured Chat Provider"]
+  API --> MQ["RabbitMQ Outbox + Workers"]
+  API --> PG["PostgreSQL"]
+  API --> Redis["Redis"]
+```
+
+### Data Flow
+
+1. A user logs in and creates a chat session.
+2. The frontend sends `POST /api/chat-messages` and opens the SSE stream.
+3. The backend acquires a session guard and starts one turn.
+4. The orchestrator prepares intent, memory context, attached files, and
+   knowledge-base scope.
+5. The agent runtime selects direct answering, RAG, tools, web search, or
+   DeepThink steps depending on the turn.
+6. RAG parses and chunks documents, creates embeddings, stores vectors in
+   Milvus, retrieves top candidates, optionally reranks them, and formats
+   cited context.
+7. The selected chat provider generates the assistant response.
+8. Messages, traces, memory updates, MQ state, and admin metrics are persisted
+   or streamed as appropriate.
+
+### Model Calling Flow
+
+- `ChatModelRouter` selects the configured provider/model.
+- Runtime modules pass prompts through `PromptLoader`.
+- Provider settings such as model, temperature, top-p, and max tokens are
+  controlled by environment variables.
+- DeepThink uses dedicated planner, step executor, reflection, verification,
+  and final synthesis prompt paths.
+- RAG and memory modules can use separate model settings for query rewrite,
+  summarization, VLM parsing, document enhancement, and L3 extraction.
+
+### Prompt Design
+
+Prompt templates are stored as Markdown under:
+
+```text
+chatagent/bootstrap/src/main/resources/prompts/
+```
+
+They are loaded lazily from `classpath:prompts/` by `PromptLoader`. This keeps
+large prompt text out of Java service code and allows runtime modules such as
+agent execution, DeepThink, intent routing, query rewriting, RAG formatting,
+VLM parsing, document enhancement, and memory extraction to share a consistent
+template-loading pattern.
+
+### Vector Search and Retrieval
+
+1. Documents are uploaded to a session or knowledge base.
+2. Parsers normalize PDF, Office, HTML, Markdown, text, and related formats.
+3. Content is chunked and optionally enriched.
+4. Embeddings are generated through an Ollama-compatible endpoint.
+5. Vectors are stored in Milvus collections.
+6. Runtime retrieval uses top-k, candidate-k, and RRF settings.
+7. Optional HTTP reranking filters or reorders candidates before answer
+   generation.
+
+## Evaluation
+
+The evaluation module lives in `tools/eval` and is opt-in. It is not part of
+the default backend test lifecycle.
+
+```bash
+cd tools/eval
+python run_eval.py --help
+```
+
+Main runner groups include:
+
+| Runner | Purpose |
+| --- | --- |
+| `ragas-smoke` | Run official Ragas metrics over exported samples. |
+| `text-recall-smoke` | Deterministic text recall over real source files. |
+| `memory-smoke` | Deterministic Memory V2 checks over multi-turn tasks. |
+| `memory-semantic` | Semantic support/usefulness judging for memory. |
+| `agent-modules-smoke` | Intent, rewrite, tool-call, and module checks. |
+| `doc-ingestion-preflight` | Preflight validation for document ingestion evals. |
+| `doc-ingestion-answer` | Generate answer rows for B3.4 style RAGAS scoring. |
+| `tune-suite` | Reproducible parameter tuning with sealed holdout support. |
+
+For the current B3.4 answer-quality workflow, the active RAGAS run exports
+full-RAG answer rows and scores `faithfulness` plus `factual_correctness`.
+Historical No-RAG, wrong-context, oracle, reranker A/B controls and additional
+RAGAS metrics are not part of the active default unless explicitly re-enabled.
+
+Tracked deterministic metrics include Hit@K, Recall@K, Precision@K, MRR, NDCG,
+and text recall. Memory runs track precision, recall, F1, support, and
+usefulness. Agent module runs track metrics such as intent accuracy.
+
+Generated evaluation artifacts are local-only and ignored by Git.
+
+## Development Guide
+
+### Backend
+
+```powershell
+cd chatagent
+.\mvnw.cmd -pl bootstrap -DskipTests test-compile
+.\mvnw.cmd -pl bootstrap test
+```
+
+Default Maven tests exclude long-running or live suites through
+`surefire.excludedGroups`. Opt-in evaluation and reliability suites use tags
+such as `eval-v2`, `benchmark`, `reliability-live`, `stress`, and `chaos`.
+
+### Frontend
+
+```bash
+cd ui
+npm run lint
+npm run test
+npm run build
+```
+
+### Evaluation Tools
+
+```bash
+cd tools/eval
+python -m unittest discover -s tests -v
+python -m compileall -q chatagent_eval tests
+```
+
+### Code and Documentation Rules
+
+- Keep secrets out of source, docs, tests, artifacts, and logs.
+- Keep generated artifacts under ignored directories.
+- Prefer environment variables over hardcoded local paths.
+- Update README/API notes when public endpoints or required config changes.
+- For AI behavior changes, add or update targeted eval evidence where
+  practical.
+
+## Deployment
+
+There is no production-ready deployment manifest in this repository yet.
+Production deployment needs to supplement:
+
+- Container images or a platform-specific service definition.
+- Managed PostgreSQL, Redis, RabbitMQ, Milvus, and object/file storage.
+- Secret management for provider keys, JWT secrets, MCP cipher keys, and
+  database credentials.
+- TLS, domain routing, CORS policy, and frontend build hosting.
+- Log, metric, alert, and artifact-retention policies.
+- GPU or CPU capacity planning for MinerU, reranker, embeddings, and local
+  models if used.
+
+A minimal backend package can be built with:
+
+```powershell
+cd chatagent
+.\mvnw.cmd -pl bootstrap -am -DskipTests package
+```
+
+Frontend production build:
+
+```bash
+cd ui
+npm run build
+```
+
+## FAQ
+
+### The backend cannot connect to PostgreSQL.
+
+Check `CHATAGENT_DB_URL`, `CHATAGENT_DB_USERNAME`, and
+`CHATAGENT_DB_PASSWORD`. Also confirm the database exists and Flyway can create
+or update the schema.
+
+### Login works but authenticated API calls fail.
+
+Check `CHATAGENT_JWT_SECRET`, browser cookie behavior, CORS settings, and the
+`Authorization: Bearer <access-token>` header.
+
+### RAG returns no useful context.
+
+Confirm embeddings are available, Milvus is enabled and reachable, the vector
+dimension matches the embedding model, documents were ingested successfully,
+and the reranker is either healthy or intentionally disabled.
+
+### PDF parsing is slow or incomplete.
+
+Start MinerU when visual/PDF parsing is needed and verify
+`CHATAGENT_RAG_VDP_MINERU_BASE_URL`. CPU-only parsing can be slow.
+
+### The frontend calls the wrong backend URL.
+
+Set `VITE_API_BASE_URL` before running `npm run dev` or building the frontend.
+
+### Evaluation artifacts are missing.
+
+Evaluation runs write local artifacts under ignored directories. Run the
+relevant `tools/eval/run_eval.py` command first, then inspect the generated
+manifest/report paths printed by the runner.
 
 ## License
 
-This project is licensed under the terms of the [LICENSE](LICENSE) file.
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

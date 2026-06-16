@@ -4,3 +4,7 @@
 # Only requires PostgreSQL (agent + intent_node tables), Redis (intent tree cache),
 # and a configured LLM provider (IntentRouter classifier + QueryRewriter).
 # No Milvus, Ollama, or L3 memory beans are needed.
+
+auth:
+  jwt:
+    secret: test-only-jwt-secret-for-eval-agent-modules-000000000000

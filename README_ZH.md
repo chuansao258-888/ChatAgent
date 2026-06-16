@@ -1,993 +1,563 @@
 # ChatAgent
 
-<p align="right">
-  <a href="README.md"><strong>English</strong></a> | 中文
-</p>
+[English README](README.md)
 
-<p align="center">
-  <strong>企业级 AI 智能工作台</strong>
-</p>
+ChatAgent 是一个全栈 AI 助手平台，包含 Spring Boot 后端、React 前端、基于文档和知识库的 RAG、长期记忆、MCP 工具接入，以及覆盖 RAG、Memory、Agent 行为的可复现实验评测工具链。
 
-<p align="center">
-  多模型路由 · RAG 知识检索 · 意图路由 · MCP 工具集成 · 异步任务处理
-</p>
+这个项目的核心价值不只是“能聊天”，而是把一个 Agent 系统拆成可运行、可管理、可评测的工程模块：文档解析、切分、向量化、检索、重排、回答生成、记忆抽取、意图路由和工具调用都有对应的运行链路与评测支持。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Java-17-blue" />
-  <img src="https://img.shields.io/badge/Spring_Boot-3.5-green" />
-  <img src="https://img.shields.io/badge/Spring_AI-1.1-orange" />
-  <img src="https://img.shields.io/badge/React-19-61dafb" />
-  <img src="https://img.shields.io/badge/PostgreSQL-15+-336791" />
-  <img src="https://img.shields.io/badge/Milvus-2.6-00A1EA" />
-  <img src="https://img.shields.io/badge/RabbitMQ-3.13-FF6600" />
-  <img src="https://img.shields.io/badge/Redis-7+-DC382D" />
-</p>
+## 功能特性
 
----
+- 多轮聊天会话，支持 SSE 流式输出。
+- JWT 登录鉴权，access token 由前端携带，refresh token 使用 HttpOnly Cookie。
+- ReAct Agent 运行时，并支持 DeepThink 模式，用于规划、执行、反思、验证和最终综合。
+- 支持会话文件和后台知识库两类 RAG 数据来源。
+- 支持多格式文档摄取：Apache Tika、Apache POI、JSoup、Flexmark，PDF 可接入 MinerU 和 VLM 解析。
+- 支持 Ollama 兼容 embedding 服务、Milvus 向量库和可选 BGE HTTP reranker。
+- 后台可维护意图树，包含草稿、发布、版本激活流程。
+- 记忆系统包含 L1 近期上下文、L2 压缩摘要/片段、L3 长期记忆条目。
+- MCP 服务器管理、工具目录同步、连通性测试、限流、熔断、灰度和凭据加密能力。
+- 管理后台覆盖用户、仪表盘、助手模板、知识库、意图树、MCP 运维和聊天路由。
+- Python 评测模块支持确定性检索/文本指标、官方 Ragas、Memory 语义评测、Agent 模块评测、文档摄取分析和参数调优。
 
-## 目录
+## 项目亮点
 
-- [项目简介](#项目简介)
-- [技术栈](#技术栈)
-- [系统架构](#系统架构)
-- [核心流程图](#核心流程图)
-- [数据库设计](#数据库设计)
-- [接口设计](#接口设计)
-- [项目结构](#项目结构)
-- [技术亮点](#技术亮点)
-- [设计模式](#设计模式)
-- [快速开始](#快速开始)
-- [配置说明](#配置说明)
+### 首包探测与模型路由
 
----
+ChatAgent 没有把模型选择写死成单一 provider，而是把它设计成一个运行时路由问题。后端维护按优先级排序的候选模型，并通过“首包探测”判断一个流式模型是否真的可用：请求发出后，只有在限定时间内收到第一段流式输出，才把本次调用视为健康。
 
-## 项目简介
+关键机制：
 
-ChatAgent 是一个**企业级 AI 智能工作台后端系统**，基于 Spring Boot 3.5 + Spring AI 1.1 构建。普通用户通过聊天界面与 AI 助手交互，支持上传文件、检索知识库、调用外部工具；管理员通过管理后台管理知识库、意图路由树、Agent 配置、MCP 外部工具集成和系统监控。
+| 机制 | 作用 |
+| --- | --- |
+| 候选模型优先级 | 按 provider/model 的优先级和能力要求选择候选。 |
+| 首包探测 | 不只看 HTTP 是否连通，而是等待第一段 stream packet，避免 provider 卡住却占用用户 turn。 |
+| 熔断状态 | 跟踪 closed、open、half-open 状态，让异常模型冷却后再探测恢复。 |
+| 运行时 override | 后台 chat-routing API 可临时覆盖或清除候选，不需要改代码。 |
+| 指标观测 | 使用 Micrometer 记录路由尝试、延迟、熔断事件和决策。 |
 
-### 核心能力
+这个设计解决的是 LLM 工程里的实际问题：一次 `200 OK` 并不代表模型能稳定输出。对聊天系统来说，真正影响体验的是首包是否及时返回、失败后能不能自动切换到可用候选。
 
-| 能力 | 说明 |
-|------|------|
-| **多模型智能路由** | 支持 DeepSeek / 智谱AI GLM 多供应商，首包探测自动切换，三态熔断器保护 |
-| **RAG 知识检索** | 完整摄取流水线（PDF/Markdown/Tika/VLM/MinerU），Milvus 混合检索（Dense+BM25），BGE 重排序 |
-| **树状意图路由** | DOMAIN→CATEGORY→TOPIC 三级层级路由，启发式+LLM 双阶段分类，澄清交互 |
-| **AI Agent (ReAct)** | 思考-行动循环，内置工具（知识检索/SQL/邮件/文件系统）+ MCP 外部工具动态集成 |
-| **异步任务处理** | RabbitMQ 事务性发件箱，三态分布式锁，结构化重试+DLQ |
-| **用户认证** | JWT + Refresh Token 双令牌架构，RBAC 角色控制，Redis Token 存储 |
-| **运维仪表盘** | 实时性能指标、会话趋势、MCP 告警、模型路由状态 |
+### MQ、Outbox 与看门狗
 
----
+项目使用 RabbitMQ 承载异步 Agent 调度和知识库文档摄取，并用 PostgreSQL transactional outbox 保证业务状态与消息意图一起提交。用户消息或文档状态保存成功后，即使进程重启或 RabbitMQ 短暂不可用，待发布任务仍然保留在 outbox 中。
 
-## 技术栈
+可靠性设计：
 
-### 后端
+| 组件 | 职责 |
+| --- | --- |
+| Transactional outbox | 避免“消息已保存但任务丢失”或“任务发出但业务状态未提交”。 |
+| Publisher confirm | broker ack 后标记 sent；nack、return、timeout 进入可重试状态。 |
+| Retry/DLQ | retry queue 处理暂时失败，DLQ 暴露 poison message，便于排查和重放。 |
+| Idempotency key | DLQ 重放保留事件身份，消费者可做幂等保护。 |
+| 分布式锁 | agent-run、ingest-task、session-exec 锁防止多个 worker 同时处理同一任务。 |
+| Lock watchdog | 周期性续租锁，并记录锁丢失或续租失败。 |
+| MQ 后台管理 | 可查看 outbox 状态、retry/DLQ 深度，并在合适时重放 DLQ 消息。 |
 
-| 层面 | 技术 | 版本 |
-|------|------|------|
-| 语言 | Java | 17 |
-| 框架 | Spring Boot | 3.5.8 |
-| AI 框架 | Spring AI | 1.1.0 |
-| ORM | MyBatis | - |
-| 关系数据库 | PostgreSQL | 15+ |
-| 向量数据库 | Milvus (混合检索) | 2.6 |
-| 消息队列 | RabbitMQ | 3.13 |
-| 缓存 | Redis | 7+ |
-| 数据库迁移 | Flyway | - |
-| Embedding | Ollama + bge-m3 | 1024 维 |
-| Reranker | BGE-reranker-v2-m3 (GPU) | - |
-| PDF 解析 | MinerU / VLM / Apache Tika / PDFBox | - |
-| 认证 | JWT (jjwt) | - |
-| 构建 | Maven 多模块 | - |
+这套链路的目标是“可恢复、可观测、可重放”：普通 broker 波动、confirm 超时、worker 重启、重复投递都不应让会话 turn 静默丢失或重复执行。
 
-### 前端
+### RAG 链路
 
-| 技术 | 版本 |
-|------|------|
-| React | 19 |
-| Vite | 7 |
-| TypeScript | 5.9 |
-| Ant Design | 6 |
-| TailwindCSS | 4 |
-| Recharts | 3 |
-| @ant-design/x | 2 (AI 聊天组件) |
+RAG 在本项目里不是一个简单的 retrieval helper，而是一条完整生产链路，覆盖会话文件和后台知识库两类数据源。
 
-### LLM 供应商
-
-| 供应商 | 模型 | 用途 |
-|--------|------|------|
-| DeepSeek | deepseek-chat, deepseek-reasoner | 对话、推理、Agent |
-| 智谱AI | glm-4.6, glm-5.1 | 对话、推理、视觉解析 |
-
----
-
-## 系统架构
-
-### 整体架构
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          前端 (React 19)                            │
-│       管理后台 (Dashboard/知识库/意图树/MCP/用户)                    │
-│       用户界面 (聊天/文件上传/引用面板)                               │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ HTTP / SSE
-┌──────────────────────────────▼──────────────────────────────────────┐
-│                        Spring Boot 后端                             │
-│                                                                     │
-│  ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────┐             │
-│  │ Auth     │ │Chat       │ │ Admin    │ │ SSE      │             │
-│  │ JWT+RBAC │ │Session/Msg│ │ Dashboard│ │ Stream   │             │
-│  └────┬─────┘ └─────┬─────┘ └────┬─────┘ └────┬─────┘             │
-│       │             │            │             │                    │
-│  ┌────▼─────────────▼────────────▼─────────────▼──────────────┐    │
-│  │                   编排层 (Orchestration)                     │    │
-│  │  ConversationOrchestrator ─ IntentRouter ─ EventDispatcher  │    │
-│  │  SessionConcurrencyGuard ─ IncrementalSummarizer            │    │
-│  └────────────────────────────┬───────────────────────────────┘    │
-│                               │                                     │
-│  ┌────────────────────────────▼───────────────────────────────┐    │
-│  │                   Agent 运行时 (ReAct Loop)                  │    │
-│  │  ThinkingEngine ─ ToolExecutionEngine ─ MessageBridge       │    │
-│  │  三层记忆 (L1 短期 / L2 摘要 / L3 用户画像)                   │    │
-│  └────────────┬─────────────────────────┬──────────────────────┘    │
-│               │                         │                           │
-│  ┌────────────▼──────────┐  ┌───────────▼──────────────────────┐   │
-│  │   LLM 路由层 (infra)   │  │        RAG 知识引擎              │   │
-│  │  首包探测 + 熔断器      │  │  解析 → 分块 → 增强 → Embedding  │   │
-│  │  多供应商自动切换       │  │  混合检索 + RRF + 重排序          │   │
-│  │  原始 SSE 高性能流式    │  │  Milvus (Dense + BM25)           │   │
-│  └───────────────────────┘  └──────────────────────────────────┘   │
-│                                                                     │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────┐   │
-│  │   MCP 工具集成    │  │   MQ 异步处理     │  │  用户认证       │   │
-│  │  HTTP/SSE 双协议  │  │  事务性发件箱     │  │  双 JWT 架构    │   │
-│  │  熔断+限流+SSRF   │  │  分布式锁+DLQ    │  │  Redis Token   │   │
-│  └──────────────────┘  └──────────────────┘  └────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+  Upload["上传文件 / 知识库文档"] --> Parse["解析与质量路由"]
+  Parse --> Chunk["结构感知切分"]
+  Chunk --> Enhance["可选上下文增强"]
+  Enhance --> Embed["Embedding endpoint"]
+  Embed --> Store["Milvus 向量库"]
+  Store --> Retrieve["混合检索: topK / candidateK / RRF"]
+  Retrieve --> Rerank["可选 BGE reranker"]
+  Rerank --> Answer["带引用上下文的回答生成"]
 ```
 
-### Maven 模块划分
+摄取侧使用 Apache Tika、Apache POI、JSoup、Flexmark 处理 Office、HTML、Markdown、文本等格式；复杂 PDF 可接入 MinerU 或 VLM 解析。检索侧把召回和精排拆开：top-k、candidate-k、RRF、reranker 阈值、超时和 fallback 都可以独立调优。
 
-```
-chatagent/
-├── chatagent-bootstrap   ← Spring Boot 启动 + 所有业务模块
-│   ├── access/           ← RBAC (@RequireRole + ResourceAccessGuard)
-│   ├── admin/            ← 管理后台 (Dashboard/用户/MCP/路由管理)
-│   ├── agent/            ← Agent 运行时 (ReAct循环/工具/记忆)
-│   ├── conversation/     ← 会话编排 (消息/SSE/摘要/并发保护)
-│   ├── file/             ← 会话文件上传管理
-│   ├── intent/           ← 意图路由 (层级树/分类/澄清/改写)
-│   ├── knowledge/        ← 知识库/文档 CRUD + 摄取调度
-│   ├── mcp/              ← MCP 工具集成 (传输/运行时保护/Schema漂移)
-│   ├── mq/               ← RabbitMQ (发件箱/分布式锁/重试)
-│   ├── rag/              ← RAG (解析/分块/Embedding/检索/重排序)
-│   ├── support/          ← 共享 DTO/Entity/Mapper/Health
-│   └── user/             ← 用户认证 (JWT/BCrypt/角色管理)
-│
-├── chatagent-framework   ← 横切关注点 (SSE/异常/追踪/API响应)
-│
-└── chatagent-infra       ← 基础设施 (LLM路由/邮件)
-    └── chat/routing/     ← 首包探测/熔断器/流式响应
-```
+### 意图识别与路由
 
----
+意图识别发生在重型 Agent 执行之前。系统会先判断用户 turn 是否需要澄清、是否能绑定到意图树 topic、应该使用哪些知识库范围，以及是否需要查询改写，再决定是否进入 RAG 或工具执行。
 
-## 核心流程图
+意图树的层级：
 
-### 用户消息处理全流程
+| 层级 | 作用 |
+| --- | --- |
+| Domain | 最高层业务领域。 |
+| Category | 领域下的中间分类。 |
+| Topic | 可运行时路由的叶子节点；只有 Topic 绑定知识库。 |
 
-```
-用户发送消息 POST /api/chat-messages
-│
-▼
-SessionConcurrencyGuard (Redis 分布式锁)
-│
-▼
-ConversationOrchestratorService.handleUserTurn()
-│ ① 验证请求 → ② 组装上下文(会话+消息+历史) → ③ 一致性校验
-│
-▼
-ConversationTurnPreparationService.prepare()
-│
-├─── 检查待澄清状态 (Redis, 5min TTL)
-│    └── 匹配用户澄清回复 → 继续路由
-│
-├─── IntentRouter.route() — 层级意图路由
-│    ├── 启发式评分 (bigram Jaccard, score ≥ 1.2 直接通过)
-│    └── LLM 回退分类 (启发式不确定时才调用)
-│
-├─── 需要澄清 → 保存 PendingIntentResolution → 返回选项列表
-├─── SYSTEM 意图 → 模板渲染 → 直接回复
-└─── KB/TOOL 意图 → QueryRewriter 改写 → 调度 Agent
-     │
-     ▼
-SwitchingChatEventDispatcher (Local / MQ 可切换)
-     │
-     ▼
-ChatEventProcessor.process()
-     │
-     ▼
-ChatAgentFactory.create()
-│ 加载: Agent配置 + L1记忆 + L2摘要 + L3画像 + 工具列表 + 系统Prompt
-│
-▼
-ChatAgent.run() — ReAct 循环 (最多 20 步)
-│
-│  ┌──────────────────────────────────────────┐
-│  │           单步迭代 (step)                 │
-│  │                                          │
-│  │  AgentThinkingEngine.think()              │
-│  │    → 无工具 → 流式输出最终答案 → 结束      │
-│  │    → 有工具 → 流式+缓冲                    │
-│  │       → 纯文本 → 直接成为最终答案          │
-│  │       → 工具调用 → 回滚 → 执行工具         │
-│  │                                          │
-│  │  AgentToolExecutionEngine.execute()       │
-│  │    → SessionFileTools → RAG 检索 + 引用   │
-│  │    → DataBaseTools → 只读 SQL 查询        │
-│  │    → MCP 工具 → 远程调用 (熔断+限流)      │
-│  └──────────────────────────────────────────┘
-│
-▼
-结果持久化 + SSE 推送 + 指标记录 + 异步摘要触发
-```
+后台维护草稿树，发布后形成版本化 snapshot，再激活某个已发布版本供运行时读取。若当前问题信息不足，澄清结果会直接返回给用户，不进入 Agent runtime，从而节省模型、工具和 RAG 预算。
 
-### RAG 摄取流水线
+### RAGAS 评测与指标
 
-```
-文件上传
-│
-▼
-FileSizeGuard (30MB 硬限制)
-│
-▼
-FileTypeDetector (Magic-byte + 扩展名 + MIME)
-│
-▼
-DocumentParserSelector ──────────────────────────────────────
-│                       │              │              │       │
-▼                       ▼              ▼              ▼       ▼
-PdfDocumentParser   Markdown      Tika         Image       (拒绝)
-│                   Parser        Parser       Parser
-│                       │              │              │
-├─ PDFBox 提取文本        │              │              │
-├─ QualityRouter 逐页    │              │              │
-│  ├─ 文本密度高 → Fast-Track   │              │
-│  └─ 文本密度低 → Visual-Track  │              │
-│     ├─ VlmVdpEngine (单页VLM)  │              │
-│     └─ MinerUVdpEngine (批量)   │              │
-└─ SegmentAssembler 组装   │              │              │
-│                       │              │              │
-└───────────────────────┴──────────────┴──────────────┘
-                        │
-                        ▼
-              ParseResult + List<ParseSegment>
-                        │
-          ┌─────────────┼─────────────┐
-          ▼             ▼             ▼
-   文档增强         智能分块        块级上下文增强
- (LlmDocument     (SegmentAware   (LlmContextual
-  Enhancer)        ChunkerRouter)  ChunkEnricher)
-          │             │             │
-          └─────────────┼─────────────┘
-                        ▼
-              Ollama Embedding (bge-m3, 1024维)
-                        │
-                        ▼
-              Milvus Upsert (双 Collection)
-              ├─ chat_file_chunk (会话文件)
-              └─ chat_knowledge_chunk (知识库)
-```
+评测模块用于把 RAG 链路变成可度量的工程对象。当前 B3.4 回答质量评测的有效范围是：只评估 full-RAG answer rows，并只计算：
 
-### RAG 检索流水线
+| 指标 | 含义 |
+| --- | --- |
+| `faithfulness` | 生成答案是否被检索上下文支持。 |
+| `factual_correctness` | 生成答案是否与参考答案/事实一致。 |
 
-```
-用户查询
-│
-▼
-Ollama Embedding → 查询向量
-│
-┌────────────────────────────────────────┐
-│          Milvus 混合搜索                │
-│                                        │
-│  ┌─────────────────┐ ┌──────────────┐  │
-│  │ Session File     │ │ Knowledge    │  │
-│  │ Dense + BM25    │ │ Dense + BM25 │  │
-│  │ → RRF 融合      │ │ → RRF 融合   │  │
-│  └────────┬────────┘ └──────┬───────┘  │
-│           │                 │          │
-│           └────────┬────────┘          │
-│                    ▼                   │
-│             RRF 全局融合                │
-│                    │                   │
-│                    ▼                   │
-│          知识库信号注入 (Redis MGET)     │
-└────────────────────┬───────────────────┘
-                     │
-                     ▼
-          重排序 (降级链)
-          ├─ BGE HTTP (熔断器保护 + 置信度过滤)
-          ├─ LLM Reranker (降级)
-          └─ Noop (最终降级, 保持RRF顺序)
-                     │
-                     ▼
-          RetrievalHitFormatter (带引用编号)
-                     │
-                     ▼
-          返回给 Agent → 生成带引用的回答
-```
+旧的 No-RAG、wrong-context、oracle、reranker A/B 对照组，以及额外 RAGAS 指标，当前不属于默认有效范围，除非后续明确重新开启。
 
-### 首包探测路由流程
+确定性检索指标采用业界常见 IR 定义：
 
-```
-候选: [glm-5.1 (P:5), deepseek-reasoner (P:10)]
-│
-▼ ① ModelSelector: 过滤+排序+首选提升
-│
-▼ ② 遍历候选模型:
+| 指标 | 计算方式 |
+| --- | --- |
+| Hit@K | top K 中至少出现一个相关结果则为 `1`，否则为 `0`，再对 query 求平均。 |
+| Recall@K | top K 中召回的相关结果数 / 该 query 的相关结果总数。 |
+| Precision@K | top K 中相关结果数 / K。 |
+| MRR | 第一个相关结果排名的倒数，即 `1/rank`；没有相关结果则为 `0`。 |
+| NDCG@K | 按排名折损后的相关性收益，再除以理想排序下的收益。 |
 
-┌── glm-5.1 ──────────────────────────────────────────┐
-│  healthStore.tryAcquire() → CLOSED → 允许           │
-│  FirstPacketAwaiter + ProbeBufferingCallback         │
-│  ProviderDirectStreamSupport.submit() (原始SSE)      │
-│  awaiter.await(60s)                                  │
-│  ├── 首包到达 → commit() → 刷出缓冲 → ✓ 采纳         │
-│  └── 超时/失败 → dispose() → 丢弃缓冲 → ✗ 尝试下一个  │
-└──────────────────────────────────────────────────────┘
-         │ (失败)
-         ▼
-┌── deepseek-reasoner ────────────────────────────────┐
-│  healthStore.tryAcquire() → 允许                     │
-│  首包探测 ...                                        │
-│  → 首包到达 → commit() → ✓ 采纳                      │
-└──────────────────────────────────────────────────────┘
-         │
-         ▼ (全部失败)
-  callback.onError()
-```
-
-### MQ 异步处理拓扑
-
-```
-┌──────────────────────────────────────────────────────┐
-│  生产者 (业务 @Transactional 内)                       │
-│                                                      │
-│  OutboxEventPublisher.publish()                      │
-│    → INSERT t_mq_outbox (PENDING) ← 同一事务         │
-│    → ON CONFLICT DO NOTHING (UUIDv5 确定性ID)        │
-│                                                      │
-│  OutboxPollingPublisher (定时 2s)                     │
-│    → SELECT ... FOR UPDATE SKIP LOCKED               │
-│    → RabbitMQ publish + confirm                      │
-│    → markSent                                        │
-└───────────────────────────┬──────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────┐
-│                    RabbitMQ 拓扑                      │
-│                                                      │
-│  chat.direct ─┬─ chat.agent.dispatch (DLX→retry)     │
-│               └─ knowledge.ingest.task (DLX→retry)   │
-│                                                      │
-│  retry.direct ─┬─ retry.agent.10s (TTL=10s→chat)     │
-│                └─ retry.ingest.30s (TTL=30s→chat)    │
-│                                                      │
-│  dlx.direct ─── chat.dlq (终极死信)                   │
-└───────────────────────────┬──────────────────────────┘
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────┐
-│  消费者 (AbstractRetryingMqConsumer)                   │
-│                                                      │
-│  ① 读取消息身份头 (7个不可变header)                     │
-│  ② Task Lock 获取 (三态: ACQUIRED/DUPLICATE/WAIT)     │
-│  ③ Session Exec Lock 获取 (Agent Run 专用)            │
-│  ④ LockWatchdog 启动 (每20s续期)                      │
-│  ⑤ processTask()                                     │
-│  ⑥ 成功 → markCompleted + ack                        │
-│  ⑦ 可重试 → publish to retry exchange + ack           │
-│  ⑧ 不可重试 → reject to DLQ + markFailed             │
-└──────────────────────────────────────────────────────┘
-```
-
----
-
-## 数据库设计
-
-### ER 关系图
-
-```
-┌──────────┐     ┌──────────────┐     ┌────────────────┐
-│  t_user  │────<│    agent     │────<│  chat_session  │
-│──────────│     │──────────────│     │────────────────│
-│ id (PK)  │     │ id (PK)      │     │ id (PK)        │
-│ username │     │ user_id (FK) │     │ user_id (FK)   │
-│ password │     │ name         │     │ agent_id (FK)  │
-│ role     │     │ system_prompt│     │ title          │
-│ status   │     │ model        │     │ metadata       │
-│ deleted  │     │ allowed_tools│     └───────┬────────┘
-└────┬─────┘     │ chat_options │             │
-     │           └──────┬───────┘             │
-     │                  │                     │
-     │    ┌─────────────┤                     │
-     │    │             │                     ▼
-     │    ▼             ▼             ┌────────────────┐
-     │ ┌──────────┐ ┌──────────┐     │  chat_message  │
-     │ │user_prof.│ │agent_kb  │     │────────────────│
-     │ │──────────│ │──────────│     │ id (PK)        │
-     │ │user_id(FK│ │agent_id  │     │ session_id(FK) │
-     │ │ summary  │ │kb_id(FK) │     │ seq_no (auto)  │
-     │ └──────────┘ └──────────┘     │ turn_id        │
-     │                                │ role           │
-     │                                │ content        │
-     │                                │ metadata       │
-     │                                └───────┬────────┘
-     │                                        │
-     │                        ┌───────────────┤
-     │                        ▼               ▼
-     │               ┌──────────────┐ ┌───────────────────┐
-     │               │chat_session  │ │chat_session_summary│
-     │               │    _file     │ │───────────────────│
-     │               │──────────────│ │ session_id (PK,FK)│
-     │               │ id (PK)      │ │ last_seq_no       │
-     │               │ session_id   │ │ summary           │
-     │               │ filename     │ │ anchored_entities │
-     │               │ storage_path │ │ version           │
-     │               │ parse_status │ └───────────────────┘
-     │               └──────┬───────┘
-     │                      ▼
-     │               ┌──────────────┐
-     │               │  file_chunk  │
-     │               │──────────────│
-     │               │ id (PK)      │
-     │               │file_id (FK)  │
-     │               │ chunk_index  │
-     │               │ content      │
-     │               │ metadata     │
-     │               └──────────────┘
-     │
-     │    ┌──────────────────────────────────────────────┐
-     │    │              知识库体系                        │
-     │    │                                              │
-     │    │  ┌──────────────┐    ┌───────────────────┐   │
-     │    │  │knowledge_base│───<│knowledge_document  │   │
-     │    │  │──────────────│    │───────────────────│   │
-     │    │  │ id (PK)      │    │ id (PK)           │   │
-     │    │  │ created_by   │    │ kb_id (FK)        │   │
-     │    │  │ name         │    │ filename          │   │
-     │    │  │ status       │    │ parse_status      │   │
-     │    │  └──────┬───────┘    │ content_hash      │   │
-     │    │         │            └───────┬───────────┘   │
-     │    │         │                    │               │
-     │    │         │            ┌───────▼───────────┐   │
-     │    │         │            │ knowledge_chunk    │   │
-     │    │         │            │───────────────────│   │
-     │    │         │            │ id (PK)            │   │
-     │    │         │            │ document_id (FK)   │   │
-     │    │         │            │ chunk_index        │   │
-     │    │         │            │ content            │   │
-     │    │         │            └───────────────────┘   │
-     │    │         │                                    │
-     │    │  ┌──────▼───────────────┐                    │
-     │    │  │ knowledge_document   │                    │
-     │    │  │    _enhancement      │                    │
-     │    │  │──────────────────────│                    │
-     │    │  │ document_id (PK, FK) │                    │
-     │    │  │ keywords (JSONB)     │                    │
-     │    │  │ questions (JSONB)    │                    │
-     │    │  └──────────────────────┘                    │
-     │    └──────────────────────────────────────────────┘
-     │
-     │    ┌──────────────────────────────────────────────┐
-     │    │              意图路由树                        │
-     │    │                                              │
-     │    │  ┌──────────────┐    ┌───────────────────┐   │
-     │    │  │ intent_node  │───<│intent_knowledge   │   │
-     │    │  │──────────────│    │      _base        │   │
-     │    │  │ id (PK)      │    │───────────────────│   │
-     │    │  │ agent_id(FK) │    │ node_id (FK)      │   │
-     │    │  │ parent_id(FK│    │ kb_id (FK)        │   │
-     │    │  │ version      │    └───────────────────┘   │
-     │    │  │ node_level   │                            │
-     │    │  │ name         │  node_level:               │
-     │    │  │ intent_kind  │    DOMAIN → CATEGORY → TOPIC│
-     │    │  │ scope_policy │                            │
-     │    │  │ allowed_tools│                            │
-     │    │  └──────────────┘                            │
-     │    └──────────────────────────────────────────────┘
-     │
-     │    ┌──────────────────────────────────────────────┐
-     │    │              MCP + MQ + 运维                  │
-     │    │                                              │
-     │    │  ┌──────────────┐    ┌───────────────────┐   │
-     │    │  │ t_mcp_server │───<│t_mcp_tool_catalog │   │
-     │    │  │──────────────│    │───────────────────│   │
-     │    │  │ slug         │    │ exposed_model_name│   │
-     │    │  │ protocol     │    │ schema_json       │   │
-     │    │  │ endpoint_url │    │ status            │   │
-     │    │  │ credentials  │    └───────────────────┘   │
-     │    │  │ status       │                            │
-     │    │  └──────┬───────┘    ┌───────────────────┐   │
-     │    │         │            │ t_mcp_alert_event  │   │
-     │    │         └───────────>│───────────────────│   │
-     │    │                      │ alert_type        │   │
-     │    │  ┌──────────────┐    │ severity          │   │
-     │    │  │ t_mq_outbox  │    │ status            │   │
-     │    │  │──────────────│    └───────────────────┘   │
-     │    │  │ event_type   │                            │
-     │    │  │ payload      │    ┌───────────────────┐   │
-     │    │  │ status       │    │t_chat_turn_metric  │   │
-     │    │  └──────────────┘    │───────────────────│   │
-     │    │                      │ session_id (FK)   │   │
-     │    │  ┌──────────────┐    │ status            │   │
-     │    │  │agent_template│    │ duration_ms       │   │
-     │    │  │──────────────│    │ knowledge_hit     │   │
-     │    │  │ code (UQ)    │    └───────────────────┘   │
-     │    │  │ system_prompt│                            │
-     │    │  │ intent_tree  │                            │
-     │    │  └──────────────┘                            │
-     │    └──────────────────────────────────────────────┘
-```
-
-### 数据表总览 (21 张表)
-
-| # | 表名 | 说明 | 关键字段 |
-|---|------|------|---------|
-| 1 | `t_user` | 用户账户 | username(UQ), password_hash, role(admin/user), status(ACTIVE/DISABLED), deleted |
-| 2 | `user_profile` | 用户画像 | user_id(PK,FK), summary |
-| 3 | `agent` | AI 助手配置 | user_id(FK), system_prompt, model, allowed_tools(JSONB), chat_options(JSONB) |
-| 4 | `chat_session` | 聊天会话 | user_id(FK), agent_id(FK), title, metadata(JSONB) |
-| 5 | `chat_message` | 聊天消息 | session_id(FK), seq_no(auto), turn_id, role, content, metadata(JSONB) |
-| 6 | `chat_session_file` | 会话附件文件 | session_id(FK), filename, mime_type, size_bytes, storage_path, parse_status |
-| 7 | `file_chunk` | 文件分块 | session_file_id(FK), chunk_index, content, metadata(JSONB) |
-| 8 | `knowledge_base` | 知识库 | created_by(FK), name, visibility(SHARED), status(ACTIVE) |
-| 9 | `knowledge_document` | 知识文档 | knowledge_base_id(FK), filename, parse_status, content_hash(SHA256), retry_count, deleted |
-| 10 | `knowledge_chunk` | 知识分块 | knowledge_document_id(FK), chunk_index, content, metadata(JSONB) |
-| 11 | `agent_knowledge_base` | Agent-KB 绑定 | agent_id(PK,FK), knowledge_base_id(PK,FK) — 多对多 |
-| 12 | `intent_node` | 意图路由节点 | agent_id(FK), parent_id(FK→self), version, node_level, intent_kind, scope_policy, allowed_tools(JSONB) |
-| 13 | `intent_knowledge_base` | 意图-KB 绑定 | intent_node_id(FK), knowledge_base_id(FK) |
-| 14 | `chat_session_summary` | 会话增量摘要 | session_id(PK,FK), last_seq_no, summary, anchored_entities(JSONB), version(乐观锁) |
-| 15 | `agent_template` | 助手模板 | code(UQ), system_prompt, model, allowed_tools(JSONB), intent_tree(JSONB), built_in |
-| 16 | `t_mq_outbox` | 消息发件箱 | event_type, payload(JSONB), headers(JSONB), status(PENDING/CLAIMED/SENT/FAILED) |
-| 17 | `knowledge_document_enhancement` | 文档增强信号 | knowledge_document_id(PK,FK), keywords(JSONB), questions(JSONB) |
-| 18 | `t_chat_turn_metric` | 轮次指标 | session_id(FK), user_id(FK), turn_id, status(SUCCESS/ERROR), duration_ms, knowledge_hit |
-| 19 | `t_mcp_server` | MCP 服务器 | slug(UQ-soft), protocol(HTTP/SSE), endpoint_url, encrypted_credentials, status(ACTIVE/DISABLED/FAILED/STALE) |
-| 20 | `t_mcp_tool_catalog` | MCP 工具目录 | server_id(FK), exposed_model_name(UQ-soft), schema_json, status(ENABLED/DISABLED/STALE) |
-| 21 | `t_mcp_alert_event` | MCP 告警 | server_id(FK), alert_type(SERVER_FAILED/SCHEMA_DRIFT/UNRESOLVED_REFERENCE), severity, status(OPEN/RESOLVED) |
-
----
-
-## 接口设计
-
-### 认证接口 (`/api/auth/*`)
-
-无需认证。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/auth/register` | 用户注册（自动登录） |
-| POST | `/api/auth/login` | 用户登录 |
-| POST | `/api/auth/refresh` | 刷新 Token (Cookie 中的 refresh_token) |
-| POST | `/api/auth/logout` | 登出（撤销 Refresh Token） |
-| GET | `/api/user/me` | 获取当前用户信息 |
-
-### 用户接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/user/profile` | 获取用户画像 |
-| PUT | `/api/user/profile` | 更新用户画像 |
-
-### 会话接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/chat-sessions` | 获取会话列表 |
-| GET | `/api/chat-sessions/{id}` | 获取单个会话 |
-| POST | `/api/chat-sessions` | 创建会话 |
-| DELETE | `/api/chat-sessions/{id}` | 删除会话 |
-| PATCH | `/api/chat-sessions/{id}` | 更新会话 |
-
-### 消息接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/chat-messages/session/{sessionId}` | 获取会话消息列表 |
-| POST | `/api/chat-messages` | 发送消息（触发 AI 回复） |
-| DELETE | `/api/chat-messages/{id}` | 删除消息 |
-| PATCH | `/api/chat-messages/{id}` | 更新消息 |
-
-### SSE 接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/sse/connect/{sessionId}` | 建立 SSE 连接（接收 AI 流式响应） |
-| GET | `/api/sse/admin/knowledge-bases/{kbId}/documents` | 文档状态 SSE 流 (Admin) |
-
-### 文件接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/chat-sessions/{sessionId}/files` | 获取会话文件列表 |
-| POST | `/api/chat-sessions/{sessionId}/files/upload` | 上传文件 (multipart) |
-| DELETE | `/api/chat-sessions/{sessionId}/files/{fileId}` | 移除文件 |
-
-### 工具接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/tools` | 获取可选工具列表 |
-
-### 管理接口 (`/api/admin/*`)
-
-全部需要 `@RequireRole(ADMIN)`。
-
-#### 知识库管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/knowledge-bases` | 获取知识库列表 |
-| GET | `/api/admin/knowledge-bases/{id}` | 获取知识库详情 |
-| POST | `/api/admin/knowledge-bases` | 创建知识库 |
-| PATCH | `/api/admin/knowledge-bases/{id}` | 更新知识库 |
-| DELETE | `/api/admin/knowledge-bases/{id}` | 删除知识库（级联） |
-| GET | `/api/admin/knowledge-bases/{kbId}/documents` | 获取文档列表 |
-| POST | `/api/admin/knowledge-bases/{kbId}/documents/upload` | 上传文档 |
-| POST | `/api/admin/knowledge-bases/{kbId}/documents/{docId}/replace` | 替换文档 |
-| DELETE | `/api/admin/knowledge-bases/{kbId}/documents/{docId}` | 删除文档 |
-
-#### 助手管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/assistant/knowledge-bases` | 获取助手绑定的知识库 |
-| PUT | `/api/admin/assistant/knowledge-bases` | 设置助手绑定的知识库 |
-| GET | `/api/admin/assistant/templates` | 获取模板列表 |
-| POST | `/api/admin/assistant/templates` | 创建模板 |
-| GET | `/api/admin/assistant/templates/{id}` | 获取模板详情 |
-| PATCH | `/api/admin/assistant/templates/{id}` | 更新模板 |
-| DELETE | `/api/admin/assistant/templates/{id}` | 删除模板 |
-| POST | `/api/admin/assistant/templates/{id}/initialize` | 从模板初始化助手 |
-
-#### 意图路由树
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/assistant/intent-tree` | 获取意图树（草稿+版本） |
-| POST | `/api/admin/assistant/intent-tree/nodes` | 创建节点 |
-| PATCH | `/api/admin/assistant/intent-tree/nodes/{id}` | 更新节点 |
-| DELETE | `/api/admin/assistant/intent-tree/nodes/{id}` | 删除节点+子树 |
-| PUT | `/api/admin/assistant/intent-tree/nodes/{id}/knowledge-bases` | 绑定知识库 |
-| POST | `/api/admin/assistant/intent-tree/publish` | 发布为新版本 |
-| GET | `/api/admin/assistant/intent-tree/versions` | 获取版本列表 |
-| PUT | `/api/admin/assistant/intent-tree/versions/{ver}/activate` | 激活版本 |
-
-#### MCP 服务器管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/mcp-servers` | 获取 MCP 服务器列表 |
-| GET | `/api/admin/mcp-servers/{id}` | 获取服务器详情（含工具目录） |
-| POST | `/api/admin/mcp-servers` | 创建 MCP 服务器 |
-| PATCH | `/api/admin/mcp-servers/{id}` | 更新 MCP 服务器 |
-| DELETE | `/api/admin/mcp-servers/{id}?force=false` | 删除 MCP 服务器 |
-| POST | `/api/admin/mcp-servers/{id}/test` | 测试连通性 |
-| POST | `/api/admin/mcp-servers/{id}/sync` | 同步工具目录 |
-
-#### 模型路由管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/chat-routing/state` | 获取路由状态（含熔断状态） |
-| PUT | `/api/admin/chat-routing/candidates/override` | 运行时覆盖候选配置 |
-| DELETE | `/api/admin/chat-routing/candidates/{id}/override` | 清除覆盖 |
-
-#### Dashboard
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/dashboard/overview?window=24h` | KPI 概览 |
-| GET | `/api/admin/dashboard/performance?window=24h` | 性能指标 |
-| GET | `/api/admin/dashboard/trends?metric=sessions&window=7d` | 趋势数据 |
-| GET | `/api/admin/dashboard/mcp-alerts?limit=20` | MCP 告警 |
-
-#### 用户管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/users?page=1&size=10` | 获取用户列表 |
-| POST | `/api/admin/users` | 创建用户（返回初始密码） |
-| PUT | `/api/admin/users/{id}` | 更新用户（角色/头像） |
-| PUT | `/api/admin/users/{id}/status` | 启用/禁用用户 |
-| PUT | `/api/admin/users/{id}/password/reset` | 重置密码 |
-| DELETE | `/api/admin/users/{id}` | 软删除用户 |
-
-#### MQ 管理（条件激活）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/admin/mq/outbox/retry` | 查看 Outbox 重试状态 |
-| POST | `/api/admin/mq/dlq/replay` | 重放死信消息 |
-
-### SSE 事件类型
-
-| 事件 | 数据 | 说明 |
-|------|------|------|
-| `AI_GENERATED_CONTENT` | ChatMessageVO | AI 内容快照 |
-| `AI_THINKING` | thinking text | 推理/思考过程 |
-| `AI_DONE` | done=true | 轮次完成 |
-| `AI_ERROR` | error message | 错误通知 |
-| `TURN_ROLLBACK` | turnId | 回滚已展示内容 |
-| `DOCUMENT_STATUS_UPDATED` | document status | 文档摄取状态变化 |
-
----
+这些指标和 RAGAS 分工不同：检索指标回答“证据有没有找对”，RAGAS 回答“最终答案有没有忠于证据并符合事实”。
 
 ## 项目结构
 
-```
+```text
 ChatAgent/
-├── chatagent/                          # 后端 Maven 多模块
-│   ├── pom.xml                         # 父 POM (Spring Boot 3.5.8)
-│   ├── bootstrap/                      # 业务模块
-│   │   ├── pom.xml
-│   │   └── src/main/java/com/yulong/chatagent/
-│   │       ├── access/                 # RBAC 权限控制
-│   │       ├── admin/                  # 管理后台服务
-│   │       ├── agent/                  # Agent 运行时 (ReAct)
-│   │       ├── conversation/           # 会话编排
-│   │       ├── file/                   # 文件管理
-│   │       ├── intent/                 # 意图路由
-│   │       ├── knowledge/              # 知识库管理
-│   │       ├── mcp/                    # MCP 工具集成
-│   │       ├── mq/                     # 消息队列
-│   │       ├── rag/                    # RAG 流水线
-│   │       ├── support/                # 共享基础设施 (DTO/Entity/Mapper)
-│   │       └── user/                   # 用户认证
-│   ├── framework/                      # 横切关注点
-│   │   └── src/main/java/com/yulong/chatagent/
-│   │       ├── config/                 # Async/CORS 配置
-│   │       ├── context/                # UserContext
-│   │       ├── errorcode/              # 错误码
-│   │       ├── exception/              # 异常体系
-│   │       ├── model/                  # ApiResponse
-│   │       ├── sse/                    # SSE 基础设施
-│   │       └── trace/                  # 链路追踪
-│   ├── infra/                          # 基础设施
-│   │   └── src/main/java/com/yulong/chatagent/
-│   │       ├── chat/                   # ChatClient 注册/路由
-│   │       └── mail/                   # 邮件服务
-│   └── bootstrap/src/main/resources/
-│       ├── application.yaml            # 主配置 (340+行)
-│       ├── application-local-gpu.yaml  # 本地GPU配置
-│       ├── prompts/                    # Prompt 集中管理 (24个.md)
-│       │   ├── agent/                  # Agent 核心 prompt + sections
-│       │   ├── intent/                 # 意图分类 + 查询重写
-│       │   ├── rag/                    # RAG 摄取 + 检索 prompt
-│       │   ├── vlm/                    # VLM 视觉解析
-│       │   ├── summarizer/             # 滚动摘要
-│       │   └── fallbacks/              # 缺省文本
-│       ├── db/migration/               # Flyway 迁移 (V1-V16)
-│       └── mapper/                     # MyBatis XML (23个)
-│
-├── ui/                                 # 前端
-│   ├── src/
-│   │   ├── api/                        # HTTP 客户端
-│   │   ├── auth/                       # Token 管理
-│   │   ├── components/
-│   │   │   ├── admin/                  # 管理后台页面
-│   │   │   ├── auth/                   # 登录页
-│   │   │   └── views/agentChatView/    # 聊天视图
-│   │   ├── contexts/                   # React Context
-│   │   ├── hooks/                      # useAuth, useChatSessions
-│   │   ├── layout/                     # 布局组件
-│   │   └── types/                      # TypeScript 类型
-│   └── package.json
-│
-├── tools/                              # 外部工具
-│   ├── eval/                           # 评测 runner 与 fixtures
-│   ├── bge-reranker-server/            # BGE 重排序 HTTP 服务
-│   └── mineru/                         # MinerU PDF 解析服务
-│
-├── MCP/                                # MCP 工具服务器示例
-│   └── weather-server/                 # 天气工具 (HTTP+SSE)
-│
-├── docs/                               # 文档
-│   └── plans/                          # 设计与实施记录
-│
-├── postman/                            # Postman API 集合
-├── README.md                           # 英文 README（默认入口）
-└── README_ZH.md                        # 中文 README
+|- chatagent/                         # Java 后端工作区
+|  |- pom.xml                         # Maven 父工程
+|  |- framework/                      # API 响应、异常、SSE、Trace、异步、CORS 等通用能力
+|  |- infra/                          # Provider 与外部集成
+|  `- bootstrap/                      # Spring Boot 启动模块和业务模块
+|     |- src/main/java/com/yulong/chatagent/
+|     |  |- agent/                    # ReAct、DeepThink、运行上下文、Prompt
+|     |  |- conversation/             # 会话、消息、单轮编排、SSE
+|     |  |- rag/                      # 解析、切分、向量化、检索、重排
+|     |  |- memory/                   # L1/L2/L3 记忆
+|     |  |- intent/                   # 意图树、查询改写、路由
+|     |  |- knowledge/                # 知识库与文档管理
+|     |  |- mcp/                      # MCP 运行时集成
+|     |  |- mq/                       # RabbitMQ、outbox、锁
+|     |  |- user/, admin/, file/      # 鉴权、后台接口、会话附件
+|     |  `- support/                  # 共享 DTO、持久化、健康检查
+|     |- src/main/resources/
+|     |  |- application.yaml          # 主配置文件
+|     |  |- db/migration/             # Flyway 迁移
+|     |  `- prompts/                  # Markdown Prompt 模板
+|     `- src/test/                    # 后端单测、集成测试、评测测试
+|- ui/                                # React + Vite 前端
+|- tools/
+|  |- eval/                           # Python 评测 runner 和测试
+|  |- bge-reranker-server/            # 本地 HTTP reranker 服务
+|  `- mineru/                         # 本地 MinerU 服务脚本
+|- MCP/weather-server/                # 示例 MCP HTTP/SSE 服务
+|- postman/                           # Postman 集合
+|- README.md
+|- README_ZH.md
+`- LICENSE
 ```
 
----
+本地/私有文档、artifact、模型权重、运行数据、虚拟环境、IDE 文件和包含敏感值的本地记录都已通过 Git 忽略。
 
-## 技术亮点
+## 技术栈
 
-### 1. 首包探测路由 (First Packet Detection)
+| 领域 | 技术 |
+| --- | --- |
+| 后端 | Java 17, Spring Boot 3.5.8, Spring Web, WebFlux, Actuator |
+| AI Provider 层 | Spring AI BOM 1.1.0, DeepSeek 兼容配置, ZhipuAI 兼容配置 |
+| 持久化 | PostgreSQL, MyBatis, Flyway |
+| 缓存与协调 | Redis, Caffeine, 会话保护锁, 分布式锁 |
+| 消息队列 | RabbitMQ, Spring AMQP, outbox, retry/DLQ |
+| RAG 解析 | Apache Tika, Apache POI, JSoup, Flexmark, 可选 MinerU, 可选 VLM |
+| 检索 | Ollama 兼容 embedding, Milvus, 可选 BGE HTTP reranker |
+| 安全 | JWT, BCrypt, Spring Security Crypto, 角色注解 |
+| 可观测性 | Spring Boot Actuator, Micrometer Prometheus |
+| 前端 | React 19, TypeScript 5.9, Vite 7, Ant Design 6, Ant Design X, Tailwind CSS 4 |
+| 前端测试 | Vitest, Testing Library, jsdom |
+| 评测 | Python 3.11, 可选 `ragas`, 可选 OpenAI 兼容客户端 |
+| 本地工具 | MinerU 脚本, BGE reranker 服务, MCP weather 示例服务 |
 
-流式场景下按优先级串行尝试多个 LLM 供应商，等待第一个有效数据包。超时/失败则丢弃缓冲并尝试下一个。`ProbeBufferingCallback` 确保客户端不收到不完整数据。
+## 安装
 
-### 2. 三层熔断保护
+### 环境要求
 
-| 层级 | 熔断器 | 保护对象 |
-|------|--------|---------|
-| LLM 供应商 | `ModelHealthStore` (三态: CLOSED/OPEN/HALF_OPEN) | DeepSeek / GLM |
-| 重排序服务 | `RerankerCircuitBreaker` (滑动窗口 100s) | BGE Reranker |
-| MCP 外部工具 | `McpServerCircuitBreaker` (每服务器独立) | 第三方工具 |
+| 依赖 | 用途 | 说明 |
+| --- | --- | --- |
+| JDK 17 | 后端构建与运行 | 运行 Maven 前需要设置 `JAVA_HOME`。 |
+| Maven Wrapper | 后端构建 | 仓库已包含 `chatagent/mvnw` 和 `chatagent/mvnw.cmd`。 |
+| Node.js 20+ | 前端 | 项目使用 Vite 和 React 19。 |
+| Python 3.11+ | 评测与本地 AI 工具 | `tools/eval`、MinerU、reranker 服务会用到。 |
+| PostgreSQL | 应用数据库 | Flyway 自动执行 schema 迁移。 |
+| Redis | 缓存、锁和运行协调 | 后端配置依赖 Redis。 |
+| RabbitMQ | 异步 Agent 与文档摄取流程 | MQ/outbox 模块使用。 |
+| Milvus | 向量库 | `CHATAGENT_MILVUS_ENABLED=true` 时需要。 |
+| Ollama 或兼容 embedding API | 文本向量化 | 默认指向 `http://127.0.0.1:11434`。 |
+| 可选 GPU | MinerU/reranker 加速 | CPU 模式可能可用，但会更慢。 |
 
-全部支持 probeGeneration 防污染和飞行超时保护。
-
-### 3. 事务性发件箱 (Transactional Outbox)
-
-业务操作和消息写入同一数据库事务，保证至少一次投递。`OutboxPollingPublisher` 使用 `SELECT ... FOR UPDATE SKIP LOCKED` 多实例安全 claim，publisher confirm 确认后 markSent。
-
-### 4. 三态分布式锁
-
-RUNNING / COMPLETED / FAILED 三态锁保证幂等消费。`LockWatchdog` 每 20s 续期支持长时间任务。按任务类型选择 Fail-Open / Fail-Fast 策略。
-
-### 5. 混合检索 + RRF 融合
-
-Milvus 同时支持 Dense 向量搜索和 BM25 稀疏搜索，RRF (Reciprocal Rank Fusion) 融合两种结果，重排序有完整降级链 (BGE → LLM → Noop)。
-
-### 6. 双轨 PDF 解析
-
-QualityRouter 逐页评估：文本密度高用 Fast-Track (PDFBox 原生提取)，文本密度低用 Visual-Track (渲染为图片 → VLM/MinerU 解析)。
-
-### 7. 单次路由流 (Single Routed Stream)
-
-模型输出同时流式展示+缓冲。有工具调用则回滚已展示内容，无工具调用则直接成为最终答案，避免第二次模型调用。
-
-### 8. 三层记忆体系
-
-L1 短期记忆 (Token 预算 + 轮次滑动窗口) / L2 增量摘要 (事件驱动 + LLM + 确定性回退) / L3 用户画像 (跨会话持久化)。
-
-### 9. MCP 安全集成
-
-SSRF 防护 + AES-256-GCM 凭据加密 + Schema 漂移检测 + 令牌桶限流 + Prompt 安全警告。
-
-### 10. Prompt 集中管理
-
-所有 46 个 AI prompt 从 Java 源码中提取，统一存放在 `resources/prompts/` 目录（24 个 `.md` 文件），按业务域分类（agent/intent/rag/vlm/summarizer/fallbacks）。通过 `PromptLoader` 组件加载，支持 `{{variable}}` 模板变量替换和 `ConcurrentHashMap` 内存缓存。每个 prompt 均按企业级标准重写，具备统一的 Role / Rules / Guardrails / Output Format 结构。V16 迁移将默认 agent 的 `system_prompt` 设为 NULL 以启用集中加载。
-
----
-
-## 设计模式
-
-本项目在关键架构节点大量运用经典设计模式，确保可扩展性和可维护性。
-
-### 创建型
-
-| 模式 | 实现类 | 说明 |
-|------|--------|------|
-| **Factory** | `ChatAgentFactory`, `AgentToolCallbackFactory`, `McpToolDefinitionFactory` | 按运行时上下文组装完全配置的 Agent / 工具列表 / MCP 元数据 |
-| **Builder** | 30+ DTO/VO 类 (`ChatMessageVO`, `AgentDTO`, `McpServerMetricsSnapshot` 等) | Lombok `@Builder` 生成流畅构建 API |
-
-### 结构型
-
-| 模式 | 实现类 | 说明 |
-|------|--------|------|
-| **Facade** | 15+ 门面服务 (`ConversationOrchestratorService`, `AssistantTemplateFacadeServiceImpl`, `DashboardFacadeServiceImpl` 等) | 每个业务域一个 `*FacadeServiceImpl`，对外暴露简化 API，内部编排多个 Port/Service |
-| **Adapter** | `McpToolCallbackAdapter`, `ChatModelProviderRegistry` | 将 MCP 远程调用适配为 Spring AI `ToolCallback`；将 DeepSeek / ZhiPu 统一为 `ProviderBinding` 接口 |
-| **Proxy** | `ProbeBufferingCallback`, `SwitchingChatEventDispatcher` | 流式首包探测代理；本地/MQ 双通道切换代理 |
-| **Bridge** | `ChatModelRouter` → `ChatClient` | 解耦 LLM 供应商选择与具体调用，运行时路由到不同 `ChatClient` 实例 |
-
-### 行为型
-
-| 模式 | 实现类 | 说明 |
-|------|--------|------|
-| **Strategy** | `RetrievalReranker` (BGE / LLM / Noop), `VdpEngine` (VLM / MinerU / Noop), `DocumentParser` (PDF / Markdown / Tika / Image) | 算法族独立封装，运行时按策略选择 |
-| **Chain of Responsibility** | 重排序降级链: BGE → LLM → Noop；LLM 路由: 优先级逐个探测 | 请求沿链传递，每节点决定处理或传递 |
-| **Template Method** | `AbstractRetryingMqConsumer<T>` | 定义 MQ 消费骨架（锁 → 执行 → 重试/DLQ），子类实现 `processTask()` 等 hook |
-| **Observer** | `ChatEventDispatcher` → `ChatEventListener` / `AsyncSummaryListener` + `SseService` | 事件驱动的对话处理和前端 SSE 推送 |
-| **State** | `ModelHealthStore` (CLOSED/OPEN/HALF_OPEN), `MqTaskLockState` (RUNNING/COMPLETED/FAILED) | 熔断器和分布式锁的三态状态机驱动行为切换 |
-
-### 架构型
-
-| 模式 | 实现类 | 说明 |
-|------|--------|------|
-| **Circuit Breaker** | `ModelHealthStore`, `RerankerCircuitBreaker`, `McpServerCircuitBreaker` | 三层独立熔断，防止级联故障 |
-| **Outbox** | `OutboxEventPublisher` + `OutboxPollingPublisher` | 事务性发件箱，业务写与消息发放在同一事务内 |
-| **Port/Adapter (六边形)** | `ChatSessionSummaryRepository`, `AgentRepository` 等 Port + `MyBatis*Adapter` 实现 | 领域逻辑与持久化技术解耦 |
-| **Registry** | `ChatClientRegistry`, `McpRuntimeToolRegistry`, `McpServerCircuitBreakerRegistry` | 集中管理命名实例，支持运行时动态查询 |
-
----
-
-## 快速开始
-
-### 环境依赖
-
-| 依赖 | 版本 | 说明 |
-|------|------|------|
-| Java | 17 | JDK 17 |
-| Maven | 3.8+ | 构建工具 |
-| PostgreSQL | 15+ | 主数据库 (Flyway 自动迁移) |
-| Redis | 7+ | 缓存 + 分布式锁 + Pub/Sub |
-| Milvus | 2.6 | 向量数据库 |
-| Ollama | - | Embedding (拉取 `bge-m3` 模型) |
-| Node.js | 18+ | 前端构建 |
-
-### 可选 GPU 服务
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| BGE Reranker | 7997 | 交叉编码器重排序 (GPU) |
-| MinerU | 8000 | PDF 批量解析 (GPU) |
-
-### 配置环境变量
-
-启动后端前设置必要环境变量。`chatagent/.env.example` 可作为本地模板，但不要提交真实 API Key。
+### 克隆仓库
 
 ```bash
-# 必填
-CHATAGENT_DB_URL=jdbc:postgresql://localhost:5432/chatagent
-CHATAGENT_DB_USERNAME=app
-CHATAGENT_DB_PASSWORD=your_password
-CHATAGENT_DEEPSEEK_API_KEY=your_deepseek_key
-CHATAGENT_ZHIPUAI_API_KEY=your_zhipuai_key
-CHATAGENT_JWT_SECRET=your-random-secret-key-at-least-32-chars
-
-# 可选 (本地GPU默认值已在application.yaml中配置)
-CHATAGENT_RAG_EMBEDDING_BASE_URL=http://localhost:11434
-CHATAGENT_RAG_RERANKER_BASE_URL=http://localhost:7997
+git clone <repository-url>
+cd ChatAgent
 ```
 
-### 启动 RabbitMQ
+### 安装后端依赖
+
+```powershell
+cd chatagent
+.\mvnw.cmd -pl bootstrap -am -DskipTests install
+```
+
+Linux/macOS:
 
 ```bash
-docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 -e RABBITMQ_DEFAULT_USER=guest -e RABBITMQ_DEFAULT_PASS=guest rabbitmq:3.13-management
+cd chatagent
+./mvnw -pl bootstrap -am -DskipTests install
 ```
 
-PostgreSQL、Redis、Milvus、Ollama 以及可选 GPU 服务请按本地环境单独启动。
+### 安装前端依赖
+
+```bash
+cd ui
+npm install
+```
+
+### 安装 Python 评测工具
+
+```bash
+cd tools/eval
+python -m venv .venv
+# Windows: .\.venv\Scripts\Activate.ps1
+# Unix: source .venv/bin/activate
+python -m pip install -e .
+python -m pip install -e ".[ragas]"   # 仅在需要官方 Ragas 指标时安装
+```
+
+## 配置
+
+运行配置位于：
+
+```text
+chatagent/bootstrap/src/main/resources/application.yaml
+```
+
+默认运行配置写在 `application.yaml` 和 `application-local-gpu.yaml` 等 profile YAML 中。模型名、本地服务 URL、超时、MQ 名称、功能开关、RAG top-k/candidate-k/RRF、reranker 阈值、MCP 运行限制等非敏感默认值都直接放在 YAML 里。
+
+环境变量只用于密钥、凭据、私有部署坐标，以及前端构建时的 API 地址。`chatagent/.env.example` 因此只保留本地运行需要填写的最小私有项；Spring Boot 仍然从 shell、IDE Run Configuration 或部署系统读取进程环境变量。
+
+不要把真实 API key、JWT secret、数据库密码或本地 provider token 写入源码、文档、测试、artifact 或日志。`docs/env_variables.txt` 可能包含本机敏感值，已被 Git 忽略。
+
+### 私有环境变量
+
+| 变量 | 是否必需 | 作用 |
+| --- | --- | --- |
+| `CHATAGENT_DB_URL` | 通常需要 | 当 YAML 中的本地默认值不适用时覆盖 PostgreSQL JDBC 地址。 |
+| `CHATAGENT_DB_USERNAME` | 通常需要 | PostgreSQL 用户名。 |
+| `CHATAGENT_DB_PASSWORD` | 大多数环境需要 | PostgreSQL 密码。 |
+| `CHATAGENT_REDIS_PASSWORD` | 取决于 Redis 配置 | Redis 密码。 |
+| `CHATAGENT_RABBITMQ_USERNAME` | MQ 流程需要 | RabbitMQ 用户名。 |
+| `CHATAGENT_RABBITMQ_PASSWORD` | MQ 流程需要 | RabbitMQ 密码。 |
+| `CHATAGENT_MAIL_USERNAME` | 启用邮件时需要 | SMTP 用户名。 |
+| `CHATAGENT_MAIL_PASSWORD` | 启用邮件时需要 | SMTP 密码或应用专用密码。 |
+| `CHATAGENT_JWT_SECRET` | 非临时本地运行必须 | JWT 签名密钥，需要足够长且随机。 |
+| `CHATAGENT_DEEPSEEK_API_KEY` | 使用 DeepSeek 时需要 | Chat provider 凭据。 |
+| `CHATAGENT_ZHIPUAI_API_KEY` | 使用 ZhipuAI 时需要 | Chat/VLM provider 凭据。 |
+| `CHATAGENT_ZHIPUAI_API_KEY_2` | 评测可选 | 第二个 ZhipuAI provider 凭据。 |
+| `CHATAGENT_ZAI_CODING_API_KEY` | 评测可选 | Z.AI Coding Plan provider 凭据。 |
+| `CHATAGENT_RAG_RERANKER_API_KEY` | reranker 需要鉴权时 | Reranker 凭据。 |
+| `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | MinerU 需要鉴权时 | MinerU bearer token。 |
+| `CHATAGENT_MILVUS_USERNAME` | 启用 Milvus 鉴权时 | Milvus 用户名。 |
+| `CHATAGENT_MILVUS_PASSWORD` | 启用 Milvus 鉴权时 | Milvus 密码。 |
+| `CHATAGENT_MCP_CIPHER_KEY` | 加密 MCP 凭据时需要 | MCP 凭据加密密钥。 |
+| `VITE_API_BASE_URL` | 前端可选 | 非默认部署下的浏览器 API 地址。 |
+
+修改非敏感默认值时，优先改对应 YAML profile，而不是新增环境变量。评测专用 provider override 仍由 `tools/eval` 中的 Python CLI 读取。
+
+## 使用方法
+
+### 启动本地基础设施
+
+本地开发可以用以下命令快速启动部分依赖：
+
+```bash
+docker run -d --name chatagent-postgres -p 5432:5432 \
+  -e POSTGRES_DB=chatagent \
+  -e POSTGRES_USER=app \
+  -e POSTGRES_PASSWORD=app \
+  postgres:16
+
+docker run -d --name chatagent-redis -p 6379:6379 redis:7
+
+docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 \
+  -e RABBITMQ_DEFAULT_USER=guest \
+  -e RABBITMQ_DEFAULT_PASS=guest \
+  rabbitmq:3.13-management
+```
+
+Milvus 和 Ollama 需要按本机环境单独安装。Ollama embedding 示例：
+
+```bash
+ollama pull bge-m3
+```
+
+### 启动可选本地 AI 服务
+
+BGE reranker:
+
+```powershell
+.\tools\bge-reranker-server\start-reranker.ps1
+```
+
+MinerU:
+
+```powershell
+.\tools\mineru\check-mineru-env.ps1
+.\tools\mineru\download-models.ps1 -Source huggingface -ModelType pipeline
+.\tools\mineru\start-mineru-api.ps1
+```
 
 ### 启动后端
 
 ```powershell
 cd chatagent
-.\mvnw.cmd -pl framework,infra -am -DskipTests install
 .\mvnw.cmd -pl bootstrap spring-boot:run
 ```
+
+后端默认使用 Spring Boot 默认端口，除非你在本地 Spring 配置中覆盖。前端默认请求 `http://localhost:8080/api`。
 
 ### 启动前端
 
 ```bash
 cd ui
-npm install
 npm run dev
 ```
 
-### 访问
+打开终端输出的 Vite 地址，通常是 `http://localhost:5173`。
 
-| 地址 | 说明 |
-|------|------|
-| `http://localhost:5173` | 前端界面 |
-| `http://localhost:8080/health` | 后端健康检查 |
-| `http://localhost:15672` | RabbitMQ 管理后台 (guest/guest) |
+### 基础检查
 
----
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/api/user/me
+```
 
-## 配置说明
+`/api/user/me` 需要登录后携带有效 access token。
 
-所有配置通过环境变量覆盖，前缀为 `CHATAGENT_`。详见 `chatagent/bootstrap/src/main/resources/application.yaml`。
+## API
 
-### 关键配置分组
+所有 JSON 接口统一返回：
 
-| 配置前缀 | 说明 |
-|---------|------|
-| `CHATAGENT_DB_*` | PostgreSQL 连接 |
-| `CHATAGENT_DEEPSEEK_*` / `CHATAGENT_ZHIPUAI_*` | LLM 供应商 API Key |
-| `CHATAGENT_RAG_*` | RAG (Embedding/Reranker/VDP) |
-| `CHATAGENT_MILVUS_*` | Milvus 向量数据库 |
-| `CHATAGENT_MQ_*` | RabbitMQ + 发件箱 + 分布式锁 |
-| `CHATAGENT_MCP_*` | MCP 工具集成 (传输/运行时保护/Schema漂移) |
-| `CHATAGENT_JWT_*` | JWT 认证 |
-| `chat.routing.*` | 模型路由 (首包超时/熔断参数/候选列表) |
-| `chatagent.intent.*` | 意图路由 (分类阈值/澄清/改写模型) |
-| `chatagent.memory.*` | 记忆管理 (L1窗口/Token预算/摘要模型) |
-| `chatagent.session-guard.*` | 会话并发保护 (Redis锁TTL/Fail-Open) |
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {}
+}
+```
 
----
+认证接口之外，请使用 `Authorization: Bearer <access-token>`。refresh token 由 HttpOnly Cookie 管理。
+
+| 模块 | 方法与路径 | 主要参数 |
+| --- | --- | --- |
+| Auth | `POST /api/auth/register` | JSON: `username`, `password` |
+| Auth | `POST /api/auth/login` | JSON: `username`, `password` |
+| Auth | `POST /api/auth/refresh` | refresh token cookie |
+| Auth | `POST /api/auth/logout` | refresh token cookie |
+| User | `GET /api/user/me` | Bearer token |
+| Session | `GET /api/chat-sessions` | Bearer token |
+| Session | `POST /api/chat-sessions` | JSON: `title` |
+| Session | `GET/PATCH/DELETE /api/chat-sessions/{chatSessionId}` | PATCH JSON: `title` |
+| Message | `GET /api/chat-messages/session/{sessionId}` | Session ID |
+| Message | `POST /api/chat-messages` | JSON: `sessionId`, `role`, `content`, 可选 `turnId`, `executionMode`, `metadata` |
+| Message | `PATCH/DELETE /api/chat-messages/{chatMessageId}` | PATCH JSON: `content`, `metadata` |
+| SSE | `GET /api/sse/connect/{chatSessionId}` | 聊天进度和内容流 |
+| Session file | `POST /api/chat-sessions/{sessionId}/files/upload` | Multipart 字段: `file` |
+| Session file | `GET /api/chat-sessions/{sessionId}/files` | Session ID |
+| Session file | `DELETE /api/chat-sessions/{sessionId}/files/{sessionFileId}` | 路径 ID |
+| Knowledge base | `POST /api/admin/knowledge-bases` | Admin, JSON: `name`, `description` |
+| Knowledge base | `GET/PATCH/DELETE /api/admin/knowledge-bases/{knowledgeBaseId}` | Admin |
+| Knowledge document | `POST /api/admin/knowledge-bases/{knowledgeBaseId}/documents/upload` | Admin, multipart `file` |
+| Knowledge document | `POST /api/admin/knowledge-bases/{knowledgeBaseId}/documents/{documentId}/replace` | Admin, multipart `file` |
+| Assistant template | `GET/POST/PATCH/DELETE /api/admin/assistant/templates` | Admin, template 字段 |
+| Intent tree | `GET /api/admin/assistant/intent-tree` | Admin |
+| Intent tree | `POST/PATCH/DELETE /api/admin/assistant/intent-tree/nodes` | Admin, intent-node payload |
+| Intent tree | `POST /api/admin/assistant/intent-tree/publish` | Admin |
+| MCP server | `GET/POST/PATCH/DELETE /api/admin/mcp-servers` | Admin, `slug`, `name`, `protocol`, `authType`, `endpointUrl`, `credentials` |
+| MCP server | `POST /api/admin/mcp-servers/{serverId}/test` | Admin |
+| MCP server | `POST /api/admin/mcp-servers/{serverId}/sync` | Admin |
+| Dashboard | `GET /api/admin/dashboard/overview` | Admin, 可选 `window` |
+| Health | `GET /health` | 基础健康检查 |
+
+`postman/` 目录中的 Postman 集合适合用于手动调试接口。
+
+## 工作流程
+
+```mermaid
+flowchart LR
+  UI["React UI"] --> API["Spring Boot API"]
+  API --> Auth["JWT/Auth"]
+  API --> Conv["Conversation Orchestrator"]
+  Conv --> Agent["Agent Runtime: ReAct / DeepThink"]
+  Agent --> Router["Intent Router + Query Rewriter"]
+  Agent --> Memory["L1/L2/L3 Memory"]
+  Agent --> Tools["MCP / Web Search / Built-in Tools"]
+  Router --> RAG["RAG Retrieval"]
+  RAG --> Parser["Document Parsing + Chunking"]
+  Parser --> Embed["Embedding Endpoint"]
+  Embed --> Milvus["Milvus"]
+  RAG --> Reranker["Optional BGE Reranker"]
+  Agent --> LLM["Configured Chat Provider"]
+  API --> MQ["RabbitMQ Outbox + Workers"]
+  API --> PG["PostgreSQL"]
+  API --> Redis["Redis"]
+```
+
+### 数据流
+
+1. 用户登录并创建聊天会话。
+2. 前端调用 `POST /api/chat-messages`，同时打开 SSE 流。
+3. 后端获取会话级保护锁，开始处理一个 turn。
+4. 编排层准备意图、记忆上下文、附件和知识库范围。
+5. Agent runtime 根据当前 turn 选择直接回答、RAG、工具、Web Search 或 DeepThink 步骤。
+6. RAG 链路负责文档解析、切分、embedding、Milvus 存储、候选检索、可选 rerank 和引用上下文格式化。
+7. 配置的 chat provider 生成助手回复。
+8. 消息、trace、记忆更新、MQ 状态和后台指标按需持久化或通过 SSE 推送。
+
+### 模型调用流程
+
+- `ChatModelRouter` 根据配置选择 provider/model。
+- 运行时模块通过 `PromptLoader` 加载 Markdown Prompt。
+- 模型、temperature、top-p、max tokens 等通过环境变量控制。
+- DeepThink 使用独立的规划、步骤执行、反思、验证、最终综合 Prompt。
+- RAG 和 Memory 可分别配置查询改写、摘要、VLM、文档增强、L3 抽取模型。
+
+### Prompt 设计
+
+Prompt 模板位于：
+
+```text
+chatagent/bootstrap/src/main/resources/prompts/
+```
+
+模板由 `PromptLoader` 从 `classpath:prompts/` 懒加载。这样可以避免大型 Prompt 散落在 Java 业务代码中，并让 Agent、DeepThink、意图路由、查询改写、RAG 格式化、VLM 解析、文档增强和记忆抽取复用同一套模板加载方式。
+
+### 向量库与检索流程
+
+1. 用户上传会话文件，或管理员上传知识库文档。
+2. 文档解析器处理 PDF、Office、HTML、Markdown、文本等格式。
+3. 内容被切分并可选增强。
+4. 通过 Ollama 兼容 endpoint 生成 embedding。
+5. 向量写入 Milvus collection。
+6. 运行时检索使用 top-k、candidate-k 和 RRF 参数。
+7. 可选 HTTP reranker 对候选片段过滤或重排，再进入回答生成。
+
+## 评测指标
+
+评测模块位于 `tools/eval`，默认不会随后端普通测试运行。
+
+```bash
+cd tools/eval
+python run_eval.py --help
+```
+
+主要 runner：
+
+| Runner | 用途 |
+| --- | --- |
+| `ragas-smoke` | 对导出样本运行官方 Ragas 指标。 |
+| `text-recall-smoke` | 对真实源文件运行确定性文本召回。 |
+| `memory-smoke` | 对多轮任务运行 Memory V2 确定性检查。 |
+| `memory-semantic` | 评估记忆 support/usefulness 等语义质量。 |
+| `agent-modules-smoke` | 检查意图、改写、工具调用和模块行为。 |
+| `doc-ingestion-preflight` | 文档摄取评测前置检查。 |
+| `doc-ingestion-answer` | 生成 B3.4 风格 RAGAS answer rows。 |
+| `tune-suite` | 带 sealed holdout 的可复现参数调优。 |
+
+当前 B3.4 回答质量流程中，有效 RAGAS 运行导出 full-RAG answer rows，并只评分 `faithfulness` 与 `factual_correctness`。历史 No-RAG、wrong-context、oracle、reranker A/B 对照组和额外 RAGAS 指标默认不启用，除非后续明确重开。
+
+确定性指标包括 Hit@K、Recall@K、Precision@K、MRR、NDCG 和文本召回。Memory 评测跟踪 precision、recall、F1、support、usefulness；Agent 模块评测跟踪 intent accuracy 等指标。
+
+生成的评测 artifact 均为本地文件，默认被 Git 忽略。
+
+## 开发指南
+
+### 后端
+
+```powershell
+cd chatagent
+.\mvnw.cmd -pl bootstrap -DskipTests test-compile
+.\mvnw.cmd -pl bootstrap test
+```
+
+默认 Maven 测试会排除长耗时或 live suite，排除组在 `surefire.excludedGroups` 中配置。评测、可靠性、压力、chaos 等 suite 需要显式启用。
+
+### 前端
+
+```bash
+cd ui
+npm run lint
+npm run test
+npm run build
+```
+
+### 评测工具
+
+```bash
+cd tools/eval
+python -m unittest discover -s tests -v
+python -m compileall -q chatagent_eval tests
+```
+
+### 代码与文档规范
+
+- 不要把密钥写入源码、文档、测试、artifact 或日志。
+- 生成物应放在被忽略的本地目录中。
+- 使用环境变量，不要硬编码个人路径。
+- 公共接口或必要配置变化时同步更新 README/API 说明。
+- AI 行为变化应尽量补充对应的评测证据。
+
+## 部署
+
+当前仓库没有生产级部署 manifest。生产部署仍需要补充：
+
+- 容器镜像或平台专用服务定义。
+- 托管 PostgreSQL、Redis、RabbitMQ、Milvus 和对象/文件存储。
+- Provider key、JWT secret、MCP cipher key、数据库密码等 secret 管理。
+- TLS、域名路由、CORS 策略和前端静态资源托管。
+- 日志、指标、告警和 artifact 保留策略。
+- 如果使用本地模型、MinerU、reranker 或 embedding，需要规划 GPU/CPU 容量。
+
+后端最小打包命令：
+
+```powershell
+cd chatagent
+.\mvnw.cmd -pl bootstrap -am -DskipTests package
+```
+
+前端生产构建：
+
+```bash
+cd ui
+npm run build
+```
+
+## 常见问题
+
+### 后端无法连接 PostgreSQL。
+
+检查 `CHATAGENT_DB_URL`、`CHATAGENT_DB_USERNAME`、`CHATAGENT_DB_PASSWORD`，并确认数据库已创建且 Flyway 有权限执行迁移。
+
+### 登录成功但后续接口 401。
+
+检查 `CHATAGENT_JWT_SECRET`、浏览器 Cookie、CORS 设置，以及请求是否携带 `Authorization: Bearer <access-token>`。
+
+### RAG 没有召回有效内容。
+
+确认 embedding 服务可用、Milvus 已启用且可连接、向量维度与 embedding 模型一致、文档摄取成功，并确认 reranker 健康或已明确禁用。
+
+### PDF 解析慢或结果不完整。
+
+需要视觉/PDF 解析时启动 MinerU，并检查 `CHATAGENT_RAG_VDP_MINERU_BASE_URL`。CPU-only 解析可能较慢。
+
+### 前端请求了错误的后端地址。
+
+运行或构建前设置 `VITE_API_BASE_URL`。
+
+### 找不到评测 artifact。
+
+评测 artifact 是本地生成文件，默认被 Git 忽略。先运行对应 `tools/eval/run_eval.py` 命令，再查看 runner 输出的 manifest/report 路径。
 
 ## License
 
-This project is licensed under the terms of the [LICENSE](LICENSE) file.
+本项目使用 MIT License。详见 [LICENSE](LICENSE)。

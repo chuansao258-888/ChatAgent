@@ -56,6 +56,9 @@ ZAI_API_KEY_VARS = (
 )
 ZHIPUAI_PROVIDER_ALIASES = {"zhipu", "zhipuai"}
 ZAI_PROVIDER_ALIASES = {"z.ai", "zai", "z-ai", "zai-coding"}
+DEFAULT_ZHIPUAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+DEFAULT_ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4"
+DEFAULT_ZAI_CODING_MODEL = "glm-5.2"
 
 
 def _first_env(*names: str) -> str | None:
@@ -99,7 +102,7 @@ def _default_model(provider: str, eval_model_var: str) -> str:
     if provider in ZHIPUAI_PROVIDER_ALIASES:
         return os.getenv("CHATAGENT_ZHIPUAI_MODEL") or "glm-4.5-air"
     if provider in ZAI_PROVIDER_ALIASES:
-        return _first_env("CHATAGENT_ZAI_CODING_MODEL", "CHATAGENT_ZAI_MODEL") or "glm-4.5-air"
+        return _first_env("CHATAGENT_ZAI_CODING_MODEL", "CHATAGENT_ZAI_MODEL") or DEFAULT_ZAI_CODING_MODEL
     return "deepseek-chat"
 
 
@@ -108,9 +111,9 @@ def _default_ragas_base_url(provider: str) -> str | None:
     if explicit:
         return explicit
     if provider in ZHIPUAI_PROVIDER_ALIASES:
-        return os.getenv("CHATAGENT_ZHIPUAI_BASE_URL")
+        return os.getenv("CHATAGENT_ZHIPUAI_BASE_URL") or DEFAULT_ZHIPUAI_BASE_URL
     if provider in ZAI_PROVIDER_ALIASES:
-        return _first_env("CHATAGENT_ZAI_CODING_BASE_URL", "CHATAGENT_ZAI_BASE_URL")
+        return _first_env("CHATAGENT_ZAI_CODING_BASE_URL", "CHATAGENT_ZAI_BASE_URL") or DEFAULT_ZAI_CODING_BASE_URL
     return None
 
 
@@ -119,9 +122,9 @@ def _default_answer_base_url(provider: str) -> str | None:
     if explicit:
         return explicit
     if provider in ZHIPUAI_PROVIDER_ALIASES:
-        return os.getenv("CHATAGENT_ZHIPUAI_BASE_URL")
+        return os.getenv("CHATAGENT_ZHIPUAI_BASE_URL") or DEFAULT_ZHIPUAI_BASE_URL
     if provider in ZAI_PROVIDER_ALIASES:
-        return _first_env("CHATAGENT_ZAI_CODING_BASE_URL", "CHATAGENT_ZAI_BASE_URL")
+        return _first_env("CHATAGENT_ZAI_CODING_BASE_URL", "CHATAGENT_ZAI_BASE_URL") or DEFAULT_ZAI_CODING_BASE_URL
     return os.getenv("CHATAGENT_DEEPSEEK_BASE_URL")
 
 

@@ -2,23 +2,23 @@ spring:
   application:
     name: chatagent
   profiles:
-    default: ${SPRING_PROFILES_DEFAULT:local-gpu}
+    default: local-gpu
   servlet:
     multipart:
-      max-file-size: ${CHATAGENT_MULTIPART_MAX_FILE_SIZE:64MB}
-      max-request-size: ${CHATAGENT_MULTIPART_MAX_REQUEST_SIZE:64MB}
+      max-file-size: 64MB
+      max-request-size: 64MB
   data:
     redis:
-      host: ${CHATAGENT_REDIS_HOST:localhost}
-      port: ${CHATAGENT_REDIS_PORT:6379}
+      host: localhost
+      port: 6379
       password: ${CHATAGENT_REDIS_PASSWORD:}
-      database: ${CHATAGENT_REDIS_DATABASE:0}
+      database: 0
   rabbitmq:
-    host: ${CHATAGENT_RABBITMQ_HOST:localhost}
-    port: ${CHATAGENT_RABBITMQ_PORT:5672}
+    host: localhost
+    port: 5672
     username: ${CHATAGENT_RABBITMQ_USERNAME:guest}
     password: ${CHATAGENT_RABBITMQ_PASSWORD:guest}
-    virtual-host: ${CHATAGENT_RABBITMQ_VHOST:/}
+    virtual-host: /
     publisher-confirm-type: correlated
     publisher-returns: true
     template:
@@ -40,37 +40,37 @@ spring:
     postgresql:
       transactional-lock: false
   mail:
-    host: ${CHATAGENT_MAIL_HOST:}
-    port: ${CHATAGENT_MAIL_PORT:587}
+    host: ""
+    port: 587
     username: ${CHATAGENT_MAIL_USERNAME:}
     password: ${CHATAGENT_MAIL_PASSWORD:}
     default-encoding: UTF-8
     properties:
       mail:
         smtp:
-          auth: ${CHATAGENT_MAIL_SMTP_AUTH:false}
+          auth: false
           starttls:
-            enable: ${CHATAGENT_MAIL_STARTTLS_ENABLE:false}
-            required: ${CHATAGENT_MAIL_STARTTLS_REQUIRED:false}
+            enable: false
+            required: false
   ai:
     deepseek:
       api-key: ${CHATAGENT_DEEPSEEK_API_KEY:}
-      base-url: ${CHATAGENT_DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      base-url: https://api.deepseek.com
       chat:
         options:
-          model: ${CHATAGENT_DEEPSEEK_MODEL:deepseek-chat}
-          temperature: ${CHATAGENT_DEEPSEEK_TEMPERATURE:0.2}
-          top-p: ${CHATAGENT_DEEPSEEK_TOP_P:0.8}
-          max-tokens: ${CHATAGENT_DEEPSEEK_MAX_TOKENS:2048}
+          model: deepseek-chat
+          temperature: 0.2
+          top-p: 0.8
+          max-tokens: 2048
     zhipuai:
       api-key: ${CHATAGENT_ZHIPUAI_API_KEY:}
-      base-url: ${CHATAGENT_ZHIPUAI_BASE_URL:https://open.bigmodel.cn/api/paas}
+      base-url: https://open.bigmodel.cn/api/paas/v4
       chat:
         options:
-          model: ${CHATAGENT_ZHIPUAI_MODEL:glm-4.6}
-          temperature: ${CHATAGENT_ZHIPUAI_TEMPERATURE:0.35}
-          top-p: ${CHATAGENT_ZHIPUAI_TOP_P:0.85}
-          max-tokens: ${CHATAGENT_ZHIPUAI_MAX_TOKENS:4096}
+          model: glm-4.5-air
+          temperature: 0.35
+          top-p: 0.85
+          max-tokens: 4096
 
 mybatis:
   type-aliases-package: com.yulong.chatagent.support.persistence.entity
@@ -83,61 +83,61 @@ document:
 
 rag:
   embedding:
-    base-url: ${CHATAGENT_RAG_EMBEDDING_BASE_URL:http://127.0.0.1:11434}
-    model: ${CHATAGENT_RAG_EMBEDDING_MODEL:bge-m3}
+    base-url: http://127.0.0.1:11434
+    model: bge-m3
   retrieval:
-    top-k: ${CHATAGENT_RAG_TOP_K:3}
-    candidate-k: ${CHATAGENT_RAG_CANDIDATE_K:12}
-    rrf-k: ${CHATAGENT_RAG_RRF_K:60}
+    top-k: 3
+    candidate-k: 12
+    rrf-k: 60
     reranker:
-      provider: ${CHATAGENT_RAG_RERANKER_PROVIDER:bge-http}
-      model-id: ${CHATAGENT_RAG_RERANKER_MODEL:BAAI/bge-reranker-v2-m3}
-      max-candidates: ${CHATAGENT_RAG_RERANKER_MAX_CANDIDATES:8}
-      max-chunk-chars: ${CHATAGENT_RAG_RERANKER_MAX_CHUNK_CHARS:900}
-      max-connections: ${CHATAGENT_RAG_RERANKER_MAX_CONNECTIONS:10}
-      base-url: ${CHATAGENT_RAG_RERANKER_BASE_URL:http://127.0.0.1:7997}
-      path: ${CHATAGENT_RAG_RERANKER_PATH:/rerank}
-      ready-path: ${CHATAGENT_RAG_RERANKER_READY_PATH:/ready}
+      provider: bge-http
+      model-id: BAAI/bge-reranker-v2-m3
+      max-candidates: 8
+      max-chunk-chars: 900
+      max-connections: 10
+      base-url: http://127.0.0.1:7997
+      path: /rerank
+      ready-path: /ready
       api-key: ${CHATAGENT_RAG_RERANKER_API_KEY:}
-      connect-timeout-ms: ${CHATAGENT_RAG_RERANKER_CONNECT_TIMEOUT_MS:300}
-      response-timeout-ms: ${CHATAGENT_RAG_RERANKER_RESPONSE_TIMEOUT_MS:1800}
-      read-timeout-ms: ${CHATAGENT_RAG_RERANKER_READ_TIMEOUT_MS:1800}
-      write-timeout-ms: ${CHATAGENT_RAG_RERANKER_WRITE_TIMEOUT_MS:1000}
-      pending-acquire-timeout-ms: ${CHATAGENT_RAG_RERANKER_PENDING_ACQUIRE_TIMEOUT_MS:200}
-      ready-probe-timeout-ms: ${CHATAGENT_RAG_RERANKER_READY_PROBE_TIMEOUT_MS:200}
-      retry-connect-errors: ${CHATAGENT_RAG_RERANKER_RETRY_CONNECT_ERRORS:1}
-      enable-confidence-filter: ${CHATAGENT_RAG_RERANKER_FILTER_ENABLED:true}
-      score-threshold: ${CHATAGENT_RAG_RERANKER_SCORE_THRESHOLD:0.08}
-      failure-threshold: ${CHATAGENT_RAG_RERANKER_FAILURE_THRESHOLD:5}
-      failure-rate-threshold-percent: ${CHATAGENT_RAG_RERANKER_FAILURE_RATE_THRESHOLD_PERCENT:50}
-      minimum-request-volume: ${CHATAGENT_RAG_RERANKER_MIN_REQUEST_VOLUME:10}
-      open-state-ms: ${CHATAGENT_RAG_RERANKER_OPEN_STATE_MS:30000}
-      half-open-probe-count: ${CHATAGENT_RAG_RERANKER_HALF_OPEN_PROBE_COUNT:1}
+      connect-timeout-ms: 300
+      response-timeout-ms: 1800
+      read-timeout-ms: 1800
+      write-timeout-ms: 1000
+      pending-acquire-timeout-ms: 200
+      ready-probe-timeout-ms: 200
+      retry-connect-errors: 1
+      enable-confidence-filter: true
+      score-threshold: 0.08
+      failure-threshold: 5
+      failure-rate-threshold-percent: 50
+      minimum-request-volume: 10
+      open-state-ms: 30000
+      half-open-probe-count: 1
   vector-store:
-    provider: ${CHATAGENT_RAG_VECTOR_STORE_PROVIDER:milvus}
+    provider: milvus
 
 milvus:
-  enabled: ${CHATAGENT_MILVUS_ENABLED:false}
-  bm25-enabled: ${CHATAGENT_MILVUS_BM25_ENABLED:false}
-  host: ${CHATAGENT_MILVUS_HOST:localhost}
-  port: ${CHATAGENT_MILVUS_PORT:19530}
-  database: ${CHATAGENT_MILVUS_DATABASE:default}
-  collection: ${CHATAGENT_MILVUS_COLLECTION:chat_file_chunk}
+  enabled: false
+  bm25-enabled: false
+  host: localhost
+  port: 19530
+  database: default
+  collection: chat_file_chunk
   username: ${CHATAGENT_MILVUS_USERNAME:}
   password: ${CHATAGENT_MILVUS_PASSWORD:}
-  metric-type: ${CHATAGENT_MILVUS_METRIC_TYPE:COSINE}
-  index-type: ${CHATAGENT_MILVUS_INDEX_TYPE:AUTOINDEX}
-  consistency-level: ${CHATAGENT_MILVUS_CONSISTENCY_LEVEL:BOUNDED}
-  dimension: ${CHATAGENT_MILVUS_DIMENSION:1024}
+  metric-type: COSINE
+  index-type: AUTOINDEX
+  consistency-level: BOUNDED
+  dimension: 1024
   knowledge-base:
-    collection: ${CHATAGENT_MILVUS_KNOWLEDGE_BASE_COLLECTION:chat_knowledge_chunk}
+    collection: chat_knowledge_chunk
   user-memory:
-    collection: ${CHATAGENT_MILVUS_USER_MEMORY_COLLECTION:chat_user_memory}
+    collection: chat_user_memory
 
 chat:
   routing:
-    default-model: ${CHATAGENT_DEFAULT_CHAT_MODEL:glm-5.1}
-    deep-thinking-model: ${CHATAGENT_DEEP_THINKING_MODEL:glm-5.1}
+    default-model: glm-5.1
+    deep-thinking-model: glm-5.1
     first-packet-timeout-seconds: 60
     stream-total-timeout-seconds: 300
     http-connect-timeout-seconds: 10
@@ -167,216 +167,216 @@ chat:
 chatagent:
   id:
     snowflake:
-      worker-id: ${CHATAGENT_SNOWFLAKE_WORKER_ID:1}
+      worker-id: 1
   intent:
-    tool-scope-mode: ${CHATAGENT_INTENT_TOOL_SCOPE_MODE:AGENT_DEFAULT_WITH_INTENT_NARROWING}
+    tool-scope-mode: AGENT_DEFAULT_WITH_INTENT_NARROWING
     minimum-score: 0.45
     ambiguity-gap: 0.2
     clarification-candidates: 2
-    classifier-model: ${CHATAGENT_INTENT_CLASSIFIER_MODEL:deepseek-chat}
-    rewrite-model: ${CHATAGENT_INTENT_REWRITE_MODEL:deepseek-chat}
+    classifier-model: deepseek-chat
+    rewrite-model: deepseek-chat
   memory:
-    l1-window-turns: ${CHATAGENT_MEMORY_L1_WINDOW_TURNS:8}
-    l1-token-budget: ${CHATAGENT_MEMORY_L1_TOKEN_BUDGET:4000}
-    summary-model: ${CHATAGENT_MEMORY_SUMMARY_MODEL:deepseek-chat}
-    summary-max-chars: ${CHATAGENT_MEMORY_SUMMARY_MAX_CHARS:500}
+    l1-window-turns: 8
+    l1-token-budget: 4000
+    summary-model: deepseek-chat
+    summary-max-chars: 500
     l3:
-      enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
-      extractor-model: ${CHATAGENT_MEMORY_L3_EXTRACTOR_MODEL:deepseek-chat}
-      recall-top-k: ${CHATAGENT_MEMORY_L3_RECALL_TOP_K:3}
+      enabled: true
+      extractor-model: deepseek-chat
+      recall-top-k: 3
     compaction:
       v2:
-        enabled: ${CHATAGENT_MEMORY_COMPACTION_V2_ENABLED:true}
-        min-pending-turns: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TURNS:1}
-        min-pending-tokens: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS:1200}
-        l1-token-warning-ratio: ${CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO:0.75}
-        segment-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS:1200}
-        synopsis-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS:2000}
-        runtime-max-segments: ${CHATAGENT_MEMORY_COMPACTION_V2_RUNTIME_MAX_SEGMENTS:3}
-        max-retries: ${CHATAGENT_MEMORY_COMPACTION_V2_MAX_RETRIES:2}
-        max-consecutive-failures: ${CHATAGENT_MEMORY_COMPACTION_V2_MAX_CONSECUTIVE_FAILURES:3}
-        failure-backoff-seconds: ${CHATAGENT_MEMORY_COMPACTION_V2_FAILURE_BACKOFF_SECONDS:300}
-        tool-result-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS:2000}
-        tool-result-head-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_HEAD_CHARS:800}
-        tool-result-tail-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_TAIL_CHARS:800}
+        enabled: true
+        min-pending-turns: 1
+        min-pending-tokens: 1200
+        l1-token-warning-ratio: 0.75
+        segment-max-chars: 1200
+        synopsis-max-chars: 2000
+        runtime-max-segments: 3
+        max-retries: 2
+        max-consecutive-failures: 3
+        failure-backoff-seconds: 300
+        tool-result-max-chars: 2000
+        tool-result-head-chars: 800
+        tool-result-tail-chars: 800
   rag:
     vdp:
       cache:
-        enabled: ${CHATAGENT_RAG_VDP_CACHE_ENABLED:true}
-        session-ttl-minutes: ${CHATAGENT_RAG_VDP_CACHE_SESSION_TTL_MINUTES:30}
-        session-max-size: ${CHATAGENT_RAG_VDP_CACHE_SESSION_MAX_SIZE:512}
-        knowledge-ttl-minutes: ${CHATAGENT_RAG_VDP_CACHE_KNOWLEDGE_TTL_MINUTES:1440}
+        enabled: true
+        session-ttl-minutes: 30
+        session-max-size: 512
+        knowledge-ttl-minutes: 1440
       routing:
         disabled-engines: []
-        knowledge-batch-preferred: ${CHATAGENT_RAG_VDP_KNOWLEDGE_BATCH_PREFERRED:true}
-        preferred-page-image-engine: ${CHATAGENT_RAG_VDP_PREFERRED_PAGE_IMAGE_ENGINE:}
-        preferred-batch-engine: ${CHATAGENT_RAG_VDP_PREFERRED_BATCH_ENGINE:mineru}
-      char-density-threshold: ${CHATAGENT_RAG_VDP_CHAR_DENSITY_THRESHOLD:150}
-      short-text-fast-track-threshold: ${CHATAGENT_RAG_VDP_SHORT_TEXT_FAST_TRACK_THRESHOLD:80}
-      whitespace-alignment-line-threshold: ${CHATAGENT_RAG_VDP_WHITESPACE_ALIGNMENT_LINE_THRESHOLD:2}
-      pdf-page-max-in-flight: ${CHATAGENT_RAG_VDP_PDF_PAGE_MAX_IN_FLIGHT:2}
-      pdf-page-timeout-ms: ${CHATAGENT_RAG_VDP_PDF_PAGE_TIMEOUT_MS:5000}
-      knowledge-document-timeout-ms: ${CHATAGENT_RAG_VDP_KNOWLEDGE_DOCUMENT_TIMEOUT_MS:300000}
-      pdf-page-dispatch-core-pool-size: ${CHATAGENT_RAG_VDP_PDF_PAGE_DISPATCH_CORE_POOL_SIZE:2}
-      pdf-page-dispatch-max-pool-size: ${CHATAGENT_RAG_VDP_PDF_PAGE_DISPATCH_MAX_POOL_SIZE:2}
-      pdf-page-dispatch-queue-capacity: ${CHATAGENT_RAG_VDP_PDF_PAGE_DISPATCH_QUEUE_CAPACITY:0}
-      pdf-batch-core-pool-size: ${CHATAGENT_RAG_VDP_PDF_BATCH_CORE_POOL_SIZE:1}
-      pdf-batch-max-pool-size: ${CHATAGENT_RAG_VDP_PDF_BATCH_MAX_POOL_SIZE:2}
-      pdf-batch-queue-capacity: ${CHATAGENT_RAG_VDP_PDF_BATCH_QUEUE_CAPACITY:30}
-      pdf-render-dpi: ${CHATAGENT_RAG_VDP_PDF_RENDER_DPI:120}
+        knowledge-batch-preferred: true
+        preferred-page-image-engine: ""
+        preferred-batch-engine: mineru
+      char-density-threshold: 150
+      short-text-fast-track-threshold: 80
+      whitespace-alignment-line-threshold: 2
+      pdf-page-max-in-flight: 2
+      pdf-page-timeout-ms: 5000
+      knowledge-document-timeout-ms: 300000
+      pdf-page-dispatch-core-pool-size: 2
+      pdf-page-dispatch-max-pool-size: 2
+      pdf-page-dispatch-queue-capacity: 0
+      pdf-batch-core-pool-size: 1
+      pdf-batch-max-pool-size: 2
+      pdf-batch-queue-capacity: 30
+      pdf-render-dpi: 120
       mineru:
-        enabled: ${CHATAGENT_RAG_VDP_MINERU_ENABLED:true}
-        base-url: ${CHATAGENT_RAG_VDP_MINERU_BASE_URL:http://127.0.0.1:8000}
+        enabled: true
+        base-url: http://127.0.0.1:8000
         bearer-token: ${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:}
-        version: ${CHATAGENT_RAG_VDP_MINERU_VERSION:v1}
-        backend: ${CHATAGENT_RAG_VDP_MINERU_BACKEND:pipeline}
-        parse-method: ${CHATAGENT_RAG_VDP_MINERU_PARSE_METHOD:auto}
-        table-enable: ${CHATAGENT_RAG_VDP_MINERU_TABLE_ENABLE:true}
-        max-pdf-size-mb: ${CHATAGENT_RAG_VDP_MINERU_MAX_PDF_SIZE_MB:50}
-        poll-interval-ms: ${CHATAGENT_RAG_VDP_MINERU_POLL_INTERVAL_MS:2000}
-        max-poll-attempts: ${CHATAGENT_RAG_VDP_MINERU_MAX_POLL_ATTEMPTS:150}
-        submit-timeout-ms: ${CHATAGENT_RAG_VDP_MINERU_SUBMIT_TIMEOUT_MS:30000}
-        poll-timeout-ms: ${CHATAGENT_RAG_VDP_MINERU_POLL_TIMEOUT_MS:5000}
+        version: v1
+        backend: pipeline
+        parse-method: auto
+        table-enable: true
+        max-pdf-size-mb: 50
+        poll-interval-ms: 2000
+        max-poll-attempts: 150
+        submit-timeout-ms: 30000
+        poll-timeout-ms: 5000
       vlm:
-        enabled: ${CHATAGENT_RAG_VDP_VLM_ENABLED:true}
-        client-id: ${CHATAGENT_RAG_VDP_VLM_CLIENT_ID:glm-4.6}
-        model-id: ${CHATAGENT_RAG_VDP_VLM_MODEL_ID:glm-4v-flash}
-        prompt-version: ${CHATAGENT_RAG_VDP_VLM_PROMPT_VERSION:v2}
-        max-tokens: ${CHATAGENT_RAG_VDP_VLM_MAX_TOKENS:1200}
-        temperature: ${CHATAGENT_RAG_VDP_VLM_TEMPERATURE:0.1}
-        timeout-ms: ${CHATAGENT_RAG_VDP_VLM_TIMEOUT_MS:5000}
-        core-pool-size: ${CHATAGENT_RAG_VDP_CORE_POOL_SIZE:1}
-        max-pool-size: ${CHATAGENT_RAG_VDP_MAX_POOL_SIZE:2}
-        queue-capacity: ${CHATAGENT_RAG_VDP_QUEUE_CAPACITY:0}
-        failure-placeholder: "${CHATAGENT_RAG_VDP_FAILURE_PLACEHOLDER:}"
+        enabled: true
+        client-id: glm-4.6
+        model-id: glm-4v-flash
+        prompt-version: v2
+        max-tokens: 1200
+        temperature: 0.1
+        timeout-ms: 5000
+        core-pool-size: 1
+        max-pool-size: 2
+        queue-capacity: 0
+        failure-placeholder: ""
     retrieval:
       document-signals:
-        cache-ttl-minutes: ${CHATAGENT_RAG_DOCUMENT_SIGNAL_CACHE_TTL_MINUTES:30}
+        cache-ttl-minutes: 30
     ingestion:
       document-enhancer:
-        enabled: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_ENABLED:true}
-        model-id: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MODEL:}
-        prompt-version: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_PROMPT_VERSION:v2}
-        short-doc-char-limit: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_SHORT_DOC_CHAR_LIMIT:12000}
-        map-window-max-chars: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAP_WINDOW_MAX_CHARS:6000}
-        max-keywords: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_KEYWORDS:10}
-        max-questions: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_QUESTIONS:5}
-        max-keyword-chars: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_KEYWORD_CHARS:80}
-        max-question-chars: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_QUESTION_CHARS:180}
-        min-enhanced-length-ratio: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MIN_LENGTH_RATIO:0.5}
-        max-enhanced-length-ratio: ${CHATAGENT_RAG_DOCUMENT_ENHANCER_MAX_LENGTH_RATIO:2.0}
+        enabled: true
+        model-id: ""
+        prompt-version: v2
+        short-doc-char-limit: 12000
+        map-window-max-chars: 6000
+        max-keywords: 10
+        max-questions: 5
+        max-keyword-chars: 80
+        max-question-chars: 180
+        min-enhanced-length-ratio: 0.5
+        max-enhanced-length-ratio: 2.0
       contextual-enricher:
-        enabled: ${CHATAGENT_RAG_CONTEXTUAL_ENRICHER_ENABLED:true}
-        model-id: ${CHATAGENT_RAG_CONTEXTUAL_MODEL:}
-        max-chunks-per-file: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CHUNKS_PER_FILE:12}
-        min-chunk-chars: ${CHATAGENT_RAG_CONTEXTUAL_MIN_CHUNK_CHARS:160}
-        max-context-chars: ${CHATAGENT_RAG_CONTEXTUAL_MAX_CONTEXT_CHARS:600}
+        enabled: true
+        model-id: ""
+        max-chunks-per-file: 12
+        min-chunk-chars: 160
+        max-context-chars: 600
   mq:
-    enabled: ${CHATAGENT_MQ_ENABLED:true}
+    enabled: true
     exchanges:
-      chat-direct: ${CHATAGENT_MQ_EXCHANGE_CHAT_DIRECT:chat.direct}
-      retry-direct: ${CHATAGENT_MQ_EXCHANGE_RETRY_DIRECT:retry.direct}
-      dlx-direct: ${CHATAGENT_MQ_EXCHANGE_DLX_DIRECT:dlx.direct}
+      chat-direct: chat.direct
+      retry-direct: retry.direct
+      dlx-direct: dlx.direct
     routing-keys:
-      agent-run: ${CHATAGENT_MQ_ROUTING_KEY_AGENT_RUN:agent.run}
-      ingest-task: ${CHATAGENT_MQ_ROUTING_KEY_INGEST_TASK:ingest.task}
-      retry-agent: ${CHATAGENT_MQ_ROUTING_KEY_RETRY_AGENT:retry.agent}
-      retry-ingest: ${CHATAGENT_MQ_ROUTING_KEY_RETRY_INGEST:retry.ingest}
-      dead-letter: ${CHATAGENT_MQ_ROUTING_KEY_DEAD_LETTER:dead.letter}
+      agent-run: agent.run
+      ingest-task: ingest.task
+      retry-agent: retry.agent
+      retry-ingest: retry.ingest
+      dead-letter: dead.letter
     queues:
-      chat-agent-dispatch: ${CHATAGENT_MQ_QUEUE_CHAT_AGENT_DISPATCH:chat.agent.dispatch}
-      knowledge-ingest-task: ${CHATAGENT_MQ_QUEUE_KNOWLEDGE_INGEST_TASK:knowledge.ingest.task}
-      retry-agent10s: ${CHATAGENT_MQ_QUEUE_RETRY_AGENT_10S:retry.agent.10s}
-      retry-ingest30s: ${CHATAGENT_MQ_QUEUE_RETRY_INGEST_30S:retry.ingest.30s}
-      chat-dlq: ${CHATAGENT_MQ_QUEUE_CHAT_DLQ:chat.dlq}
+      chat-agent-dispatch: chat.agent.dispatch
+      knowledge-ingest-task: knowledge.ingest.task
+      retry-agent10s: retry.agent.10s
+      retry-ingest30s: retry.ingest.30s
+      chat-dlq: chat.dlq
     retry:
-      agent-delay-ms: ${CHATAGENT_MQ_RETRY_AGENT_DELAY_MS:10000}
-      ingest-delay-ms: ${CHATAGENT_MQ_RETRY_INGEST_DELAY_MS:30000}
+      agent-delay-ms: 10000
+      ingest-delay-ms: 30000
     outbox:
-      poll-interval-ms: ${CHATAGENT_MQ_OUTBOX_POLL_INTERVAL_MS:500}
-      batch-size: ${CHATAGENT_MQ_OUTBOX_BATCH_SIZE:10}
-      max-publish-attempts: ${CHATAGENT_MQ_OUTBOX_MAX_PUBLISH_ATTEMPTS:5}
-      publish-retry-delay-ms: ${CHATAGENT_MQ_OUTBOX_PUBLISH_RETRY_DELAY_MS:10000}
-      claim-timeout-ms: ${CHATAGENT_MQ_OUTBOX_CLAIM_TIMEOUT_MS:60000}
-      confirm-timeout-ms: ${CHATAGENT_MQ_OUTBOX_CONFIRM_TIMEOUT_MS:5000}
-      cleanup-interval-ms: ${CHATAGENT_MQ_OUTBOX_CLEANUP_INTERVAL_MS:86400000}
-      cleanup-retention-days: ${CHATAGENT_MQ_OUTBOX_CLEANUP_RETENTION_DAYS:7}
-      id-namespace: ${CHATAGENT_MQ_OUTBOX_ID_NAMESPACE:a41c8a5f-f0d4-58f6-a4f5-bf4a8ef7ca55}
+      poll-interval-ms: 500
+      batch-size: 10
+      max-publish-attempts: 5
+      publish-retry-delay-ms: 10000
+      claim-timeout-ms: 60000
+      confirm-timeout-ms: 5000
+      cleanup-interval-ms: 86400000
+      cleanup-retention-days: 7
+      id-namespace: a41c8a5f-f0d4-58f6-a4f5-bf4a8ef7ca55
     consumers:
-      agent-prefetch: ${CHATAGENT_MQ_CONSUMER_AGENT_PREFETCH:5}
-      agent-concurrency: ${CHATAGENT_MQ_CONSUMER_AGENT_CONCURRENCY:5}
-      ingest-prefetch: ${CHATAGENT_MQ_CONSUMER_INGEST_PREFETCH:1}
-      ingest-concurrency: ${CHATAGENT_MQ_CONSUMER_INGEST_CONCURRENCY:2}
+      agent-prefetch: 5
+      agent-concurrency: 5
+      ingest-prefetch: 1
+      ingest-concurrency: 2
     locks:
-      running-ttl-ms: ${CHATAGENT_MQ_LOCK_RUNNING_TTL_MS:60000}
-      session-exec-ttl-ms: ${CHATAGENT_MQ_LOCK_SESSION_EXEC_TTL_MS:120000}
-      watchdog-interval-ms: ${CHATAGENT_MQ_LOCK_WATCHDOG_INTERVAL_MS:20000}
-      completed-ttl-ms: ${CHATAGENT_MQ_LOCK_COMPLETED_TTL_MS:86400000}
-      failed-ttl-ms: ${CHATAGENT_MQ_LOCK_FAILED_TTL_MS:3600000}
-      agent-run-policy: ${CHATAGENT_MQ_LOCK_AGENT_RUN_POLICY:FAIL_OPEN}
-      ingest-task-policy: ${CHATAGENT_MQ_LOCK_INGEST_TASK_POLICY:FAIL_FAST}
-      session-exec-policy: ${CHATAGENT_MQ_LOCK_SESSION_EXEC_POLICY:FAIL_OPEN}
+      running-ttl-ms: 60000
+      session-exec-ttl-ms: 120000
+      watchdog-interval-ms: 20000
+      completed-ttl-ms: 86400000
+      failed-ttl-ms: 3600000
+      agent-run-policy: FAIL_OPEN
+      ingest-task-policy: FAIL_FAST
+      session-exec-policy: FAIL_OPEN
     dispatchers:
-      agent-run-enabled: ${CHATAGENT_MQ_DISPATCHER_AGENT_RUN_ENABLED:false}
+      agent-run-enabled: false
   session-guard:
-    enabled: ${CHATAGENT_SESSION_GUARD_ENABLED:true}
-    ttl-ms: ${CHATAGENT_SESSION_GUARD_TTL_MS:120000}
-    fail-open: ${CHATAGENT_SESSION_GUARD_FAIL_OPEN:true}
+    enabled: true
+    ttl-ms: 120000
+    fail-open: true
   web-search:
-    enabled: ${CHATAGENT_WEB_SEARCH_ENABLED:false}
-    searxng-base-url: ${CHATAGENT_WEB_SEARCH_SEARXNG_BASE_URL:http://localhost:8888}
-    connect-timeout-ms: ${CHATAGENT_WEB_SEARCH_CONNECT_TIMEOUT_MS:2000}
-    response-timeout-ms: ${CHATAGENT_WEB_SEARCH_RESPONSE_TIMEOUT_MS:8000}
-    default-max-results: ${CHATAGENT_WEB_SEARCH_DEFAULT_MAX_RESULTS:5}
-    max-results: ${CHATAGENT_WEB_SEARCH_MAX_RESULTS:8}
-    max-query-chars: ${CHATAGENT_WEB_SEARCH_MAX_QUERY_CHARS:300}
-    safe-search: ${CHATAGENT_WEB_SEARCH_SAFE_SEARCH:1}
+    enabled: false
+    searxng-base-url: http://localhost:8888
+    connect-timeout-ms: 2000
+    response-timeout-ms: 8000
+    default-max-results: 5
+    max-results: 8
+    max-query-chars: 300
+    safe-search: 1
   mcp:
-    enabled: ${CHATAGENT_MCP_ENABLED:true}
+    enabled: true
     crypto:
       key: ${CHATAGENT_MCP_CIPHER_KEY:}
-      key-version: ${CHATAGENT_MCP_CIPHER_KEY_VERSION:v1}
+      key-version: v1
     transport:
-      client-name: ${CHATAGENT_MCP_CLIENT_NAME:ChatAgent}
-      client-version: ${CHATAGENT_MCP_CLIENT_VERSION:phase-1b}
-      preferred-http-protocol-version: ${CHATAGENT_MCP_HTTP_PROTOCOL_VERSION:2025-06-18}
-      preferred-sse-protocol-version: ${CHATAGENT_MCP_SSE_PROTOCOL_VERSION:2024-11-05}
-      connect-timeout-ms: ${CHATAGENT_MCP_CONNECT_TIMEOUT_MS:2000}
-      response-timeout-ms: ${CHATAGENT_MCP_RESPONSE_TIMEOUT_MS:10000}
-      read-timeout-ms: ${CHATAGENT_MCP_READ_TIMEOUT_MS:10000}
-      write-timeout-ms: ${CHATAGENT_MCP_WRITE_TIMEOUT_MS:10000}
-      request-timeout-ms: ${CHATAGENT_MCP_REQUEST_TIMEOUT_MS:15000}
-      max-in-memory-size-bytes: ${CHATAGENT_MCP_MAX_IN_MEMORY_BYTES:131072}
-      sse-connect-timeout-ms: ${CHATAGENT_MCP_SSE_CONNECT_TIMEOUT_MS:5000}
-      sse-max-reconnects: ${CHATAGENT_MCP_SSE_MAX_RECONNECTS:5}
-      sse-initial-backoff-ms: ${CHATAGENT_MCP_SSE_INITIAL_BACKOFF_MS:1000}
-      sse-max-backoff-ms: ${CHATAGENT_MCP_SSE_MAX_BACKOFF_MS:30000}
+      client-name: ChatAgent
+      client-version: phase-1b
+      preferred-http-protocol-version: "2025-06-18"
+      preferred-sse-protocol-version: "2024-11-05"
+      connect-timeout-ms: 2000
+      response-timeout-ms: 10000
+      read-timeout-ms: 10000
+      write-timeout-ms: 10000
+      request-timeout-ms: 15000
+      max-in-memory-size-bytes: 131072
+      sse-connect-timeout-ms: 5000
+      sse-max-reconnects: 5
+      sse-initial-backoff-ms: 1000
+      sse-max-backoff-ms: 30000
     runtime:
-      rate-limit-enabled: ${CHATAGENT_MCP_RATE_LIMIT_ENABLED:true}
-      rate-limit-requests-per-second: ${CHATAGENT_MCP_RATE_LIMIT_RPS:10}
-      rate-limit-burst-capacity: ${CHATAGENT_MCP_RATE_LIMIT_BURST:10}
-      circuit-breaker-enabled: ${CHATAGENT_MCP_CIRCUIT_BREAKER_ENABLED:true}
-      circuit-breaker-sliding-window-size: ${CHATAGENT_MCP_CB_WINDOW_SIZE:10}
-      circuit-breaker-failure-threshold: ${CHATAGENT_MCP_CB_FAILURE_THRESHOLD:5}
-      circuit-breaker-failure-rate-threshold-percent: ${CHATAGENT_MCP_CB_FAILURE_RATE_PERCENT:50}
-      circuit-breaker-minimum-request-volume: ${CHATAGENT_MCP_CB_MIN_REQUEST_VOLUME:10}
-      circuit-breaker-open-state-ms: ${CHATAGENT_MCP_CB_OPEN_STATE_MS:30000}
-      circuit-breaker-half-open-probe-count: ${CHATAGENT_MCP_CB_HALF_OPEN_PROBES:3}
-      circuit-breaker-slow-call-duration-ms: ${CHATAGENT_MCP_CB_SLOW_CALL_MS:10000}
-      circuit-breaker-slow-call-rate-threshold-percent: ${CHATAGENT_MCP_CB_SLOW_CALL_RATE_PERCENT:80}
+      rate-limit-enabled: true
+      rate-limit-requests-per-second: 10
+      rate-limit-burst-capacity: 10
+      circuit-breaker-enabled: true
+      circuit-breaker-sliding-window-size: 10
+      circuit-breaker-failure-threshold: 5
+      circuit-breaker-failure-rate-threshold-percent: 50
+      circuit-breaker-minimum-request-volume: 10
+      circuit-breaker-open-state-ms: 30000
+      circuit-breaker-half-open-probe-count: 3
+      circuit-breaker-slow-call-duration-ms: 10000
+      circuit-breaker-slow-call-rate-threshold-percent: 80
     schema-drift:
-      enabled: ${CHATAGENT_MCP_SCHEMA_DRIFT_ENABLED:true}
-      fixed-delay-ms: ${CHATAGENT_MCP_SCHEMA_DRIFT_FIXED_DELAY_MS:600000}
+      enabled: true
+      fixed-delay-ms: 600000
     rollout:
-      mode: ${CHATAGENT_MCP_ROLLOUT_MODE:ALL}
-      allowed-agent-ids: ${CHATAGENT_MCP_ROLLOUT_ALLOWED_AGENT_IDS:[]}
+      mode: ALL
+      allowed-agent-ids: []
 
 auth:
   jwt:
-    issuer: ${CHATAGENT_JWT_ISSUER:chatagent}
-    secret: ${CHATAGENT_JWT_SECRET:change-this-to-a-long-random-secret-key-change-this}
-    access-ttl-minutes: ${CHATAGENT_JWT_ACCESS_TTL_MINUTES:30}
-    refresh-ttl-days: ${CHATAGENT_JWT_REFRESH_TTL_DAYS:7}
+    issuer: chatagent
+    secret: ${CHATAGENT_JWT_SECRET:}
+    access-ttl-minutes: 30
+    refresh-ttl-days: 7
 
 logging:
   level:

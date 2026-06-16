@@ -60,10 +60,9 @@ output/
 
 postman/*local*.json
 
-# Local docs can contain plans, ADR drafts, and secret-bearing env references.
+# Local/private documentation can contain plans, ADR drafts, interview notes,
+# and secret-bearing environment references. Keep the entire folder local.
 docs/
-docs/adr/
-docs/env_variables.txt
 
-# Interview preparation (personal notes, not for sharing)
-docs/interview/
+# Postman collections are local-only
+/postman/

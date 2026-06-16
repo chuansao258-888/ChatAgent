@@ -544,6 +544,8 @@ class TestConfigValidation(unittest.TestCase):
             clear=True,
         ):
             self.assertEqual("https://zai.example.test/api/paas/v4", _answer_provider_base_url("zai"))
+        with patch.dict(os.environ, {"CHATAGENT_ZAI_CODING_API_KEY": "fake-zai-key"}, clear=True):
+            self.assertEqual("https://api.z.ai/api/coding/paas/v4", _answer_provider_base_url("zai"))
 
     def test_zai_answer_generation_disables_provider_thinking(self):
         captured: dict = {}
@@ -704,8 +706,6 @@ class TestConfigValidation(unittest.TestCase):
                 os.environ,
                 {
                     "CHATAGENT_ZAI_CODING_API_KEY": "fake-zai-key",
-                    "CHATAGENT_ZAI_CODING_BASE_URL": "https://zai.example.test/api/paas/v4",
-                    "CHATAGENT_ZAI_CODING_MODEL": "glm-4.5-air",
                 },
                 clear=True,
             ):
@@ -722,8 +722,8 @@ class TestConfigValidation(unittest.TestCase):
 
         self.assertEqual(0, status)
         self.assertEqual("zai", captured["config"].llm_provider)
-        self.assertEqual("glm-4.5-air", captured["config"].llm_model)
-        self.assertEqual("https://zai.example.test/api/paas/v4", captured["config"].llm_base_url)
+        self.assertEqual("glm-5.2", captured["config"].llm_model)
+        self.assertEqual("https://api.z.ai/api/coding/paas/v4", captured["config"].llm_base_url)
 
 
 if __name__ == "__main__":
