@@ -580,6 +580,34 @@ npm run test
 npm run build
 ```
 
+### End-to-End (Playwright AX driver)
+
+Browser E2E uses a small Playwright "AX driver" (`ui/e2e/driver/server.mjs`): a
+headed, persistent-context Chromium exposed over a tiny HTTP API, so an agent (or
+you) drives the live UI and reads the accessibility tree as text. Login persists
+across runs (a user-data-dir under `ui/.auth/`); the backend must be running.
+
+```bash
+cd ui
+npm run e2e:install          # one-time: download the Chromium binary
+# from the repo root, start the stack:
+docker compose up -d         # postgres + redis + rabbitmq (+ milvus)
+npm run dev                  # UI dev server on 5173
+# backend: chatagent/mvnw.cmd -pl bootstrap spring-boot:run
+npm run e2e                  # headed driver on http://127.0.0.1:7878
+```
+
+Then drive it (the UI at 5173 talks to the backend at 8080):
+
+```bash
+curl -X POST localhost:7878/goto -d '{"url":"http://localhost:5173/"}'
+curl localhost:7878/ax                                   # accessibility tree (role + name)
+curl -X POST localhost:7878/act -d '{"locator":{"role":"button","name":"Log in"},"action":"click"}'
+```
+
+`CHATAGENT_JWT_SECRET` (>=32 bytes) is required to boot the backend — add it to
+your local `docs/env_variables.txt`. Set `PLAYWRIGHT_HEADLESS=1` for headless runs.
+
 ### Evaluation Tools
 
 ```bash

@@ -347,6 +347,33 @@ curl http://localhost:8080/api/user/me
 
 `/api/user/me` 需要登录后携带有效 access token。
 
+### 端到端测试（Playwright AX 驱动）
+
+浏览器 E2E 使用一个轻量的 Playwright "AX 驱动"（`ui/e2e/driver/server.mjs`）：一个有头、
+持久化上下文的 Chromium，通过极简 HTTP API 暴露，方便 agent（或你本人）驱动真实 UI 并以
+文本形式读取可访问性树。登录会持久化（`ui/.auth/` 下的 user-data-dir）；需要后端在运行。
+
+```bash
+cd ui
+npm run e2e:install          # 首次：下载 Chromium
+# 仓库根目录下启动栈：
+docker compose up -d         # postgres + redis + rabbitmq（+ milvus）
+npm run dev                  # UI 开发服务器（5173）
+# 后端：chatagent/mvnw.cmd -pl bootstrap spring-boot:run
+npm run e2e                  # 有头驱动，监听 http://127.0.0.1:7878
+```
+
+随后驱动它（5173 的 UI 访问 8080 的后端）：
+
+```bash
+curl -X POST localhost:7878/goto -d '{"url":"http://localhost:5173/"}'
+curl localhost:7878/ax                                   # 可访问性树（role + name）
+curl -X POST localhost:7878/act -d '{"locator":{"role":"button","name":"Log in"},"action":"click"}'
+```
+
+后端启动需要 `CHATAGENT_JWT_SECRET`（>=32 字节）——加到你本地的 `docs/env_variables.txt`。
+无头模式设置 `PLAYWRIGHT_HEADLESS=1`。
+
 ## API
 
 所有 JSON 接口统一返回：
