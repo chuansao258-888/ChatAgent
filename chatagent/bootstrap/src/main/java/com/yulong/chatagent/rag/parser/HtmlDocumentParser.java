@@ -408,13 +408,22 @@ public class HtmlDocumentParser implements DocumentParser {
     // -------------------------------------------------------------------------
 
     private static void renderTable(Element table, StringBuilder sb) {
-        // Collect all direct rows (ignoring thead/tbody/tfoot wrappers).
+        List<Element> rows = collectRows(table);
+        if (rows.isEmpty()) {
+            return;
+        }
+
+        TableRows tableRows = buildTableRows(rows);
+        renderMarkdownTable(tableRows, sb);
+    }
+
+    private static List<Element> collectRows(Element table) {
         List<Element> rows = new ArrayList<>();
         for (Element child : table.children()) {
             String childTag = child.tagName().toLowerCase();
             if ("tr".equals(childTag)) {
                 rows.add(child);
-            } else if ("thead".equals(childTag) || "tbody".equals(childTag) || "tfoot".equals(childTag)) {
+            } else if (isTableSection(childTag)) {
                 for (Element tr : child.children()) {
                     if ("tr".equals(tr.tagName().toLowerCase())) {
                         rows.add(tr);
@@ -422,101 +431,116 @@ public class HtmlDocumentParser implements DocumentParser {
                 }
             }
         }
+        return rows;
+    }
 
-        if (rows.isEmpty()) {
-            return;
-        }
-
-        // Determine the maximum logical column count across all rows,
-        // accounting for colspan on direct <td>/<th> children only.
+    private static TableRows buildTableRows(List<Element> rows) {
         int maxCols = 0;
         List<List<CellInfo>> rowCells = new ArrayList<>();
-        // Track rowspan coverage: map from column index to remaining span count.
         List<Integer> rowspanCoverage = new ArrayList<>();
 
         for (Element row : rows) {
-            List<CellInfo> cells = new ArrayList<>();
-            int colIndex = 0;
-
-            // Advance past active rowspan coverage.
-            // rowspanCoverage grows as needed.
-
-            for (Element cell : row.children()) {
-                String cellTag = cell.tagName().toLowerCase();
-                if (!"td".equals(cellTag) && !"th".equals(cellTag)) {
-                    continue;
-                }
-
-                // Advance past active rowspan placeholders at this column.
-                while (colIndex < rowspanCoverage.size() && rowspanCoverage.get(colIndex) > 0) {
-                    cells.add(CellInfo.placeholder()); // rowspan placeholder
-                    rowspanCoverage.set(colIndex, rowspanCoverage.get(colIndex) - 1);
-                    colIndex++;
-                }
-
-                int colspan = Math.max(1, parseAttrInt(cell, "colspan", 1));
-                int rowspan = parseAttrInt(cell, "rowspan", 1);
-                String text = extractCellText(cell);
-
-                // Emit text once in the first column, then placeholders for remaining colspan.
-                cells.add(CellInfo.of(text, "th".equals(cellTag)));
-
-                // Ensure rowspanCoverage list is large enough.
-                while (rowspanCoverage.size() <= colIndex) {
-                    rowspanCoverage.add(0);
-                }
-                if (rowspan > 1) {
-                    rowspanCoverage.set(colIndex, rowspan - 1);
-                }
-                colIndex++;
-
-                for (int i = 1; i < colspan; i++) {
-                    cells.add(CellInfo.placeholder());
-                    while (rowspanCoverage.size() <= colIndex) {
-                        rowspanCoverage.add(0);
-                    }
-                    if (rowspan > 1) {
-                        rowspanCoverage.set(colIndex, rowspan - 1);
-                    }
-                    colIndex++;
-                }
-            }
-
-            // Fill remaining rowspan placeholders at end of row.
-            while (colIndex < rowspanCoverage.size() && rowspanCoverage.get(colIndex) > 0) {
-                cells.add(CellInfo.placeholder());
-                rowspanCoverage.set(colIndex, rowspanCoverage.get(colIndex) - 1);
-                colIndex++;
-            }
-
+            List<CellInfo> cells = buildRowCells(row, rowspanCoverage);
             maxCols = Math.max(maxCols, cells.size());
             rowCells.add(cells);
         }
 
-        // Pad all rows to maxCols.
+        padRows(rowCells, maxCols);
+        return new TableRows(maxCols, rowCells);
+    }
+
+    private static List<CellInfo> buildRowCells(Element row, List<Integer> rowspanCoverage) {
+        List<CellInfo> cells = new ArrayList<>();
+        int colIndex = 0;
+
+        for (Element cell : row.children()) {
+            String cellTag = cell.tagName().toLowerCase();
+            if (!isTableCell(cellTag)) {
+                continue;
+            }
+
+            colIndex = appendActiveRowspanPlaceholders(cells, rowspanCoverage, colIndex);
+            colIndex = appendCellWithSpan(cells, rowspanCoverage, cell, cellTag, colIndex);
+        }
+
+        appendActiveRowspanPlaceholders(cells, rowspanCoverage, colIndex);
+        return cells;
+    }
+
+    private static int appendActiveRowspanPlaceholders(List<CellInfo> cells,
+                                                       List<Integer> rowspanCoverage,
+                                                       int colIndex) {
+        while (colIndex < rowspanCoverage.size() && rowspanCoverage.get(colIndex) > 0) {
+            cells.add(CellInfo.placeholder());
+            rowspanCoverage.set(colIndex, rowspanCoverage.get(colIndex) - 1);
+            colIndex++;
+        }
+        return colIndex;
+    }
+
+    private static int appendCellWithSpan(List<CellInfo> cells,
+                                          List<Integer> rowspanCoverage,
+                                          Element cell,
+                                          String cellTag,
+                                          int colIndex) {
+        int colspan = Math.max(1, parseAttrInt(cell, "colspan", 1));
+        int rowspan = parseAttrInt(cell, "rowspan", 1);
+
+        cells.add(CellInfo.of(extractCellText(cell), "th".equals(cellTag)));
+        applyRowspanCoverage(rowspanCoverage, colIndex, rowspan);
+        colIndex++;
+
+        for (int i = 1; i < colspan; i++) {
+            cells.add(CellInfo.placeholder());
+            applyRowspanCoverage(rowspanCoverage, colIndex, rowspan);
+            colIndex++;
+        }
+
+        return colIndex;
+    }
+
+    private static void applyRowspanCoverage(List<Integer> rowspanCoverage, int colIndex, int rowspan) {
+        while (rowspanCoverage.size() <= colIndex) {
+            rowspanCoverage.add(0);
+        }
+        if (rowspan > 1) {
+            rowspanCoverage.set(colIndex, rowspan - 1);
+        }
+    }
+
+    private static void padRows(List<List<CellInfo>> rowCells, int maxCols) {
         for (List<CellInfo> cells : rowCells) {
             while (cells.size() < maxCols) {
                 cells.add(CellInfo.empty());
             }
         }
+    }
 
-        // Determine if first row contains <th> cells.
+    private static void renderMarkdownTable(TableRows tableRows, StringBuilder sb) {
+        int maxCols = tableRows.maxCols();
+        List<List<CellInfo>> rowCells = tableRows.rowCells();
         boolean hasHeader = !rowCells.isEmpty() && rowCells.get(0).stream().anyMatch(c -> c.isHeader);
-
-        // Render header row.
         List<CellInfo> headerRow = hasHeader ? rowCells.get(0) : synthesizeHeader(maxCols);
+
         appendRow(headerRow, maxCols, sb);
         sb.append("\n|");
         for (int i = 0; i < maxCols; i++) {
             sb.append(" --- |");
         }
 
-        // Render data rows.
         int dataStart = hasHeader ? 1 : 0;
         for (int r = dataStart; r < rowCells.size(); r++) {
             sb.append("\n");
             appendRow(rowCells.get(r), maxCols, sb);
         }
+    }
+
+    private static boolean isTableSection(String tag) {
+        return "thead".equals(tag) || "tbody".equals(tag) || "tfoot".equals(tag);
+    }
+
+    private static boolean isTableCell(String tag) {
+        return "td".equals(tag) || "th".equals(tag);
     }
 
     private static List<CellInfo> synthesizeHeader(int cols) {
@@ -550,36 +574,57 @@ public class HtmlDocumentParser implements DocumentParser {
 
     private static void extractTextRecursive(Element element, StringBuilder sb) {
         for (Node child : element.childNodes()) {
-            if (child instanceof TextNode tn) {
-                String t = tn.text();
-                if (!t.isEmpty()) {
-                    if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != ' ') {
-                        sb.append(' ');
-                    }
-                    sb.append(t);
-                }
-            } else if (child instanceof Element el) {
-                String tag = el.tagName().toLowerCase();
-                // Nested table: emit text content but not the table structure.
-                if ("table".equals(tag)) {
-                    extractTextRecursive(el, sb);
-                } else if ("script".equals(tag) || "style".equals(tag)) {
-                    // Skip noise.
-                } else if ("br".equals(tag)) {
-                    sb.append(' ');
-                } else if ("strong".equals(tag) || "b".equals(tag)) {
-                    sb.append("**");
-                    extractTextRecursive(el, sb);
-                    sb.append("**");
-                } else if ("em".equals(tag) || "i".equals(tag)) {
-                    sb.append("*");
-                    extractTextRecursive(el, sb);
-                    sb.append("*");
-                } else {
-                    extractTextRecursive(el, sb);
-                }
-            }
+            appendCellText(child, sb);
         }
+    }
+
+    private static void appendCellText(Node child, StringBuilder sb) {
+        if (child instanceof TextNode tn) {
+            appendTextNode(tn, sb);
+        } else if (child instanceof Element el) {
+            appendElementText(el, sb);
+        }
+    }
+
+    private static void appendTextNode(TextNode textNode, StringBuilder sb) {
+        String text = textNode.text();
+        if (text.isEmpty()) {
+            return;
+        }
+        if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != ' ') {
+            sb.append(' ');
+        }
+        sb.append(text);
+    }
+
+    private static void appendElementText(Element el, StringBuilder sb) {
+        String tag = el.tagName().toLowerCase();
+        if ("script".equals(tag) || "style".equals(tag)) {
+            return;
+        }
+        if ("br".equals(tag)) {
+            sb.append(' ');
+            return;
+        }
+        if ("strong".equals(tag) || "b".equals(tag)) {
+            appendFormattedElementText(el, sb, "**");
+            return;
+        }
+        if ("em".equals(tag) || "i".equals(tag)) {
+            appendFormattedElementText(el, sb, "*");
+            return;
+        }
+
+        extractTextRecursive(el, sb);
+    }
+
+    private static void appendFormattedElementText(Element el, StringBuilder sb, String marker) {
+        sb.append(marker);
+        extractTextRecursive(el, sb);
+        sb.append(marker);
+    }
+
+    private record TableRows(int maxCols, List<List<CellInfo>> rowCells) {
     }
 
     private static int parseAttrInt(Element el, String attr, int defaultVal) {

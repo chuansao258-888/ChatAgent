@@ -194,6 +194,25 @@ class HtmlDocumentParserTest {
         }
 
         @Test
+        void rendersRowspanAndColspanWithStableMarkdownShape() {
+            String html = """
+                    <table>
+                      <tr><th>Category</th><th>Item</th><th>Value</th></tr>
+                      <tr><td rowspan="2">Assets</td><td>Cash</td><td>100</td></tr>
+                      <tr><td colspan="2">Inventory total</td></tr>
+                    </table>
+                    """;
+            ParseResult result = parse(html);
+            String text = result.getSegments().get(0).text();
+
+            assertThat(text).isEqualTo(String.join("\n",
+                    "| Category | Item | Value |",
+                    "| --- | --- | --- |",
+                    "| Assets | Cash | 100 |",
+                    "|  | Inventory total |  |"));
+        }
+
+        @Test
         void escapesPipeCharacters() {
             String html = """
                     <table>
