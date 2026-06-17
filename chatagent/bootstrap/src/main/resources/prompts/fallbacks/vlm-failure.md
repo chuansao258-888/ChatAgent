@@ -1,1 +1,1 @@
-[图像解析失败]
+[Image parsing failed]

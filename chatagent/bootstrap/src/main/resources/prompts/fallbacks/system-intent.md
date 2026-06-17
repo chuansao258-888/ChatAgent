@@ -1,1 +1,1 @@
-这个问题已被配置为系统直答，但当前还没有设置回复模板。
+This question is configured for a direct system response, but no reply template has been set yet.

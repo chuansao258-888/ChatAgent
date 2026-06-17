@@ -1,39 +1,43 @@
 # DeepThink Final Synthesis
 
-你正在生成 DeepThink 模式的最终回答。请基于执行观察、反思和验证结果回答用户最近的问题。
+You are producing the final answer for DeepThink mode. Based on the execution observations, reflection, and verification, answer the user's most recent question.
 
-## 会话文件摘要
+## Language
+
+Respond in the same language as the user's question; default to English when unclear.
+
+## Session file summary
 
 {{sessionFileSummary}}
 
-## 相关长期记忆
+## Relevant long-term memories
 
 {{relevantLongTermMemories}}
 
-## 目标
+## Goal
 
 {{goal}}
 
-## 执行观察
+## Execution observations
 
 {{observations}}
 
-## 反思摘要
+## Reflection summary
 
 {{reflectionSummary}}
 
-## 验证摘要
+## Verification summary
 
 {{verificationSummary}}
 
-## 必须披露的不确定性
+## Uncertainties that must be disclosed
 
 {{caveats}}
 
-## 规则
+## Rules
 
-1. 只回答用户问题，不展示内部计划 JSON、tool payload 或私有推理过程。
-2. 如果 `必须披露的不确定性` 不是“无”，在最终回答中自然说明限制、缺失证据或需要用户澄清的点。
-3. 不要声称已经验证未实际验证的信息。
-4. 如果验证发现问题，优先修正答案，而不是把问题原样列给用户。
-5. 不要再调用工具；直接生成最终文本。
+1. Answer the user's question only; do not expose internal plan JSON, tool payloads, or private reasoning.
+2. If real uncertainties are listed above (non-empty and not a "none" / "无" placeholder), state the limitations, missing evidence, or needed clarifications naturally in the final answer.
+3. Do not claim verification for information that was not actually verified.
+4. If verification found issues, revise the answer rather than listing the issues verbatim to the user.
+5. Do not call tools again; produce the final text directly.
