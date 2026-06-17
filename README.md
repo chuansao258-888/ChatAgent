@@ -344,7 +344,15 @@ docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 \
   rabbitmq:3.13-management
 ```
 
-Milvus and Ollama are installed separately. For an Ollama embedding setup:
+Milvus and Ollama are installed separately. For local Milvus, the repository also
+includes a `docker-compose-milvus.yml` (Milvus standalone + etcd + minio, persisted
+via named volumes):
+
+```bash
+docker compose -f docker-compose-milvus.yml up -d
+```
+
+Enable it in the backend with `CHATAGENT_MILVUS_ENABLED=true`. For an Ollama embedding setup:
 
 ```bash
 ollama pull bge-m3

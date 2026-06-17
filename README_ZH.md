@@ -291,7 +291,14 @@ docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 \
   rabbitmq:3.13-management
 ```
 
-Milvus 和 Ollama 需要按本机环境单独安装。Ollama embedding 示例：
+Milvus 和 Ollama 需要按本机环境单独安装。本地 Milvus 可使用仓库自带的
+`docker-compose-milvus.yml`（Milvus standalone + etcd + minio，使用命名卷持久化）：
+
+```bash
+docker compose -f docker-compose-milvus.yml up -d
+```
+
+在后端通过 `CHATAGENT_MILVUS_ENABLED=true` 启用。Ollama embedding 示例：
 
 ```bash
 ollama pull bge-m3
