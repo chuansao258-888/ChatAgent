@@ -117,7 +117,7 @@ rag:
     provider: milvus
 
 milvus:
-  enabled: false
+  enabled: true
   bm25-enabled: false
   host: localhost
   port: 19530
