@@ -15,8 +15,4 @@ public interface McpServerReferenceQueryMapper {
     List<McpToolReferenceDTO> selectAgentReferences(@Param("toolNames") List<String> toolNames);
 
     List<McpToolReferenceDTO> selectIntentNodeReferences(@Param("toolNames") List<String> toolNames);
-
-    List<McpToolReferenceDTO> selectAssistantTemplateReferences(@Param("toolNames") List<String> toolNames);
-
-    List<McpToolReferenceDTO> selectAssistantTemplateIntentTreeReferences(@Param("toolNames") List<String> toolNames);
 }

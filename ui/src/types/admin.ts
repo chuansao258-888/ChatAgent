@@ -118,51 +118,6 @@ export interface SetIntentNodeKnowledgeBasesRequest {
   knowledgeBaseIds: string[];
 }
 
-export interface AssistantTemplateNodeVO {
-  code: string;
-  parentCode?: string | null;
-  nodeLevel: IntentNodeLevel;
-  name: string;
-  description?: string | null;
-  examples: string[];
-  intentKind?: IntentKind | null;
-  scopePolicy?: ScopePolicy | null;
-  allowedTools: string[];
-  systemPromptOverride?: string | null;
-  bindSelectedKnowledgeBases?: boolean;
-  enabled: boolean;
-  sortOrder: number;
-}
-
-export interface AssistantTemplateVO {
-  id: string;
-  code: string;
-  name: string;
-  description?: string | null;
-  systemPrompt: string;
-  model: string;
-  allowedTools: string[];
-  chatOptions: {
-    temperature?: number;
-    topP?: number;
-    messageLength?: number;
-    tokenBudget?: number;
-  };
-  intentTree: AssistantTemplateNodeVO[];
-  builtIn: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface InitializeAssistantFromTemplateRequest {
-  knowledgeBaseIds: string[];
-}
-
-export interface InitializeAssistantFromTemplateResponse {
-  templateId: string;
-  activeIntentVersion: number;
-}
-
 export type AdminUserRole = "admin" | "user";
 export type AdminUserStatus = "ACTIVE" | "DISABLED";
 

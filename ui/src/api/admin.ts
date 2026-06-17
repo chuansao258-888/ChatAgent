@@ -14,8 +14,6 @@ import type {
   DashboardWindow,
   GetAdminUsersResponse,
   GetIntentTreeResponse,
-  InitializeAssistantFromTemplateRequest,
-  InitializeAssistantFromTemplateResponse,
   GetOptionalToolsResponse,
   ResetAdminUserPasswordResponse,
   SyncMcpToolCatalogResponse,
@@ -29,7 +27,6 @@ import type {
   // VO types returned directly (Phase 9-β-1 eliminated thin Response wrappers)
   KnowledgeBaseVO,
   KnowledgeDocumentVO,
-  AssistantTemplateVO,
   IntentVersionVO,
   McpServerVO,
   // Upsert request types (Phase 9-β-2 merged Create/Update pairs)
@@ -160,65 +157,6 @@ export async function setAssistantKnowledgeBases(
   request: SetAssistantKnowledgeBasesRequest,
 ): Promise<void> {
   return put<void>("/admin/assistant/knowledge-bases", request);
-}
-
-// --- AssistantTemplate (was wrapped, now returns array / single VO / string) ---
-
-export async function getAssistantTemplates(): Promise<AssistantTemplateVO[]> {
-  return get<AssistantTemplateVO[]>("/admin/assistant/templates");
-}
-
-export async function getAssistantTemplate(
-  templateId: string,
-): Promise<AssistantTemplateVO> {
-  return get<AssistantTemplateVO>(`/admin/assistant/templates/${templateId}`);
-}
-
-export async function createAssistantTemplate(
-  request: {
-    code: string;
-    name: string;
-    description?: string;
-    systemPrompt: string;
-    model: string;
-    allowedTools?: string[];
-    chatOptions?: Record<string, unknown>;
-    intentTree: unknown[];
-  },
-): Promise<string> {
-  return post<string>("/admin/assistant/templates", request);
-}
-
-export async function updateAssistantTemplate(
-  templateId: string,
-  request: {
-    code?: string;
-    name?: string;
-    description?: string;
-    systemPrompt?: string;
-    model?: string;
-    allowedTools?: string[];
-    chatOptions?: Record<string, unknown>;
-    intentTree?: unknown[];
-  },
-): Promise<void> {
-  return patch<void>(`/admin/assistant/templates/${templateId}`, request);
-}
-
-export async function deleteAssistantTemplate(
-  templateId: string,
-): Promise<void> {
-  return del<void>(`/admin/assistant/templates/${templateId}`);
-}
-
-export async function initializeAssistantFromTemplate(
-  templateId: string,
-  request: InitializeAssistantFromTemplateRequest,
-): Promise<InitializeAssistantFromTemplateResponse> {
-  return post<InitializeAssistantFromTemplateResponse>(
-    `/admin/assistant/templates/${templateId}/initialize`,
-    request,
-  );
 }
 
 export async function getOptionalTools(): Promise<GetOptionalToolsResponse> {

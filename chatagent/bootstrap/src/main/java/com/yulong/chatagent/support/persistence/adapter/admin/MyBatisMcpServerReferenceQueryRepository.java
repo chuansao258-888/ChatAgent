@@ -29,8 +29,6 @@ public class MyBatisMcpServerReferenceQueryRepository implements McpServerRefere
         List<McpToolReferenceDTO> result = new ArrayList<>();
         result.addAll(mapper.selectAgentReferences(toolNames));
         result.addAll(mapper.selectIntentNodeReferences(toolNames));
-        result.addAll(mapper.selectAssistantTemplateReferences(toolNames));
-        result.addAll(mapper.selectAssistantTemplateIntentTreeReferences(toolNames));
         result.sort(Comparator.comparing(McpToolReferenceDTO::getReferenceType)
                 .thenComparing(McpToolReferenceDTO::getReferenceName));
         return result;
