@@ -6,6 +6,12 @@ import org.springframework.util.StringUtils;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 管理端可设置的运行时路由覆盖表。
+ *
+ * <p>不直接修改 ChatRoutingProperties，而是按候选 id 维护一份临时覆盖；ModelSelector 每次选择候选时
+ * 动态 apply，使 enabled/priority/thinking 等调整即时生效，同时保持 YAML 绑定出来的基准配置不被污染。</p>
+ */
 @Component
 public class RoutingRuntimeOverridesStore {
 

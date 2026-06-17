@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Admin REST endpoints for chat-routing visibility and runtime candidate overrides (requires ADMIN role).
+ */
 @RestController
 @RequestMapping("/api/admin/chat-routing")
 @RequiredArgsConstructor

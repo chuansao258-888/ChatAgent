@@ -26,6 +26,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Application service implementing the chat-session lifecycle: list / get / create / update / delete,
+ * including cascaded cleanup of summaries, summary segments, uploaded session files, and their
+ * Milvus vector index.
+ */
 @Service
 @AllArgsConstructor
 @Slf4j

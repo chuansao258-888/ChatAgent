@@ -8,6 +8,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 路由与断路器的 Micrometer 指标记录。
+ *
+ * <p>记录模型尝试次数与耗时、断路器决策以及状态变化事件。MeterRegistry 不存在时会退化为 no-op，
+ * 确保观测系统缺失或异常都不会影响主路由流程。</p>
+ */
 @Slf4j
 @Component
 public class RoutingMetrics {

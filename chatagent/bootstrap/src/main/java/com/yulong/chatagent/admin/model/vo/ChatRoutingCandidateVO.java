@@ -3,6 +3,10 @@ package com.yulong.chatagent.admin.model.vo;
 import lombok.Builder;
 import lombok.Data;
 
+/**
+ * Admin-facing view of one routing candidate: configured vs. effective settings (after runtime
+ * override), client registration status, and live circuit-breaker state.
+ */
 @Data
 @Builder
 public class ChatRoutingCandidateVO {

@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/** Admin-facing view of a user account. */
 @Data
 @Builder
 public class AdminUserVO {

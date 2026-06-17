@@ -25,6 +25,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Handles MCP server deletion: inspects tool references, blocks (or, when forced, cleans up
+ * intent-node references), soft-deletes the server and its tool catalog, raises alerts for
+ * unresolved references, and invalidates the runtime tool registry.
+ */
 @Component
 class McpServerDeleteHandler {
 

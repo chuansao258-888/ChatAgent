@@ -4,6 +4,7 @@ import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.Builder;
 import lombok.Data;
 
+/** Read-only view of a chat message returned to clients. */
 @Data
 @Builder
 public class ChatMessageVO {

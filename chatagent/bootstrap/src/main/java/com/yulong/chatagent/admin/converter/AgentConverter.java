@@ -11,6 +11,10 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
+/**
+ * Converts agents between the persistence entity, DTO, upsert request, and admin-facing view object,
+ * handling JSON serialization of allowed tools and chat options.
+ */
 @Component
 @AllArgsConstructor
 public class AgentConverter {

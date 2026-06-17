@@ -12,6 +12,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 从 YAML 候选配置中选出当前可调用的 {@link ModelTarget} 列表。
+ *
+ * <p>流程：应用运行时 override → 过滤 disabled / 能力不匹配 / 未注册客户端的候选 → 按 priority
+ * 升序排序 → 把首选模型提升到第一位。断路器许可获取延迟到 RoutingLLMService 真正调用前执行，
+ * 避免在选择阶段批量占用 HALF_OPEN 探针配额。</p>
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

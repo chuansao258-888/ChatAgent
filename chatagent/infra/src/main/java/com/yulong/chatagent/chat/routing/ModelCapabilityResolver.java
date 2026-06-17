@@ -6,6 +6,14 @@ import org.springframework.util.StringUtils;
 import java.util.Locale;
 import java.util.Optional;
 
+/**
+ * 判断候选模型是否支持 thinking（推理/思考）。
+ *
+ * <p>判定优先级：YAML/运行时 override 的显式 {@code supports-thinking} 最高，其次是配置了
+ * 非 NONE 的 thinking-strategy，再次从 provider binding 读取能力，最后按 spring-client-key
+ * 名称（glm/zhipu/reasoner）兜底推断。这样既尊重业务显式配置，也能适配尚未接入
+ * providerRegistry 的新模型。</p>
+ */
 @Component
 public class ModelCapabilityResolver {
 

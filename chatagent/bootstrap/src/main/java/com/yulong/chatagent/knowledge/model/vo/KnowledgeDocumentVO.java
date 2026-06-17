@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/** Read-only view of a knowledge document and its ingestion status. */
 @Data
 @Builder
 public class KnowledgeDocumentVO {

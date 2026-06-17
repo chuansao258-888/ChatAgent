@@ -3,6 +3,7 @@ package com.yulong.chatagent.conversation.model.request;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import lombok.Data;
 
+/** Request body for updating an existing chat message's content or metadata. */
 @Data
 public class UpdateChatMessageRequest {
     private String content;

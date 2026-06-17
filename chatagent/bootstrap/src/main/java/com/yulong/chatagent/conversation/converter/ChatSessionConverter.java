@@ -11,6 +11,10 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
+/**
+ * Converts chat sessions between the persistence entity, DTO, request types, and client-facing view
+ * objects, handling JSON serialization of session metadata.
+ */
 @Component
 @AllArgsConstructor
 public class ChatSessionConverter {

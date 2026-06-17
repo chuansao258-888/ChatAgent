@@ -21,6 +21,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
+/**
+ * Builds the admin routing-state snapshot (configured vs. effective candidate settings, client
+ * registration, and circuit-breaker health) and validates then applies runtime candidate overrides.
+ */
 @Service
 @RequiredArgsConstructor
 public class ChatRoutingAdminFacadeServiceImpl implements ChatRoutingAdminFacadeService {

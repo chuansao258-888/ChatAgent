@@ -17,6 +17,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * 把外部 Prompt、system prompt、工具列表与候选模型重组成路由层可调用的 Prompt。
+ *
+ * <p>核心是按目标厂商复制/转换 ChatOptions、重新挂载运行时工具，并在 deepThinking 时按候选策略
+ * 注入 thinking 开关或模型覆盖（智谱 thinking flag / DeepSeek model override）。</p>
+ */
 @Component
 public class RoutingPromptFactory {
 

@@ -3,6 +3,10 @@ package com.yulong.chatagent.rag.vector.milvus;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Guard that verifies the JVM default charset is UTF-8 before using Milvus BM25 search, because the
+ * Milvus Java SDK encodes {@code EmbeddedText} with the default charset.
+ */
 final class MilvusBm25Encoding {
 
     private MilvusBm25Encoding() {

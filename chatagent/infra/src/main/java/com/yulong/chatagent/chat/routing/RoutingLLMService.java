@@ -17,6 +17,13 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * {@link LLMService} 的核心实现：带首包探测与熔断的多模型路由引擎。
+ *
+ * <p>对 ModelSelector 选出的候选依次尝试：先 tryAcquire 断路器许可，再用厂商原始 SSE 或
+ * ChatClient.stream() 发起流式请求，靠 FirstPacketAwaiter 做首包探测；首包失败/超时则取消并切换下一个候选。
+ * streamDecisionWithRouting 把流收集成 BufferedStreamingResponse，streamChat 则直接把事件推给回调。</p>
+ */
 @Slf4j
 @Service
 public class RoutingLLMService implements LLMService {

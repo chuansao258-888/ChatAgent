@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/** Request body for creating a chat message within a session turn. */
 @Data
 @Builder
 @NoArgsConstructor

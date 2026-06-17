@@ -19,6 +19,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Application service implementing chat-message CRUD: list / create / append / update / delete
+ * messages, with session-ownership enforcement and filtering of DeepThink internal-trace messages
+ * from the user-facing history.
+ */
 @Service
 @AllArgsConstructor
 public class ChatMessageFacadeServiceImpl implements ChatMessageFacadeService {

@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.util.List;
 
+/** Outcome of deleting an MCP server, including any tool references that blocked hard deletion. */
 @Data
 @AllArgsConstructor
 public class DeleteMcpServerResponse {

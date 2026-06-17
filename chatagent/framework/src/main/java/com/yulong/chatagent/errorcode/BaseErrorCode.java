@@ -2,6 +2,13 @@ package com.yulong.chatagent.errorcode;
 
 import org.springframework.http.HttpStatus;
 
+/**
+ * Built-in error codes shared across the application.
+ *
+ * <p>Domain modules may define additional {@link IErrorCode} implementations,
+ * but these cover the common success and failure outcomes surfaced by the
+ * global exception handler.</p>
+ */
 public enum BaseErrorCode implements IErrorCode {
 
     SUCCESS(200, "success", HttpStatus.OK),

@@ -27,6 +27,13 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * 基于厂商原始 SSE 的流式通道（DeepSeek / 智谱）。
+ *
+ * <p>当候选在 provider binding 中存在时，直接解析原始 SSE，把正文、thinking 和工具调用分片转换成
+ * 路由层统一的 StreamCallback 事件；找不到 binding 时返回 empty，让外层回退到 ReactiveStreamAdapter
+ * 走 Spring AI ChatClient.stream()。</p>
+ */
 @Component
 @Slf4j
 public class ProviderDirectStreamSupport {

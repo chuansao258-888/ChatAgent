@@ -9,6 +9,10 @@ import lombok.Getter;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * DTO carrying an agent's configuration between layers: identity, system prompt, allowed tools,
+ * selected model, chat-generation options, and the active intent version.
+ */
 @Data
 @Builder
 public class AgentDTO {
@@ -34,6 +38,9 @@ public class AgentDTO {
 
     private LocalDateTime updatedAt;
 
+    /**
+     * Chat models an agent can use, each mapped to its routing client key.
+     */
     @Getter
     @AllArgsConstructor
     public enum ModelType {
@@ -55,6 +62,9 @@ public class AgentDTO {
         }
     }
 
+    /**
+     * Generation parameters for an agent, with built-in sensible defaults via {@link #defaultOptions()}.
+     */
     @Data
     @AllArgsConstructor
     @Builder

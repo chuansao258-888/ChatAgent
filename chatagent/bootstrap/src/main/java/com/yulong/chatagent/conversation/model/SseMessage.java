@@ -5,6 +5,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
+/**
+ * Envelope pushed to clients over the chat SSE stream, describing one event: its {@link Type},
+ * a {@link Payload}, and correlation {@link Metadata}.
+ */
 @Data
 @AllArgsConstructor
 @Builder
@@ -14,6 +18,9 @@ public class SseMessage {
     private Payload payload;
     private Metadata metadata;
 
+    /**
+     * Event payload: the rendered message plus optional status text, completion flag, and turn id.
+     */
     @Data
     @AllArgsConstructor
     @Builder
@@ -24,6 +31,9 @@ public class SseMessage {
         private String turnId;
     }
 
+    /**
+     * Correlation metadata, primarily the chat-message id.
+     */
     @Data
     @AllArgsConstructor
     @Builder
@@ -31,6 +41,9 @@ public class SseMessage {
         private String chatMessageId;
     }
 
+    /**
+     * Kinds of events streamed to the client during an agent turn.
+     */
     public enum Type {
         AI_GENERATED_CONTENT,
         AI_PLANNING,

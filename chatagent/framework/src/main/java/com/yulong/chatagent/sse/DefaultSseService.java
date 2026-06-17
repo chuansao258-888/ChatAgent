@@ -73,6 +73,10 @@ public class DefaultSseService implements SseService {
         }
     }
 
+    /**
+     * Redis broadcast envelope carrying the target stream key and the message to
+     * deliver on every node that owns a matching local emitter.
+     */
     public record BroadcastPayload(String streamKey, Object message) {
     }
 }

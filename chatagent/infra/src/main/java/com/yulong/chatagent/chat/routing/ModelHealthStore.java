@@ -9,6 +9,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+/**
+ * 每个模型独立维护的断路器状态（CLOSED / OPEN / HALF_OPEN）。
+ *
+ * <p>通过 {@code tryAcquire(id)} 发放调用许可并管理 HALF_OPEN 探针 generation；markSuccess /
+ * markFailure 在调用结束后回写结果，驱动状态机迁移与指标上报。一个模型的故障不会影响其他模型。</p>
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j

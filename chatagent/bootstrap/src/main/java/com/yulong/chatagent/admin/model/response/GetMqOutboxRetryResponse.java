@@ -6,6 +6,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/** MQ outbox retry diagnostics: queue depths plus a sample of recent outbox records. */
 @Data
 @Builder
 public class GetMqOutboxRetryResponse {
@@ -18,6 +19,7 @@ public class GetMqOutboxRetryResponse {
     private long dlqQueueDepth;
     private List<OutboxRecord> records;
 
+    /** One outbox record surfaced for admin retry inspection. */
     @Data
     @Builder
     public static class OutboxRecord {

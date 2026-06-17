@@ -7,16 +7,37 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Thread-safe wrapper around an {@link SseEmitter} that guards against sending
+ * to an already-terminated stream.
+ *
+ * <p>An {@link AtomicBoolean} ensures {@link #complete()} and
+ * {@link #fail(Throwable)} close the underlying emitter at most once,
+ * preventing duplicate terminal signals when completion, timeout, and error
+ * callbacks race.</p>
+ */
 @Slf4j
 public class SseEmitterSender {
 
     private final SseEmitter emitter;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
+    /**
+     * Wraps the given emitter for guarded access.
+     *
+     * @param emitter underlying SSE emitter
+     */
     public SseEmitterSender(SseEmitter emitter) {
         this.emitter = emitter;
     }
 
+    /**
+     * Sends a named SSE event, or an anonymous event when {@code eventName} is {@code null}.
+     *
+     * @param eventName SSE event name, or {@code null} for an unnamed event
+     * @param data      payload to deliver
+     * @throws ServiceException if the stream is already closed or the send fails
+     */
     public void sendEvent(String eventName, Object data) {
         if (closed.get()) {
             throw new ServiceException(BaseErrorCode.SERVICE_ERROR, "SSE already closed");
@@ -33,12 +54,21 @@ public class SseEmitterSender {
         }
     }
 
+    /**
+     * Completes the stream. No-op when the emitter is already terminated.
+     */
     public void complete() {
         if (closed.compareAndSet(false, true)) {
             emitter.complete();
         }
     }
 
+    /**
+     * Marks the stream as failed with the given cause and logs a warning.
+     * No-op when the emitter is already terminated.
+     *
+     * @param throwable failure cause
+     */
     public void fail(Throwable throwable) {
         if (closed.compareAndSet(false, true)) {
             emitter.completeWithError(throwable);

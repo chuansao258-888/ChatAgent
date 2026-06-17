@@ -6,6 +6,10 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * MyBatis mapper for {@link ChatSessionSummarySegmentDTO} persistence: inserting segments,
+ * fetching active segments by session (optionally ordered), and bulk deletion by session.
+ */
 @Mapper
 public interface ChatSessionSummarySegmentMapper {
 

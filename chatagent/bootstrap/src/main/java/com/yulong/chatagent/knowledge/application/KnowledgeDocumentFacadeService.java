@@ -5,6 +5,7 @@ import com.yulong.chatagent.knowledge.model.vo.KnowledgeDocumentVO;
 import com.yulong.chatagent.support.dto.KnowledgeDocumentDTO;
 import org.springframework.web.multipart.MultipartFile;
 
+/** Operations for managing and ingesting documents within a knowledge base. */
 public interface KnowledgeDocumentFacadeService {
 
     KnowledgeDocumentVO[] getKnowledgeDocuments(String knowledgeBaseId);

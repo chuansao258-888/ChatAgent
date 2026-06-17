@@ -5,6 +5,10 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * DTO representing a chat session: ownership, associated agent, title, turn-sequence pointers,
+ * and extensible metadata.
+ */
 @Data
 @Builder
 public class ChatSessionDTO {
@@ -26,6 +30,9 @@ public class ChatSessionDTO {
 
     private LocalDateTime updatedAt;
 
+    /**
+     * Extensible session metadata bag (currently empty).
+     */
     @Data
     public static class MetaData {
     }

@@ -8,6 +8,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
+/**
+ * Aggregates dashboard KPIs (users, sessions, messages) from the dashboard mapper, computing
+ * period-over-period deltas and percentage changes for the admin overview.
+ */
 @Component
 class DashboardOverviewAggregator {
 

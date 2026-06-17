@@ -3,6 +3,10 @@ package com.yulong.chatagent.user.application;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+/**
+ * BCrypt-based implementation of password hashing and verification; credential checks fail closed
+ * (return {@code false}) on null inputs rather than throwing.
+ */
 @Service
 public class BCryptPasswordService implements PasswordService {
 

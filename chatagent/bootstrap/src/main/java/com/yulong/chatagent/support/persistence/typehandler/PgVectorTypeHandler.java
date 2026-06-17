@@ -7,6 +7,10 @@ import org.apache.ibatis.type.MappedTypes;
 
 import java.sql.*;
 
+/**
+ * MyBatis type handler that maps {@code float[]} embeddings to a PostgreSQL pgvector column:
+ * serializes to {@code [v1,v2,...]} text on write and parses it back on read.
+ */
 @MappedJdbcTypes(JdbcType.OTHER)
 @MappedTypes(float[].class)
 public class PgVectorTypeHandler extends BaseTypeHandler<float[]> {

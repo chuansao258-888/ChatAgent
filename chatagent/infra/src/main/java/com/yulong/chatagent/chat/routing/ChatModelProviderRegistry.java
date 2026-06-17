@@ -15,6 +15,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * 原始厂商 SSE 通道需要的 provider 绑定表。
+ *
+ * <p>按 spring-client-key 暴露 {@link ProviderBinding}，供 ProviderDirectStreamSupport 判断某个候选能否
+ * 走原始 SSE 通道。绑定复用自动配置出来的 ChatModel 与底层 Api，避免重复配置鉴权和连接。</p>
+ */
 @Component
 public class ChatModelProviderRegistry {
 

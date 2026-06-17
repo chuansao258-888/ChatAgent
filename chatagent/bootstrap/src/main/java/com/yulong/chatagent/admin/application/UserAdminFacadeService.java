@@ -7,6 +7,7 @@ import com.yulong.chatagent.admin.model.response.CreateAdminUserResponse;
 import com.yulong.chatagent.admin.model.response.GetAdminUsersResponse;
 import com.yulong.chatagent.admin.model.response.ResetAdminUserPasswordResponse;
 
+/** Admin operations for managing user accounts: list, create, update, status, password reset, delete. */
 public interface UserAdminFacadeService {
 
     GetAdminUsersResponse getUsers(int page, int size, String keyword, String status);

@@ -14,6 +14,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
+/**
+ * MyBatis type handler that persists a {@code List<String>} as a JSON string in a VARCHAR column
+ * and deserializes it back on read. Null or blank values map to an empty list.
+ */
 @MappedJdbcTypes(JdbcType.VARCHAR)
 @MappedTypes(List.class)
 public class JsonStringListTypeHandler extends BaseTypeHandler<List<String>> {

@@ -12,6 +12,11 @@ import reactor.netty.http.client.HttpClient;
 
 import java.time.Duration;
 
+/**
+ * Applies configured connect and read timeouts to the HTTP clients used by chat model calls, for
+ * both the blocking {@code RestClient} and the reactive {@code WebClient}. Timeouts are sourced
+ * from {@link ChatRoutingProperties}.
+ */
 @Configuration
 public class ChatModelHttpClientTimeoutConfig {
 

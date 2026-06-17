@@ -4,6 +4,7 @@ import com.yulong.chatagent.admin.model.vo.AdminUserVO;
 import lombok.Builder;
 import lombok.Data;
 
+/** Paginated list of admin users. */
 @Data
 @Builder
 public class GetAdminUsersResponse {

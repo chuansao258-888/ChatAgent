@@ -4,6 +4,7 @@ import com.yulong.chatagent.admin.model.vo.ChatRoutingCandidateVO;
 import lombok.Builder;
 import lombok.Data;
 
+/** Snapshot of chat-routing configuration plus live candidate and circuit-breaker state for admin visibility. */
 @Data
 @Builder
 public class GetChatRoutingStateResponse {
