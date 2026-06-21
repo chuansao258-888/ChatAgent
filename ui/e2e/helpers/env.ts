@@ -35,6 +35,9 @@ export const routingFixtureLateDelayMs = Number.parseInt(
 export const routingProviderMode =
   process.env.PLAYWRIGHT_ROUTING_PROVIDER_MODE?.trim() || "fixture";
 
+export const liveWebSearchEnabled =
+  process.env.PLAYWRIGHT_LIVE_WEB_SEARCH?.trim().toLowerCase() === "true";
+
 export const e2eRunId =
   process.env.PLAYWRIGHT_E2E_RUN_ID?.trim() ||
   `e2e-${Date.now()}-${randomUUID().slice(0, 8)}`;
