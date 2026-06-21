@@ -198,7 +198,7 @@ public class AgentToolCallbackFactory {
                                      AgentDTO agentConfig,
                                      boolean emptyAllowedToolsMeansAll) {
         // 建一个后端工具名 -> Tool 对象的索引，后面按 Agent allowedTools 的名字快速找到候选工具。
-        // key 是 Tool.getName()，例如 emailTool；value 是具体 Tool bean。
+        // key 是 Tool.getName()，例如 dataBaseTool；value 是具体 Tool bean。
         Map<String, Tool> optionalToolMap = optionalTools
                 .stream()
                 .collect(Collectors.toMap(Tool::getName, Function.identity()));
@@ -237,8 +237,20 @@ public class AgentToolCallbackFactory {
             return false;
         }
         if (intentResolution != null) {
-            // 有明确意图时最好判断：只有 KB 意图才保留文件检索工具。
-            return intentResolution.kind() != IntentKind.KB;
+            if (intentResolution.kind() == IntentKind.KB) {
+                return false;
+            }
+            // TOOL 节点可以显式收窄到 fixed tool，但不能借意图树扩大 Agent 原有权限。
+            if (intentResolution.kind() == IntentKind.TOOL
+                    && intentResolution.allowedTools().contains(tool.getName())) {
+                return allowedToolNames != null
+                        && !allowedToolNames.isEmpty()
+                        && !allowedToolNames.contains(tool.getName());
+            }
+            return true;
+        }
+        if (allowedToolNames != null && allowedToolNames.contains(tool.getName())) {
+            return false;
         }
         // 没有意图结果时，如果当前 Agent 已经有可用 optional tools，
         // AGENT_DEFAULT_WITH_INTENT_NARROWING 模式会倾向于隐藏 fixed 的文件检索工具。
@@ -305,7 +317,7 @@ public class AgentToolCallbackFactory {
 
     private void registerCallback(Map<String, ToolCallback> callbacksByName, ToolCallback callback) {
         // 按工具名去重，保证最终传给模型的 tool schema 没有重复名称。
-        // 这里取的是 ToolDefinition.name()，也就是模型真正看到和调用的函数名，例如 sendEmail。
+        // 这里取的是 ToolDefinition.name()，也就是模型真正看到和调用的函数名，例如 queryDatabase。
         String name = callback.getToolDefinition().name();
         if (!StringUtils.hasText(name)) {
             return;

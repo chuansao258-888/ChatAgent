@@ -71,6 +71,8 @@ public class DeepThinkStepExecutor {
                               DeepThinkNotebook notebook,
                               String planGoal, String observations,
                               int maxTotalToolCalls, int maxTotalLlmCalls) {
+        String languageSource = DeepThinkLanguageSupport.stepLanguageSource(step, planGoal);
+        boolean preferChinese = DeepThinkLanguageSupport.prefersChinese(languageSource);
 
         String toolNames = availableTools.stream()
                 .map(ToolCallback::getToolDefinition)
@@ -80,14 +82,16 @@ public class DeepThinkStepExecutor {
         // 发送 AI_EXECUTING 状态
         messageBridge.publishStatusEvent(chatSessionId, turnId,
                 SseMessage.Type.AI_EXECUTING,
-                "执行 " + step.getId() + ": " + truncate(step.getTitle(), 30) + "...");
+                (preferChinese ? "执行 " : "Executing ") + step.getId() + ": " + truncate(step.getTitle(), 30) + "...");
 
-        String stepSystemPrompt = buildStepSystemPrompt(step, planGoal, observations, toolNames);
+        String stepSystemPrompt = buildStepSystemPrompt(step, planGoal, observations, toolNames, preferChinese);
 
         // 维护跨迭代的对话历史，让 LLM 看到之前的工具调用和结果
         List<Message> conversationHistory = new ArrayList<>();
         conversationHistory.add(new SystemMessage(stepSystemPrompt));
-        conversationHistory.add(new UserMessage("请开始执行步骤 " + step.getId() + "。"));
+        conversationHistory.add(new UserMessage(preferChinese
+                ? "请开始执行步骤 " + step.getId() + "。"
+                : "Start executing step " + step.getId() + "."));
 
         // 有界的 ReAct 子循环
         for (int i = 0; i < maxReactSteps; i++) {
@@ -105,8 +109,9 @@ public class DeepThinkStepExecutor {
 
             // 非首次迭代时追加用户提示到对话历史
             if (i > 0) {
-                conversationHistory.add(new UserMessage(
-                        "请基于刚才的工具结果继续执行步骤 " + step.getId() + "，或输出结论。"));
+                conversationHistory.add(new UserMessage(preferChinese
+                        ? "请基于刚才的工具结果继续执行步骤 " + step.getId() + "，或输出结论。"
+                        : "Continue executing step " + step.getId() + " from the tool results above, or output the conclusion."));
             }
 
             BufferedStreamingResponse response = messageBridge.collectDecisionResponse(
@@ -190,7 +195,7 @@ public class DeepThinkStepExecutor {
         }
 
         // 如果循环结束还没有明确结论，返回 PARTIAL
-        return "部分完成";
+        return preferChinese ? "部分完成" : "Partially completed";
     }
 
     /**
@@ -230,17 +235,21 @@ public class DeepThinkStepExecutor {
      * 使用 PromptLoader 渲染步骤执行系统提示词。
      */
     private String buildStepSystemPrompt(DeepThinkPlanStep step, String planGoal,
-                                          String observations, String toolNames) {
+                                          String observations, String toolNames,
+                                          boolean preferChinese) {
+        String listSeparator = preferChinese ? "；" : "; ";
         Map<String, String> vars = Map.of(
                 "stepId", step.getId(),
                 "stepTitle", step.getTitle(),
                 "stepObjective", step.getObjective(),
                 "stepDoneCriteria", step.getDoneCriteria() != null
-                        ? String.join("；", step.getDoneCriteria()) : "无特定标准",
+                        ? String.join(listSeparator, step.getDoneCriteria())
+                        : (preferChinese ? "无特定标准" : "No specific criteria"),
                 "planGoal", planGoal != null ? planGoal : "",
                 "stepExpectedEvidence", step.getExpectedEvidence() != null
-                        ? String.join("；", step.getExpectedEvidence()) : "无",
-                "observations", observations != null ? observations : "暂无",
+                        ? String.join(listSeparator, step.getExpectedEvidence())
+                        : (preferChinese ? "无" : "None"),
+                "observations", observations != null ? observations : (preferChinese ? "暂无" : "None yet"),
                 "availableTools", toolNames
         );
         return promptLoader.render(PromptConstants.DEEPTHINK_STEP_EXECUTOR, vars);

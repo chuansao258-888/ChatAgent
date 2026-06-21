@@ -11,7 +11,7 @@
 //   GET  /url             -> { url }
 //   GET  /title           -> { title }
 //   POST /goto   { url }  -> navigate; returns { url }
-//   POST /act    { locator, action, text?, key? }  -> click/fill/press a locator
+//   POST /act    { locator, action, text?, key?, files? }  -> click/fill/press/setInputFiles a locator
 //   GET  /ax[?max=200]    -> compact accessibility tree (role + name + value)
 //   GET  /axjson          -> full accessibility snapshot JSON
 //   GET  /shot[?full=1]   -> save screenshot to .auth/shot.png; returns { file }
@@ -22,6 +22,7 @@
 // locator shapes: { role, name? } | { placeholder } | { label } | { text, exact? }
 //                  | { testid } | { css }
 // action: "click" | "fill" (needs text) | "press" (needs key, default "Enter")
+//       | "setInputFiles" (needs files: [{ name, mimeType?, base64 }])
 //
 // Auth persistence: uses launchPersistentContext with a user-data-dir under .auth/,
 // so cookies/localStorage survive across restarts (login once, reuse).
@@ -119,6 +120,14 @@ const server = createServer(async (req, res) => {
       if (b.action === "click") await loc.first().click({ timeout: 10_000 });
       else if (b.action === "fill") await loc.first().fill(b.text ?? "", { timeout: 10_000 });
       else if (b.action === "press") await loc.first().press(b.key ?? "Enter", { timeout: 10_000 });
+      else if (b.action === "setInputFiles") {
+        const files = (b.files ?? []).map((file) => ({
+          name: file.name,
+          mimeType: file.mimeType,
+          buffer: Buffer.from(file.base64 ?? "", "base64"),
+        }));
+        await loc.first().setInputFiles(files, { timeout: 10_000 });
+      }
       else throw new Error(`unknown action: ${b.action}`);
       return send(res, 200, { ok: true });
     }

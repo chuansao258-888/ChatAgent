@@ -57,9 +57,10 @@ public class DeepThinkPlanner {
     public DeepThinkPlan plan(String chatSessionId, String turnId,
                               String userQuestion, String sessionContext,
                               int maxPlanItems) {
+        boolean preferChinese = DeepThinkLanguageSupport.prefersChinese(userQuestion);
         // 发送 AI_PLANNING 状态事件
         messageBridge.publishStatusEvent(chatSessionId, turnId,
-                SseMessage.Type.AI_PLANNING, "正在规划...");
+                SseMessage.Type.AI_PLANNING, preferChinese ? "正在规划..." : "Planning...");
 
         // 构建可用工具名称列表
         String toolNames = availableTools.stream()
@@ -75,7 +76,9 @@ public class DeepThinkPlanner {
                 "sessionContext", sessionContext != null ? sessionContext : ""
         );
         String systemPrompt = promptLoader.render(PromptConstants.DEEPTHINK_PLANNER, vars);
-        String userPrompt = "请根据以上信息生成执行计划。";
+        String userPrompt = preferChinese
+                ? "请根据以上信息生成执行计划。"
+                : "Generate the execution plan from the information above.";
 
         // 内部调用 LLM，不暴露给用户
         BufferedStreamingResponse response = messageBridge.collectDecisionResponse(

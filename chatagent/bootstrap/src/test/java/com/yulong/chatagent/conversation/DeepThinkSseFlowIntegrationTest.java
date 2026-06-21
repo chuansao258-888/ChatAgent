@@ -124,7 +124,7 @@ class DeepThinkSseFlowIntegrationTest {
 
         // --- Final synthesis ---
         when(messageBridge.streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(true)
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
         )).thenReturn("综合回答");
 
         // --- Run ---
@@ -156,7 +156,7 @@ class DeepThinkSseFlowIntegrationTest {
                 eq("session-1"), eq("turn-1"), any(SseMessage.Type.class), anyString());
 
         inOrder.verify(messageBridge).streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(true));
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false));
 
         inOrder.verify(messageBridge).attachTraceMetadata(
                 eq("session-1"), eq("turn-1"), any(AgentTraceMetadata.class));
@@ -185,10 +185,14 @@ class DeepThinkSseFlowIntegrationTest {
         BufferedStreamingResponse reactResponse = new BufferedStreamingResponse(
                 new ChatResponse(List.of(new Generation(reactMsg))), List.of());
 
-        when(messageBridge.streamDecisionResponse(
+        when(messageBridge.collectDecisionResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
-                anyList(), eq(llmService)
+                anyList(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(reactResponse);
+        when(messageBridge.streamFinalResponse(
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
+        )).thenReturn("ReAct 直接回答");
 
         AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 30);
         AgentRunContext context = buildContext(policy, AgentExecutionMode.REACT);

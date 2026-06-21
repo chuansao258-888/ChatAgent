@@ -96,7 +96,7 @@ const injectCitationLinks = (
         if (!Number.isInteger(index) || index < 1 || index > citations.length) {
           return match;
         }
-        return `[\\[${index}\\]](citation://${index})`;
+        return `[\\[${index}\\]](#citation-${index})`;
       });
     })
     .join("");
@@ -129,8 +129,8 @@ const createMarkdownComponents = (
   }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
     children?: React.ReactNode;
   }) => {
-    if (href?.startsWith("citation://")) {
-      const citationIndex = Number(href.replace("citation://", ""));
+    if (href?.startsWith("#citation-")) {
+      const citationIndex = Number(href.replace("#citation-", ""));
       const citation = citations[citationIndex - 1];
       if (!citation) {
         return <>{children}</>;
@@ -365,7 +365,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
         {messages
           .filter((message) => !message.metadata?.internal)
           .map((message) => (
-          <div key={message.id}>
+          <div key={message.id} data-chat-message-id={message.id}>
             {message.role === "assistant" ? (
               <div className="flex justify-start">
                 <div className="min-w-0 w-full max-w-3xl text-[15px] leading-7 text-[#ececec] md:text-base">

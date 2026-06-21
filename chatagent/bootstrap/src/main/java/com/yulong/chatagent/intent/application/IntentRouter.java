@@ -172,9 +172,14 @@ public class IntentRouter {
 
                 if (selection.noneMatched()) {
                     // 如果 LLM/启发式明确判断“这些候选都不对”，而当前节点本身已经是可落地意图，
-                    // 则允许停在当前节点；否则直接返回 none。
+                    // 则允许停在当前节点；如果当前节点还有子层，则继续向用户澄清下一层候选。
+                    // 只有根层没有合适候选时才返回 none。
                     if (current != null && current.getIntentKind() != null) {
                         result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                        return result;
+                    }
+                    if (current != null) {
+                        result = IntentRoutingResult.clarification(topCandidates(candidates), buildPathLabel(path));
                         return result;
                     }
                     result = IntentRoutingResult.none();
@@ -456,8 +461,12 @@ public class IntentRouter {
         if (!StringUtils.hasText(query)) {
             return true;
         }
-        String compact = normalize(query).replaceAll("\\s+", "");
-        return compact.length() <= 2 && !compact.matches(".*[a-zA-Z].*");
+        String normalized = normalize(query);
+        String compact = normalized.replaceAll("\\s+", "");
+        if (compact.length() <= 2 && !compact.matches(".*[a-zA-Z].*")) {
+            return true;
+        }
+        return normalized.matches("[a-zA-Z]{1,12}");
     }
 
     private String normalize(String value) {

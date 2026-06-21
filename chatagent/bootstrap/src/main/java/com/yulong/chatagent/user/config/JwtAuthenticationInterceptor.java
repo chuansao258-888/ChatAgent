@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.io.IOException;
+
 @Component
 @Slf4j
 /**
@@ -47,19 +49,11 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
 
         String accessToken = resolveAccessToken(request);
         if (!StringUtils.hasText(accessToken)) {
-            log.info("JWT auth rejected: missing access token, method={}, uri={}",
-                    request.getMethod(),
-                    request.getRequestURI());
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing access token");
-            return false;
+            return reject(request, response, "missing access token", "Missing access token", false);
         }
 
         if (!jwtTokenService.isAccessTokenValid(accessToken)) {
-            log.warn("JWT auth rejected: invalid access token, method={}, uri={}",
-                    request.getMethod(),
-                    request.getRequestURI());
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid access token");
-            return false;
+            return reject(request, response, "invalid access token", "Invalid access token", true);
         }
 
         JwtClaims claims = jwtTokenService.parseAccessToken(accessToken);
@@ -69,7 +63,7 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
                     request.getMethod(),
                     request.getRequestURI(),
                     claims.getUserId());
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User session is no longer valid");
+            sendUnauthorizedIfPossible(request, response, "User session is no longer valid");
             return false;
         }
 
@@ -91,6 +85,38 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
                                 Exception ex) {
         // Guarantee context cleanup even when the handler throws.
         UserContext.clear();
+    }
+
+    private boolean reject(HttpServletRequest request,
+                           HttpServletResponse response,
+                           String reason,
+                           String responseMessage,
+                           boolean warn) throws IOException {
+        if (warn) {
+            log.warn("JWT auth rejected: {}, method={}, uri={}",
+                    reason,
+                    request.getMethod(),
+                    request.getRequestURI());
+        } else {
+            log.info("JWT auth rejected: {}, method={}, uri={}",
+                    reason,
+                    request.getMethod(),
+                    request.getRequestURI());
+        }
+        sendUnauthorizedIfPossible(request, response, responseMessage);
+        return false;
+    }
+
+    private void sendUnauthorizedIfPossible(HttpServletRequest request,
+                                            HttpServletResponse response,
+                                            String responseMessage) throws IOException {
+        if (response.isCommitted()) {
+            log.debug("Skipped JWT unauthorized response because servlet response is already committed: method={}, uri={}",
+                    request.getMethod(),
+                    request.getRequestURI());
+            return;
+        }
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, responseMessage);
     }
 
     private String resolveAccessToken(HttpServletRequest request) {

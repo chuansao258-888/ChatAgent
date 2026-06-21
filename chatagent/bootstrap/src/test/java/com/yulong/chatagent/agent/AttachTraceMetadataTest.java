@@ -1,9 +1,11 @@
 package com.yulong.chatagent.agent;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
+import com.yulong.chatagent.conversation.model.SseMessage;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
-import com.yulong.chatagent.rag.model.CitationMetadata;
+import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.AgentTraceMetadata;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +33,7 @@ import static org.mockito.Mockito.*;
 class AttachTraceMetadataTest {
 
     @Mock private ChatMessageFacadeService chatMessageFacadeService;
+    @Mock private SseService sseService;
 
     private AgentTraceMetadata sampleTrace;
 
@@ -65,7 +68,7 @@ class AttachTraceMetadataTest {
 
         // Call the method under test via the interface contract
         // We create a minimal test harness that delegates to the real impl
-        TestableBridge bridge = new TestableBridge(chatMessageFacadeService);
+        TestableBridge bridge = new TestableBridge(chatMessageFacadeService, sseService);
         bridge.attachTraceMetadata("session-1", "turn-1", sampleTrace);
 
         // Verify update was called on the final assistant message
@@ -76,6 +79,12 @@ class AttachTraceMetadataTest {
         assertThat(updateReq.getMetadata()).isNotNull();
         assertThat(updateReq.getMetadata().getAgentTrace()).isNotNull();
         assertThat(updateReq.getMetadata().getAgentTrace().getMode()).isEqualTo("DEEPTHINK");
+
+        ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
+        verify(sseService).publish(eq("session-1"), sseCaptor.capture());
+        assertThat(sseCaptor.getValue().getType()).isEqualTo(SseMessage.Type.AI_GENERATED_CONTENT);
+        assertThat(sseCaptor.getValue().getPayload().getMessage().getMetadata().getAgentTrace())
+                .isNotNull();
     }
 
     @Test
@@ -92,7 +101,7 @@ class AttachTraceMetadataTest {
         when(chatMessageFacadeService.getChatMessagesBySessionIdRecently("session-1", 50))
                 .thenReturn(messages);
 
-        TestableBridge bridge = new TestableBridge(chatMessageFacadeService);
+        TestableBridge bridge = new TestableBridge(chatMessageFacadeService, sseService);
         bridge.attachTraceMetadata("session-1", "turn-1", sampleTrace);
 
         // No update should be called — no non-internal assistant for turn-1
@@ -116,7 +125,7 @@ class AttachTraceMetadataTest {
         when(chatMessageFacadeService.getChatMessagesBySessionIdRecently("session-1", 50))
                 .thenReturn(messages);
 
-        TestableBridge bridge = new TestableBridge(chatMessageFacadeService);
+        TestableBridge bridge = new TestableBridge(chatMessageFacadeService, sseService);
         bridge.attachTraceMetadata("session-1", "turn-1", sampleTrace);
 
         // Should update only "final-1", not "internal-1"
@@ -138,7 +147,7 @@ class AttachTraceMetadataTest {
         when(chatMessageFacadeService.getChatMessagesBySessionIdRecently("session-1", 50))
                 .thenReturn(messages);
 
-        TestableBridge bridge = new TestableBridge(chatMessageFacadeService);
+        TestableBridge bridge = new TestableBridge(chatMessageFacadeService, sseService);
         bridge.attachTraceMetadata("session-1", "turn-1", sampleTrace);
 
         ArgumentCaptor<UpdateChatMessageRequest> updateCaptor = ArgumentCaptor.forClass(UpdateChatMessageRequest.class);
@@ -156,8 +165,9 @@ class AttachTraceMetadataTest {
     // Minimal testable subclass that exposes just attachTraceMetadata
     @SuppressWarnings("unchecked")
     private static class TestableBridge extends AgentMessageBridgeImpl {
-        TestableBridge(ChatMessageFacadeService facadeService) {
-            super(null, null, facadeService, null, null, mock(ObjectProvider.class));
+        TestableBridge(ChatMessageFacadeService facadeService, SseService sseService) {
+            super(sseService, new ChatMessageConverter(new ObjectMapper()),
+                    facadeService, null, null, mock(ObjectProvider.class));
         }
     }
 

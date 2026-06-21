@@ -16,9 +16,12 @@ class ChatRoutingPropertiesBindingTest {
     void shouldBindRoutingPropertiesFromApplicationYaml() throws Exception {
         ChatRoutingProperties properties = bindFromApplicationYaml();
 
-        assertThat(properties.getDefaultModel()).isEqualTo("glm-5.1");
-        assertThat(properties.getDeepThinkingModel()).isEqualTo("glm-5.1");
+        assertThat(properties.getDefaultModel()).isEqualTo("glm-5.2");
+        assertThat(properties.getDeepThinkingModel()).isEqualTo("glm-5.2");
+        assertThat(properties.getAgentPrimaryModel()).isEqualTo("glm-5.2");
+        assertThat(properties.getAgentFallbackModel()).isEqualTo("deepseek-v4-flash");
         assertThat(properties.getFirstPacketTimeoutSeconds()).isEqualTo(60);
+        assertThat(properties.getDecisionTotalTimeoutSeconds()).isEqualTo(180);
         assertThat(properties.getStreamTotalTimeoutSeconds()).isEqualTo(300);
         assertThat(properties.getHttpConnectTimeoutSeconds()).isEqualTo(10);
         assertThat(properties.getHttpReadTimeoutSeconds()).isEqualTo(65);
@@ -32,19 +35,21 @@ class ChatRoutingPropertiesBindingTest {
 
         assertThat(properties.getCandidates())
                 .extracting(ChatRoutingProperties.CandidateConfig::getId)
-                .containsExactly("glm-5.1", "deepseek-reasoner");
+                .containsExactly("glm-5.2", "deepseek-v4-flash");
         ChatRoutingProperties.CandidateConfig glm = properties.getCandidates().get(0);
-        assertThat(glm.getSpringClientKey()).isEqualTo("glm-5.1");
+        assertThat(glm.getSpringClientKey()).isEqualTo("glm-5.2");
         assertThat(glm.getPriority()).isEqualTo(5);
         assertThat(glm.getEnabled()).isTrue();
         assertThat(glm.getSupportsThinking()).isTrue();
-        assertThat(glm.getThinkingStrategy()).isEqualTo("ZHIPU_THINKING_FLAG");
+        assertThat(glm.getThinkingStrategy()).isEqualTo("ANTHROPIC_THINKING");
 
         ChatRoutingProperties.CandidateConfig deepseek = properties.getCandidates().get(1);
-        assertThat(deepseek.getSpringClientKey()).isEqualTo("deepseek-reasoner");
+        assertThat(deepseek.getSpringClientKey()).isEqualTo("deepseek-v4-flash");
         assertThat(deepseek.getPriority()).isEqualTo(10);
         assertThat(deepseek.getEnabled()).isTrue();
         assertThat(deepseek.getSupportsThinking()).isTrue();
+        assertThat(deepseek.getThinkingStrategy()).isEqualTo("MODEL_OVERRIDE");
+        assertThat(deepseek.getThinkingModel()).isEqualTo("deepseek-v4-pro");
     }
 
     private static ChatRoutingProperties bindFromApplicationYaml() throws Exception {

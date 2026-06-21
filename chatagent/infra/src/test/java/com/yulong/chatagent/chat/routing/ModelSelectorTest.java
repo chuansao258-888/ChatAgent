@@ -8,101 +8,107 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ModelSelectorTest {
 
     @Test
-    void shouldKeepGlmFallbackWhenCandidateKeyMatchesRegisteredBean() {
+    void shouldSelectConfiguredAgentPrimaryBeforeFallback() {
         ChatRoutingProperties properties = new ChatRoutingProperties();
-        properties.setDefaultModel("deepseek-chat");
+        properties.setAgentPrimaryModel("glm-5.2");
+        properties.setAgentFallbackModel("deepseek-v4-flash");
         properties.setCandidates(List.of(
-                candidate("deepseek-chat", "deepseek-chat", 10),
-                candidate("glm-4", "glm-4.6", 20)
+                candidate("deepseek-v4-flash", "deepseek-v4-flash", 1, true),
+                candidate("glm-5.2", "glm-5.2", 99, true),
+                candidate("third", "third", 0, true)
         ));
 
-        ChatClient deepseekClient = mock(ChatClient.class);
         ChatClient glmClient = mock(ChatClient.class);
+        ChatClient deepseekClient = mock(ChatClient.class);
         ChatClientRegistry registry = mock(ChatClientRegistry.class);
-        when(registry.supports("deepseek-chat")).thenReturn(true);
-        when(registry.supports("glm-4.6")).thenReturn(true);
-        when(registry.getRequired("deepseek-chat")).thenReturn(deepseekClient);
-        when(registry.getRequired("glm-4.6")).thenReturn(glmClient);
+        when(registry.supports("glm-5.2")).thenReturn(true);
+        when(registry.supports("deepseek-v4-flash")).thenReturn(true);
+        when(registry.getRequired("glm-5.2")).thenReturn(glmClient);
+        when(registry.getRequired("deepseek-v4-flash")).thenReturn(deepseekClient);
 
         ModelSelector selector = new ModelSelector(
                 properties,
                 registry,
-                mock(ModelCapabilityResolver.class),
+                capabilityResolver(true),
                 new RoutingRuntimeOverridesStore());
 
         List<ModelTarget> targets = selector.selectChatCandidates(false);
 
         assertThat(targets)
                 .extracting(ModelTarget::id)
-                .containsExactly("deepseek-chat", "glm-4");
-        assertThat(targets.get(1).chatClient()).isSameAs(glmClient);
-        verify(registry).supports("glm-4.6");
+                .containsExactly("glm-5.2", "deepseek-v4-flash");
+        assertThat(targets.get(0).chatClient()).isSameAs(glmClient);
+        assertThat(targets.get(1).chatClient()).isSameAs(deepseekClient);
     }
 
     @Test
-    void shouldDropFallbackWhenRegisteredBeanKeyDoesNotExist() {
+    void shouldDropConfiguredCandidateWhenRegisteredBeanKeyDoesNotExist() {
         ChatRoutingProperties properties = new ChatRoutingProperties();
+        properties.setAgentPrimaryModel("glm-5.2");
+        properties.setAgentFallbackModel("deepseek-v4-flash");
         properties.setCandidates(List.of(
-                candidate("deepseek-chat", "deepseek-chat", 10),
-                candidate("glm-4", "glm-4", 20)
+                candidate("glm-5.2", "glm-5.2", 10, true),
+                candidate("deepseek-v4-flash", "missing-client", 20, true)
         ));
 
-        ChatClient deepseekClient = mock(ChatClient.class);
+        ChatClient glmClient = mock(ChatClient.class);
         ChatClientRegistry registry = mock(ChatClientRegistry.class);
-        when(registry.supports("deepseek-chat")).thenReturn(true);
-        when(registry.supports("glm-4")).thenReturn(false);
-        when(registry.getRequired("deepseek-chat")).thenReturn(deepseekClient);
+        when(registry.supports("glm-5.2")).thenReturn(true);
+        when(registry.supports("missing-client")).thenReturn(false);
+        when(registry.getRequired("glm-5.2")).thenReturn(glmClient);
 
         ModelSelector selector = new ModelSelector(
                 properties,
                 registry,
-                mock(ModelCapabilityResolver.class),
+                capabilityResolver(true),
                 new RoutingRuntimeOverridesStore());
 
         assertThat(selector.selectChatCandidates(false))
                 .extracting(ModelTarget::id)
-                .containsExactly("deepseek-chat");
+                .containsExactly("glm-5.2");
     }
 
     @Test
-    void shouldApplyRuntimeOverridesBeforeFilteringSortingAndThinkingChecks() {
+    void shouldApplyRuntimeOverridesBeforeFilteringAndThinkingChecksWithoutReorderingThirdModel() {
         ChatRoutingProperties properties = new ChatRoutingProperties();
-        properties.setDefaultModel(null);
-        properties.setDeepThinkingModel(null);
+        properties.setAgentPrimaryModel("glm-5.2");
+        properties.setAgentFallbackModel("deepseek-v4-flash");
         properties.setCandidates(List.of(
-                candidate("deepseek-chat", "deepseek-chat", 30, false),
-                candidate("glm-4", "glm-4.6", 20, true),
-                candidate("qwen", "qwen", 10, true)
+                candidate("glm-5.2", "glm-5.2", 30, true),
+                candidate("deepseek-v4-flash", "deepseek-v4-flash", 20, false),
+                candidate("third", "third", 1, true)
         ));
 
-        ChatClient deepseekClient = mock(ChatClient.class);
-        ChatClient qwenClient = mock(ChatClient.class);
+        ChatClient deepseekReasonerClient = mock(ChatClient.class);
         ChatClientRegistry registry = mock(ChatClientRegistry.class);
-        when(registry.supports("deepseek-chat")).thenReturn(true);
-        when(registry.supports("glm-4.6")).thenReturn(true);
-        when(registry.supports("qwen")).thenReturn(true);
-        when(registry.getRequired("deepseek-chat")).thenReturn(deepseekClient);
-        when(registry.getRequired("qwen")).thenReturn(qwenClient);
+        when(registry.supports("deepseek-v4-flash")).thenReturn(true);
+        when(registry.getRequired("deepseek-v4-flash")).thenReturn(deepseekReasonerClient);
 
         RoutingRuntimeOverridesStore overrides = new RoutingRuntimeOverridesStore();
         overrides.upsert(new RoutingRuntimeOverridesStore.CandidateOverride(
-                "deepseek-chat",
+                "deepseek-v4-flash",
                 true,
                 5,
                 true,
                 "MODEL_OVERRIDE",
-                "deepseek-reasoner"));
+                "deepseek-v4-pro"));
         overrides.upsert(new RoutingRuntimeOverridesStore.CandidateOverride(
-                "glm-4",
+                "glm-5.2",
                 false,
                 null,
                 null,
+                null,
+                null));
+        overrides.upsert(new RoutingRuntimeOverridesStore.CandidateOverride(
+                "third",
+                true,
+                -100,
+                true,
                 null,
                 null));
 
@@ -117,14 +123,51 @@ class ModelSelectorTest {
 
         assertThat(normalTargets)
                 .extracting(ModelTarget::id)
-                .containsExactly("deepseek-chat", "qwen");
+                .containsExactly("deepseek-v4-flash");
         assertThat(normalTargets.get(0).candidate().getPriority()).isEqualTo(5);
         assertThat(normalTargets.get(0).candidate().getSupportsThinking()).isTrue();
         assertThat(normalTargets.get(0).candidate().getThinkingStrategy()).isEqualTo("MODEL_OVERRIDE");
-        assertThat(normalTargets.get(0).candidate().getThinkingModel()).isEqualTo("deepseek-reasoner");
+        assertThat(normalTargets.get(0).candidate().getThinkingModel()).isEqualTo("deepseek-v4-pro");
         assertThat(deepThinkingTargets)
                 .extracting(ModelTarget::id)
-                .containsExactly("deepseek-chat", "qwen");
+                .containsExactly("deepseek-v4-flash");
+    }
+
+    @Test
+    void shouldUseSameConfiguredPairForDeepThinking() {
+        ChatRoutingProperties properties = new ChatRoutingProperties();
+        properties.setAgentPrimaryModel("glm-5.2");
+        properties.setAgentFallbackModel("deepseek-v4-flash");
+        properties.setDeepThinkingModel("third");
+        properties.setCandidates(List.of(
+                candidate("third", "third", 1, true),
+                candidate("glm-5.2", "glm-5.2", 10, true),
+                candidate("deepseek-v4-flash", "deepseek-v4-flash", 20, true)
+        ));
+
+        ChatClient glmClient = mock(ChatClient.class);
+        ChatClient deepseekClient = mock(ChatClient.class);
+        ChatClientRegistry registry = mock(ChatClientRegistry.class);
+        when(registry.supports("glm-5.2")).thenReturn(true);
+        when(registry.supports("deepseek-v4-flash")).thenReturn(true);
+        when(registry.getRequired("glm-5.2")).thenReturn(glmClient);
+        when(registry.getRequired("deepseek-v4-flash")).thenReturn(deepseekClient);
+
+        ModelSelector selector = new ModelSelector(
+                properties,
+                registry,
+                capabilityResolver(true),
+                new RoutingRuntimeOverridesStore());
+
+        assertThat(selector.selectChatCandidates(true))
+                .extracting(ModelTarget::id)
+                .containsExactly("glm-5.2", "deepseek-v4-flash");
+    }
+
+    private static ModelCapabilityResolver capabilityResolver(boolean supportsThinking) {
+        ModelCapabilityResolver resolver = mock(ModelCapabilityResolver.class);
+        when(resolver.supportsThinking(org.mockito.ArgumentMatchers.any())).thenReturn(supportsThinking);
+        return resolver;
     }
 
     private static ChatRoutingProperties.CandidateConfig candidate(String id, String springClientKey, int priority) {

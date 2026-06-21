@@ -20,7 +20,7 @@ The backend has been simplified from six modules to three functional modules.
   `SseEmitterSender`
 - `infra` owns infrastructure integrations:
   `chat.ChatClientRegistry`, `chat.ChatModelRouter`, `chat.config.MultiChatClientConfig`,
-  `mail.EmailService`, `mail.impl.EmailServiceImpl`
+  provider routing, and provider-specific streaming adapters
 - `bootstrap` now owns startup and all business/runtime code:
   `ChatAgentApplication`, `conversation`, `user`, `admin`, `agent`, `rag`,
   `support` dto/persistence code, `InternalAssistantService`,

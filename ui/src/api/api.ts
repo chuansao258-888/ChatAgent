@@ -7,7 +7,7 @@ export interface ChatOptions {
   messageLength?: number;
 }
 
-export type ModelType = "deepseek-chat" | "glm-4.6";
+export type ModelType = string;
 
 export interface AgentVO {
   id: string;

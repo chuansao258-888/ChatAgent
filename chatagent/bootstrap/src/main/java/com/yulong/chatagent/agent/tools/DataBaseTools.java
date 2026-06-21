@@ -54,8 +54,8 @@ public class DataBaseTools implements Tool {
             // 运行时再次做只读校验，不能只依赖工具描述约束模型行为。
             String trimmedSql = sql.trim().toUpperCase();
             if (!trimmedSql.startsWith("SELECT")) {
-                log.warn("Rejected non-SELECT query: {}", sql);
-                return "Error: only SELECT statements are supported. Provided SQL: " + sql;
+                log.warn("Rejected non-SELECT database tool query.");
+                return "Error: only SELECT statements are supported.";
             }
 
             List<String> rows = jdbcTemplate.query(sql, (ResultSet rs) -> {
@@ -140,8 +140,9 @@ public class DataBaseTools implements Tool {
             log.info("SQL query executed successfully, returned {} data rows", dataRowCount);
             return "Query result:\n" + String.join("\n", rows);
         } catch (Exception e) {
-            log.error("Database query failed: {}", e.getMessage(), e);
-            return "Error: operation failed - " + e.getMessage() + "\nSQL: " + sql;
+            log.error("Database query failed: exception={}", e.getClass().getSimpleName());
+            log.debug("Database query failure details", e);
+            return "Error: database query failed.";
         }
     }
 }

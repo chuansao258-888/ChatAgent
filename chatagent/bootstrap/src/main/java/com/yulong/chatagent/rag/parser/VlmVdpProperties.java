@@ -13,12 +13,12 @@ import org.springframework.stereotype.Component;
 public class VlmVdpProperties {
 
     private boolean enabled = true;
-    private String clientId = "glm-4.6";
-    private String modelId = "glm-4v-flash";
+    private String clientId = "glm-4.6v-flash";
+    private String modelId = "glm-4.6v-flash";
     private String promptVersion = "v1";
     private int maxTokens = 1200;
     private double temperature = 0.1d;
-    private long timeoutMs = 5000L;
+    private long timeoutMs = 30000L;
     private int corePoolSize = 1;
     private int maxPoolSize = 2;
     private int queueCapacity = 0;

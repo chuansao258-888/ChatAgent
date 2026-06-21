@@ -1,4 +1,4 @@
-<!-- version: v1 -->
+<!-- version: v2 -->
 <!-- path: prompts/memory/l3-extractor.md -->
 
 # Role
@@ -29,8 +29,14 @@ You are a long-term memory extractor for an AI assistant. Your task is to inspec
 ```
 
 - `type` must be exactly `"preference"` or `"fact"`.
-  - `preference`: user preferences, interaction habits, assistant-behavior preferences.
+  - `preference`: anything the user says they prefer, want, like, or expect as a
+    recurring interaction style, label, format, wording, or assistant behavior.
+    This remains a preference even when the sentence is phrased as a fact about
+    "the user's preference".
   - `fact`: stable user/project/background facts and durable decisions.
+- Classify by semantic meaning, not sentence grammar. A statement such as
+  "The user's preferred review badge is X" MUST be `preference`; a statement
+  such as "The project codename is X" MUST be `fact`.
 - `content`: a clear, self-contained statement. Use the same language as the user.
 - `tags`: optional list of short lowercase tags for categorization. Use kebab-case.
 

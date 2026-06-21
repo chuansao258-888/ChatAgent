@@ -91,9 +91,12 @@ class ChatEventProcessorTest {
         ArgumentCaptor<ChatMessageDTO> messageCaptor = ArgumentCaptor.forClass(ChatMessageDTO.class);
         verify(chatMessageFacadeService).createChatMessage(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getContent()).contains("ChatAgent is running without a configured chat model");
+        assertThat(messageCaptor.getValue().getContent())
+                .contains("CHATAGENT_ZAI_CODING_API_KEY")
+                .contains("CHATAGENT_DEEPSEEK_API_KEY");
         verify(sseService, times(3)).publish(anyString(), any(SseMessage.class));
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
-        verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any());
+        verify(chatAgentFactory, never()).create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any(), anyString());
         verify(chatTurnMetricRecorder).record(any(ChatEvent.class), any(AgentRunResult.class));
         verify(currentTurnCitationHolder).clear("session-1", "turn-1");
     }
@@ -104,7 +107,7 @@ class ChatEventProcessorTest {
         ChatEvent event = new ChatEvent("agent-1", "session-1", "turn-1", "msg-1", "hello", 3, null, "rewritten", null);
         when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
         when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1", AgentExecutionMode.REACT))
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1", AgentExecutionMode.REACT, "hello"))
                 .thenReturn(chatAgent);
         when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("assistant-1").build());
@@ -174,13 +177,13 @@ class ChatEventProcessorTest {
         AgentRunResult runResult = AgentRunResult.success(42L, true);
 
         when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
-        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK))
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK, "hello"))
                 .thenReturn(chatAgent);
         when(chatAgent.run()).thenReturn(runResult);
 
         processor.process(event);
 
-        verify(chatAgentFactory).create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK);
+        verify(chatAgentFactory).create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK, "hello");
         verify(chatTurnMetricRecorder).record(event, runResult);
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
     }

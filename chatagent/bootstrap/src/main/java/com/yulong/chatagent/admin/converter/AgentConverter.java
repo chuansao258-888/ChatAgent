@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.admin.model.request.UpsertAgentRequest;
 import com.yulong.chatagent.admin.model.vo.AgentVO;
+import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.persistence.entity.Agent;
 import lombok.AllArgsConstructor;
@@ -20,12 +21,12 @@ import org.springframework.util.Assert;
 public class AgentConverter {
 
     private final ObjectMapper objectMapper;
+    private final ChatRoutingProperties chatRoutingProperties;
 
     public Agent toEntity(AgentDTO agentDTO) throws JsonProcessingException {
         Assert.notNull(agentDTO, "AgentDTO cannot be null");
         Assert.notNull(agentDTO.getAllowedTools(), "Allowed tools cannot be null");
         Assert.notNull(agentDTO.getChatOptions(), "Chat options cannot be null");
-        Assert.notNull(agentDTO.getModel(), "Model cannot be null");
 
         return Agent.builder()
                 .id(agentDTO.getId())
@@ -33,7 +34,7 @@ public class AgentConverter {
                 .name(agentDTO.getName())
                 .description(agentDTO.getDescription())
                 .systemPrompt(agentDTO.getSystemPrompt())
-                .model(agentDTO.getModel().getModelName())
+                .model(configuredAgentModelName())
                 .allowedTools(objectMapper.writeValueAsString(agentDTO.getAllowedTools()))
                 .chatOptions(objectMapper.writeValueAsString(agentDTO.getChatOptions()))
                 .activeIntentVersion(agentDTO.getActiveIntentVersion())
@@ -46,7 +47,6 @@ public class AgentConverter {
         Assert.notNull(agent, "Agent cannot be null");
         Assert.notNull(agent.getAllowedTools(), "Allowed tools cannot be null");
         Assert.notNull(agent.getChatOptions(), "Chat options cannot be null");
-        Assert.notNull(agent.getModel(), "Model cannot be null");
 
         return AgentDTO.builder()
                 .id(agent.getId())
@@ -54,7 +54,7 @@ public class AgentConverter {
                 .name(agent.getName())
                 .description(agent.getDescription())
                 .systemPrompt(agent.getSystemPrompt())
-                .model(AgentDTO.ModelType.fromModelName(agent.getModel()))
+                .model(configuredAgentModelType())
                 .allowedTools(objectMapper.readValue(agent.getAllowedTools(), new TypeReference<>(){}))
                 .chatOptions(objectMapper.readValue(agent.getChatOptions(), AgentDTO.ChatOptions.class))
                 .activeIntentVersion(agent.getActiveIntentVersion())
@@ -69,7 +69,7 @@ public class AgentConverter {
                 .name(dto.getName())
                 .description(dto.getDescription())
                 .systemPrompt(dto.getSystemPrompt())
-                .model(dto.getModel())
+                .model(configuredAgentModelType())
                 .allowedTools(dto.getAllowedTools())
                 .chatOptions(dto.getChatOptions())
                 .build();
@@ -83,13 +83,12 @@ public class AgentConverter {
         Assert.notNull(request, "UpsertAgentRequest cannot be null");
         Assert.notNull(request.getAllowedTools(), "Allowed tools cannot be null");
         Assert.notNull(request.getChatOptions(), "Chat options cannot be null");
-        Assert.notNull(request.getModel(), "Model cannot be null");
 
         return AgentDTO.builder()
                 .name(request.getName())
                 .description(request.getDescription())
                 .systemPrompt(request.getSystemPrompt())
-                .model(AgentDTO.ModelType.fromModelName(request.getModel()))
+                .model(configuredAgentModelType())
                 .allowedTools(request.getAllowedTools())
                 .chatOptions(request.getChatOptions())
                 .build();
@@ -108,14 +107,20 @@ public class AgentConverter {
         if (request.getSystemPrompt() != null) {
             dto.setSystemPrompt(request.getSystemPrompt());
         }
-        if (request.getModel() != null) {
-            dto.setModel(AgentDTO.ModelType.fromModelName(request.getModel()));
-        }
+        dto.setModel(configuredAgentModelType());
         if (request.getAllowedTools() != null) {
             dto.setAllowedTools(request.getAllowedTools());
         }
         if (request.getChatOptions() != null) {
             dto.setChatOptions(request.getChatOptions());
         }
+    }
+
+    private AgentDTO.ModelType configuredAgentModelType() {
+        return AgentDTO.ModelType.fromModelName(configuredAgentModelName());
+    }
+
+    private String configuredAgentModelName() {
+        return chatRoutingProperties.getAgentPrimaryModel();
     }
 }

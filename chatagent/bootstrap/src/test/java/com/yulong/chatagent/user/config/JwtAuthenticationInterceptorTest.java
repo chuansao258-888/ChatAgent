@@ -76,6 +76,22 @@ class JwtAuthenticationInterceptorTest {
     }
 
     @Test
+    void shouldNotSendErrorAgainWhenCommittedSseResponseHasInvalidToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/sse/connect/session-1");
+        request.setParameter("access_token", "expired-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setCommitted(true);
+        when(jwtTokenService.isAccessTokenValid("expired-token")).thenReturn(false);
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(jwtTokenService).isAccessTokenValid("expired-token");
+    }
+
+    @Test
     void shouldUseCurrentUserSnapshotFromRepository() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI("/api/admin/users");

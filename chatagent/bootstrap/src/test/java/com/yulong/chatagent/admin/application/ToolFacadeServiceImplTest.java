@@ -51,7 +51,7 @@ class ToolFacadeServiceImplTest {
 
     @Test
     void shouldKeepOtherLocalAndMcpOptionalToolsVisible() {
-        Tool localOptional = namedTool("emailTool", ToolType.OPTIONAL);
+        Tool localOptional = namedTool("localTool", ToolType.OPTIONAL);
         Tool fixedTool = namedTool("TerminateTool", ToolType.FIXED);
         Tool mcpTool = namedTool("mcp_weather", ToolType.OPTIONAL);
         McpRuntimeToolRegistry registry = mock(McpRuntimeToolRegistry.class);
@@ -67,10 +67,10 @@ class ToolFacadeServiceImplTest {
                 .containsExactly("TerminateTool");
         assertThat(facade.getOptionalTools())
                 .extracting(Tool::getName)
-                .containsExactly("emailTool", "mcp_weather");
+                .containsExactly("localTool", "mcp_weather");
         assertThat(facade.getAllTools())
                 .extracting(Tool::getName)
-                .containsExactly("TerminateTool", "emailTool", "mcp_weather");
+                .containsExactly("TerminateTool", "localTool", "mcp_weather");
     }
 
     private static ToolFacadeServiceImpl facadeWith(Tool tool) {

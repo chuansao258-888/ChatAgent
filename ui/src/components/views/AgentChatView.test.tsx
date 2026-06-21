@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AgentChatView from "./AgentChatView.tsx";
 import {
@@ -102,7 +102,12 @@ vi.mock("./agentChatView/AgentChatHistory.tsx", () => ({
   }: {
     displayAgentStatus?: boolean;
     agentStatusText?: string;
-    messages: Array<{ id: string; role: string; content: string }>;
+    messages: Array<{
+      id: string;
+      role: string;
+      content: string;
+      metadata?: { agentTrace?: unknown };
+    }>;
     persistentErrorText?: string;
     onRetryLastMessage?: () => void;
     onDismissError?: () => void;
@@ -112,6 +117,12 @@ vi.mock("./agentChatView/AgentChatHistory.tsx", () => ({
       <div data-testid="history-count">{messages.length}</div>
       <div data-testid="history-messages">
         {messages.map((message) => `${message.id}:${message.content}`).join("|")}
+      </div>
+      <div data-testid="history-traces">
+        {messages
+          .filter((message) => message.metadata?.agentTrace)
+          .map((message) => message.id)
+          .join("|")}
       </div>
       {persistentErrorText ? (
         <div data-testid="persistent-error">
@@ -147,6 +158,7 @@ vi.mock("./agentChatView/AgentChatInput.tsx", () => ({
     <div>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => {
           void onSend("hello");
         }}
@@ -252,11 +264,11 @@ describe("AgentChatView", () => {
     });
 
     expect(createChatMessage).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        turnId: "turn-client",
-        role: "user",
-        content: "hello",
-        executionMode: "REACT",
+      sessionId: "session-1",
+      turnId: "turn-client",
+      role: "user",
+      content: "hello",
+      executionMode: "REACT",
     });
 
     expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe("turn-server");
@@ -298,6 +310,146 @@ describe("AgentChatView", () => {
 
     expect(screen.getByTestId("history-status").textContent).toBe("idle");
     expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBeNull();
+  });
+
+  it("reconciles final metadata when compensation poll sees assistant without AI_DONE", async () => {
+    vi.mocked(getChatMessagesBySessionId).mockReset();
+    vi.mocked(getChatMessagesBySessionId)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "assistant-stream-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "assistant",
+          content: "Final answer",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "assistant-stream-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "assistant",
+          content: "Final answer",
+          metadata: {
+            agentTrace: {
+              mode: "DEEPTHINK",
+            },
+          },
+        },
+      ])
+      .mockResolvedValue([
+        {
+          id: "assistant-stream-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "assistant",
+          content: "Final answer",
+          metadata: {
+            agentTrace: {
+              mode: "DEEPTHINK",
+            },
+          },
+        },
+      ]);
+
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe(
+      "turn-server",
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+
+    expect(getChatMessagesBySessionId.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBeNull();
+    expect(screen.getByTestId("history-messages").textContent).toContain(
+      "assistant-stream-1:Final answer",
+    );
+    expect(screen.getByTestId("history-traces").textContent).toBe(
+      "assistant-stream-1",
+    );
+  });
+
+  it("keeps DeepThink pending until compensation polling observes trace metadata", async () => {
+    vi.mocked(getChatMessagesBySessionId).mockReset();
+    vi.mocked(getChatMessagesBySessionId)
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([
+        {
+          id: "assistant-stream-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "assistant",
+          content: "Partial final answer",
+        },
+      ]);
+    const finalMessages = [
+        {
+          id: "assistant-stream-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "assistant",
+          content: "Final answer",
+          metadata: {
+            agentTrace: {
+              mode: "DEEPTHINK",
+            },
+          },
+        },
+      ];
+
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+      fireEvent.click(screen.getByRole("button", { name: "mode:REACT" }));
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    expect(createChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ executionMode: "DEEPTHINK" }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flushMicrotasks();
+    });
+
+    expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe(
+      "turn-server",
+    );
+    expect(screen.getByTestId("history-traces").textContent).toBe("");
+    vi.mocked(getChatMessagesBySessionId).mockResolvedValue(finalMessages);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flushMicrotasks();
+    });
+
+    expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBeNull();
+    expect(screen.getByTestId("history-traces").textContent).toBe(
+      "assistant-stream-1",
+    );
   });
 
   it("ignores status events unless they match the active pending turn", async () => {
@@ -497,7 +649,93 @@ describe("AgentChatView", () => {
     );
   });
 
-  it("shows AI_ERROR as a persistent retryable error and can dismiss it", async () => {
+  it("reconciles final metadata after AI_DONE so DeepThink trace can render", async () => {
+    vi.useRealTimers();
+    vi.mocked(getChatMessagesBySessionId).mockReset();
+    vi.mocked(getChatMessagesBySessionId)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "assistant-stream-1",
+          sessionId: "session-1",
+          turnId: "turn-server",
+          role: "assistant",
+          content: "Final answer",
+          metadata: {
+            agentTrace: {
+              mode: "DEEPTHINK",
+            },
+          },
+        },
+      ]);
+
+    render(<AgentChatView />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await flushMicrotasks();
+    });
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem("chatagent:pending-turn:session-1")).toBe(
+        "turn-server",
+      );
+    });
+
+    const eventSource = MockEventSource.instances[0];
+    expect(eventSource).toBeDefined();
+
+    act(() => {
+      eventSource.emit("message", {
+        type: "AI_GENERATED_CONTENT",
+        payload: {
+          message: {
+            id: "assistant-stream-1",
+            sessionId: "session-1",
+            turnId: "turn-server",
+            role: "assistant",
+            content: "Final answer",
+          },
+        },
+        metadata: {
+          chatMessageId: "assistant-stream-1",
+        },
+      });
+    });
+
+    expect(screen.getByTestId("history-traces").textContent).toBe("");
+
+    await act(async () => {
+      eventSource.emit("message", {
+        type: "AI_DONE",
+        payload: {
+          done: true,
+          turnId: "turn-server",
+        },
+        metadata: {
+          chatMessageId: "assistant-stream-1",
+        },
+      });
+      await flushMicrotasks();
+    });
+
+    await waitFor(() => {
+      expect(getChatMessagesBySessionId).toHaveBeenCalledWith("session-1");
+      expect(screen.getByTestId("history-messages").textContent).toContain(
+        "assistant-stream-1:Final answer",
+      );
+      expect(screen.getByTestId("history-traces").textContent).toBe(
+        "assistant-stream-1",
+      );
+    });
+  });
+
+  it("unlocks input and shows AI_ERROR as a persistent retryable error", async () => {
     render(<AgentChatView />);
 
     await act(async () => {
@@ -524,9 +762,10 @@ describe("AgentChatView", () => {
       });
     });
 
-    expect(screen.getByTestId("history-status").textContent).toBe(
-      "Model stream interrupted",
-    );
+    expect(screen.getByTestId("history-status").textContent).toBe("idle");
+    expect(
+      (screen.getByRole("button", { name: "send" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
     expect(screen.getByTestId("persistent-error").textContent).toContain(
       "Model stream interrupted",
     );

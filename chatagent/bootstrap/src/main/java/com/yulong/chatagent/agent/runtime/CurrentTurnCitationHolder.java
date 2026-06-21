@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 当前 turn 的引用来源暂存器。
@@ -26,8 +27,8 @@ public class CurrentTurnCitationHolder {
     /**
      * 覆盖写入当前 turn 的 citations。
      * <p>
-     * SessionFileTools 在一次检索结束后调用。若一轮内多次调用 put，最新一批引用会覆盖旧引用；
-     * 如果业务希望保留多次检索的全部来源，应改用 merge()。
+     * 适用于明确需要“最后一批覆盖前一批”的调用方。需要保留多批编号证据时，应使用
+     * {@link #appendAndGetFirstCitationNumber(String, String, List)}。
      */
     public void put(String sessionId, String turnId, List<CitationMetadata> citations) {
         // 以 session+turn 作为 key，避免同一 JVM 内多个会话并发运行时引用串线。
@@ -101,8 +102,8 @@ public class CurrentTurnCitationHolder {
     /**
      * 合并当前 turn 的 citations。
      * <p>
-     * 适合一轮内多次 RAG 检索都需要保留引用来源的场景。当前 knowledgeQuery 使用 put，
-     * 所以默认语义是“最后一次检索结果作为最终引用集合”。
+     * 适合需要按元数据内容去重的一轮内多次合并。若每个可见证据编号都必须保留对应
+     * metadata 槽位，应使用 {@link #appendAndGetFirstCitationNumber(String, String, List)}。
      */
     public void merge(String sessionId, String turnId, List<CitationMetadata> citations) {
         // 多次检索可能产生多批引用，merge 会去重并保持插入顺序，方便前端按引用序号展示。
@@ -120,6 +121,32 @@ public class CurrentTurnCitationHolder {
             merged.addAll(citations);
             return new ArrayList<>(merged);
         });
+    }
+
+    /**
+     * Atomically appends one numbered retrieval batch and returns its first citation number.
+     *
+     * <p>Unlike {@link #merge(String, String, List)}, this method intentionally preserves
+     * duplicates because every numbered evidence entry must retain a matching metadata slot.
+     */
+    public int appendAndGetFirstCitationNumber(String sessionId,
+                                               String turnId,
+                                               List<CitationMetadata> citations) {
+        if (!hasValidKey(sessionId, turnId) || citations == null || citations.isEmpty()) {
+            return 1;
+        }
+        AtomicInteger firstCitationNumber = new AtomicInteger(1);
+        citationsByTurn.compute(key(sessionId, turnId), (ignored, existing) -> {
+            int existingSize = existing == null ? 0 : existing.size();
+            firstCitationNumber.set(existingSize + 1);
+            List<CitationMetadata> appended = new ArrayList<>(existingSize + citations.size());
+            if (existing != null) {
+                appended.addAll(existing);
+            }
+            appended.addAll(citations);
+            return List.copyOf(appended);
+        });
+        return firstCitationNumber.get();
     }
 
     /**

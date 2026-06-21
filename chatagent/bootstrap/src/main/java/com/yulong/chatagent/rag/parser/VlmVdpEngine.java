@@ -2,6 +2,8 @@ package com.yulong.chatagent.rag.parser;
 
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatModelRouter;
@@ -269,7 +271,7 @@ public class VlmVdpEngine implements VdpEngine {
 
     private VdpPageResult mapResponse(String response) {
         try {
-            JsonNode root = objectMapper.readTree(stripFence(response));
+            JsonNode root = readResponseJson(stripFence(response));
             String markdown = textValue(root, "markdown");
             String interpretiveNote = textValue(root, "interpretiveNote");
             String visualType = normalizeVisualType(textValue(root, "visualType"));
@@ -308,6 +310,21 @@ public class VlmVdpEngine implements VdpEngine {
             }
             log.warn("VDP response was not valid JSON, skip indexing raw response: error={}", e.getMessage());
             return degradedResult("Non-JSON VDP response: " + abbreviateForMetadata(cleaned));
+        }
+    }
+
+    private JsonNode readResponseJson(String response) throws JsonProcessingException {
+        try {
+            return objectMapper.readTree(response);
+        } catch (JsonProcessingException strictFailure) {
+            try {
+                return objectMapper.copy()
+                        .enable(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature())
+                        .enable(JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER.mappedFeature())
+                        .readTree(response);
+            } catch (JsonProcessingException ignored) {
+                throw strictFailure;
+            }
         }
     }
 

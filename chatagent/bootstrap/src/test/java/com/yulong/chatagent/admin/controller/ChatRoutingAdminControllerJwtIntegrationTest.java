@@ -27,6 +27,7 @@ import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoCo
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
+import org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration;
 import org.springframework.ai.model.deepseek.autoconfigure.DeepSeekChatAutoConfiguration;
 import org.springframework.ai.model.zhipuai.autoconfigure.ZhiPuAiChatAutoConfiguration;
 import org.springframework.ai.model.zhipuai.autoconfigure.ZhiPuAiEmbeddingAutoConfiguration;
@@ -206,6 +207,7 @@ class ChatRoutingAdminControllerJwtIntegrationTest {
             RedisAutoConfiguration.class,
             RedisRepositoriesAutoConfiguration.class,
             RabbitAutoConfiguration.class,
+            AnthropicChatAutoConfiguration.class,
             DeepSeekChatAutoConfiguration.class,
             ZhiPuAiChatAutoConfiguration.class,
             ZhiPuAiEmbeddingAutoConfiguration.class,

@@ -34,6 +34,13 @@ class RetrievalHitFormatterTest {
         FormattedRetrievalPrompt rendered = formatter.formatWithCitations(hits);
 
         assertThat(rendered.promptText()).contains("numbered evidence snippets when answering");
+        assertThat(rendered.promptText())
+                .contains("directly matches the latest user's topic, entity")
+                .contains("Ignore unrelated snippets")
+                .contains("this handoff")
+                .contains("conversation's project/object as a constraint")
+                .contains("other source belongs to the current handoff")
+                .contains("Do not quote fields from that other source");
         assertThat(rendered.promptText()).contains("[1] Source: Employee Handbook.pdf [SESSION_FILE] chunk 2");
         assertThat(rendered.promptText()).contains("Section: chunk[2]");
         assertThat(rendered.promptText()).contains("Chunk Context:\nTravel reimbursement policy");
@@ -69,6 +76,21 @@ class RetrievalHitFormatterTest {
     }
 
     @Test
+    void shouldContinueCitationNumbersForLaterRetrievalBatch() {
+        List<RetrievalHit> hits = List.of(
+                new RetrievalHit(RagSourceType.KNOWLEDGE_BASE, "kb-1", "doc-4", "Doc D", 0, "D", "Delta", null, 0.8d, "reranker", false),
+                new RetrievalHit(RagSourceType.KNOWLEDGE_BASE, "kb-1", "doc-5", "Doc E", 0, "E", "Echo", null, 0.7d, "reranker", false)
+        );
+
+        FormattedRetrievalPrompt rendered = formatter.formatWithCitations(hits, 4);
+
+        assertThat(rendered.promptText()).contains("[4] Source: Doc D [KNOWLEDGE_BASE] chunk 0");
+        assertThat(rendered.promptText()).contains("[5] Source: Doc E [KNOWLEDGE_BASE] chunk 0");
+        assertThat(rendered.citations()).extracting(citation -> citation.documentId())
+                .containsExactly("doc-4", "doc-5");
+    }
+
+    @Test
     void shouldClearCitationsWhenEveryHitIsFilteredOut() {
         List<RetrievalHit> hits = List.of(
                 new RetrievalHit(RagSourceType.KNOWLEDGE_BASE, "kb-1", "doc-1", "Doc A", 1, "A", "Filtered evidence", null, null, "filtered", false)
@@ -81,7 +103,7 @@ class RetrievalHitFormatterTest {
     }
 
     @Test
-    void shouldKeepMixedConfidenceCitationsWhileFilteringPromptText() {
+    void shouldDropFilteredMetadataAndRenumberVisibleEvidenceContiguously() {
         List<RetrievalHit> hits = List.of(
                 new RetrievalHit(RagSourceType.KNOWLEDGE_BASE, "kb-1", "doc-1", "Doc A", 1, "A", "Filtered evidence", null, null, "filtered", false),
                 new RetrievalHit(RagSourceType.SESSION_FILE, "file-1", "doc-2", "Doc B", 3, "B", "Trusted evidence", null, 0.87d, "reranker", false)
@@ -90,10 +112,13 @@ class RetrievalHitFormatterTest {
         FormattedRetrievalPrompt rendered = formatter.formatWithCitations(hits);
 
         assertThat(rendered.promptText()).doesNotContain("Filtered evidence");
-        assertThat(rendered.promptText()).contains("[2] Source: Doc B [SESSION_FILE] chunk 3");
+        assertThat(rendered.promptText()).contains("[1] Source: Doc B [SESSION_FILE] chunk 3");
+        assertThat(rendered.promptText()).doesNotContain("[2] Source:");
         assertThat(rendered.promptText()).contains("Trusted evidence");
-        assertThat(rendered.citations()).hasSize(2);
+        assertThat(rendered.citations()).hasSize(1);
         assertThat(rendered.citations()).extracting(citation -> citation.scoreType())
-                .containsExactly("filtered", "reranker");
+                .containsExactly("reranker");
+        assertThat(rendered.citations()).extracting(citation -> citation.documentId())
+                .containsExactly("doc-2");
     }
 }

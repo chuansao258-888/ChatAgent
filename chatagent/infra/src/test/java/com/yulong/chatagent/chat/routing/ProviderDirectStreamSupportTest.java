@@ -11,6 +11,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -20,6 +21,23 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ProviderDirectStreamSupportTest {
+
+    @Test
+    void shouldControlDeepSeekThinkingFromEffectiveModel() {
+        ChatRoutingProperties.CandidateConfig candidate = new ChatRoutingProperties.CandidateConfig();
+        candidate.setThinkingStrategy("MODEL_OVERRIDE");
+        candidate.setThinkingModel("deepseek-v4-pro");
+        DeepSeekApi.ChatCompletionRequest requestWithProModel =
+                new DeepSeekApi.ChatCompletionRequest(List.of(), "deepseek-v4-pro", null, true);
+
+        Map<String, Object> normalBody = ProviderDirectStreamSupport.buildDeepSeekRequestBody(
+                requestWithProModel, candidate, false);
+        Map<String, Object> deepThinkBody = ProviderDirectStreamSupport.buildDeepSeekRequestBody(
+                requestWithProModel, candidate, true);
+
+        assertThat(normalBody).containsEntry("thinking", Map.of("type", "disabled"));
+        assertThat(deepThinkBody).containsEntry("thinking", Map.of("type", "enabled"));
+    }
 
     @Test
     void shouldNormalizePlainJsonDoneAndDataPrefixedSsePayloads() throws Exception {
@@ -82,22 +100,68 @@ class ProviderDirectStreamSupportTest {
         DeepSeekChatModel chatModel = mock(DeepSeekChatModel.class);
         ChatModelProviderRegistry.DeepSeekBinding binding =
                 new ChatModelProviderRegistry.DeepSeekBinding(
-                        "deepseek-chat",
+                        "deepseek-v4-flash",
                         chatModel,
                         mock(DeepSeekApi.class));
         ChatRoutingProperties.CandidateConfig candidate = new ChatRoutingProperties.CandidateConfig();
-        candidate.setSpringClientKey("deepseek-chat");
+        candidate.setSpringClientKey("deepseek-v4-flash");
 
-        when(registry.find("deepseek-chat")).thenReturn(Optional.of(binding));
+        when(registry.find("deepseek-v4-flash")).thenReturn(Optional.of(binding));
 
         ProviderDirectStreamSupport support = new ProviderDirectStreamSupport(registry);
 
         Optional<Disposable> result = support.submit(
-                new ModelTarget("deepseek-chat", candidate, null),
+                new ModelTarget("deepseek-v4-flash", candidate, null),
                 new Prompt("hello"),
-                new RecordingCallback());
+                new RecordingCallback(),
+                false);
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void shouldNotLoseDeepSeekThinkingControlWhenProviderAdapterIsUnavailable() {
+        ChatModelProviderRegistry registry = mock(ChatModelProviderRegistry.class);
+        ChatModelProviderRegistry.DeepSeekBinding binding =
+                new ChatModelProviderRegistry.DeepSeekBinding(
+                        "deepseek-v4-flash",
+                        mock(DeepSeekChatModel.class),
+                        mock(DeepSeekApi.class));
+        ChatRoutingProperties.CandidateConfig candidate = new ChatRoutingProperties.CandidateConfig();
+        candidate.setSpringClientKey("deepseek-v4-flash");
+        candidate.setThinkingStrategy("MODEL_OVERRIDE");
+        candidate.setThinkingModel("deepseek-v4-pro");
+        when(registry.find("deepseek-v4-flash")).thenReturn(Optional.of(binding));
+
+        ProviderDirectStreamSupport support = new ProviderDirectStreamSupport(registry);
+
+        assertThatThrownBy(() -> support.submit(
+                new ModelTarget("deepseek-v4-flash", candidate, null),
+                new Prompt("hello"),
+                new RecordingCallback(),
+                false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("thinking control");
+    }
+
+    @Test
+    void shouldNotLoseDeepSeekThinkingControlWhenProviderBindingIsMissing() {
+        ChatModelProviderRegistry registry = mock(ChatModelProviderRegistry.class);
+        ChatRoutingProperties.CandidateConfig candidate = new ChatRoutingProperties.CandidateConfig();
+        candidate.setSpringClientKey("deepseek-v4-flash");
+        candidate.setThinkingStrategy("MODEL_OVERRIDE");
+        candidate.setThinkingModel("deepseek-v4-pro");
+        when(registry.find("deepseek-v4-flash")).thenReturn(Optional.empty());
+
+        ProviderDirectStreamSupport support = new ProviderDirectStreamSupport(registry);
+
+        assertThatThrownBy(() -> support.submit(
+                new ModelTarget("deepseek-v4-flash", candidate, null),
+                new Prompt("hello"),
+                new RecordingCallback(),
+                false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("provider-direct stream binding");
     }
 
     @Test
@@ -107,7 +171,7 @@ class ProviderDirectStreamSupportTest {
 
         assertThatThrownBy(() -> invokeParseRawChunk(support, sensitivePayload))
                 .hasMessageContaining("provider=DEEPSEEK")
-                .hasMessageContaining("modelKey=deepseek-chat")
+                .hasMessageContaining("modelKey=deepseek-v4-flash")
                 .hasMessageContaining("chunkType=ChatCompletionChunk")
                 .hasMessageContaining("payloadLength=" + sensitivePayload.length())
                 .hasMessageNotContaining(sensitivePayload);
@@ -125,7 +189,7 @@ class ProviderDirectStreamSupportTest {
                 "com.yulong.chatagent.chat.routing.ProviderDirectStreamSupport$RawSseStreamHandle");
         Constructor<?> constructor = handleType.getDeclaredConstructor(String.class, Object.class);
         constructor.setAccessible(true);
-        return constructor.newInstance("deepseek-chat", ChatModelProviderRegistry.ProviderType.DEEPSEEK);
+        return constructor.newInstance("deepseek-v4-flash", ChatModelProviderRegistry.ProviderType.DEEPSEEK);
     }
 
     private static StreamCallback newCancellationAwareCallback(StreamCallback delegate, Object handle) throws Exception {
@@ -158,7 +222,7 @@ class ProviderDirectStreamSupportTest {
                     payload,
                     DeepSeekApi.ChatCompletionChunk.class,
                     ChatModelProviderRegistry.ProviderType.DEEPSEEK,
-                    "deepseek-chat");
+                    "deepseek-v4-flash");
         } catch (InvocationTargetException e) {
             throw e.getCause();
         }

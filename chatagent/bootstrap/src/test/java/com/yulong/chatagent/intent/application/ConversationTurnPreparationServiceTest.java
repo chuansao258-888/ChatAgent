@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,12 +68,150 @@ class ConversationTurnPreparationServiceTest {
                 .expiresAt(Instant.now().plusSeconds(300))
                 .build());
         when(clarificationResolver.resolve("不知道", List.of(candidate))).thenReturn(null);
-        when(clarificationResponseBuilder.build(List.of(candidate), "人事制度", true)).thenReturn("retry");
+        when(clarificationResponseBuilder.build(List.of(candidate), "人事制度", true, "不知道")).thenReturn("retry");
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "不知道");
 
         assertThat(result.isDirectReply()).isTrue();
         assertThat(result.directReply()).isEqualTo("retry");
+    }
+
+    @Test
+    void shouldRouteSelectedClarificationWithOriginalQueryAndClearPending() {
+        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
+                intentTreeCacheManager,
+                pendingIntentResolutionStore,
+                clarificationResolver,
+                clarificationResponseBuilder,
+                intentRouter,
+                queryRewriter,
+                systemIntentResponseRenderer
+        );
+        IntentNodeDTO alpha = IntentNodeDTO.builder()
+                .id("topic-1")
+                .name("Operations Alpha")
+                .enabled(true)
+                .build();
+        IntentNodeDTO beta = IntentNodeDTO.builder()
+                .id("topic-2")
+                .name("Operations Beta")
+                .enabled(true)
+                .build();
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, List.of(alpha, beta), java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(PendingIntentResolution.builder()
+                .sessionId("session-1")
+                .candidateNodeIds(List.of("topic-1", "topic-2"))
+                .originalQuery("operations")
+                .parentPath("")
+                .expiresAt(Instant.now().plusSeconds(300))
+                .build());
+        when(clarificationResolver.resolve("第二项吧", List.of(alpha, beta))).thenReturn(beta);
+        IntentResolution resolution = new IntentResolution(
+                IntentKind.SYSTEM,
+                List.of(beta),
+                List.of(),
+                ScopePolicy.STRICT,
+                List.of(),
+                "template"
+        );
+        when(intentRouter.route("assistant-1", "operations", "topic-2"))
+                .thenReturn(IntentRoutingResult.resolved(resolution));
+        when(systemIntentResponseRenderer.render(resolution, "operations")).thenReturn("resolved beta");
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", "第二项吧");
+
+        assertThat(result.isDirectReply()).isTrue();
+        assertThat(result.directReply()).isEqualTo("resolved beta");
+        verify(pendingIntentResolutionStore).delete("session-1");
+        verify(intentRouter).route("assistant-1", "operations", "topic-2");
+    }
+
+    @Test
+    void shouldAbandonPendingClarificationForSubstantiveContextualFollowUp() {
+        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
+                intentTreeCacheManager,
+                pendingIntentResolutionStore,
+                clarificationResolver,
+                clarificationResponseBuilder,
+                intentRouter,
+                queryRewriter,
+                systemIntentResponseRenderer
+        );
+        IntentNodeDTO launchNotes = IntentNodeDTO.builder()
+                .id("launch-notes")
+                .name("Ridgewater Launch Notes")
+                .enabled(true)
+                .build();
+        IntentNodeDTO roomCard = IntentNodeDTO.builder()
+                .id("room-card")
+                .name("Uploaded Room Card")
+                .enabled(true)
+                .build();
+        List<IntentNodeDTO> candidates = List.of(launchNotes, roomCard);
+        String followUp = "Please continue with one practical way to keep the Ridgewater handoff clear.";
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, candidates, java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(PendingIntentResolution.builder()
+                .sessionId("session-1")
+                .candidateNodeIds(List.of("launch-notes", "room-card"))
+                .originalQuery("operations")
+                .parentPath("Ridgewater Desk > Workbench")
+                .build());
+        when(clarificationResolver.resolve(followUp, candidates)).thenReturn(null);
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", followUp);
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.intentResolution()).isNull();
+        assertThat(result.rewrittenInput()).isEqualTo(followUp);
+        verify(pendingIntentResolutionStore).delete("session-1");
+        verify(intentRouter, never()).route(any(), any());
+        verify(clarificationResponseBuilder, never()).build(any(), any(), any(Boolean.class), any());
+    }
+
+    @Test
+    void shouldKeepPendingClarificationForVaguePronounSelection() {
+        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
+                intentTreeCacheManager,
+                pendingIntentResolutionStore,
+                clarificationResolver,
+                clarificationResponseBuilder,
+                intentRouter,
+                queryRewriter,
+                systemIntentResponseRenderer
+        );
+        IntentNodeDTO launchNotes = IntentNodeDTO.builder()
+                .id("launch-notes")
+                .name("Ridgewater Launch Notes")
+                .enabled(true)
+                .build();
+        IntentNodeDTO roomCard = IntentNodeDTO.builder()
+                .id("room-card")
+                .name("Uploaded Room Card")
+                .enabled(true)
+                .build();
+        List<IntentNodeDTO> candidates = List.of(launchNotes, roomCard);
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, candidates, java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(PendingIntentResolution.builder()
+                .sessionId("session-1")
+                .candidateNodeIds(List.of("launch-notes", "room-card"))
+                .originalQuery("operations")
+                .parentPath("Ridgewater Desk > Workbench")
+                .build());
+        when(clarificationResolver.resolve("that one", candidates)).thenReturn(null);
+        when(clarificationResponseBuilder.build(candidates, "Ridgewater Desk > Workbench", true, "that one"))
+                .thenReturn("retry");
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", "that one");
+
+        assertThat(result.isDirectReply()).isTrue();
+        assertThat(result.directReply()).isEqualTo("retry");
+        verify(pendingIntentResolutionStore, never()).delete("session-1");
     }
 
     @Test
@@ -107,6 +247,82 @@ class ConversationTurnPreparationServiceTest {
     }
 
     @Test
+    void shouldBypassNewClarificationForContextualFollowUpQuestion() {
+        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
+                intentTreeCacheManager,
+                pendingIntentResolutionStore,
+                clarificationResolver,
+                clarificationResponseBuilder,
+                intentRouter,
+                queryRewriter,
+                systemIntentResponseRenderer
+        );
+        IntentNodeDTO launchNotes = IntentNodeDTO.builder()
+                .id("launch-notes")
+                .name("Ridgewater Launch Notes")
+                .enabled(true)
+                .build();
+        IntentNodeDTO roomCard = IntentNodeDTO.builder()
+                .id("room-card")
+                .name("Uploaded Room Card")
+                .enabled(true)
+                .build();
+        String followUp = "Only current values: who owns it now, and which room should be on the invite?";
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, List.of(launchNotes, roomCard), java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(null);
+        when(intentRouter.route("assistant-1", followUp))
+                .thenReturn(IntentRoutingResult.clarification(List.of(launchNotes, roomCard), "Ridgewater Desk > Workbench"));
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", followUp);
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.intentResolution()).isNull();
+        assertThat(result.rewrittenInput()).isEqualTo(followUp);
+        verify(pendingIntentResolutionStore).delete("session-1");
+        verify(pendingIntentResolutionStore, never()).save(any());
+    }
+
+    @Test
+    void shouldBypassNewClarificationForPointPersonFollowUp() {
+        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
+                intentTreeCacheManager,
+                pendingIntentResolutionStore,
+                clarificationResolver,
+                clarificationResponseBuilder,
+                intentRouter,
+                queryRewriter,
+                systemIntentResponseRenderer
+        );
+        IntentNodeDTO launchNotes = IntentNodeDTO.builder()
+                .id("launch-notes")
+                .name("Ridgewater Launch Notes")
+                .enabled(true)
+                .build();
+        IntentNodeDTO archive = IntentNodeDTO.builder()
+                .id("archive")
+                .name("Operations Archive")
+                .enabled(true)
+                .build();
+        String followUp = "Who's on point?";
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, List.of(launchNotes, archive), java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(null);
+        when(intentRouter.route("assistant-1", followUp))
+                .thenReturn(IntentRoutingResult.clarification(List.of(launchNotes, archive), "Ridgewater Desk"));
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", followUp);
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.intentResolution()).isNull();
+        assertThat(result.rewrittenInput()).isEqualTo(followUp);
+        verify(pendingIntentResolutionStore).delete("session-1");
+        verify(pendingIntentResolutionStore, never()).save(any());
+    }
+
+    @Test
     void shouldClearExpiredPendingClarificationWhenCandidatesAreGone() {
         ConversationTurnPreparationService service = new ConversationTurnPreparationService(
                 intentTreeCacheManager,
@@ -131,7 +347,7 @@ class ConversationTurnPreparationServiceTest {
                 .originalQuery("年假怎么申请")
                 .parentPath("人事制度")
                 .build());
-        when(clarificationResponseBuilder.build(List.of(), "人事制度", true)).thenReturn("expired");
+        when(clarificationResponseBuilder.build(List.of(), "人事制度", true, "年假怎么申请")).thenReturn("expired");
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "第二个");
 

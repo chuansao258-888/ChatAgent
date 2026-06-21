@@ -7,6 +7,8 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * 单轮对话准备器。
@@ -22,6 +24,16 @@ import java.util.List;
  */
 @Component
 public class ConversationTurnPreparationService {
+
+    private static final Pattern CONTEXTUAL_FOLLOW_UP = Pattern.compile(
+            "\\b(current|now|it|that|this|these|those|same|previous|earlier|latest|owner|room|invite|handoff|values)\\b"
+                    + "|\\b(?:who(?:'s|\\s+is)\\s+on\\s+point|on\\s+point|point\\s+person|who\\s+(?:owns|handles|has|is\\s+handling)\\s+(?:it|this|that))\\b"
+                    + "|(?:谁负责|负责人|谁来处理|谁跟进)"
+    );
+    private static final Pattern SUBSTANTIVE_FOLLOW_UP = Pattern.compile(
+            "\\b(how|what|who|where|when|why|continue|remind|tell|give|show|draft|summarize|explain|help)\\b"
+                    + "|[?？]|怎么|怎样|什么|谁|哪里|哪|为何|为什么|继续|告诉|提醒|总结|解释|帮"
+    );
 
     private final IntentTreeCacheManager intentTreeCacheManager;
     private final PendingIntentResolutionStore pendingIntentResolutionStore;
@@ -88,16 +100,27 @@ public class ConversationTurnPreparationService {
                 // 这里直接返回一个“重新澄清”的 direct reply，并清掉旧 pending。
                 pendingIntentResolutionStore.delete(sessionId);
                 return TurnPreparationResult.direct(
-                        clarificationResponseBuilder.build(List.of(), pending.getParentPath(), true)
+                        clarificationResponseBuilder.build(
+                                List.of(),
+                                pending.getParentPath(),
+                                true,
+                                StringUtils.hasText(pending.getOriginalQuery()) ? pending.getOriginalQuery() : userInput
+                        )
                 );
             }
             IntentNodeDTO selected = clarificationResolver.resolve(userInput, candidates);
             if (selected == null) {
+                if (isSubstantiveContextualFollowUp(userInput)) {
+                    // A substantive follow-up is a new conversational turn, not a failed option reply.
+                    // Let users leave a nested clarification without having to explicitly cancel it.
+                    pendingIntentResolutionStore.delete(sessionId);
+                    return TurnPreparationResult.dispatch(null, canonicalQuery);
+                }
                 // 用户回复仍然不足以确定唯一候选时，继续 direct reply 做二次澄清。
                 // 注意这里不会进入 Agent，也不会清掉 pending。
                 // 用户回答仍然不足以选中具体节点，继续给出澄清回复，不进入 Agent。
                 return TurnPreparationResult.direct(
-                        clarificationResponseBuilder.build(candidates, pending.getParentPath(), true)
+                        clarificationResponseBuilder.build(candidates, pending.getParentPath(), true, userInput)
                 );
             }
             pendingIntentResolutionStore.delete(sessionId);
@@ -112,6 +135,13 @@ public class ConversationTurnPreparationService {
         }
 
         if (routingResult.requiresClarification()) {
+            if (isContextualFollowUp(canonicalQuery)) {
+                // Context-followup turns should be answered from conversation memory by the Agent.
+                // Forcing an intent-tree child selection here interrupts ordinary multi-turn chat,
+                // e.g. "who owns it now and which room should be on the invite?"
+                pendingIntentResolutionStore.delete(sessionId);
+                return TurnPreparationResult.dispatch(null, canonicalQuery);
+            }
             // 这里把本轮澄清候选和原始 query 记录下来，
             // 下一次用户回复时才能走“澄清 continuation”分支。
             // 这一步是整个两轮澄清状态机真正“落盘”的地方。
@@ -122,7 +152,12 @@ public class ConversationTurnPreparationService {
                     .parentPath(routingResult.parentPath())
                     .build());
             return TurnPreparationResult.direct(
-                    clarificationResponseBuilder.build(routingResult.clarificationCandidates(), routingResult.parentPath(), false)
+                    clarificationResponseBuilder.build(
+                            routingResult.clarificationCandidates(),
+                            routingResult.parentPath(),
+                            false,
+                            userInput
+                    )
             );
         }
 
@@ -141,6 +176,19 @@ public class ConversationTurnPreparationService {
         // 非 SYSTEM 的正常意图会携带 resolution 和 rewrite 后的 query 进入 Agent，
         // 这样后续工具筛选、RAG scope 和 prompt 都能利用这个边界。
         return TurnPreparationResult.dispatch(resolution, queryRewriter.rewrite(canonicalQuery, resolution));
+    }
+
+    private boolean isContextualFollowUp(String userInput) {
+        if (!StringUtils.hasText(userInput)) {
+            return false;
+        }
+        String normalized = userInput.trim().toLowerCase(Locale.ROOT);
+        return CONTEXTUAL_FOLLOW_UP.matcher(normalized).find();
+    }
+
+    private boolean isSubstantiveContextualFollowUp(String userInput) {
+        return isContextualFollowUp(userInput)
+                && SUBSTANTIVE_FOLLOW_UP.matcher(userInput.trim().toLowerCase(Locale.ROOT)).find();
     }
 
     private List<IntentNodeDTO> resolveCandidates(IntentTreeSnapshot snapshot, List<String> candidateNodeIds) {

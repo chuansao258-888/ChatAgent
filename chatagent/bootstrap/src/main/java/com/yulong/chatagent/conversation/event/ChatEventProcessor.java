@@ -61,7 +61,7 @@ public class ChatEventProcessor {
                                 ChatAgent is running without a configured chat model.
                                 I received your message: %s
 
-                                To enable real AI responses, set either CHATAGENT_DEEPSEEK_API_KEY or CHATAGENT_ZHIPUAI_API_KEY and restart the backend.
+                                To enable real AI responses, set CHATAGENT_ZAI_CODING_API_KEY or CHATAGENT_DEEPSEEK_API_KEY and restart the backend.
                                 """.formatted(event.getUserInput())
                 );
                 recordMetricQuietly(
@@ -82,7 +82,8 @@ public class ChatEventProcessor {
                     event.getIntentResolution(),
                     event.getRewrittenInput(),
                     resolveUserId(event),
-                    event.getExecutionMode()
+                    event.getExecutionMode(),
+                    event.getUserInput()
             );
             // 到这里 conversation 编排层的职责基本结束，控制权正式交给 Agent runtime。
             AgentRunResult runResult = chatAgent.run();

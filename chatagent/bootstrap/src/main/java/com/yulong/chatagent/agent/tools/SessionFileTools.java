@@ -8,11 +8,16 @@ import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.rag.application.FormattedRetrievalPrompt;
 import com.yulong.chatagent.rag.model.RetrievalHit;
+import com.yulong.chatagent.rag.model.RagSourceType;
 import com.yulong.chatagent.rag.application.RagService;
 import com.yulong.chatagent.rag.application.RetrievalHitFormatter;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * 会话文件和绑定知识库的固定检索工具。
@@ -29,6 +34,11 @@ import java.util.List;
  */
 @Component
 public class SessionFileTools implements Tool {
+
+    private static final Pattern SESSION_FILE_QUERY = Pattern.compile(
+            "(?is)\\b(?:attachment|attached|uploaded|session\\s+(?:file|note|briefing)|file\\s+I\\s+just\\s+attached)\\b"
+                    + "|\\.(?:txt|md|markdown|pdf|docx?|xlsx?|csv)\\b"
+    );
 
     private final RagService ragService;
     private final RetrievalHitFormatter retrievalHitFormatter;
@@ -70,7 +80,9 @@ public class SessionFileTools implements Tool {
         // 如果这里为 null，RAG 层会退回到会话/Agent 默认绑定的知识范围。
         IntentResolution intentResolution = CurrentIntentResolutionHolder.get();
         // intentResolution 会限制可检索知识库范围，避免 KB 意图路由后的越界检索。
-        List<RetrievalHit> results = ragService.similaritySearchBySession(chatSessionId, query, intentResolution);
+        List<RetrievalHit> results = prioritizeSessionFileHitsWhenRequested(
+                query,
+                ragService.similaritySearchBySession(chatSessionId, query, intentResolution));
         // 记录本轮是否命中知识，用于 AgentRunResult 和 Dashboard 指标。
         // 注意：这里只表示“检索是否返回结果”，不表示最终回答是否采用了这些结果。
         CurrentTurnKnowledgeHitHolder.recordRetrievalResult(!results.isEmpty());
@@ -79,7 +91,28 @@ public class SessionFileTools implements Tool {
         FormattedRetrievalPrompt formatted = retrievalHitFormatter.formatWithCitations(results);
         // citations 不直接拼进 tool_response 的 JSON metadata，而是按 session+turn 暂存。
         // 后面只有当最终 assistant 消息确认保留时，AgentMessageBridge 才会 take 出来写入 message.metadata。
-        currentTurnCitationHolder.put(chatSessionId, turnId, formatted.citations());
-        return formatted.promptText();
+        int firstCitationNumber = currentTurnCitationHolder.appendAndGetFirstCitationNumber(
+                chatSessionId,
+                turnId,
+                formatted.citations()
+        );
+        if (firstCitationNumber == 1 || formatted.citations().isEmpty()) {
+            return formatted.promptText();
+        }
+        // 一轮内再次检索时继续编号，避免不同 tool_response 都从 [1] 开始而让最终引用错位。
+        return retrievalHitFormatter.formatWithCitations(results, firstCitationNumber).promptText();
+    }
+
+    private List<RetrievalHit> prioritizeSessionFileHitsWhenRequested(String query, List<RetrievalHit> results) {
+        if (!StringUtils.hasText(query)
+                || results == null
+                || results.size() < 2
+                || !SESSION_FILE_QUERY.matcher(query).find()) {
+            return results;
+        }
+        List<RetrievalHit> ordered = new ArrayList<>(results);
+        ordered.sort(Comparator.comparingInt(
+                hit -> hit != null && hit.sourceType() == RagSourceType.SESSION_FILE ? 0 : 1));
+        return ordered;
     }
 }

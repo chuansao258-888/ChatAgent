@@ -7,6 +7,7 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
@@ -27,6 +28,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,9 +56,12 @@ class DefaultAgentRuntimeContextLoaderTest {
     private ToolCallback toolCallback;
 
     private DefaultAgentRuntimeContextLoader loader;
+    private ChatRoutingProperties chatRoutingProperties;
 
     @BeforeEach
     void setUp() {
+        chatRoutingProperties = new ChatRoutingProperties();
+        chatRoutingProperties.setAgentPrimaryModel("glm-5.2");
         loader = new DefaultAgentRuntimeContextLoader(
                 TestPromptLoader.create(),
                 agentDefinitionLoader,
@@ -64,7 +69,8 @@ class DefaultAgentRuntimeContextLoaderTest {
                 sessionFileSummaryResolver,
                 sessionSummaryResolver,
                 agentToolCallbackFactory,
-                longTermMemoryRecallService
+                longTermMemoryRecallService,
+                chatRoutingProperties
         );
     }
 
@@ -106,6 +112,7 @@ class DefaultAgentRuntimeContextLoaderTest {
                 .isLessThan(systemPrompt.indexOf("[Intent Routing Context]"));
         assertThat(systemPrompt.indexOf("[Intent Routing Context]"))
                 .isLessThan(systemPrompt.indexOf("[Session Context]"));
+        assertThat(context.model()).isEqualTo("glm-5.2");
     }
 
     @Test
@@ -136,6 +143,9 @@ class DefaultAgentRuntimeContextLoaderTest {
                 .contains("[MCP Tool Safety]")
                 .contains("untrusted external data")
                 .contains("primary data source")
+                .contains("Preserve the latest user's named entities")
+                .contains("Same-offset zones are not interchangeable")
+                .contains("must not change the latest user's requested response language")
                 .contains("prioritize the LATEST user message")
                 .contains("asking about a PRIOR answer");
     }
@@ -203,6 +213,99 @@ class DefaultAgentRuntimeContextLoaderTest {
                 .contains("[Tool Strategy]")
                 .doesNotContain("[Web Search Safety]")
                 .doesNotContain("[MCP Tool Safety]");
+    }
+
+    @Test
+    void shouldAppendCurrentUserInputWhenMemoryReloadMissesCurrentTurn() {
+        AgentDTO agent = minimalAgent();
+
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of());
+        when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("");
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
+
+        AgentRuntimeContext context = loader.load(
+                "agent-1",
+                "session-1",
+                null,
+                null,
+                null,
+                "Explain one Playwright visible-browser advantage.");
+
+        assertThat(context.memory())
+                .hasSize(1)
+                .first()
+                .isInstanceOfSatisfying(UserMessage.class, message ->
+                        assertThat(message.getText()).contains("Playwright visible-browser"));
+        verify(longTermMemoryRecallService).recall(
+                "session-1",
+                "Explain one Playwright visible-browser advantage.");
+    }
+
+    @Test
+    void shouldNotDuplicateCurrentUserInputWhenMemoryAlreadyContainsIt() {
+        AgentDTO agent = minimalAgent();
+
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent))
+                .thenReturn(List.of(new UserMessage("Explain one Playwright visible-browser advantage.")));
+        when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("");
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of());
+
+        AgentRuntimeContext context = loader.load(
+                "agent-1",
+                "session-1",
+                null,
+                null,
+                null,
+                "Explain one Playwright visible-browser advantage.");
+
+        assertThat(context.memory())
+                .filteredOn(UserMessage.class::isInstance)
+                .hasSize(1);
+    }
+
+    @Test
+    void shouldHideSessionFileSearchToolWhenNoSessionAssetsAreRetrievable() {
+        AgentDTO agent = minimalAgent();
+        ToolCallback sessionFileSearchTool = namedToolCallback("SessionFileSearchTool", "Search session files");
+        ToolCallback localTool = namedToolCallback("localTool", "Local tool");
+
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("Remember INCIDENT-4271")));
+        when(sessionFileSummaryResolver.resolve(agent, "session-1"))
+                .thenReturn("No attached session files or bound knowledge bases available");
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(sessionFileSearchTool, localTool));
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        assertThat(context.toolCallbacks())
+                .extracting(callback -> callback.getToolDefinition().name())
+                .containsExactly("localTool");
+        assertThat(context.systemPrompt()).contains("[Tool Strategy]");
+    }
+
+    @Test
+    void shouldKeepSessionFileSearchToolWhenSessionAssetsAreRetrievable() {
+        AgentDTO agent = minimalAgent();
+        ToolCallback sessionFileSearchTool = namedToolCallback("SessionFileSearchTool", "Search session files");
+        ToolCallback localTool = namedToolCallback("localTool", "Local tool");
+
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent)).thenReturn(List.of(new UserMessage("Summarize the policy")));
+        when(sessionFileSummaryResolver.resolve(agent, "session-1"))
+                .thenReturn("Attached session files: policy.pdf; Bound knowledge bases: HR");
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("");
+        when(agentToolCallbackFactory.create(agent, null)).thenReturn(List.of(sessionFileSearchTool, localTool));
+
+        AgentRuntimeContext context = loader.load("agent-1", "session-1");
+
+        assertThat(context.toolCallbacks())
+                .extracting(callback -> callback.getToolDefinition().name())
+                .containsExactly("SessionFileSearchTool", "localTool");
     }
 
     @Test

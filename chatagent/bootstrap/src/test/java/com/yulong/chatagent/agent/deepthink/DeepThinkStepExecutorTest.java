@@ -5,12 +5,14 @@ import com.yulong.chatagent.agent.DecisionVisibility;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
+import com.yulong.chatagent.conversation.model.SseMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -77,6 +79,34 @@ class DeepThinkStepExecutorTest {
         assertThat(notebook.getTotalLlmCalls()).isEqualTo(1);
         verify(messageBridge).publishStatusEvent(eq("session-1"), eq("turn-1"),
                 any(), anyString());
+    }
+
+    @Test
+    void executeStep_englishPlanUsesEnglishStatusInstructionAndPartialFallback() {
+        DeepThinkPlanStep step = DeepThinkPlanStep.builder()
+                .id("S1").title("Check session state").objective("Compare storage state after login")
+                .build();
+
+        DeepThinkNotebook notebook = new DeepThinkNotebook();
+        String conclusion = executor.executeStep(
+                "session-1", "turn-1", step, 1, notebook,
+                "Diagnose browser test flakiness", null, 0, 0);
+
+        assertThat(conclusion).isEqualTo("Partially completed");
+        verify(messageBridge).publishStatusEvent(
+                eq("session-1"), eq("turn-1"), eq(SseMessage.Type.AI_EXECUTING),
+                eq("Executing S1: Check session state..."));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        verify(messageBridge).collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), promptCaptor.capture(), anyString(),
+                eq(tools), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false),
+                eq("EXECUTE"), eq("S1"));
+        assertThat(promptCaptor.getValue().getInstructions())
+                .anySatisfy(message -> {
+                    assertThat(message).isInstanceOf(UserMessage.class);
+                    assertThat(message.getText()).isEqualTo("Start executing step S1.");
+                });
     }
 
     @Test

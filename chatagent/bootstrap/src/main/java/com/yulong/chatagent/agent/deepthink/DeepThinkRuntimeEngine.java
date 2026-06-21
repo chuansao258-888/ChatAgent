@@ -113,7 +113,10 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
 
             DeepThinkVerificationResult verificationResult;
             if (reflectionResult.needsUserClarification()) {
-                verificationResult = DeepThinkVerificationResult.skipped("等待用户澄清，未执行验证");
+                verificationResult = DeepThinkVerificationResult.skipped(DeepThinkLanguageSupport.choose(
+                        DeepThinkLanguageSupport.planLanguageSource(plan),
+                        "Waiting for user clarification; verification was not run",
+                        "等待用户澄清，未执行验证"));
             } else {
                 verificationResult = verify(plan, notebook, reflectionResult);
                 if (verificationResult.hasFollowUpActions()) {
@@ -220,7 +223,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
             return;
         }
 
-        normalizeFollowUpStep(step, fallbackId);
+        normalizeFollowUpStep(step, fallbackId, DeepThinkLanguageSupport.planLanguageSource(plan));
         appendPlanStep(plan, step);
         executeStep(stepExecutor, plan, notebook, step);
     }
@@ -264,12 +267,12 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         plan.setSteps(updated);
     }
 
-    private void normalizeFollowUpStep(DeepThinkPlanStep step, String fallbackId) {
+    private void normalizeFollowUpStep(DeepThinkPlanStep step, String fallbackId, String languageSource) {
         if (step.getId() == null || step.getId().isBlank()) {
             step.setId(fallbackId);
         }
         if (step.getTitle() == null || step.getTitle().isBlank()) {
-            step.setTitle("补充验证");
+            step.setTitle(DeepThinkLanguageSupport.choose(languageSource, "Additional verification", "补充验证"));
         }
         if (step.getObjective() == null || step.getObjective().isBlank()) {
             step.setObjective(step.getTitle());

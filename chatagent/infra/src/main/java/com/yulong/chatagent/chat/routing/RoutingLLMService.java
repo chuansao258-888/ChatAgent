@@ -93,10 +93,7 @@ public class RoutingLLMService implements LLMService {
                 new TeeStreamCallback(collector, callback == null ? NoopStreamCallback.INSTANCE : callback));
 
         try {
-            // 总等待时间至少要比首包超时多 5 秒，否则首包刚成功后可能没有时间等完整流。
-            long timeoutSeconds = Math.max(
-                    properties.getStreamTotalTimeoutSeconds(),
-                    properties.getFirstPacketTimeoutSeconds() + 5L);
+            long timeoutSeconds = Math.max(properties.getDecisionTotalTimeoutSeconds(), 1L);
             if (!collector.await(timeoutSeconds, TimeUnit.SECONDS)) {
                 // collector 超时说明整条流没有正常 complete/error，取消上游避免泄露连接。
                 disposeQuietly(disposable);
@@ -174,7 +171,7 @@ public class RoutingLLMService implements LLMService {
                 // 每个候选模型都要重新生成 Prompt，避免厂商 options/tools/thinking 混用。
                 Prompt runtimePrompt = promptFactory.create(prompt, systemPrompt, safeTools, target, deepThinking);
                 // 优先尝试原始厂商 SSE；如果 provider binding 不存在或不可用，就回退到 ChatClient.stream()。
-                disposable = providerDirectStreamSupport.submit(target, runtimePrompt, wrapper)
+                disposable = providerDirectStreamSupport.submit(target, runtimePrompt, wrapper, deepThinking)
                         .orElseGet(() -> ReactiveStreamAdapter.submit(target.chatClient(), runtimePrompt, wrapper));
             } catch (Exception e) {
                 // 提交流式请求本身失败，还没进入首包等待，也要记一次失败并切下一个候选。

@@ -12,13 +12,19 @@ import java.util.List;
 @ConfigurationProperties(prefix = "chat.routing")
 public class ChatRoutingProperties {
 
-    /** 普通路由请求优先提升的模型 id。 */
-    private String defaultModel = "glm-5.1";
-    /** deepThinking 请求优先提升的模型 id；为空时回退到 defaultModel。 */
+    /** 兼容属性：旧普通路由请求优先提升的模型 id。Agent 路由使用 agentPrimaryModel。 */
+    private String defaultModel = "glm-5.2";
+    /** 兼容属性：旧 deepThinking 首选模型。Agent DeepThink 使用 agentPrimaryModel/agentFallbackModel。 */
     private String deepThinkingModel;
+    /** Agent ReAct/DeepThink 首个尝试的模型 id。 */
+    private String agentPrimaryModel = "glm-5.2";
+    /** Agent ReAct/DeepThink 首包失败后尝试的备用模型 id。 */
+    private String agentFallbackModel = "deepseek-v4-flash";
     /** 首包探测等待时间，超过后取消当前候选并尝试下一个模型。 */
     private int firstPacketTimeoutSeconds = 60;
     /** 流式决策整体等待时间，用于避免 collector 永久阻塞。 */
+    private int decisionTotalTimeoutSeconds = 180;
+    /** 用户可见最终回答流的整体等待时间，用于避免最终回答永久阻塞。 */
     private int streamTotalTimeoutSeconds = 300;
     /** 底层 HTTP 连接超时配置，供相关客户端配置使用。 */
     private int httpConnectTimeoutSeconds = 10;
@@ -47,7 +53,7 @@ public class ChatRoutingProperties {
          */
         private Boolean supportsThinking;
         /**
-         * NONE | ZHIPU_THINKING_FLAG | MODEL_OVERRIDE
+         * NONE | ANTHROPIC_THINKING | ZHIPU_THINKING_FLAG | MODEL_OVERRIDE
          */
         private String thinkingStrategy = "NONE";
         /**

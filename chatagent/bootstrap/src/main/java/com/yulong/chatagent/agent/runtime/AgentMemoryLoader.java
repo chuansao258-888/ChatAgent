@@ -10,6 +10,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -24,8 +25,8 @@ import java.util.stream.Collectors;
 /**
  * 从数据库消息恢复 Spring AI 可用的 L1 短期记忆。
  * <p>
- * 这里采用 token 预算 + turn 级滑动窗口：从最近轮次往前装载，
- * 并保证一个 turn 要么完整进入上下文，要么整体丢弃，不截断工具调用序列。
+ * 这里采用 token 预算 + turn 级滑动窗口：预算足够时保留完整 turn；预算受压时
+ * 缩短 assistant 文本并优先保留用户更新，同时始终保持工具调用序列完整或整体省略。
  */
 @Component
 public class AgentMemoryLoader {
@@ -36,14 +37,21 @@ public class AgentMemoryLoader {
      * 给不同模型 tokenizer 的估算误差留余量，避免刚好打满上下文窗口。
      */
     private static final double TOKEN_SAFETY_MARGIN = 0.8;
+    private static final int COMPACTED_ASSISTANT_MAX_CHARS = 160;
 
     private final ChatMessageRepository chatMessageRepository;
     private final ToolResultCompactor toolResultCompactor;
+    private final int l1WindowTurns;
+    private final int globalTokenBudget;
 
     public AgentMemoryLoader(ChatMessageRepository chatMessageRepository,
-                             ToolResultCompactor toolResultCompactor) {
+                             ToolResultCompactor toolResultCompactor,
+                             @Value("${chatagent.memory.l1-window-turns:48}") int l1WindowTurns,
+                             @Value("${chatagent.memory.l1-token-budget:256000}") int globalTokenBudget) {
         this.chatMessageRepository = chatMessageRepository;
         this.toolResultCompactor = toolResultCompactor;
+        this.l1WindowTurns = Math.max(l1WindowTurns, 1);
+        this.globalTokenBudget = Math.max(globalTokenBudget, 1);
     }
 
     /**
@@ -54,10 +62,11 @@ public class AgentMemoryLoader {
      * @return 可直接放入 ChatMemory 的消息列表
      */
     public List<Message> load(String chatSessionId, AgentDTO agentConfig) {
-        // tokenBudget 来自 Agent 配置；没有配置时使用保守默认值。
-        int tokenBudget = agentConfig.getChatOptions().getTokenBudget() != null
+        // 全局 L1 预算是运行时下限，避免旧 Agent 行中的小预算继续压低整个应用的窗口。
+        int configuredTokenBudget = agentConfig.getChatOptions().getTokenBudget() != null
                 ? agentConfig.getChatOptions().getTokenBudget()
-                : 4000;
+                : globalTokenBudget;
+        int tokenBudget = Math.max(configuredTokenBudget, globalTokenBudget);
         int effectiveBudget = (int) (tokenBudget * TOKEN_SAFETY_MARGIN);
 
         // 先多取一些最近消息，再按 turn 级别向前筛选，避免数据库分页直接切断上下文。
@@ -73,40 +82,153 @@ public class AgentMemoryLoader {
                 groupedTurns.computeIfAbsent(msg.getTurnId(), ignored -> new ArrayList<>()).add(msg);
             }
         }
-
-        List<String> turnIds = new ArrayList<>(groupedTurns.keySet());
-        List<List<Message>> selectedTurnMessages = new ArrayList<>();
-        int currentTokenCount = 0;
-
-        // 从最近的 turn 开始往前装载；一旦超过预算，就停止继续向更早历史扩展。
-        for (int i = turnIds.size() - 1; i >= 0; i--) {
-            String turnId = turnIds.get(i);
-            List<ChatMessageDTO> turnMessages = groupedTurns.get(turnId);
-            List<Message> springAiMessages = convertToSpringAiMessages(turnMessages);
-
-            int turnTokens = estimateTokens(springAiMessages);
-            if (turnTokens > effectiveBudget) {
-                springAiMessages = applyBudgetCompaction(springAiMessages);
-                turnTokens = estimateTokens(springAiMessages);
-            }
-            if (!selectedTurnMessages.isEmpty() && currentTokenCount + turnTokens > effectiveBudget) {
-                break;
-            }
-
-            selectedTurnMessages.add(0, springAiMessages);
-            currentTokenCount += turnTokens;
+        if (groupedTurns.isEmpty()) {
+            return List.of();
         }
 
+        List<String> turnIds = new ArrayList<>(groupedTurns.keySet());
+        List<ChatMessageDTO> latestTurn = groupedTurns.get(turnIds.get(turnIds.size() - 1));
+        int tailTurnLimit = l1WindowTurns + (isOpenUserTurn(latestTurn) ? 1 : 0);
+        int tailStart = Math.max(0, turnIds.size() - tailTurnLimit);
+        List<List<ChatMessageDTO>> tailTurns = turnIds.subList(tailStart, turnIds.size()).stream()
+                .map(groupedTurns::get)
+                .toList();
+        List<List<Message>> fullTurns = tailTurns.stream()
+                .map(this::convertToSpringAiMessages)
+                .toList();
+
+        int fullTokenCount = estimateTurnTokens(fullTurns);
+        if (fullTokenCount <= effectiveBudget) {
+            return flattenTurns(fullTurns);
+        }
+
+        List<List<Message>> compactTurns = tailTurns.stream()
+                .map(this::convertToBudgetCompactMessages)
+                .toList();
+        List<List<Message>> selectedTurnMessages;
+        if (estimateTurnTokens(compactTurns) <= effectiveBudget) {
+            selectedTurnMessages = new ArrayList<>(compactTurns);
+        } else {
+            List<List<Message>> userOnlyTurns = tailTurns.stream()
+                    .map(this::convertToUserMessages)
+                    .toList();
+            if (estimateTurnTokens(userOnlyTurns) > effectiveBudget) {
+                return selectMostRecentTurns(fullTurns, effectiveBudget);
+            }
+            selectedTurnMessages = upgradeTurnsWithinBudget(userOnlyTurns, compactTurns, effectiveBudget);
+        }
+        selectedTurnMessages = upgradeTurnsWithinBudget(selectedTurnMessages, fullTurns, effectiveBudget);
+
+        int currentTokenCount = estimateTurnTokens(selectedTurnMessages);
         if (selectedTurnMessages.size() == 1 && currentTokenCount > effectiveBudget) {
             log.warn("Single turn exceeds L1 token budget: sessionId={}, turnTokens={}, budget={}",
                     chatSessionId,
                     currentTokenCount,
                     effectiveBudget);
         }
+        return flattenTurns(selectedTurnMessages);
+    }
 
-        return selectedTurnMessages.stream()
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
+    private boolean isOpenUserTurn(List<ChatMessageDTO> turnMessages) {
+        boolean hasUser = turnMessages.stream()
+                .anyMatch(message -> message.getRole() == ChatMessageDTO.RoleType.USER);
+        boolean hasAssistant = turnMessages.stream()
+                .anyMatch(message -> message.getRole() == ChatMessageDTO.RoleType.ASSISTANT);
+        return hasUser && !hasAssistant;
+    }
+
+    private List<Message> convertToBudgetCompactMessages(List<ChatMessageDTO> turnMessages) {
+        List<Message> compacted = new ArrayList<>();
+        for (Message message : convertToSpringAiMessages(turnMessages)) {
+            if (message instanceof UserMessage || message instanceof SystemMessage) {
+                compacted.add(message);
+            } else if (message instanceof AssistantMessage assistantMessage
+                    && assistantMessage.getToolCalls().isEmpty()
+                    && StringUtils.hasText(assistantMessage.getText())) {
+                compacted.add(new AssistantMessage(compactAssistantText(assistantMessage.getText())));
+            }
+        }
+        return compacted;
+    }
+
+    private List<Message> convertToUserMessages(List<ChatMessageDTO> turnMessages) {
+        List<Message> userMessages = new ArrayList<>();
+        for (ChatMessageDTO message : turnMessages) {
+            if (message.getRole() == ChatMessageDTO.RoleType.USER && StringUtils.hasText(message.getContent())) {
+                userMessages.add(new UserMessage(message.getContent()));
+            } else if (message.getRole() == ChatMessageDTO.RoleType.SYSTEM && StringUtils.hasText(message.getContent())) {
+                userMessages.add(new SystemMessage(message.getContent()));
+            }
+        }
+        return userMessages;
+    }
+
+    private String compactAssistantText(String content) {
+        String trimmed = content.trim();
+        if (trimmed.length() <= COMPACTED_ASSISTANT_MAX_CHARS) {
+            return trimmed;
+        }
+        return trimmed.substring(0, COMPACTED_ASSISTANT_MAX_CHARS - 3) + "...";
+    }
+
+    private List<List<Message>> upgradeTurnsWithinBudget(List<List<Message>> baseline,
+                                                          List<List<Message>> richerTurns,
+                                                          int effectiveBudget) {
+        List<List<Message>> upgraded = new ArrayList<>(baseline);
+        int currentTokenCount = estimateTurnTokens(upgraded);
+        for (int i = upgraded.size() - 1; i >= 0; i--) {
+            List<Message> current = upgraded.get(i);
+            List<Message> richer = richerTurns.get(i);
+            int candidateTokenCount = currentTokenCount - estimateTokens(current) + estimateTokens(richer);
+            if (candidateTokenCount <= effectiveBudget) {
+                upgraded.set(i, richer);
+                currentTokenCount = candidateTokenCount;
+                continue;
+            }
+
+            List<Message> toolCompacted = applyBudgetCompaction(richer);
+            int toolCompactedTokenCount = currentTokenCount - estimateTokens(current) + estimateTokens(toolCompacted);
+            if (toolCompactedTokenCount < candidateTokenCount && toolCompactedTokenCount <= effectiveBudget) {
+                upgraded.set(i, toolCompacted);
+                currentTokenCount = toolCompactedTokenCount;
+            }
+        }
+        return upgraded;
+    }
+
+    private List<Message> selectMostRecentTurns(List<List<Message>> turns, int effectiveBudget) {
+        List<List<Message>> selected = new ArrayList<>();
+        int currentTokenCount = 0;
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            List<Message> turn = turns.get(i);
+            int turnTokens = estimateTokens(turn);
+            if (turnTokens > effectiveBudget) {
+                turn = applyBudgetCompaction(turn);
+                turnTokens = estimateTokens(turn);
+            }
+            if (!selected.isEmpty() && currentTokenCount + turnTokens > effectiveBudget) {
+                List<Message> toolCompacted = applyBudgetCompaction(turn);
+                int toolCompactedTokens = estimateTokens(toolCompacted);
+                if (toolCompactedTokens < turnTokens
+                        && currentTokenCount + toolCompactedTokens <= effectiveBudget) {
+                    turn = toolCompacted;
+                    turnTokens = toolCompactedTokens;
+                } else {
+                    break;
+                }
+            }
+            selected.add(0, turn);
+            currentTokenCount += turnTokens;
+        }
+        return flattenTurns(selected);
+    }
+
+    private int estimateTurnTokens(List<List<Message>> turns) {
+        return turns.stream().mapToInt(this::estimateTokens).sum();
+    }
+
+    private List<Message> flattenTurns(List<List<Message>> turns) {
+        return turns.stream().flatMap(List::stream).collect(Collectors.toList());
     }
 
     private List<Message> convertToSpringAiMessages(List<ChatMessageDTO> chatMessages) {

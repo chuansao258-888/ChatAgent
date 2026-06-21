@@ -57,7 +57,7 @@ class DeepThinkFinalSynthesisTest {
         when(promptLoader.render(eq(PromptConstants.DEEPTHINK_FINAL_SYNTHESIS), any()))
                 .thenReturn("rendered final prompt");
         when(messageBridge.streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(true)
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
         )).thenReturn("final answer");
     }
 
@@ -71,7 +71,7 @@ class DeepThinkFinalSynthesisTest {
 
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
         verify(messageBridge, times(1)).streamFinalResponse(
-                eq("session-1"), eq("turn-1"), promptCaptor.capture(), eq(llmService), eq(true));
+                eq("session-1"), eq("turn-1"), promptCaptor.capture(), eq(llmService), eq(false));
 
         Prompt prompt = promptCaptor.getValue();
         assertThat(prompt.getInstructions().get(0).getText()).isEqualTo("rendered final prompt");
@@ -100,6 +100,28 @@ class DeepThinkFinalSynthesisTest {
         assertThat(varsCaptor.getValue().get("caveats"))
                 .contains("仍缺少：缺少最新来源")
                 .contains("验证发现问题");
+    }
+
+    @Test
+    void synthesize_usesEnglishCaveatPrefixesForEnglishUserQuestion() {
+        ChatMemory englishMemory = MessageWindowChatMemory.builder().maxMessages(50).build();
+        englishMemory.add("session-1", new SystemMessage("system"));
+        englishMemory.add("session-1", new UserMessage("How should we verify this browser failure?"));
+        DeepThinkFinalSynthesizer synthesizer = new DeepThinkFinalSynthesizer(
+                messageBridge, llmService, promptLoader, englishMemory, chatOptions,
+                "session-1", "turn-1", "file summary", "profile summary");
+
+        synthesizer.synthesize(plan(), notebook(), reflectionWithMissingEvidence(), failedVerification());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> varsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(promptLoader).render(eq(PromptConstants.DEEPTHINK_FINAL_SYNTHESIS), varsCaptor.capture());
+
+        assertThat(varsCaptor.getValue().get("caveats"))
+                .contains("Still missing:")
+                .contains("Verification found issues")
+                .doesNotContain("仍缺少")
+                .doesNotContain("验证发现问题");
     }
 
     private DeepThinkPlan plan() {

@@ -51,24 +51,36 @@ public class ProviderDirectStreamSupport {
         this.providerRegistry = providerRegistry;
     }
 
-    public Optional<Disposable> submit(ModelTarget target, Prompt prompt, StreamCallback callback) {
+    public Optional<Disposable> submit(ModelTarget target,
+                                       Prompt prompt,
+                                       StreamCallback callback,
+                                       boolean deepThinking) {
         // target/candidate 不完整时，当前模型无法定位到 spring-client-key，
         // 因此不能走厂商原始流，返回 empty 让外层走兜底流式路径。
         if (target == null || target.candidate() == null) {
             return Optional.empty();
         }
         // spring-client-key 是路由配置和底层 provider binding 的连接点。
-        // 例如 deepseek-reasoner -> DeepSeekBinding，glm-5.1 -> ZhiPuAiBinding。
+        // 例如 deepseek-v4-pro -> DeepSeekBinding，Z.AI Coding 找不到 raw binding 时会回退 ChatClient.stream()。
         Optional<ChatModelProviderRegistry.ProviderBinding> binding =
                 providerRegistry.find(target.candidate().getSpringClientKey());
         if (binding.isEmpty()) {
+            if (usesDeepSeekThinkingControl(target.candidate())) {
+                throw new IllegalStateException(
+                        "DeepSeek thinking control requires a provider-direct stream binding");
+            }
             return Optional.empty();
         }
         try {
             // 找到 binding 后，交给内部重载 submit 按具体厂商分发。
             // 返回 Optional.of 表示原始 SSE 已经成功提交。
-            return Optional.of(submit(binding.get(), prompt, callback));
+            return Optional.of(submit(binding.get(), prompt, callback, target.candidate(), deepThinking));
         } catch (ProviderDirectStreamUnavailableException e) {
+            if (binding.get() instanceof ChatModelProviderRegistry.DeepSeekBinding
+                    && usesDeepSeekThinkingControl(target.candidate())) {
+                throw new IllegalStateException(
+                        "DeepSeek thinking control requires the provider-direct stream adapter", e);
+            }
             // 反射读取 Spring AI 内部字段/方法可能因为版本变化失败。
             // 这里不直接打断业务，而是返回 empty，让 RoutingLLMService 回退到 ChatClient.stream()。
             log.warn("Raw provider stream unavailable; falling back to ChatClient stream: modelKey={}, provider={}, reason={}",
@@ -79,11 +91,13 @@ public class ProviderDirectStreamSupport {
 
     private Disposable submit(ChatModelProviderRegistry.ProviderBinding binding,
                               Prompt prompt,
-                              StreamCallback callback) {
+                              StreamCallback callback,
+                              ChatRoutingProperties.CandidateConfig candidate,
+                              boolean deepThinking) {
         // ProviderBinding 是 sealed interface，目前只允许 DeepSeekBinding 和 ZhiPuAiBinding。
         // 这里根据实际 binding 类型选择对应厂商的原始 SSE 实现。
         if (binding instanceof ChatModelProviderRegistry.DeepSeekBinding deepSeekBinding) {
-            return submitDeepSeek(deepSeekBinding, prompt, callback);
+            return submitDeepSeek(deepSeekBinding, prompt, callback, candidate, deepThinking);
         }
         if (binding instanceof ChatModelProviderRegistry.ZhiPuAiBinding zhiPuAiBinding) {
             return submitZhiPu(zhiPuAiBinding, prompt, callback);
@@ -92,13 +106,20 @@ public class ProviderDirectStreamSupport {
     }
 
     private Disposable submitDeepSeek(ChatModelProviderRegistry.DeepSeekBinding binding,
-                                      Prompt prompt,
-                                      StreamCallback callback) {
+                                       Prompt prompt,
+                                       StreamCallback callback,
+                                       ChatRoutingProperties.CandidateConfig candidate,
+                                       boolean deepThinking) {
         // 复用 Spring AI ChatModel 的内部请求构造逻辑：
         // 先把外部 Prompt 合并默认 options，再创建 stream=true 的 DeepSeek 请求体。
         Prompt requestPrompt = buildRequestPrompt(binding.chatModel(), prompt);
         DeepSeekApi.ChatCompletionRequest request = createRequest(binding.chatModel(), requestPrompt,
                 DeepSeekApi.ChatCompletionRequest.class);
+        if (request == null) {
+            throw new ProviderDirectStreamUnavailableException(
+                    "Provider stream request builder returned null", null);
+        }
+        Map<String, Object> requestBody = buildDeepSeekRequestBody(request, candidate, deepThinking);
         // 复用 Spring AI DeepSeekApi 内部已经配置好的 WebClient。
         // 这个 WebClient 已包含 base-url、Authorization Bearer、Content-Type 等配置。
         WebClient webClient = readField(binding.api(), "webClient", WebClient.class);
@@ -115,7 +136,7 @@ public class ProviderDirectStreamSupport {
         log.debug("Using raw DeepSeek SSE parser for modelKey={}, endpoint={}", binding.springClientKey(), endpoint);
         Disposable upstream = webClient.post()
                 .uri(endpoint)
-                .body(Mono.just(request), DeepSeekApi.ChatCompletionRequest.class)
+                .bodyValue(requestBody)
                 .retrieve()
                 // 按字符串流持续接收原始 SSE 文本。一次 raw 可能包含一条或多条 SSE event。
                 .bodyToFlux(String.class)
@@ -136,6 +157,20 @@ public class ProviderDirectStreamSupport {
         // 把真实上游订阅挂到 handle 里。外层 dispose(handle) 时才能取消这个 upstream。
         handle.setUpstream(upstream);
         return handle;
+    }
+
+    static Map<String, Object> buildDeepSeekRequestBody(
+            DeepSeekApi.ChatCompletionRequest request,
+            ChatRoutingProperties.CandidateConfig candidate,
+            boolean deepThinking) {
+        Map<String, Object> body = new LinkedHashMap<>(ModelOptionsUtils.objectToMap(request));
+        boolean enabled = deepThinking && usesDeepSeekThinkingControl(candidate);
+        body.put("thinking", Map.of("type", enabled ? "enabled" : "disabled"));
+        return body;
+    }
+
+    private static boolean usesDeepSeekThinkingControl(ChatRoutingProperties.CandidateConfig candidate) {
+        return candidate != null && "MODEL_OVERRIDE".equalsIgnoreCase(candidate.getThinkingStrategy());
     }
 
     private Disposable submitZhiPu(ChatModelProviderRegistry.ZhiPuAiBinding binding,

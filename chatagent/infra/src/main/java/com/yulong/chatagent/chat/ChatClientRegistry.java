@@ -15,7 +15,7 @@ import java.util.Map;
  */
 public class ChatClientRegistry {
 
-    // key 是 @Bean 名称，例如 deepseek-reasoner、glm-5.1；value 是实际 ChatClient。
+    // key 是 @Bean 名称，例如 deepseek-v4-pro、glm-5.2；value 是实际 ChatClient。
     private final Map<String, ChatClient> chatClients;
 
     public ChatClientRegistry(Map<String, ChatClient> chatClients) {

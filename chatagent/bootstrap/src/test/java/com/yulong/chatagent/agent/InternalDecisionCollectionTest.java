@@ -105,6 +105,30 @@ class InternalDecisionCollectionTest {
     }
 
     @Test
+    @DisplayName("INTERNAL_TRACE_ONLY ReAct tool decision: returns response without internal persistence")
+    void internalReactToolDecision_shouldNotPersistInternalMessage() {
+        AssistantMessage.ToolCall toolCall = new AssistantMessage.ToolCall("tc1", "function", "tool1", "{}");
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content(null)
+                .toolCalls(List.of(toolCall))
+                .build();
+        ChatResponse chatResponse = new ChatResponse(List.of(new Generation(assistant)));
+        BufferedStreamingResponse buffered = new BufferedStreamingResponse(chatResponse, List.of());
+
+        when(llmService.streamDecisionWithRouting(any(Prompt.class), eq("sys"), eq(List.of()), eq(false)))
+                .thenReturn(buffered);
+
+        BufferedStreamingResponse result = bridge.collectDecisionResponse(
+                "session-1", "turn-1", new Prompt("test"), "sys",
+                List.of(), llmService, DecisionVisibility.INTERNAL_TRACE_ONLY,
+                false, null, null);
+
+        assertThat(result).isSameAs(buffered);
+        verify(chatMessageFacadeService, never()).createChatMessage(any(ChatMessageDTO.class));
+        verify(sseService, never()).publish(any(), any());
+    }
+
+    @Test
     @DisplayName("INTERNAL_TRACE_ONLY without tool calls: no message persisted, returns BufferedStreamingResponse")
     void internalTraceNoToolCalls_shouldNotPersist() {
         // Arrange

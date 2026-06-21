@@ -5,12 +5,12 @@ import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.deepseek.DeepSeekChatOptions;
 import org.springframework.ai.deepseek.api.DeepSeekApi;
 import org.springframework.ai.zhipuai.ZhiPuAiChatModel;
-import org.springframework.ai.zhipuai.ZhiPuAiChatOptions;
 import org.springframework.ai.zhipuai.api.ZhiPuAiApi;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -39,36 +39,34 @@ public class ChatModelProviderRegistry {
         // ObjectProvider.getIfAvailable() 允许某个 provider 缺失时不让整个应用启动失败。
         DeepSeekChatModel deepSeekChatModel = deepSeekChatModelProvider.getIfAvailable();
         DeepSeekApi deepSeekApi = deepSeekApiProvider.getIfAvailable();
+        if (deepSeekApi == null && deepSeekChatModel != null) {
+            deepSeekApi = extractField(deepSeekChatModel, "deepSeekApi", DeepSeekApi.class);
+        }
         if (deepSeekChatModel != null && deepSeekApi != null) {
-            // 自动配置创建的默认 DeepSeekChatModel，对应 deepseek-chat。
-            bindings.put("deepseek-chat", new DeepSeekBinding("deepseek-chat", deepSeekChatModel, deepSeekApi));
+            // 自动配置创建的默认 DeepSeekChatModel，对应 deepseek-v4-flash。
+            bindings.put("deepseek-v4-flash", new DeepSeekBinding("deepseek-v4-flash", deepSeekChatModel, deepSeekApi));
 
-            // 复用同一个 DeepSeekApi，再创建一个默认 model=deepseek-reasoner 的 ChatModel。
-            // 这样路由候选可以直接使用 spring-client-key=deepseek-reasoner。
-            DeepSeekChatOptions reasonerOptions = DeepSeekChatOptions.builder()
-                    .model("deepseek-reasoner").maxTokens(8192).build();
+            // 复用同一个 DeepSeekApi，再创建一个默认 model=deepseek-v4-pro 的 ChatModel。
+            // 这样路由候选可以直接使用 spring-client-key=deepseek-v4-pro。
+            DeepSeekChatOptions proOptions = DeepSeekChatOptions.builder()
+                    .model("deepseek-v4-pro").maxTokens(8192).build();
             ObservationRegistry obsRegistry = observationRegistryProvider.getIfAvailable(
                     () -> ObservationRegistry.NOOP);
-            DeepSeekChatModel reasonerModel = DeepSeekChatModel.builder()
+            DeepSeekChatModel proModel = DeepSeekChatModel.builder()
                     .deepSeekApi(deepSeekApi)
-                    .defaultOptions(reasonerOptions)
+                    .defaultOptions(proOptions)
                     .observationRegistry(obsRegistry)
                     .build();
-            bindings.put("deepseek-reasoner",
-                    new DeepSeekBinding("deepseek-reasoner", reasonerModel, deepSeekApi));
+            bindings.put("deepseek-v4-pro",
+                    new DeepSeekBinding("deepseek-v4-pro", proModel, deepSeekApi));
         }
 
         ZhiPuAiChatModel zhiPuAiChatModel = zhiPuAiChatModelProvider.getIfAvailable();
         ZhiPuAiApi zhiPuAiApi = zhiPuAiApiProvider.getIfAvailable();
         if (zhiPuAiChatModel != null && zhiPuAiApi != null) {
-            // 自动配置创建的默认智谱模型，对应 glm-4.6。
-            bindings.put("glm-4.6", new ZhiPuAiBinding("glm-4.6", zhiPuAiChatModel, zhiPuAiApi));
-
-            // 复用同一个 ZhiPuAiApi，额外创建 glm-5.1 绑定，供路由候选和原始 SSE 通道使用。
-            ZhiPuAiChatOptions glm51Options = ZhiPuAiChatOptions.builder()
-                    .model("glm-5.1").temperature(0.35).topP(0.85).maxTokens(4096).build();
-            ZhiPuAiChatModel glm51Model = new ZhiPuAiChatModel(zhiPuAiApi, glm51Options);
-            bindings.put("glm-5.1", new ZhiPuAiBinding("glm-5.1", glm51Model, zhiPuAiApi));
+            // 自动配置创建的 Z.AI Coding VLM 模型，对应 glm-4.6v-flash。
+            bindings.put("glm-4.6v-flash",
+                    new ZhiPuAiBinding("glm-4.6v-flash", zhiPuAiChatModel, zhiPuAiApi));
         }
 
         this.bindingsByKey = Map.copyOf(bindings);
@@ -80,6 +78,16 @@ public class ChatModelProviderRegistry {
             return Optional.empty();
         }
         return Optional.ofNullable(bindingsByKey.get(springClientKey));
+    }
+
+    private static <T> T extractField(Object target, String fieldName, Class<T> type) {
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return type.cast(field.get(target));
+        } catch (NoSuchFieldException | IllegalAccessException | ClassCastException e) {
+            return null;
+        }
     }
 
     // 旧调试入口已停用：当前生产路由只通过 find(springClientKey) 查询具体 binding。
@@ -119,7 +127,7 @@ public class ChatModelProviderRegistry {
 
         @Override
         public boolean supportsThinking() {
-            // DeepSeek 的 thinking 通常通过选择 deepseek-reasoner 模型实现，
+            // DeepSeek 的 thinking 通常通过选择 v4-pro/reasoning-capable 模型实现，
             // 不是统一的 provider thinking flag；具体候选可用 YAML supports-thinking 覆盖。
             return false;
         }

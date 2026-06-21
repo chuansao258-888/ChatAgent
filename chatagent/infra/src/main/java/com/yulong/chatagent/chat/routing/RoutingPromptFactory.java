@@ -1,5 +1,7 @@
 package com.yulong.chatagent.chat.routing;
 
+import org.springframework.ai.anthropic.AnthropicChatOptions;
+import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -25,6 +27,8 @@ import java.util.Locale;
  */
 @Component
 public class RoutingPromptFactory {
+
+    private static final int ANTHROPIC_THINKING_BUDGET_TOKENS = 1024;
 
     // thinking 参数只有在模型确实支持时才注入，避免给不认识该参数的模型制造请求错误。
     private final ModelCapabilityResolver capabilityResolver;
@@ -76,6 +80,20 @@ public class RoutingPromptFactory {
             return sourceOptions == null ? null : sourceOptions.copy();
         }
         String normalized = key.toLowerCase(Locale.ROOT);
+        // Z.AI coding plan 走 Anthropic-compatible API，不能按 glm 名称误转成 Zhipu options。
+        if (isZaiCodingModelKey(normalized)) {
+            if (sourceOptions instanceof AnthropicChatOptions anthropicChatOptions) {
+                return anthropicChatOptions.copy();
+            }
+            if (sourceOptions instanceof ToolCallingChatOptions toolCallingChatOptions) {
+                return ModelOptionsUtils.copyToTarget(toolCallingChatOptions,
+                        ToolCallingChatOptions.class,
+                        AnthropicChatOptions.class);
+            }
+            return sourceOptions == null ? AnthropicChatOptions.builder().build()
+                    : ModelOptionsUtils.copyToTarget(sourceOptions, ChatOptions.class, AnthropicChatOptions.class);
+        }
+
         // 智谱模型需要 ZhiPuAiChatOptions，后续才能调用 setThinking(...)。
         if (normalized.contains("glm") || normalized.contains("zhipu")) {
             if (sourceOptions instanceof ZhiPuAiChatOptions zhiPuAiChatOptions) {
@@ -108,18 +126,41 @@ public class RoutingPromptFactory {
         return sourceOptions == null ? null : sourceOptions.copy();
     }
 
+    private boolean isZaiCodingModelKey(String normalizedKey) {
+        return "glm-4.7".equals(normalizedKey)
+                || normalizedKey.startsWith("glm-5.2")
+                || normalizedKey.startsWith("zai-");
+    }
+
     private void applyThinkingOptions(ChatOptions options, ModelTarget target, boolean deepThinking) {
-        // 普通请求不注入 thinking；缺少 options/target/candidate 也无法安全注入。
-        if (!deepThinking || options == null || target == null || target.candidate() == null) {
+        if (options == null || target == null || target.candidate() == null) {
             return;
         }
         ChatRoutingProperties.CandidateConfig candidate = target.candidate();
+        String strategy = candidate.getThinkingStrategy();
+
+        // Z.AI Anthropic-compatible API 支持显式 enabled/disabled；普通模式必须禁用，
+        // 避免供应商默认值变化后意外增加推理延迟。
+        if ("ANTHROPIC_THINKING".equalsIgnoreCase(strategy)
+                && options instanceof AnthropicChatOptions anthropicChatOptions) {
+            AnthropicApi.ThinkingType type = deepThinking
+                    ? AnthropicApi.ThinkingType.ENABLED
+                    : AnthropicApi.ThinkingType.DISABLED;
+            Integer budgetTokens = deepThinking ? ANTHROPIC_THINKING_BUDGET_TOKENS : null;
+            anthropicChatOptions.setThinking(
+                    new AnthropicApi.ChatCompletionRequest.ThinkingConfig(type, budgetTokens));
+            return;
+        }
+
+        // 其他策略只在 DeepThink 中开启；普通 DeepSeek 的显式 disabled 由原始请求适配层注入。
+        if (!deepThinking) {
+            return;
+        }
         // 能力判断失败时直接跳过，防止给不支持 thinking 的模型塞厂商私有参数。
         if (!capabilityResolver.supportsThinking(candidate)) {
             return;
         }
 
-        String strategy = candidate.getThinkingStrategy();
         // 默认策略下，智谱可以通过 thinking flag 打开思考。
         // DeepSeek 独立 reasoner 候选通常已经在 ChatClient 层绑定到 reasoner 模型，因此这里无需额外处理。
         if (!StringUtils.hasText(strategy) || "NONE".equalsIgnoreCase(strategy)) {

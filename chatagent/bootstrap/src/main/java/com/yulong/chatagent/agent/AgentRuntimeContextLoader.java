@@ -30,4 +30,13 @@ public interface AgentRuntimeContextLoader {
                                      AgentExecutionMode executionMode) {
         return load(agentId, chatSessionId, intentResolution, rewrittenInput);
     }
+
+    default AgentRuntimeContext load(String agentId,
+                                     String chatSessionId,
+                                     IntentResolution intentResolution,
+                                     String rewrittenInput,
+                                     AgentExecutionMode executionMode,
+                                     String currentUserInput) {
+        return load(agentId, chatSessionId, intentResolution, rewrittenInput, executionMode);
+    }
 }

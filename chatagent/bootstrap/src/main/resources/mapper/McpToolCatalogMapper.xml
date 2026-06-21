@@ -98,7 +98,9 @@
     </update>
 
     <update id="softDeleteByServerId">
-        DELETE FROM t_mcp_tool_catalog
+        UPDATE t_mcp_tool_catalog
+        SET deleted_at = #{deletedAt},
+            updated_at = #{updatedAt}
         WHERE server_id = CAST(#{serverId} AS uuid)
           AND deleted_at IS NULL
     </update>

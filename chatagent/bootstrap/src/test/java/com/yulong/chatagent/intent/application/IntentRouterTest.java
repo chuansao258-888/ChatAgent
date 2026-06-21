@@ -156,6 +156,61 @@ class IntentRouterTest {
     }
 
     @Test
+    void shouldClarifyVagueEnglishQueryWhenRootCandidatesMatch() {
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(
+                        node("domain-a", null, IntentNodeLevel.DOMAIN, "Operations Alpha", List.of("operations"), null),
+                        node("domain-b", null, IntentNodeLevel.DOMAIN, "Operations Beta", List.of("operations"), null)
+                ),
+                Map.of()
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(snapshot);
+        when(chatModelRouter.route("classifier-model")).thenReturn(chatClient);
+        when(chatClient.prompt(anyString()).call().content()).thenReturn("domain-a");
+
+        IntentRoutingResult result = intentRouter.route("assistant-1", "operations");
+
+        assertThat(result.requiresClarification()).isTrue();
+        assertThat(result.clarificationCandidates())
+                .extracting(com.yulong.chatagent.support.dto.IntentNodeDTO::getId)
+                .containsExactly("domain-a", "domain-b");
+    }
+
+    @Test
+    void shouldClarifyChildLayerWhenSelectedParentHasNoMatchingLeaf() {
+        var domain = node("domain-a", null, IntentNodeLevel.DOMAIN, "Ridgewater Desk", List.of("operations"), null);
+        var category = node("category-a", "domain-a", IntentNodeLevel.CATEGORY, "Workbench", List.of(), null);
+        var launchNotes = node("topic-launch", "category-a", IntentNodeLevel.TOPIC,
+                "Ridgewater Launch Notes", List.of("handoff code"), IntentKind.KB);
+        var roomCard = node("topic-room", "category-a", IntentNodeLevel.TOPIC,
+                "Uploaded Room Card", List.of("old room card"), IntentKind.TOOL);
+        var timeQuestions = node("topic-time", "category-a", IntentNodeLevel.TOPIC,
+                "Time Questions", List.of("time zone"), IntentKind.TOOL);
+        launchNotes.setSortOrder(0);
+        roomCard.setSortOrder(1);
+        timeQuestions.setSortOrder(2);
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(domain, category, launchNotes, roomCard, timeQuestions),
+                Map.of("topic-launch", List.of("kb-launch"))
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(snapshot);
+        when(chatModelRouter.route("classifier-model")).thenReturn(chatClient);
+        when(chatClient.prompt(anyString()).call().content()).thenReturn("NONE");
+
+        IntentRoutingResult result = intentRouter.route("assistant-1", "operations", "domain-a");
+
+        assertThat(result.requiresClarification()).isTrue();
+        assertThat(result.parentPath()).isEqualTo("Ridgewater Desk > Workbench");
+        assertThat(result.clarificationCandidates())
+                .extracting(com.yulong.chatagent.support.dto.IntentNodeDTO::getId)
+                .containsExactly("topic-launch", "topic-room");
+    }
+
+    @Test
     void shouldReturnNoneForVagueQueryWhenRootCandidatesDoNotMatch() {
         IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
                 "assistant-1",

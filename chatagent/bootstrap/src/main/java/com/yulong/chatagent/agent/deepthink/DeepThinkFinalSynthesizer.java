@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
@@ -68,7 +69,7 @@ public class DeepThinkFinalSynthesizer {
             AgentTraceMetadata trace = DeepThinkTraceSanitizer.buildTrace(
                     "DEEPTHINK", plan, notebook, reflectionResult, verificationResult);
             Prompt prompt = buildPrompt(plan, notebook, reflectionResult, verificationResult);
-            messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, llmService, true);
+            messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, llmService, false);
             messageBridge.attachTraceMetadata(chatSessionId, turnId, trace);
         } catch (Exception e) {
             log.error("Failed to produce DeepThink final synthesis", e);
@@ -89,6 +90,7 @@ public class DeepThinkFinalSynthesizer {
             toolOptions.setToolCallbacks(List.of());
         }
 
+        List<Message> promptMessages = this.chatMemory.get(this.chatSessionId);
         String finalAnswerPrompt = promptLoader.render(PromptConstants.DEEPTHINK_FINAL_SYNTHESIS, Map.of(
                 "sessionFileSummary", sessionFileSummary == null ? "" : sessionFileSummary,
                 "relevantLongTermMemories", relevantLongTermMemories == null ? "" : relevantLongTermMemories,
@@ -96,10 +98,9 @@ public class DeepThinkFinalSynthesizer {
                 "observations", notebook.buildObservationsSummary(),
                 "reflectionSummary", summarizeReflection(reflectionResult),
                 "verificationSummary", summarizeVerification(verificationResult),
-                "caveats", buildCaveats(reflectionResult, verificationResult)
+                "caveats", buildCaveats(reflectionResult, verificationResult, prefersChinese(promptMessages))
         ));
 
-        List<Message> promptMessages = this.chatMemory.get(this.chatSessionId);
         List<Message> finalPromptMessages = new ArrayList<>(promptMessages.size() + 1);
         finalPromptMessages.add(new SystemMessage(finalAnswerPrompt));
         finalPromptMessages.addAll(promptMessages);
@@ -150,21 +151,39 @@ public class DeepThinkFinalSynthesizer {
     }
 
     private String buildCaveats(DeepThinkReflectionResult reflectionResult,
-                                DeepThinkVerificationResult verificationResult) {
+                                DeepThinkVerificationResult verificationResult,
+                                boolean preferChinese) {
         List<String> caveats = new ArrayList<>();
         if (reflectionResult != null && reflectionResult.needsUserClarification()) {
-            caveats.add("需要向用户澄清：" + reflectionResult.getReasonForUserClarification());
+            caveats.add((preferChinese ? "需要向用户澄清：" : "Clarification needed from the user: ")
+                    + reflectionResult.getReasonForUserClarification());
         }
         if (reflectionResult != null && reflectionResult.getMissing() != null && !reflectionResult.getMissing().isEmpty()) {
-            caveats.add("仍缺少：" + String.join("; ", reflectionResult.getMissing()));
+            caveats.add((preferChinese ? "仍缺少：" : "Still missing: ")
+                    + String.join("; ", reflectionResult.getMissing()));
         }
         if (verificationResult != null && verificationResult.getCaveat() != null) {
             caveats.add(verificationResult.getCaveat());
         }
         if (verificationResult != null && !verificationResult.isPassed()
                 && verificationResult.getIssues() != null && !verificationResult.getIssues().isEmpty()) {
-            caveats.add("验证发现问题，最终回答需要明确不确定性。");
+            caveats.add(preferChinese
+                    ? "验证发现问题，最终回答需要明确不确定性。"
+                    : "Verification found issues; the final answer must state uncertainty.");
         }
-        return caveats.isEmpty() ? "无" : String.join("\n", caveats);
+        return caveats.isEmpty() ? (preferChinese ? "无" : "None") : String.join("\n", caveats);
+    }
+
+    private boolean prefersChinese(List<Message> promptMessages) {
+        String latestUserText = "";
+        for (int i = promptMessages.size() - 1; i >= 0; i--) {
+            if (promptMessages.get(i) instanceof UserMessage userMessage
+                    && userMessage.getText() != null
+                    && !userMessage.getText().isBlank()) {
+                latestUserText = userMessage.getText();
+                break;
+            }
+        }
+        return DeepThinkLanguageSupport.prefersChinese(latestUserText);
     }
 }

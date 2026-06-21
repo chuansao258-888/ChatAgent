@@ -5,6 +5,7 @@ import {
   getAccessToken,
   setAccessToken,
 } from "../auth/token.ts";
+import { resolveApiBaseUrl } from "./baseUrl.ts";
 
 export interface ApiResponse<T = unknown> {
   code: number;
@@ -19,7 +20,7 @@ export interface RequestOptions extends RequestInit {
   silent?: boolean;
 }
 
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
+export const BASE_URL = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 function buildUrl(
   url: string,

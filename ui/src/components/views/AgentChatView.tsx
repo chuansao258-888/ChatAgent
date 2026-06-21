@@ -37,6 +37,8 @@ import {
 const PENDING_HINT_MS = 15_000;
 const PENDING_TIMEOUT_MS = 30_000;
 const COMPENSATION_POLL_MS = 10_000;
+const FINAL_RECONCILE_ATTEMPTS = 4;
+const FINAL_RECONCILE_DELAY_MS = 750;
 
 function isMissingChatSessionError(error: unknown): boolean {
   return (
@@ -106,9 +108,16 @@ const AgentChatView: React.FC = () => {
   }, [messages]);
 
   const observedTurnMessageCountRef = useRef(0);
-  const safetyUnlockTimerRef = useRef<any>(null);
-  const safetyHintTimerRef = useRef<any>(null);
-  const compensationPollTimerRef = useRef<any>(null);
+  const safetyUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const safetyHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const compensationPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const finalReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const clearSafetyTimer = () => {
     if (safetyUnlockTimerRef.current) {
@@ -125,6 +134,13 @@ const AgentChatView: React.FC = () => {
     if (compensationPollTimerRef.current) {
       clearInterval(compensationPollTimerRef.current);
       compensationPollTimerRef.current = null;
+    }
+  };
+
+  const clearFinalReconcileTimer = () => {
+    if (finalReconcileTimerRef.current) {
+      clearTimeout(finalReconcileTimerRef.current);
+      finalReconcileTimerRef.current = null;
     }
   };
 
@@ -225,6 +241,33 @@ const AgentChatView: React.FC = () => {
     });
   }, []);
 
+  const reconcileFinalMessages = useCallback(
+    (sessionId: string) => {
+      clearFinalReconcileTimer();
+      let attempt = 0;
+      const run = () => {
+        attempt += 1;
+        void getChatMessagesBySessionId(sessionId)
+          .then((response) => {
+            mergeRealtimeMessages(response);
+          })
+          .catch((error) => {
+            console.warn("Final message reconciliation failed:", error);
+          })
+          .finally(() => {
+            if (attempt < FINAL_RECONCILE_ATTEMPTS) {
+              finalReconcileTimerRef.current = setTimeout(
+                run,
+                FINAL_RECONCILE_DELAY_MS,
+              );
+            }
+          });
+      };
+      run();
+    },
+    [mergeRealtimeMessages],
+  );
+
   const evaluatePendingProgress = useCallback(
     (sessionId: string, chatMessages: ChatMessageVO[]) => {
       const pendingTurnId = activePendingTurnIdRef.current;
@@ -236,9 +279,14 @@ const AgentChatView: React.FC = () => {
           msg.turnId === pendingTurnId &&
           (msg.role === "assistant" || msg.role === "tool"),
       );
-      const hasAssistant = sameTurnMessages.some((msg) => msg.role === "assistant");
-      if (hasAssistant) {
+      const hasFinalAssistant = sameTurnMessages.some(
+        (msg) =>
+          msg.role === "assistant" &&
+          (executionMode !== "DEEPTHINK" || Boolean(msg.metadata?.agentTrace)),
+      );
+      if (hasFinalAssistant) {
         clearPendingState(sessionId);
+        reconcileFinalMessages(sessionId);
         return;
       }
       if (sameTurnMessages.length > observedTurnMessageCountRef.current) {
@@ -246,7 +294,12 @@ const AgentChatView: React.FC = () => {
         markPendingActivity();
       }
     },
-    [clearPendingState, markPendingActivity],
+    [
+      clearPendingState,
+      executionMode,
+      markPendingActivity,
+      reconcileFinalMessages,
+    ],
   );
 
   const addMessage = (message: ChatMessageVO) => {
@@ -347,6 +400,7 @@ const AgentChatView: React.FC = () => {
       observedTurnMessageCountRef.current = 0;
       clearSafetyTimer();
       clearCompensationPoll();
+      clearFinalReconcileTimer();
       return;
     }
     const pendingTurnId = getPendingTurnId(chatSessionId);
@@ -595,16 +649,16 @@ const AgentChatView: React.FC = () => {
           setAgentStatusType("AI_EXECUTING");
         }
       } else if (message.type === "AI_ERROR") {
-        setDisplayAgentStatus(true);
-        setAgentStatusText(message.payload?.statusText ?? "Error");
-        setAgentStatusType("AI_ERROR");
+        const retryContent = resolveRetryMessage(activePendingTurnIdRef.current);
+        clearPendingState(chatSessionId);
         setPersistentErrorText(message.payload?.statusText ?? "Error");
-        setRetryMessage(resolveRetryMessage(activePendingTurnIdRef.current));
+        setRetryMessage(retryContent);
       } else if (message.type === "AI_DONE") {
         const doneTurnId = message.payload?.turnId;
         const pendingTurnId = activePendingTurnIdRef.current;
         if (pendingTurnId && doneTurnId === pendingTurnId) {
           clearPendingState(chatSessionId);
+          reconcileFinalMessages(chatSessionId);
         }
       } else if (message.type === "TURN_ROLLBACK") {
         const rollbackTurnId = message.payload.turnId;
@@ -622,8 +676,17 @@ const AgentChatView: React.FC = () => {
       es.close();
       clearSafetyTimer();
       clearCompensationPoll();
+      clearFinalReconcileTimer();
     };
-  }, [chatSessionId, clearPendingState, initializing, isAuthenticated, markPendingActivity]);
+  }, [
+    chatSessionId,
+    clearPendingState,
+    initializing,
+    isAuthenticated,
+    markPendingActivity,
+    reconcileFinalMessages,
+    resolveRetryMessage,
+  ]);
 
   const handleRetryLastMessage = useCallback(() => {
     if (!retryMessage) {

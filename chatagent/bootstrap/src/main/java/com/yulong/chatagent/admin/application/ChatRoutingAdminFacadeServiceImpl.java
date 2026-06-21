@@ -30,7 +30,7 @@ import java.util.TreeSet;
 public class ChatRoutingAdminFacadeServiceImpl implements ChatRoutingAdminFacadeService {
 
     private static final Set<String> SUPPORTED_THINKING_STRATEGIES =
-            Set.of("NONE", "ZHIPU_THINKING_FLAG", "MODEL_OVERRIDE");
+            Set.of("NONE", "ANTHROPIC_THINKING", "ZHIPU_THINKING_FLAG", "MODEL_OVERRIDE");
 
     private final ChatRoutingProperties properties;
     private final RoutingRuntimeOverridesStore runtimeOverridesStore;

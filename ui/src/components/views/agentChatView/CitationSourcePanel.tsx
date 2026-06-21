@@ -34,19 +34,23 @@ const CitationSourcePanel: React.FC<CitationSourcePanelProps> = ({
           <div
             key={`${messageId}-${index + 1}`}
             id={`citation-source-${messageId}-${index + 1}`}
-            className="rounded-inset border border-white/6 bg-white/[0.03] px-4 py-3"
+            data-citation-index={index + 1}
+            data-document-name={citation.documentName || citation.documentId || "Unknown source"}
+            className="min-w-0 rounded-inset border border-white/6 bg-white/[0.03] px-4 py-3"
           >
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2b2218] text-[11px] font-semibold text-[#f3d7b2]">
                 {index + 1}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-sm font-medium text-[#f5e3c2]">
-                  <BookOutlined className="text-[#cfa871]" />
-                  <span className="truncate">{buildSectionLabel(citation)}</span>
+                <div className="flex min-w-0 items-start gap-2 text-sm font-medium text-[#f5e3c2]">
+                  <BookOutlined className="mt-0.5 shrink-0 text-[#cfa871]" />
+                  <span className="min-w-0 whitespace-normal break-words">
+                    {buildSectionLabel(citation)}
+                  </span>
                 </div>
                 {citation.snippet ? (
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
                     {citation.snippet}
                   </p>
                 ) : null}

@@ -11,15 +11,16 @@ import org.springframework.util.StringUtils;
 public class ChatModelAvailability {
 
     private final String deepSeekApiKey;
-    private final String zhiPuAiApiKey;
+    private final String zaiCodingApiKey;
 
     public ChatModelAvailability(@Value("${spring.ai.deepseek.api-key:}") String deepSeekApiKey,
-                                 @Value("${spring.ai.zhipuai.api-key:}") String zhiPuAiApiKey) {
+                                 @Value("${spring.ai.anthropic.api-key:}") String zaiCodingApiKey) {
         this.deepSeekApiKey = deepSeekApiKey;
-        this.zhiPuAiApiKey = zhiPuAiApiKey;
+        this.zaiCodingApiKey = zaiCodingApiKey;
     }
 
     public boolean hasConfiguredProvider() {
-        return StringUtils.hasText(deepSeekApiKey) || StringUtils.hasText(zhiPuAiApiKey);
+        return StringUtils.hasText(deepSeekApiKey)
+                || StringUtils.hasText(zaiCodingApiKey);
     }
 }

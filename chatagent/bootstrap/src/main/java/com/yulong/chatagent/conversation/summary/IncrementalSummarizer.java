@@ -77,7 +77,7 @@ public class IncrementalSummarizer {
                                  ChatSessionSummaryRepository chatSessionSummaryRepository,
                                  ChatSessionSummarySegmentRepository segmentRepository,
                                  ChatModelRouter chatModelRouter,
-                                 @Value("${chatagent.memory.summary-model:deepseek-chat}") String summaryModel,
+                                 @Value("${chatagent.memory.summary-model:deepseek-v4-flash}") String summaryModel,
                                  @Value("${chatagent.memory.compaction.v2.segment-max-chars:1200}") int segmentMaxChars,
                                  @Value("${chatagent.memory.compaction.v2.synopsis-max-chars:2000}") int synopsisMaxChars,
                                  @Value("${chatagent.memory.compaction.v2.max-retries:2}") int maxRetries,

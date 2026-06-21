@@ -22,7 +22,7 @@ export interface CitationMetadata {
   sectionPath?: string;
   chunkIndex?: number;
   snippet?: string;
-  score?: number;
+  score?: number | null;
   scoreType?: "reranker" | "fallback" | "retrieval" | "filtered";
   isFallback?: boolean;
 }

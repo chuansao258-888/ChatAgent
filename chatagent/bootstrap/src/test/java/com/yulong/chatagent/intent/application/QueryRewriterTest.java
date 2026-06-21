@@ -75,16 +75,16 @@ class QueryRewriterTest {
     void shouldReturnOriginalQueryForNonKbIntent() {
         IntentResolution resolution = new IntentResolution(
                 IntentKind.TOOL,
-                List.of(IntentNodeDTO.builder().name("发送邮件").build()),
+                List.of(IntentNodeDTO.builder().name("查询订单").build()),
                 List.of(),
                 ScopePolicy.STRICT,
-                List.of("emailTool"),
+                List.of("dataBaseTool"),
                 null
         );
 
-        String result = queryRewriter.rewrite("发个邮件给张三", resolution);
+        String result = queryRewriter.rewrite("查一下今天的订单量", resolution);
 
-        assertThat(result).isEqualTo("发送邮件 发个邮件给张三");
+        assertThat(result).isEqualTo("查询订单 查一下今天的订单量");
     }
 
     @Test

@@ -248,13 +248,18 @@ chatagent/bootstrap/src/main/resources/application.yaml
 | `CHATAGENT_REDIS_PASSWORD` | 取决于 Redis 配置 | Redis 密码。 |
 | `CHATAGENT_RABBITMQ_USERNAME` | MQ 流程需要 | RabbitMQ 用户名。 |
 | `CHATAGENT_RABBITMQ_PASSWORD` | MQ 流程需要 | RabbitMQ 密码。 |
-| `CHATAGENT_MAIL_USERNAME` | 启用邮件时需要 | SMTP 用户名。 |
-| `CHATAGENT_MAIL_PASSWORD` | 启用邮件时需要 | SMTP 密码或应用专用密码。 |
 | `CHATAGENT_JWT_SECRET` | 非临时本地运行必须 | JWT 签名密钥，需要足够长且随机。 |
 | `CHATAGENT_DEEPSEEK_API_KEY` | 使用 DeepSeek 时需要 | Chat provider 凭据。 |
 | `CHATAGENT_ZHIPUAI_API_KEY` | 使用 ZhipuAI 时需要 | Chat/VLM provider 凭据。 |
 | `CHATAGENT_ZHIPUAI_API_KEY_2` | 评测可选 | 第二个 ZhipuAI provider 凭据。 |
 | `CHATAGENT_ZAI_CODING_API_KEY` | 评测可选 | Z.AI Coding Plan provider 凭据。 |
+| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | 可选 | L2 压缩可触发前保留的最近原始对话尾部轮数。 |
+| `CHATAGENT_MEMORY_L1_TOKEN_BUDGET` | 可选 | L1 记忆 token 预算；默认值按 GLM-5.2 1M 上下文主模型放大。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | 可选 | 可触发 L2 压缩的稳定 token 水位。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO` | 可选 | L1 压力触发压缩时使用的预算比例。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS` | 可选 | L2 segment 摘要最大长度。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS` | 可选 | L2 滚动 synopsis 最大长度。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS` | 可选 | prompt 组装前工具结果压缩阈值。 |
 | `CHATAGENT_RAG_RERANKER_API_KEY` | reranker 需要鉴权时 | Reranker 凭据。 |
 | `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | MinerU 需要鉴权时 | MinerU bearer token。 |
 | `CHATAGENT_MILVUS_USERNAME` | 启用 Milvus 鉴权时 | Milvus 用户名。 |

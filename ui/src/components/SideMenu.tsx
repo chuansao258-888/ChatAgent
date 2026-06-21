@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   ControlOutlined,
   EditOutlined,
@@ -93,17 +93,7 @@ function AuthenticatedSideMenu() {
   const location = useLocation();
   const { currentUser, logout } = useAuth();
 
-  const [activeKey, setActiveKey] = useState<string>(CHAT_TAB_KEY);
-
-  useEffect(() => {
-    if (location.pathname.startsWith("/chat")) {
-      setActiveKey(CHAT_TAB_KEY);
-    }
-  }, [location.pathname]);
-
   const handleTabChange = (key: string) => {
-    setActiveKey(key);
-
     if (key === CHAT_TAB_KEY && !location.pathname.startsWith("/chat")) {
       navigate("/chat");
     }
@@ -131,7 +121,7 @@ function AuthenticatedSideMenu() {
       <div className="flex-1 min-h-0 flex flex-col">
         <Tabs
           className="side-menu-tabs"
-          activeKey={activeKey}
+          activeKey={CHAT_TAB_KEY}
           onChange={handleTabChange}
           items={items}
         />

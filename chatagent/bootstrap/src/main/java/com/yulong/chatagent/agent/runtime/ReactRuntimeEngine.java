@@ -14,11 +14,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -180,7 +182,8 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
 
             Map<String, String> vars = Map.of(
                     "sessionFileSummary", this.sessionFileSummary,
-                    "relevantLongTermMemories", this.relevantLongTermMemories
+                    "relevantLongTermMemories", this.relevantLongTermMemories,
+                    "latestUserRequest", latestUserRequest(promptMessages)
             );
             String finalAnswerPrompt = this.promptLoader.render(PromptConstants.AGENT_FINAL_ANSWER, vars);
 
@@ -202,5 +205,15 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
             );
         }
         agentState = AgentState.FINISHED;
+    }
+
+    private String latestUserRequest(List<Message> promptMessages) {
+        for (int i = promptMessages.size() - 1; i >= 0; i--) {
+            if (promptMessages.get(i) instanceof UserMessage userMessage
+                    && StringUtils.hasText(userMessage.getText())) {
+                return userMessage.getText();
+            }
+        }
+        return "No user-role message is present in the current conversation history.";
     }
 }

@@ -44,6 +44,11 @@ public class AgentDTO {
     @Getter
     @AllArgsConstructor
     public enum ModelType {
+        DEEPSEEK_V4_FLASH("deepseek-v4-flash"),
+        DEEPSEEK_V4_PRO("deepseek-v4-pro"),
+        GLM_5_2("glm-5.2"),
+        GLM_4_7("glm-4.7"),
+        /** Legacy values are kept so old request/DB payloads can still be parsed during migration. */
         DEEPSEEK_CHAT("deepseek-chat"),
         DEEPSEEK_REASONER("deepseek-reasoner"),
         GLM_4_6("glm-4.6"),
@@ -76,8 +81,8 @@ public class AgentDTO {
 
         private static final Double DEFAULT_TEMPERATURE = 0.7;
         private static final Double DEFAULT_TOP_P = 1.0;
-        private static final Integer DEFAULT_MESSAGE_LENGTH = 10;
-        private static final Integer DEFAULT_TOKEN_BUDGET = 4000;
+        private static final Integer DEFAULT_MESSAGE_LENGTH = 120;
+        private static final Integer DEFAULT_TOKEN_BUDGET = 256000;
 
         public static ChatOptions defaultOptions() {
             return ChatOptions.builder()

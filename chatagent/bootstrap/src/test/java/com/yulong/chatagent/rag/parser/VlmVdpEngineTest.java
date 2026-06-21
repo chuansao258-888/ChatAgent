@@ -42,8 +42,8 @@ class VlmVdpEngineTest {
     @BeforeEach
     void setUp() {
         properties = new VlmVdpProperties();
-        properties.setClientId("glm-4.6");
-        properties.setModelId("glm-4v-flash");
+        properties.setClientId("glm-4.6v-flash");
+        properties.setModelId("glm-4.6v-flash");
         properties.setPromptVersion("v1");
         properties.setTimeoutMs(1000L);
         properties.setFailurePlaceholder("[图像解析失败]");
@@ -58,7 +58,7 @@ class VlmVdpEngineTest {
 
     @Test
     void shouldDegradeWhenModelInvocationFails() {
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenThrow(new RuntimeException("LLM unavailable"));
@@ -75,7 +75,7 @@ class VlmVdpEngineTest {
 
     @Test
     void shouldParseJsonResponseFromModel() {
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("""
@@ -94,11 +94,60 @@ class VlmVdpEngineTest {
         assertThat(result.markdown()).contains("| A | B |");
         assertThat(result.metadata()).containsEntry("visualType", "TABLE");
         assertThat(result.metadata()).containsEntry("interpretiveNote", "Simple table");
+        assertThat(result.metadata()).containsEntry("modelId", "glm-4.6v-flash");
+    }
+
+    @Test
+    void shouldParseProviderJsonWithUnescapedNewlineInMarkdown() {
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
+        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("""
+                {
+                  "markdown":"CHATAGENT VLM E2E
+                Verification code: 4729",
+                  "interpretiveNote":"Verification image",
+                  "visualType":"IMAGE"
+                }
+                """);
+
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+
+        VdpPageResult result = engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "en", null));
+
+        assertThat(result.status()).isEqualTo(VdpPageStatus.SUCCESS);
+        assertThat(result.markdown()).isEqualTo("CHATAGENT VLM E2E\nVerification code: 4729");
+        assertThat(result.metadata()).containsEntry("degraded", false);
+        assertThat(result.metadata()).containsEntry("modelId", "glm-4.6v-flash");
+    }
+
+    @Test
+    void shouldParseProviderJsonWithBackslashEscapedNewlineInMarkdown() {
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
+        when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(responseSpec);
+        when(responseSpec.content()).thenReturn("""
+                {
+                  "markdown":"CHATAGENT VLM E2E\\
+                Verification code: 4729",
+                  "interpretiveNote":"Verification image",
+                  "visualType":"IMAGE"
+                }
+                """);
+
+        VlmVdpEngine engine = new VlmVdpEngine(TestPromptLoader.create(), chatModelRouter, new ObjectMapper(), properties, cacheServiceWithoutRedis(), executor);
+
+        VdpPageResult result = engine.parsePage(imageSupplier(), "png", new VdpOptions(false, "en", null));
+
+        assertThat(result.status()).isEqualTo(VdpPageStatus.SUCCESS);
+        assertThat(result.markdown()).isEqualTo("CHATAGENT VLM E2E\nVerification code: 4729");
+        assertThat(result.metadata()).containsEntry("degraded", false);
+        assertThat(result.metadata()).containsEntry("modelId", "glm-4.6v-flash");
     }
 
     @Test
     void shouldRecordParsePageLatencyMetric() {
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("""
@@ -129,7 +178,7 @@ class VlmVdpEngineTest {
 
     @Test
     void shouldNotIndexRawAssistantTextWhenResponseIsNotJson() {
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("Here is the analysis of the image: this appears to be a table.");
@@ -145,7 +194,7 @@ class VlmVdpEngineTest {
 
     @Test
     void shouldRecoverMarkdownTableWhenModelReturnsNonJsonMarkdown() {
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("""
@@ -168,7 +217,7 @@ class VlmVdpEngineTest {
 
     @Test
     void shouldReuseSessionCacheForRepeatedImages() {
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("""
@@ -206,7 +255,7 @@ class VlmVdpEngineTest {
             return null;
         }).when(valueOperations).set(anyString(), anyString(), any(Duration.class));
 
-        when(chatModelRouter.route("glm-4.6")).thenReturn(chatClient);
+        when(chatModelRouter.route("glm-4.6v-flash")).thenReturn(chatClient);
         when(chatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(responseSpec);
         when(responseSpec.content()).thenReturn("""

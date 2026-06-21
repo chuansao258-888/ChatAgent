@@ -10,6 +10,7 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.memory.application.LongTermMemoryRecallService;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.List;
 
@@ -41,6 +43,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
     private final AgentSessionSummaryResolver sessionSummaryResolver;
     private final AgentToolCallbackFactory agentToolCallbackFactory;
     private final LongTermMemoryRecallService longTermMemoryRecallService;
+    private final ChatRoutingProperties chatRoutingProperties;
 
     public DefaultAgentRuntimeContextLoader(PromptLoader promptLoader,
                                             AgentDefinitionLoader agentDefinitionLoader,
@@ -48,7 +51,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                             AgentSessionFileSummaryResolver sessionFileSummaryResolver,
                                             AgentSessionSummaryResolver sessionSummaryResolver,
                                             AgentToolCallbackFactory agentToolCallbackFactory,
-                                            LongTermMemoryRecallService longTermMemoryRecallService) {
+                                            LongTermMemoryRecallService longTermMemoryRecallService,
+                                            ChatRoutingProperties chatRoutingProperties) {
         this.promptLoader = promptLoader;
         this.agentDefinitionLoader = agentDefinitionLoader;
         this.agentMemoryLoader = agentMemoryLoader;
@@ -56,6 +60,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         this.sessionSummaryResolver = sessionSummaryResolver;
         this.agentToolCallbackFactory = agentToolCallbackFactory;
         this.longTermMemoryRecallService = longTermMemoryRecallService;
+        this.chatRoutingProperties = chatRoutingProperties;
     }
 
     @Override
@@ -77,15 +82,27 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                     IntentResolution intentResolution,
                                     String rewrittenInput,
                                     AgentExecutionMode executionMode) {
-        // 1. 读取静态 Agent 配置，包括模型、系统提示词、工具 allowlist 和 chatOptions。
+        return load(agentId, chatSessionId, intentResolution, rewrittenInput, executionMode, null);
+    }
+
+    @Override
+    public AgentRuntimeContext load(String agentId,
+                                    String chatSessionId,
+                                    IntentResolution intentResolution,
+                                    String rewrittenInput,
+                                    AgentExecutionMode executionMode,
+                                    String currentUserInput) {
+        // 1. 读取静态 Agent 配置，包括系统提示词、工具 allowlist 和 chatOptions。
         AgentDefinition definition = agentDefinitionLoader.load(agentId);
         AgentDTO agentConfig = definition.config();
         // 2. 恢复短期记忆和各类摘要；这些内容会同时影响 Prompt 和后续上下文窗口。
         List<Message> memory = agentMemoryLoader.load(chatSessionId, agentConfig);
+        memory = ensureCurrentUserMessage(memory, currentUserInput);
         String sessionFileSummary = sessionFileSummaryResolver.resolve(agentConfig, chatSessionId);
         String sessionSummary = sessionSummaryResolver.resolve(chatSessionId);
         // 3. 工具列表要结合 Agent 配置和意图结果动态收窄，避免模型看到不该使用的工具。
         List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig, intentResolution);
+        toolCallbacks = filterUnavailableSessionFileSearchTool(chatSessionId, sessionFileSummary, toolCallbacks);
 
         // 3.5 L3 recall: embed query, search user memories, format for prompt injection.
         String query = resolveQuery(rewrittenInput, memory);
@@ -109,7 +126,7 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 agentConfig.getName(),
                 agentConfig.getDescription(),
                 resolvedSystemPrompt,
-                agentConfig.getModel().getModelName(),
+                chatRoutingProperties.getAgentPrimaryModel(),
                 agentConfig.getChatOptions().getMessageLength(),
                 memory,
                 toolCallbacks,
@@ -118,6 +135,29 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 relevantLongTermMemories,
                 executionMode == null ? AgentExecutionMode.REACT : executionMode
         );
+    }
+
+    private List<Message> ensureCurrentUserMessage(List<Message> memory, String currentUserInput) {
+        List<Message> existing = memory == null ? List.of() : memory;
+        if (!StringUtils.hasText(currentUserInput)) {
+            return existing;
+        }
+
+        String normalizedCurrentInput = currentUserInput.trim();
+        for (int i = existing.size() - 1; i >= 0; i--) {
+            Message message = existing.get(i);
+            if (message instanceof UserMessage userMessage && StringUtils.hasText(userMessage.getText())) {
+                if (normalizedCurrentInput.equals(userMessage.getText().trim())) {
+                    return existing;
+                }
+                break;
+            }
+        }
+
+        List<Message> augmented = new ArrayList<>(existing.size() + 1);
+        augmented.addAll(existing);
+        augmented.add(new UserMessage(normalizedCurrentInput));
+        return List.copyOf(augmented);
     }
 
     private String buildSystemPrompt(String baseSystemPrompt,
@@ -193,6 +233,33 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
             return;
         }
         builder.append("\n").append(promptLoader.load(PromptConstants.AGENT_TOOL_STRATEGY)).append("\n");
+    }
+
+    private List<ToolCallback> filterUnavailableSessionFileSearchTool(String chatSessionId,
+                                                                      String sessionFileSummary,
+                                                                      List<ToolCallback> toolCallbacks) {
+        if (toolCallbacks == null || toolCallbacks.isEmpty() || hasRetrievableSessionAssets(sessionFileSummary)) {
+            return toolCallbacks == null ? List.of() : toolCallbacks;
+        }
+
+        List<ToolCallback> filteredToolCallbacks = toolCallbacks.stream()
+                .filter(callback -> callback.getToolDefinition() == null
+                        || !"SessionFileSearchTool".equals(callback.getToolDefinition().name()))
+                .toList();
+        if (filteredToolCallbacks.size() != toolCallbacks.size()) {
+            log.info("Hiding SessionFileSearchTool because no retrievable session assets are available: sessionId={}",
+                    chatSessionId);
+        }
+        return filteredToolCallbacks;
+    }
+
+    private boolean hasRetrievableSessionAssets(String sessionFileSummary) {
+        if (!StringUtils.hasText(sessionFileSummary)) {
+            return false;
+        }
+        String normalized = sessionFileSummary.trim().toLowerCase(Locale.ROOT);
+        return normalized.contains("attached session files:")
+                || normalized.contains("bound knowledge bases:");
     }
 
     private String resolveQuery(String rewrittenInput, List<Message> memory) {

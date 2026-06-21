@@ -25,9 +25,9 @@ public class MemoryCompactionPolicy {
     public MemoryCompactionPolicy(
             @Value("${chatagent.memory.compaction.v2.enabled:true}") boolean v2Enabled,
             @Value("${chatagent.memory.compaction.v2.min-pending-turns:1}") int minPendingTurns,
-            @Value("${chatagent.memory.compaction.v2.min-pending-tokens:1200}") int minPendingTokens,
-            @Value("${chatagent.memory.compaction.v2.l1-token-warning-ratio:0.75}") double l1TokenWarningRatio,
-            @Value("${chatagent.memory.l1-token-budget:4000}") int l1TokenBudget) {
+            @Value("${chatagent.memory.compaction.v2.min-pending-tokens:24000}") int minPendingTokens,
+            @Value("${chatagent.memory.compaction.v2.l1-token-warning-ratio:0.92}") double l1TokenWarningRatio,
+            @Value("${chatagent.memory.l1-token-budget:256000}") int l1TokenBudget) {
         this.v2Enabled = v2Enabled;
         this.minPendingTurns = Math.max(minPendingTurns, 1);
         this.minPendingTokens = Math.max(minPendingTokens, 100);

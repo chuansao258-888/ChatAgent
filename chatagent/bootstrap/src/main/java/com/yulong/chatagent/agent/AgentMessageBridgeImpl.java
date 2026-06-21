@@ -13,25 +13,38 @@ import com.yulong.chatagent.conversation.converter.ChatMessageConverter;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.rag.model.CitationMetadata;
+import com.yulong.chatagent.rag.model.RagSourceType;
 import com.yulong.chatagent.sse.SseService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 import reactor.core.Disposable;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Agent 消息桥接器：把 Agent 运行时产出的消息落库，并通过 SSE 推给前端。
@@ -43,6 +56,154 @@ import java.util.concurrent.atomic.AtomicReference;
 @Component
 @Slf4j
 public class AgentMessageBridgeImpl implements AgentMessageBridge {
+
+    private static final String CURRENT_USER_REQUEST_MARKER = "Current user request:";
+    private static final String NO_USER_ROLE_MESSAGE =
+            "No user-role message is present in the current conversation history.";
+    private static final int MAX_FINAL_REPAIR_ATTEMPTS = 2;
+    private static final int MAX_ENGLISH_ANSWER_CJK_CHARS = 3;
+    private static final Pattern REPEAT_REQUEST = Pattern.compile(
+            "(?is)\\b(repeat|again|same|previous|last answer|what you said|restate|continue)\\b"
+                    + "|重复|再说|刚才|上一"
+    );
+    private static final Pattern EXPLICIT_TOPIC_CHANGE = Pattern.compile(
+            "(?is)\\b(?:new|different|separate|unrelated)\\s+topic\\b"
+                    + "|\\b(?:change|switch)\\s+(?:the\\s+)?(?:subject|topic)\\b"
+                    + "|换(?:个|一个)?话题|换个问题|题外话|说点别的|聊点别的"
+    );
+    private static final Pattern DISTINCTIVE_CONTEXT_IDENTIFIER = Pattern.compile(
+            "(?iu)(?<![\\p{L}\\p{N}])([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)+)(?![\\p{L}\\p{N}])"
+    );
+    private static final Pattern DIGIT = Pattern.compile("\\d");
+    private static final Pattern WORD = Pattern.compile("[a-z0-9][a-z0-9-]*");
+    private static final Pattern LATIN_WORD = Pattern.compile("\\b[A-Za-z]{2,}\\b");
+    private static final Pattern CJK = Pattern.compile("[\\u3400-\\u9fff]");
+    private static final Pattern CITATION_REFERENCE = Pattern.compile("\\[(\\d{1,3})]");
+    private static final Pattern DISTINCTIVE_EVIDENCE_TOKEN = Pattern.compile(
+            "(?<![A-Za-z0-9])([A-Z][A-Z0-9]{1,}(?:-[A-Z0-9]+)+)(?![A-Za-z0-9])"
+    );
+    private static final Pattern NON_SUPPORTING_CITATION_CONTEXT = Pattern.compile(
+            "(?is)\\b(?:no\\s+(?:evidence|results?|matches?|mention|reference)|neither|nor|not\\s+(?:appear|found|contain|cover|include|mention|reference)|"
+                    + "does\\s+not\\s+(?:appear|contain|cover|include|mention|reference)|do\\s+not\\s+(?:appear|contain|cover|include|mention|reference)|"
+                    + "did\\s+not\\s+(?:appear|contain|cover|include|mention|reference)|without\\s+(?:evidence|matches?|mention|reference)|unrelated|only\\s+cover)\\b"
+    );
+    private static final Pattern SESSION_FILE_CITATION_CONTEXT = Pattern.compile(
+            "(?is)\\b(?:attachment|attached|uploaded|session\\s+(?:file|note|briefing)|file\\s+I\\s+just\\s+attached)\\b"
+    );
+    private static final Pattern USER_VISIBLE_TOOL_CALL_MARKUP = Pattern.compile(
+            "(?is)<\\s*/?\\s*tool_call\\s*>"
+                    + "|<\\s*tool_calls?\\b"
+                    + "|\\{\\s*\"name\"\\s*:\\s*\"[A-Za-z0-9_]*(?:Tool|tool)[A-Za-z0-9_]*\"\\s*,\\s*\"arguments\"\\s*:"
+    );
+    private static final Pattern CURRENT_CONTEXT_BOUNDARY_CHECK = Pattern.compile(
+            "(?is)(\\b(?:belong|included?|include|part\\s+of|anything\\s+from)\\b.{0,120}\\b(?:this|here|current|handoff|project|note|stream)\\b"
+                    + "|\\b(?:keep|kept)\\b.{0,80}\\bseparate\\b"
+                    + "|\\bleave\\b.{0,80}\\bout\\b"
+                    + "|\\bseparate\\s+(?:stream|source|workstream|workflow)\\b)"
+    );
+    private static final Pattern SEPARATE_SCOPE_ANSWER = Pattern.compile(
+            "(?is)\\b(?:separate|not\\s+part|does\\s+not\\s+belong|keep\\w*\\s+out|do\\s+not\\s+include|outside|out\\s+of\\s+scope)\\b"
+    );
+    private static final Set<String> GENERIC_WORDS = Set.of(
+            "the", "and", "for", "with", "that", "this", "what", "when", "where", "which", "who",
+            "why", "how", "can", "could", "would", "should", "one", "two", "three", "make",
+            "give", "tell", "need", "want", "please", "useful", "practical", "easier", "easy",
+            "good", "better", "answer", "question", "request", "help", "thing", "way"
+    );
+    private static final Set<String> CITATION_EVIDENCE_STOP_WORDS = Set.of(
+            "source", "sources", "chunk", "content", "document", "documents", "knowledge", "base",
+            "session", "file", "files", "local", "public", "private", "marker", "status", "release"
+    );
+    private static final int MIN_CITATION_TERM_LENGTH = 5;
+    private static final int MIN_CITATION_TERM_MATCHES_FOR_UNCITED_USAGE = 3;
+    private static final Pattern NO_USER_CONTRADICTION = Pattern.compile(
+            "(?is)(\\bI\\s+(?:do\\s+not|don't)\\s+(?:see|have|find)\\s+(?:a\\s+)?user\\s+(?:question|message|request)\\b"
+                    + "|\\bI\\s+(?:do\\s+not|don't)\\s+(?:see|have|find)\\s+(?:a\\s+)?(?:specific\\s+)?(?:question|task|request)\\b"
+                    + "|\\bI\\s+(?:do\\s+not|don't)\\s+(?:see|have|find)\\s+any\\s+user\\s+(?:questions?|messages?|requests?)\\b"
+                    + "|\\bI\\s+(?:do\\s+not|don't)\\s+(?:see|have|find)\\s+any\\s+(?:previous\\s+)?messages?\\b"
+                    + "|\\bthis\\s+(?:appears\\s+to\\s+be|is)\\s+the\\s+start\\s+of\\s+(?:our\\s+)?(?:conversation|interaction)\\b"
+                    + "|\\bno\\s+user\\s+(?:question|message|request)\\b"
+                    + "|\\bno\\s+(?:specific\\s+)?(?:question|task|request)\\b"
+                    + "|\\bprovide\\s+(?:your\\s+)?(?:first\\s+)?(?:question|message|request)\\b"
+                    + "|\\blet\\s+me\\s+know\\s+what\\s+you\\s+(?:need|would\\s+like).*?help\\s+with\\b"
+                    + "|没有.*用户.*(?:问题|消息|请求)"
+                    + "|用户.*(?:没有|未).*(?:问题|消息|请求))"
+    );
+    private static final Pattern SYSTEM_PROMPT_REQUEST = Pattern.compile(
+            "(?is)\\b(system\\s+prompt|developer\\s+message|prompt\\s+file|tool\\s+strategy|final\\s+answer\\s+module|guardrail|configuration|config|core\\s+identity|language\\s+matching)\\b"
+                    + "|系统提示|提示词|开发者消息|工具策略|最终回答模块|护栏|配置|核心身份|语言匹配"
+    );
+    private static final Pattern SYSTEM_PROMPT_LEAKAGE = Pattern.compile(
+            "(?is)(system\\s+configuration\\s+summary|core\\s+identity|language\\s+matching|tool\\s+strategy|final\\s+answer\\s+module|system\\s+prompts?\\s+and\\s+configuration)"
+    );
+    private static final Pattern MISSING_CONTEXT_CLAIM = Pattern.compile(
+            "(?is)\\b(?:I\\s+)?(?:do\\s+not|don't)\\s+have\\s+enough\\s+context\\b"
+                    + "|\\bnot\\s+enough\\s+context\\b"
+                    + "|\\binsufficient\\s+context\\b"
+                    + "|\\bcould\\s+you\\s+clarify\\b"
+                    + "|没有足够(?:的)?上下文|上下文不足"
+    );
+    private static final Pattern CONTEXTUAL_OWNER_FOLLOW_UP = Pattern.compile(
+            "(?is)\\bwho(?:'s|\\s+is)\\s+(?:on\\s+point|handling\\s+(?:it|this|that)?|got\\s+it|responsible|the\\s+owner)\\b"
+                    + "|\\bwho\\s+(?:owns|has)\\s+(?:it|this|that)\\b"
+                    + "|\\b(?:point\\s+person|owner)\\b"
+                    + "|(?:谁|谁来|谁在|谁是).{0,8}(?:负责|处理|owner|负责人)"
+    );
+    private static final Pattern OWNER_TRANSFER = Pattern.compile(
+            "(?iu)([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)\\s+handed\\s+(?:it|this|that)?\\s*(?:over\\s+)?to\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)"
+    );
+    private static final Pattern OWNER_WITH_CONTEXT = Pattern.compile(
+            "(?iu)\\bwith\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)\\b"
+    );
+    private static final Pattern OWNER_EXPLICIT_CONTEXT = Pattern.compile(
+            "(?iu)(?:owned\\s+by|owner\\s+is|on\\s+point\\s+is|point\\s+person\\s+is|handled\\s+by)\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)"
+    );
+    private static final Pattern INCIDENT_IDENTIFIER_REQUEST = Pattern.compile(
+            "(?is)\\bincident\\s+(?:identifier|id|code)\\b|事件.{0,8}(?:编号|标识)"
+    );
+    private static final Pattern INCIDENT_IDENTIFIER_EXACT_VALUE = Pattern.compile(
+            "(?is)\\bINCIDENT-[A-Z0-9-]+\\b"
+    );
+    private static final Pattern INCIDENT_IDENTIFIER_VALUE = Pattern.compile(
+            "(?is)\\bINCIDENT-[A-Z0-9-]+\\b|事件.{0,8}(?:编号|标识)\\s*[:：]?\\s*[A-Z0-9-]+"
+    );
+    private static final Pattern EXCLUDE_MEETING_LOCATION_REQUEST = Pattern.compile(
+            "(?is)\\b(?:leave(?:s|ing)?\\s+out|omit|exclude|without|do\\s+not\\s+mention|don't\\s+mention)\\b.{0,80}\\b(?:meeting\\s+)?(?:location|room)\\b"
+                    + "|(?:不要|别|不提|省略|排除).{0,20}(?:会议室|房间|地点|位置)"
+    );
+    private static final Pattern MEETING_LOCATION_RECALL_REQUEST = Pattern.compile(
+            "(?is)\\b(?:where\\s+are\\s+we\\s+meeting|where\\s+.*\\bmeeting\\b|which\\s+(?:meeting\\s+)?room|what\\s+(?:meeting\\s+)?room|room\\s+.*\\bgo\\s+to\\b|go\\s+to\\s+.*\\broom)\\b"
+                    + "|(?:哪里|哪间|哪个).{0,20}(?:会议室|房间|地点|位置)"
+    );
+    private static final Pattern MEETING_LOCATION_CONTENT = Pattern.compile(
+            "(?is)\\b(?:meeting\\s+)?room\\b|\\bin\\s+room\\b|\\bCEDAR-[A-Z0-9-]+\\b|会议室|房间|地点|位置"
+    );
+    private static final Pattern CURRENT_OWNER_ROOM_RECAP_REQUEST = Pattern.compile(
+            "(?is)\\b(?:quick\\s+)?recap\\b.{0,80}\\b(?:owner|on\\s+point|who(?:'s|\\s+is).{0,20}(?:got|handling|owns))\\b.{0,80}\\b(?:room|meeting)\\b"
+                    + "|\\b(?:owner|on\\s+point)\\b.{0,40}\\b(?:room|meeting)\\b"
+                    + "|\\bwho(?:'s|\\s+is)\\s+got\\s+it\\s+now\\b.{0,80}\\bwhere\\s+are\\s+we\\s+meeting\\b"
+    );
+    private static final Pattern WRAP_UP_RECAP_REQUEST = Pattern.compile(
+            "(?is)\\b(?:wrap\\s+(?:this|it)\\s+up|wrap-up|recap|summari[sz]e|summary)\\b"
+                    + "|(?:总结|汇总|收尾|复盘)"
+    );
+    private static final Pattern PROJECT_CONTEXT = Pattern.compile(
+            "(?iu)\\b(?:running|project|case|dossier|incident|for)\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)+)\\b"
+    );
+    private static final Pattern STALE_ROOM_CONTEXT_REQUEST = Pattern.compile(
+            "(?is)\\b(?:old|previous|prior|stale|outdated|versus|vs\\.?|compare|contrast)\\b|旧|过期|之前|对比"
+    );
+    private static final Pattern STALE_ROOM_CONTEXT_IN_ANSWER = Pattern.compile(
+            "(?is)\\b(?:old|previous|prior|stale|outdated|updated\\s+from|used\\s+to|original|card\\s+listing|card\\s+listed)\\b"
+                    + "|\\b(?:handed\\s+(?:it\\s+)?(?:off\\s+)?from|transferred\\s+from|passed\\s+from)\\b"
+                    + "|旧|过期|之前|原来|原先"
+    );
+    private static final Pattern ENGLISH_REQUEST = Pattern.compile(
+            "(?is)\\b(in|use|answer\\s+in|respond\\s+in|write\\s+in)\\s+English\\b|英文|英语"
+    );
+    private static final Pattern CHINESE_REQUEST = Pattern.compile(
+            "(?is)\\b(in|use|answer\\s+in|respond\\s+in|write\\s+in)\\s+Chinese\\b|中文|汉语|普通话"
+    );
 
     // SSE 推送服务：所有实时消息最终都从这里发到浏览器订阅端。
     private final SseService sseService;
@@ -56,6 +217,12 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     private final ChatRoutingProperties routingProperties;
     // Micrometer 指标注册器可能不存在；为空时 recordTimer 会退化成 no-op。
     private final MeterRegistry meterRegistry;
+
+    private enum ExpectedLanguage {
+        ENGLISH,
+        CHINESE,
+        UNKNOWN
+    }
 
     public AgentMessageBridgeImpl(SseService sseService,
                                   ChatMessageConverter chatMessageConverter,
@@ -81,14 +248,15 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             List<CitationMetadata> citations = (toolCalls == null || toolCalls.isEmpty())
                     ? currentTurnCitationHolder.take(chatSessionId, turnId)
                     : List.of();
+            CitationSelection citationSelection = selectReferencedCitations(assistantMessage.getText(), citations);
             ChatMessageDTO chatMessageDTO = ChatMessageDTO.builder()
                     .role(ChatMessageDTO.RoleType.ASSISTANT)
-                    .content(assistantMessage.getText())
+                    .content(citationSelection.content())
                     .sessionId(chatSessionId)
                     .turnId(turnId)
                     .metadata(ChatMessageDTO.MetaData.builder()
                             .toolCalls(toolCalls)
-                            .citations(citations.isEmpty() ? null : citations)
+                            .citations(citationSelection.citations().isEmpty() ? null : citationSelection.citations())
                             .build())
                     .build();
             send(chatMessageDTO);
@@ -117,17 +285,24 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
 
     @Override
     public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService llmService, boolean deepThinking) {
+        return streamFinalResponse(chatSessionId, turnId, prompt, llmService, deepThinking, 0);
+    }
+
+    private String streamFinalResponse(String chatSessionId,
+                                       String turnId,
+                                       Prompt prompt,
+                                       LLMService llmService,
+                                       boolean deepThinking,
+                                       int repairAttempt) {
+        boolean allowFinalRepair = repairAttempt < MAX_FINAL_REPAIR_ATTEMPTS && hasCurrentUserRequest(prompt);
         // 最终回复阶段：先创建一条空 assistant 消息，拿到 messageId。
         // 后续每个 content chunk 都基于这个 messageId 推送快照，前端才能增量更新同一条消息。
-        List<CitationMetadata> citations = currentTurnCitationHolder.take(chatSessionId, turnId);
         ChatMessageDTO chatMessageDTO = ChatMessageDTO.builder()
                 .role(ChatMessageDTO.RoleType.ASSISTANT)
                 .content("")
                 .sessionId(chatSessionId)
                 .turnId(turnId)
-                .metadata(ChatMessageDTO.MetaData.builder()
-                        .citations(citations.isEmpty() ? null : citations)
-                        .build())
+                .metadata(ChatMessageDTO.MetaData.builder().build())
                 .build();
         CreateChatMessageResponse created = chatMessageFacadeService.createChatMessage(chatMessageDTO);
         chatMessageDTO.setId(created.getChatMessageId());
@@ -150,6 +325,8 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         // 记录首个正文 chunk 到达时间，用于统计浏览器侧可感知的首字延迟。
         AtomicLong firstContentTimeMs = new AtomicLong(0);
         AtomicBoolean firstContentRecorded = new AtomicBoolean(false);
+        AtomicBoolean invalidFinalResponse = new AtomicBoolean(false);
+        AtomicReference<String> repairReason = new AtomicReference<>();
 
         StreamCallback sseAdapter = new StreamCallback() {
             @Override
@@ -197,13 +374,42 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             public void onComplete() {
                 // 只有第一个终止事件可以进入；后续重复 complete/error 都会被挡住。
                 if (!terminal.compareAndSet(false, true)) return;
-                // 流正常结束后，把累计正文写回数据库，形成最终 assistant 消息内容。
-                UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
+                String finalContent;
                 synchronized (contentLock) {
-                    updateReq.setContent(fullContent.toString());
+                    finalContent = fullContent.toString();
+                    if (!StringUtils.hasText(finalContent) && !allowFinalRepair) {
+                        finalContent = emptyFinalAnswerFallback(prompt);
+                    }
                 }
-                // 当前实现只持久化正文；thinking 作为实时状态推送，不额外写入 metadata。
+                List<CitationMetadata> pendingCitations = currentTurnCitationHolder.peek(chatSessionId, turnId);
+                String invalidReason = finalRepairReason(prompt, finalContent, allowFinalRepair, pendingCitations);
+                if (StringUtils.hasText(invalidReason)) {
+                    invalidFinalResponse.set(true);
+                    repairReason.set(invalidReason);
+                    log.warn("Final answer failed turn relevance guard; rolling back for repair: sessionId={}, turnId={}, chatMessageId={}, reason={}",
+                            chatSessionId, turnId, chatMessageDTO.getId(), invalidReason);
+                    chatMessageFacadeService.deleteChatMessage(chatMessageDTO.getId());
+                    publishTurnRollback(chatSessionId, turnId);
+                    streamLatch.countDown();
+                    return;
+                }
+
+                CitationSelection citationSelection = selectReferencedCitations(
+                        finalContent,
+                        currentTurnCitationHolder.take(chatSessionId, turnId));
+                finalContent = citationSelection.content();
+                synchronized (contentLock) {
+                    fullContent.setLength(0);
+                    fullContent.append(finalContent);
+                }
+                ChatMessageDTO.MetaData finalMetadata = ChatMessageDTO.MetaData.builder()
+                        .citations(citationSelection.citations().isEmpty() ? null : citationSelection.citations())
+                        .build();
+                UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
+                updateReq.setContent(finalContent);
+                updateReq.setMetadata(finalMetadata);
                 chatMessageFacadeService.updateChatMessage(chatMessageDTO.getId(), updateReq);
+                publishContent(chatSessionId, chatMessageDTO.getId(), snapshotMessage(baseVo, finalContent, finalMetadata));
 
                 // 通知前端本条 assistant 消息流式输出结束。
                 SseMessage msg = new SseMessage(
@@ -231,6 +437,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                     snapshot = snapshotMessage(baseVo, interruptedContent);
                 }
                 chatMessageFacadeService.updateChatMessage(chatMessageDTO.getId(), updateReq);
+                currentTurnCitationHolder.take(chatSessionId, turnId);
 
                 // 先推一条带中断提示的正文快照，让前端能显示已经生成的部分。
                 SseMessage errorMsg = new SseMessage(
@@ -294,9 +501,762 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             recordTimer("chatagent.sse.first_byte.latency", firstByteLatencyMs, "session", chatSessionId);
         }
 
+        if (invalidFinalResponse.get()) {
+            return streamFinalResponse(
+                    chatSessionId,
+                    turnId,
+                    buildFinalRepairPrompt(prompt, repairReason.get()),
+                    llmService,
+                    deepThinking,
+                    repairAttempt + 1);
+        }
+
         synchronized (contentLock) {
             return fullContent.toString();
         }
+    }
+
+    private boolean hasCurrentUserRequest(Prompt prompt) {
+        return StringUtils.hasText(latestUserText(prompt));
+    }
+
+    private boolean isNoUserContradiction(String content) {
+        return StringUtils.hasText(content) && NO_USER_CONTRADICTION.matcher(content).find();
+    }
+
+    private String finalRepairReason(Prompt prompt,
+                                     String finalContent,
+                                     boolean allowFinalRepair,
+                                     List<CitationMetadata> pendingCitations) {
+        if (!allowFinalRepair) {
+            return "";
+        }
+        if (!StringUtils.hasText(finalContent)) {
+            return "it produced no user-visible answer";
+        }
+        if (isNoUserContradiction(finalContent)) {
+            return "it claimed no user question exists";
+        }
+        if (containsUserVisibleToolCallMarkup(finalContent)) {
+            return "it exposed tool-call markup instead of a final user answer";
+        }
+        if (missedAvailableContextForShortFollowUp(prompt, finalContent)) {
+            return "it missed the recent conversation context needed to answer the short follow-up";
+        }
+        int pendingCitationCount = pendingCitations == null ? 0 : pendingCitations.size();
+        if (leaksOutOfScopeCitationDetailsInCurrentContextBoundaryCheck(prompt, finalContent, pendingCitations)) {
+            return "it cited out-of-scope source details in a current-context boundary answer";
+        }
+        if (pendingCitationCount > 0
+                && !hasSupportedCitationReference(finalContent, pendingCitationCount)
+                && usesPendingCitationEvidenceWithoutReference(finalContent, pendingCitations)) {
+            return "it answered from retrieved evidence without citation markers";
+        }
+        if (mixesStaleRoomContextIntoCurrentRecap(prompt, finalContent)) {
+            return "it mixed stale owner or room context into a current owner and room recap";
+        }
+        if (missedCurrentProjectInWrapUp(prompt, finalContent)) {
+            return "it omitted the current project identifier from a wrap-up";
+        }
+        if (leaksOutOfScopeDetailsInCurrentContextBoundaryCheck(prompt, finalContent)) {
+            return "it included out-of-scope source details in a current-context boundary answer";
+        }
+        String constraintViolation = currentRequestConstraintViolationReason(prompt, finalContent);
+        if (StringUtils.hasText(constraintViolation)) {
+            return constraintViolation;
+        }
+        if (leaksPriorIdentifierAfterTopicChange(prompt, finalContent)) {
+            return "it reused prior conversation identifiers after an explicit topic change";
+        }
+        if (isLikelyStalePreviousAnswer(prompt, finalContent)) {
+            return "it repeated an earlier assistant answer instead of the current request";
+        }
+        if (isSystemPromptLeakage(prompt, finalContent)) {
+            return "it summarized system prompts or configuration instead of the current request";
+        }
+        String languageFailure = languageMismatchReason(prompt, finalContent);
+        if (StringUtils.hasText(languageFailure)) {
+            return languageFailure;
+        }
+        return "";
+    }
+
+    private boolean hasSupportedCitationReference(String content, int citationCount) {
+        if (!StringUtils.hasText(content) || citationCount <= 0) {
+            return false;
+        }
+        Matcher matcher = CITATION_REFERENCE.matcher(content);
+        while (matcher.find()) {
+            int citationNumber = parseCitationNumber(matcher.group(1));
+            if (citationNumber >= 1 && citationNumber <= citationCount) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean usesPendingCitationEvidenceWithoutReference(String content,
+                                                                List<CitationMetadata> pendingCitations) {
+        if (!StringUtils.hasText(content) || pendingCitations == null || pendingCitations.isEmpty()) {
+            return false;
+        }
+        String normalizedContent = safeLower(content);
+        for (CitationMetadata citation : pendingCitations) {
+            for (String token : distinctiveEvidenceTokens(rawCitationSearchText(citation))) {
+                if (normalizedContent.contains(token)) {
+                    return true;
+                }
+            }
+            if (countSignificantCitationTermMatches(normalizedContent, citation)
+                    >= MIN_CITATION_TERM_MATCHES_FOR_UNCITED_USAGE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsUserVisibleToolCallMarkup(String content) {
+        return StringUtils.hasText(content) && USER_VISIBLE_TOOL_CALL_MARKUP.matcher(content).find();
+    }
+
+    private boolean mixesStaleRoomContextIntoCurrentRecap(Prompt prompt, String finalContent) {
+        String latestUserText = latestUserText(prompt);
+        return StringUtils.hasText(latestUserText)
+                && StringUtils.hasText(finalContent)
+                && CURRENT_OWNER_ROOM_RECAP_REQUEST.matcher(latestUserText).find()
+                && !STALE_ROOM_CONTEXT_REQUEST.matcher(latestUserText).find()
+                && STALE_ROOM_CONTEXT_IN_ANSWER.matcher(finalContent).find();
+    }
+
+    private String currentRequestConstraintViolationReason(Prompt prompt, String finalContent) {
+        if (!StringUtils.hasText(finalContent)) {
+            return "";
+        }
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)) {
+            return "";
+        }
+        if (INCIDENT_IDENTIFIER_REQUEST.matcher(latestUserText).find()) {
+            String expectedIncidentIdentifier = expectedIncidentIdentifier(prompt);
+            if (StringUtils.hasText(expectedIncidentIdentifier)
+                    && !finalContent.toUpperCase(Locale.ROOT).contains(expectedIncidentIdentifier.toUpperCase(Locale.ROOT))) {
+                return "it violated the current request's include/exclude constraints by omitting the requested incident identifier";
+            }
+            if (!StringUtils.hasText(expectedIncidentIdentifier)
+                    && !INCIDENT_IDENTIFIER_VALUE.matcher(finalContent).find()) {
+                return "it violated the current request's include/exclude constraints by omitting the requested incident identifier";
+            }
+        }
+        if (EXCLUDE_MEETING_LOCATION_REQUEST.matcher(latestUserText).find()
+                && MEETING_LOCATION_CONTENT.matcher(finalContent).find()) {
+            return "it violated the current request's include/exclude constraints by including the excluded meeting location";
+        }
+        if (MEETING_LOCATION_RECALL_REQUEST.matcher(latestUserText).find()
+                && !MEETING_LOCATION_CONTENT.matcher(finalContent).find()) {
+            return "it did not answer the current meeting location question";
+        }
+        return "";
+    }
+
+    private String emptyFinalAnswerFallback(Prompt prompt) {
+        if (expectedLanguage(prompt) == ExpectedLanguage.CHINESE) {
+            return "抱歉，模型没有返回可显示的内容。请再试一次。";
+        }
+        return "Sorry, the model did not return a visible answer. Please try again.";
+    }
+
+    private Prompt buildFinalRepairPrompt(Prompt prompt, String reason) {
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)) {
+            return prompt;
+        }
+        String normalizedReason = StringUtils.hasText(reason) ? reason : "it did not answer the current request";
+        String specificRepairInstruction = repairSpecificInstruction(prompt, normalizedReason);
+        List<Message> sourceMessages = prompt.getInstructions();
+        List<Message> repairMessages = new ArrayList<>(sourceMessages.size() + 1);
+        repairMessages.add(new SystemMessage(
+                "The previous model output for this same turn was invalid because " + normalizedReason + ". "
+                        + "That is false. The current user request is:\n"
+                        + latestUserText
+                        + specificRepairInstruction
+                        + "\nAnswer that request directly. Do not mention missing user input, missing context, "
+                        + "the invalid output, or this repair instruction. Use the same language as the current "
+                        + "user request unless it explicitly asks for another language."));
+        repairMessages.addAll(sourceMessages);
+        return new Prompt(repairMessages, prompt.getOptions());
+    }
+
+    private String repairSpecificInstruction(Prompt prompt, String reason) {
+        if (!StringUtils.hasText(reason)) {
+            return "";
+        }
+        if (expectedLanguage(prompt) == ExpectedLanguage.ENGLISH && reason.contains("Chinese text")) {
+            return "\nThe final answer must be entirely in English. Do not include Chinese words, "
+                    + "Chinese sentences, or translated Chinese fragments.";
+        }
+        if (reason.contains("incident identifier")) {
+            String expectedIncidentIdentifier = expectedIncidentIdentifier(prompt);
+            if (StringUtils.hasText(expectedIncidentIdentifier)) {
+                return "\nThe incident identifier present in the conversation context is "
+                        + expectedIncidentIdentifier
+                        + ". Return that exact value. Do not substitute project codenames, badge labels, "
+                        + "meeting rooms, or other identifiers.";
+            }
+        }
+        if (reason.contains("recent conversation context")) {
+            String owner = contextualOwnerFromPriorTurns(prompt);
+            if (StringUtils.hasText(owner)) {
+                return "\nThe recent conversation context identifies "
+                        + owner
+                        + " as the owner or point person. Answer the short follow-up using that value. "
+                        + "Do not mention missing context, internal tools, scoped knowledge bases, or backend details.";
+            }
+            return "\nUse the recent user and assistant turns to resolve the short follow-up. "
+                    + "Do not mention missing context, internal tools, scoped knowledge bases, or backend details.";
+        }
+        if (reason.contains("retrieved evidence without citation markers")) {
+            return "\nThe current turn has retrieved evidence in the conversation. If you use any retrieved fact, "
+                    + "cite it inline with the exact [n] marker shown in the tool response. Do not answer retrieved "
+                    + "facts without citation markers.";
+        }
+        if (reason.contains("tool-call markup")) {
+            return "\nDo not emit XML, JSON, function-call blocks, or internal tool names. The final answer must be "
+                    + "plain user-facing text. If no tool result is available, answer from the current conversation "
+                    + "context or state the limitation briefly.";
+        }
+        if (reason.contains("stale owner or room context")) {
+            return "\nThe latest user is asking for the current owner and current room only. Omit old, previous, "
+                    + "stale, attached-card, handoff-source, or historical owner/room details unless the latest "
+                    + "request explicitly asks for a comparison.";
+        }
+        if (reason.contains("current project identifier")) {
+            String project = contextualProjectFromPriorTurns(prompt);
+            if (StringUtils.hasText(project)) {
+                return "\nThe recent conversation context identifies the current project/object as "
+                        + project
+                        + ". Include that exact identifier in the wrap-up together with the requested owner, "
+                        + "room, codes, risks, or other fields. Do not substitute another project identifier.";
+            }
+            return "\nInclude the current project/object identifier from recent context in the wrap-up. "
+                    + "Do not substitute another project identifier.";
+        }
+        if (reason.contains("cited out-of-scope source details")) {
+            return "\nThe latest request is a current-context boundary check. Do not cite or surface source cards "
+                    + "from the separate outside source unless the current user explicitly asks for that source's "
+                    + "details. If you need evidence, cite only sources linked to the current scope; otherwise "
+                    + "answer the separation decision without a citation.";
+        }
+        if (reason.contains("out-of-scope source details")) {
+            return "\nThe latest request is a current-context boundary check. Answer whether the named outside "
+                    + "source belongs in the current scope, and keep the separate source generic. Do not include "
+                    + "out-of-scope approval codes, markers, contacts, risks, rooms, lockers, or other fields "
+                    + "unless the current user explicitly asks for those separate-source details.";
+        }
+        if (reason.contains("explicit topic change")) {
+            return "\nTreat the latest request as standalone. Do not mention or personalize the answer with "
+                    + "names, projects, identifiers, places, or facts from earlier turns unless the latest "
+                    + "request explicitly repeats them.";
+        }
+        return "";
+    }
+
+    private boolean leaksOutOfScopeCitationDetailsInCurrentContextBoundaryCheck(Prompt prompt,
+                                                                                String finalContent,
+                                                                                List<CitationMetadata> pendingCitations) {
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)
+                || !StringUtils.hasText(finalContent)
+                || pendingCitations == null
+                || pendingCitations.isEmpty()
+                || !CURRENT_CONTEXT_BOUNDARY_CHECK.matcher(latestUserText).find()
+                || !SEPARATE_SCOPE_ANSWER.matcher(finalContent).find()) {
+            return false;
+        }
+        String normalizedLatest = latestUserText.toLowerCase(Locale.ROOT);
+        String currentProject = contextualProjectFromPriorTurns(prompt).toLowerCase(Locale.ROOT);
+        Matcher matcher = CITATION_REFERENCE.matcher(finalContent);
+        while (matcher.find()) {
+            int citationNumber = parseCitationNumber(matcher.group(1));
+            if (citationNumber < 1 || citationNumber > pendingCitations.size()) {
+                continue;
+            }
+            CitationMetadata citation = pendingCitations.get(citationNumber - 1);
+            String searchable = citationSearchText(citation);
+            if (matchesCurrentCitationScope(searchable, currentProject)) {
+                continue;
+            }
+            if (containsOutOfScopeDistinctiveIdentifier(searchable, normalizedLatest, currentProject)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean leaksOutOfScopeDetailsInCurrentContextBoundaryCheck(Prompt prompt, String finalContent) {
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)
+                || !StringUtils.hasText(finalContent)
+                || !CURRENT_CONTEXT_BOUNDARY_CHECK.matcher(latestUserText).find()
+                || !SEPARATE_SCOPE_ANSWER.matcher(finalContent).find()) {
+            return false;
+        }
+        String normalizedLatest = latestUserText.toLowerCase(Locale.ROOT);
+        String currentProject = contextualProjectFromPriorTurns(prompt).toLowerCase(Locale.ROOT);
+        return containsOutOfScopeDistinctiveIdentifier(finalContent, normalizedLatest, currentProject);
+    }
+
+    private boolean containsOutOfScopeDistinctiveIdentifier(String text,
+                                                            String normalizedLatest,
+                                                            String currentProject) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+        Matcher matcher = DISTINCTIVE_CONTEXT_IDENTIFIER.matcher(text);
+        while (matcher.find()) {
+            String identifier = matcher.group(1);
+            String normalizedIdentifier = identifier.toLowerCase(Locale.ROOT);
+            if (!DIGIT.matcher(identifier).find()) {
+                continue;
+            }
+            if (normalizedLatest.contains(normalizedIdentifier)) {
+                continue;
+            }
+            if (StringUtils.hasText(currentProject)
+                    && normalizedIdentifier.equals(currentProject)) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private boolean matchesCurrentCitationScope(String searchable, String currentProject) {
+        if (!StringUtils.hasText(searchable) || !StringUtils.hasText(currentProject)) {
+            return false;
+        }
+        if (searchable.contains(currentProject)) {
+            return true;
+        }
+        String root = currentProjectRoot(currentProject);
+        return root.length() >= 4 && searchable.contains(root);
+    }
+
+    private String currentProjectRoot(String currentProject) {
+        if (!StringUtils.hasText(currentProject)) {
+            return "";
+        }
+        int delimiter = currentProject.indexOf('-');
+        String root = delimiter > 0 ? currentProject.substring(0, delimiter) : currentProject;
+        return root.replaceAll("[^a-z0-9]", "");
+    }
+
+    private boolean missedCurrentProjectInWrapUp(Prompt prompt, String finalContent) {
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)
+                || !StringUtils.hasText(finalContent)
+                || !WRAP_UP_RECAP_REQUEST.matcher(latestUserText).find()) {
+            return false;
+        }
+        String project = contextualProjectFromPriorTurns(prompt);
+        return StringUtils.hasText(project)
+                && !finalContent.toLowerCase(Locale.ROOT).contains(project.toLowerCase(Locale.ROOT));
+    }
+
+    private String contextualProjectFromPriorTurns(Prompt prompt) {
+        if (prompt == null || prompt.getInstructions() == null) {
+            return "";
+        }
+        List<Message> messages = prompt.getInstructions();
+        int latestUserIndex = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof UserMessage userMessage
+                    && StringUtils.hasText(userMessage.getText())) {
+                latestUserIndex = i;
+                break;
+            }
+        }
+        if (latestUserIndex <= 0) {
+            return "";
+        }
+        for (int i = latestUserIndex - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (!(message instanceof UserMessage) && !(message instanceof AssistantMessage)) {
+                continue;
+            }
+            String project = latestMatch(PROJECT_CONTEXT, message.getText(), 1);
+            if (StringUtils.hasText(project)) {
+                return project;
+            }
+        }
+        return "";
+    }
+
+    private boolean missedAvailableContextForShortFollowUp(Prompt prompt, String finalContent) {
+        if (!StringUtils.hasText(finalContent) || !MISSING_CONTEXT_CLAIM.matcher(finalContent).find()) {
+            return false;
+        }
+        String latestUserText = latestUserText(prompt);
+        return CONTEXTUAL_OWNER_FOLLOW_UP.matcher(latestUserText).find()
+                && StringUtils.hasText(contextualOwnerFromPriorTurns(prompt));
+    }
+
+    private String contextualOwnerFromPriorTurns(Prompt prompt) {
+        if (prompt == null || prompt.getInstructions() == null) {
+            return "";
+        }
+        List<Message> messages = prompt.getInstructions();
+        int latestUserIndex = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof UserMessage userMessage
+                    && StringUtils.hasText(userMessage.getText())) {
+                latestUserIndex = i;
+                break;
+            }
+        }
+        if (latestUserIndex <= 0) {
+            return "";
+        }
+        for (int i = latestUserIndex - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (!(message instanceof UserMessage) && !(message instanceof AssistantMessage)) {
+                continue;
+            }
+            String text = message.getText();
+            String owner = latestOwnerTransferTarget(text);
+            if (StringUtils.hasText(owner)) {
+                return owner;
+            }
+            owner = latestMatch(OWNER_EXPLICIT_CONTEXT, text, 1);
+            if (StringUtils.hasText(owner)) {
+                return owner;
+            }
+            owner = latestMatch(OWNER_WITH_CONTEXT, text, 1);
+            if (StringUtils.hasText(owner)) {
+                return owner;
+            }
+        }
+        return "";
+    }
+
+    private String latestOwnerTransferTarget(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        Matcher matcher = OWNER_TRANSFER.matcher(text);
+        String latest = "";
+        while (matcher.find()) {
+            String candidate = matcher.group(2);
+            if (isPlausibleContextValue(candidate)) {
+                latest = candidate;
+            }
+        }
+        return latest;
+    }
+
+    private String latestMatch(Pattern pattern, String text, int group) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        Matcher matcher = pattern.matcher(text);
+        String latest = "";
+        while (matcher.find()) {
+            String candidate = matcher.group(group);
+            if (isPlausibleContextValue(candidate)) {
+                latest = candidate;
+            }
+        }
+        return latest;
+    }
+
+    private boolean isPlausibleContextValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        String normalized = value.toLowerCase(Locale.ROOT);
+        return !GENERIC_WORDS.contains(normalized)
+                && !Set.of("context", "tools", "tool", "knowledge", "bases", "base",
+                "session", "assistant", "conversation", "messages", "available", "scoped").contains(normalized);
+    }
+
+    private boolean leaksPriorIdentifierAfterTopicChange(Prompt prompt, String finalContent) {
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)
+                || !StringUtils.hasText(finalContent)
+                || !EXPLICIT_TOPIC_CHANGE.matcher(latestUserText).find()) {
+            return false;
+        }
+        String normalizedLatest = latestUserText.toLowerCase(Locale.ROOT);
+        String normalizedFinal = finalContent.toLowerCase(Locale.ROOT);
+        return priorDistinctiveIdentifiers(prompt).stream()
+                .anyMatch(identifier -> !normalizedLatest.contains(identifier)
+                        && normalizedFinal.contains(identifier));
+    }
+
+    private Set<String> priorDistinctiveIdentifiers(Prompt prompt) {
+        Set<String> identifiers = new HashSet<>();
+        if (prompt == null || prompt.getInstructions() == null) {
+            return identifiers;
+        }
+        List<Message> messages = prompt.getInstructions();
+        int latestUserIndex = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof UserMessage userMessage
+                    && StringUtils.hasText(userMessage.getText())) {
+                latestUserIndex = i;
+                break;
+            }
+        }
+        if (latestUserIndex <= 0) {
+            return identifiers;
+        }
+        for (int i = 0; i < latestUserIndex; i++) {
+            Message message = messages.get(i);
+            if (!(message instanceof UserMessage) && !(message instanceof AssistantMessage)) {
+                continue;
+            }
+            Matcher matcher = DISTINCTIVE_CONTEXT_IDENTIFIER.matcher(message.getText());
+            while (matcher.find()) {
+                String identifier = matcher.group(1);
+                if (DIGIT.matcher(identifier).find()) {
+                    identifiers.add(identifier.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return identifiers;
+    }
+
+    private boolean isSystemPromptLeakage(Prompt prompt, String finalContent) {
+        if (!StringUtils.hasText(finalContent)) {
+            return false;
+        }
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText) || SYSTEM_PROMPT_REQUEST.matcher(latestUserText).find()) {
+            return false;
+        }
+        return SYSTEM_PROMPT_LEAKAGE.matcher(finalContent).find();
+    }
+
+    private String languageMismatchReason(Prompt prompt, String finalContent) {
+        if (!StringUtils.hasText(finalContent)) {
+            return "";
+        }
+        ExpectedLanguage expectedLanguage = expectedLanguage(prompt);
+        if (expectedLanguage == ExpectedLanguage.CHINESE && !isChineseDominant(finalContent)) {
+            return "it did not answer in the current user's requested Chinese language";
+        }
+        if (expectedLanguage == ExpectedLanguage.ENGLISH && hasSubstantialChineseText(finalContent)) {
+            return "it included Chinese text even though the current user request calls for English";
+        }
+        return "";
+    }
+
+    private ExpectedLanguage expectedLanguage(Prompt prompt) {
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText)) {
+            return ExpectedLanguage.UNKNOWN;
+        }
+        if (ENGLISH_REQUEST.matcher(latestUserText).find()) {
+            return ExpectedLanguage.ENGLISH;
+        }
+        if (CHINESE_REQUEST.matcher(latestUserText).find()) {
+            return ExpectedLanguage.CHINESE;
+        }
+        int cjkCount = countMatches(CJK, latestUserText);
+        int latinWordCount = countMatches(LATIN_WORD, latestUserText);
+        if (cjkCount >= 4 && cjkCount >= latinWordCount) {
+            return ExpectedLanguage.CHINESE;
+        }
+        if (latinWordCount >= 3 && cjkCount < 4) {
+            return ExpectedLanguage.ENGLISH;
+        }
+        return ExpectedLanguage.UNKNOWN;
+    }
+
+    private boolean isChineseDominant(String text) {
+        int cjkCount = countMatches(CJK, text);
+        int latinWordCount = countMatches(LATIN_WORD, text);
+        return cjkCount >= 4 && cjkCount >= latinWordCount;
+    }
+
+    private boolean hasSubstantialChineseText(String text) {
+        return countMatches(CJK, text) > MAX_ENGLISH_ANSWER_CJK_CHARS;
+    }
+
+    private int countMatches(Pattern pattern, String text) {
+        if (!StringUtils.hasText(text)) {
+            return 0;
+        }
+        int count = 0;
+        java.util.regex.Matcher matcher = pattern.matcher(text);
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    private boolean isLikelyStalePreviousAnswer(Prompt prompt, String finalContent) {
+        if (!StringUtils.hasText(finalContent)) {
+            return false;
+        }
+        String latestUserText = latestUserText(prompt);
+        if (!StringUtils.hasText(latestUserText) || REPEAT_REQUEST.matcher(latestUserText).find()) {
+            return false;
+        }
+        String previousAssistantText = previousAssistantText(prompt);
+        if (!StringUtils.hasText(previousAssistantText)) {
+            return false;
+        }
+        if (!isHighlySimilar(finalContent, previousAssistantText)) {
+            return false;
+        }
+        Set<String> requestTerms = significantTerms(latestUserText);
+        if (requestTerms.isEmpty()) {
+            return false;
+        }
+        Set<String> answerTerms = significantTerms(finalContent);
+        long overlap = requestTerms.stream().filter(answerTerms::contains).count();
+        return overlap == 0 || (requestTerms.size() >= 4 && overlap <= 1);
+    }
+
+    private String previousAssistantText(Prompt prompt) {
+        if (prompt == null || prompt.getInstructions() == null) {
+            return "";
+        }
+        List<Message> messages = prompt.getInstructions();
+        int latestUserIndex = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof UserMessage userMessage
+                    && StringUtils.hasText(userMessage.getText())) {
+                latestUserIndex = i;
+                break;
+            }
+        }
+        if (latestUserIndex <= 0) {
+            return "";
+        }
+        for (int i = latestUserIndex - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof AssistantMessage assistantMessage
+                    && StringUtils.hasText(assistantMessage.getText())) {
+                return assistantMessage.getText();
+            }
+        }
+        return "";
+    }
+
+    private boolean isHighlySimilar(String left, String right) {
+        String normalizedLeft = normalizeForComparison(left);
+        String normalizedRight = normalizeForComparison(right);
+        if (!StringUtils.hasText(normalizedLeft) || !StringUtils.hasText(normalizedRight)) {
+            return false;
+        }
+        int prefixLength = Math.min(80, normalizedRight.length());
+        if (prefixLength >= 40 && normalizedLeft.contains(normalizedRight.substring(0, prefixLength))) {
+            return true;
+        }
+        Set<String> leftTerms = significantTerms(normalizedLeft);
+        Set<String> rightTerms = significantTerms(normalizedRight);
+        if (leftTerms.isEmpty() || rightTerms.isEmpty()) {
+            return false;
+        }
+        Set<String> intersection = new HashSet<>(leftTerms);
+        intersection.retainAll(rightTerms);
+        double similarity = (double) intersection.size() / Math.min(leftTerms.size(), rightTerms.size());
+        return similarity >= 0.75d;
+    }
+
+    private Set<String> significantTerms(String text) {
+        Set<String> terms = new HashSet<>();
+        if (!StringUtils.hasText(text)) {
+            return terms;
+        }
+        java.util.regex.Matcher matcher = WORD.matcher(text.toLowerCase(Locale.ROOT));
+        while (matcher.find()) {
+            String word = matcher.group();
+            if (word.length() >= 4 && !GENERIC_WORDS.contains(word)) {
+                terms.add(word);
+            }
+        }
+        return terms;
+    }
+
+    private String normalizeForComparison(String text) {
+        return text == null ? "" : text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+    }
+
+    private String latestUserText(Prompt prompt) {
+        if (prompt == null || prompt.getInstructions() == null) {
+            return "";
+        }
+        List<Message> messages = prompt.getInstructions();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof UserMessage userMessage
+                    && StringUtils.hasText(userMessage.getText())) {
+                return userMessage.getText();
+            }
+        }
+        for (Message message : messages) {
+            String anchoredRequest = currentUserRequestAnchor(message.getText());
+            if (StringUtils.hasText(anchoredRequest)) {
+                return anchoredRequest;
+            }
+        }
+        return "";
+    }
+
+    private String expectedIncidentIdentifier(Prompt prompt) {
+        if (prompt == null || prompt.getInstructions() == null) {
+            return "";
+        }
+        List<Message> messages = prompt.getInstructions();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            String text = messages.get(i).getText();
+            if (!StringUtils.hasText(text)) {
+                continue;
+            }
+            java.util.regex.Matcher matcher = INCIDENT_IDENTIFIER_EXACT_VALUE.matcher(text);
+            String latestInMessage = "";
+            while (matcher.find()) {
+                latestInMessage = matcher.group().toUpperCase(Locale.ROOT);
+            }
+            if (StringUtils.hasText(latestInMessage)) {
+                return latestInMessage;
+            }
+        }
+        return "";
+    }
+
+    private String currentUserRequestAnchor(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        String normalized = text.replace("\r\n", "\n");
+        int markerIndex = normalized.indexOf(CURRENT_USER_REQUEST_MARKER);
+        if (markerIndex < 0) {
+            return "";
+        }
+        int valueStart = markerIndex + CURRENT_USER_REQUEST_MARKER.length();
+        String remainder = normalized.substring(valueStart);
+        int valueEnd = earliestDelimiterIndex(remainder);
+        String candidate = (valueEnd >= 0 ? remainder.substring(0, valueEnd) : remainder).trim();
+        if (!StringUtils.hasText(candidate) || candidate.contains(NO_USER_ROLE_MESSAGE)) {
+            return "";
+        }
+        return candidate;
+    }
+
+    private int earliestDelimiterIndex(String value) {
+        int result = -1;
+        for (String delimiter : List.of(
+                "\n- Attached session files:",
+                "\n- Relevant long-term memory:",
+                "\nThe current user request is authoritative.",
+                "\n# Rules")) {
+            int candidate = value.indexOf(delimiter);
+            if (candidate >= 0 && (result < 0 || candidate < result)) {
+                result = candidate;
+            }
+        }
+        return result;
     }
 
     @Override
@@ -407,16 +1367,22 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 fullContent.setLength(0);
                 fullContent.append(finalContent);
             }
-            finalSnapshot = snapshotMessage(baseVo, finalContent);
         }
 
+        CitationSelection citationSelection = selectReferencedCitations(
+                finalContent,
+                currentTurnCitationHolder.take(chatSessionId, turnId));
+        finalContent = citationSelection.content();
+        ChatMessageDTO.MetaData finalMetadata = ChatMessageDTO.MetaData.builder()
+                .citations(citationSelection.citations().isEmpty() ? null : citationSelection.citations())
+                .build();
         UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
         updateReq.setContent(finalContent);
+        updateReq.setMetadata(finalMetadata);
         chatMessageFacadeService.updateChatMessage(chatMessageDTO.getId(), updateReq);
+        finalSnapshot = snapshotMessage(baseVo, finalContent, finalMetadata);
         // 再推一次最终快照，确保前端与数据库里的最终内容一致。
         publishContent(chatSessionId, chatMessageDTO.getId(), finalSnapshot);
-        // 现在确定这条 assistant 消息保留，才真正消费 citations。
-        currentTurnCitationHolder.take(chatSessionId, turnId);
         publishDone(chatSessionId, chatMessageDTO.getId(), turnId);
         return bufferedResponse;
     }
@@ -456,7 +1422,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         Assert.notNull(output, "Buffered streamed response cannot carry a null AssistantMessage");
 
         List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
-        if (toolCalls != null && !toolCalls.isEmpty()) {
+        if (toolCalls != null && !toolCalls.isEmpty() && shouldPersistInternalDecision(deepThinking, deepThinkPhase, planStepId)) {
             // 持久化 internal assistant tool_call 消息
             persistInternalAssistant(chatSessionId, turnId, output, deepThinkPhase, planStepId);
             log.info("Persisted internal assistant with {} tool calls: sessionId={}, turnId={}, phase={}",
@@ -465,6 +1431,12 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         // 非 tool_call 的响应不持久化——调用方从 BufferedStreamingResponse 获取文本。
 
         return bufferedResponse;
+    }
+
+    private boolean shouldPersistInternalDecision(boolean deepThinking, String deepThinkPhase, String planStepId) {
+        return deepThinking
+                || (deepThinkPhase != null && !deepThinkPhase.isBlank())
+                || (planStepId != null && !planStepId.isBlank());
     }
 
     @Override
@@ -602,6 +1574,10 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     }
 
     private ChatMessageVO snapshotMessage(ChatMessageVO baseVo, String content) {
+        return snapshotMessage(baseVo, content, baseVo.getMetadata());
+    }
+
+    private ChatMessageVO snapshotMessage(ChatMessageVO baseVo, String content, ChatMessageDTO.MetaData metadata) {
         // 基于最初创建的 VO 克隆一份快照，只替换 content。
         // 这样 id/session/turn/metadata/seqNo 保持稳定，前端能持续更新同一条消息。
         return ChatMessageVO.builder()
@@ -611,9 +1587,277 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 .turnSeq(baseVo.getTurnSeq())
                 .role(baseVo.getRole())
                 .content(content)
-                .metadata(baseVo.getMetadata())
+                .metadata(metadata)
                 .seqNo(baseVo.getSeqNo())
                 .build();
+    }
+
+    private CitationSelection selectReferencedCitations(String content, List<CitationMetadata> citations) {
+        if (!StringUtils.hasText(content)) {
+            return new CitationSelection(content, List.of());
+        }
+
+        List<CitationMetadata> availableCitations = citations == null ? List.of() : citations;
+        Matcher matcher = CITATION_REFERENCE.matcher(content);
+        Map<Integer, Integer> citationRemap = new LinkedHashMap<>();
+        while (matcher.find()) {
+            if (isNonSupportingCitationContext(content, matcher.start(), matcher.end())) {
+                continue;
+            }
+            int originalNumber = parseCitationNumber(matcher.group(1));
+            if (originalNumber < 1
+                    || originalNumber > availableCitations.size()) {
+                continue;
+            }
+            int resolvedNumber = resolveCitationNumberForReference(
+                    content,
+                    matcher.start(),
+                    matcher.end(),
+                    originalNumber,
+                    availableCitations);
+            if (!citationRemap.containsKey(resolvedNumber)) {
+                citationRemap.put(resolvedNumber, citationRemap.size() + 1);
+            }
+        }
+
+        if (!matcher.reset().find()) {
+            return new CitationSelection(content, List.of());
+        }
+
+        List<CitationMetadata> referencedCitations = citationRemap.keySet().stream()
+                .map(index -> availableCitations.get(index - 1))
+                .toList();
+        matcher.reset();
+        StringBuffer renumberedContent = new StringBuffer();
+        boolean removedUnsupportedReference = false;
+        while (matcher.find()) {
+            if (isNonSupportingCitationContext(content, matcher.start(), matcher.end())) {
+                matcher.appendReplacement(renumberedContent, "");
+                removedUnsupportedReference = true;
+                continue;
+            }
+            int originalNumber = parseCitationNumber(matcher.group(1));
+            int resolvedNumber = originalNumber >= 1 && originalNumber <= availableCitations.size()
+                    ? resolveCitationNumberForReference(
+                    content,
+                    matcher.start(),
+                    matcher.end(),
+                    originalNumber,
+                    availableCitations)
+                    : originalNumber;
+            Integer newNumber = citationRemap.get(resolvedNumber);
+            if (newNumber == null) {
+                matcher.appendReplacement(renumberedContent, "");
+                removedUnsupportedReference = true;
+                continue;
+            }
+            matcher.appendReplacement(renumberedContent, Matcher.quoteReplacement("[" + newNumber + "]"));
+        }
+        matcher.appendTail(renumberedContent);
+        String normalizedContent = removedUnsupportedReference
+                ? normalizeCitationWhitespace(renumberedContent.toString())
+                : renumberedContent.toString();
+        return new CitationSelection(normalizedContent, referencedCitations);
+    }
+
+    private boolean isNonSupportingCitationContext(String content, int citationStart, int citationEnd) {
+        return NON_SUPPORTING_CITATION_CONTEXT.matcher(citationContext(content, citationStart, citationEnd)).find();
+    }
+
+    private int resolveCitationNumberForReference(String content,
+                                                  int citationStart,
+                                                  int citationEnd,
+                                                  int originalNumber,
+                                                  List<CitationMetadata> availableCitations) {
+        if (originalNumber < 1 || originalNumber > availableCitations.size()) {
+            return originalNumber;
+        }
+        List<String> distinctiveTokens = distinctiveEvidenceTokens(
+                citationContext(content, citationStart, citationEnd));
+        int sourceCueNumber = resolveCitationNumberBySourceCue(
+                content,
+                citationStart,
+                citationEnd,
+                originalNumber,
+                availableCitations,
+                distinctiveTokens);
+        if (sourceCueNumber != originalNumber) {
+            return sourceCueNumber;
+        }
+        if (distinctiveTokens.isEmpty()) {
+            return originalNumber;
+        }
+
+        int originalMatches = countCitationTokenMatches(
+                availableCitations.get(originalNumber - 1),
+                distinctiveTokens);
+        if (originalMatches == distinctiveTokens.size()) {
+            return originalNumber;
+        }
+
+        int bestNumber = originalNumber;
+        int bestMatches = originalMatches;
+        for (int i = 0; i < availableCitations.size(); i++) {
+            int candidateNumber = i + 1;
+            if (candidateNumber == originalNumber) {
+                continue;
+            }
+            int matches = countCitationTokenMatches(availableCitations.get(i), distinctiveTokens);
+            if (matches > bestMatches) {
+                bestMatches = matches;
+                bestNumber = candidateNumber;
+            }
+        }
+        if (bestNumber != originalNumber && bestMatches > originalMatches) {
+            log.info("Remapped citation reference by distinctive evidence token: original={}, remapped={}, tokenMatches={}/{}",
+                    originalNumber, bestNumber, bestMatches, distinctiveTokens.size());
+        }
+        return bestNumber;
+    }
+
+    private int resolveCitationNumberBySourceCue(String content,
+                                                 int citationStart,
+                                                 int citationEnd,
+                                                 int originalNumber,
+                                                 List<CitationMetadata> availableCitations,
+                                                 List<String> distinctiveTokens) {
+        RagSourceType preferredSourceType = preferredCitationSourceType(
+                citationContext(content, citationStart, citationEnd));
+        if (preferredSourceType == null
+                || originalNumber < 1
+                || originalNumber > availableCitations.size()
+                || availableCitations.get(originalNumber - 1).sourceType() == preferredSourceType) {
+            return originalNumber;
+        }
+
+        int bestNumber = originalNumber;
+        int bestMatches = -1;
+        boolean tie = false;
+        int preferredCount = 0;
+        for (int i = 0; i < availableCitations.size(); i++) {
+            CitationMetadata candidate = availableCitations.get(i);
+            if (candidate.sourceType() != preferredSourceType) {
+                continue;
+            }
+            preferredCount++;
+            int candidateNumber = i + 1;
+            int matches = countCitationTokenMatches(candidate, distinctiveTokens);
+            if (matches > bestMatches) {
+                bestMatches = matches;
+                bestNumber = candidateNumber;
+                tie = false;
+            } else if (matches == bestMatches) {
+                tie = true;
+            }
+        }
+        if (preferredCount == 1 || (bestMatches > 0 && !tie)) {
+            log.info("Remapped citation reference by source cue: original={}, remapped={}, sourceType={}, tokenMatches={}",
+                    originalNumber, bestNumber, preferredSourceType, Math.max(bestMatches, 0));
+            return bestNumber;
+        }
+        return originalNumber;
+    }
+
+    private RagSourceType preferredCitationSourceType(String context) {
+        if (!StringUtils.hasText(context)) {
+            return null;
+        }
+        if (SESSION_FILE_CITATION_CONTEXT.matcher(context).find()) {
+            return RagSourceType.SESSION_FILE;
+        }
+        return null;
+    }
+
+    private String citationContext(String content, int citationStart, int citationEnd) {
+        if (!StringUtils.hasText(content)) {
+            return "";
+        }
+        int start = Math.max(0, citationStart - 220);
+        int end = Math.min(content.length(), citationEnd + 80);
+        return content.substring(start, end);
+    }
+
+    private List<String> distinctiveEvidenceTokens(String context) {
+        if (!StringUtils.hasText(context)) {
+            return List.of();
+        }
+        Matcher matcher = DISTINCTIVE_EVIDENCE_TOKEN.matcher(context);
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+        while (matcher.find()) {
+            tokens.add(matcher.group(1).toLowerCase(Locale.ROOT));
+        }
+        return List.copyOf(tokens);
+    }
+
+    private int countCitationTokenMatches(CitationMetadata citation, List<String> tokens) {
+        if (citation == null || tokens == null || tokens.isEmpty()) {
+            return 0;
+        }
+        String searchable = citationSearchText(citation);
+        int count = 0;
+        for (String token : tokens) {
+            if (searchable.contains(token)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int countSignificantCitationTermMatches(String normalizedContent, CitationMetadata citation) {
+        if (!StringUtils.hasText(normalizedContent) || citation == null) {
+            return 0;
+        }
+        LinkedHashSet<String> terms = new LinkedHashSet<>();
+        Matcher matcher = WORD.matcher(citationSearchText(citation));
+        while (matcher.find()) {
+            String term = matcher.group();
+            if (term.length() < MIN_CITATION_TERM_LENGTH
+                    || GENERIC_WORDS.contains(term)
+                    || CITATION_EVIDENCE_STOP_WORDS.contains(term)) {
+                continue;
+            }
+            terms.add(term);
+        }
+        int matches = 0;
+        for (String term : terms) {
+            if (normalizedContent.contains(term)) {
+                matches++;
+            }
+        }
+        return matches;
+    }
+
+    private String citationSearchText(CitationMetadata citation) {
+        return safeLower(rawCitationSearchText(citation));
+    }
+
+    private String rawCitationSearchText(CitationMetadata citation) {
+        return String.join(" ",
+                citation.documentName() == null ? "" : citation.documentName(),
+                citation.sectionPath() == null ? "" : citation.sectionPath(),
+                citation.snippet() == null ? "" : citation.snippet());
+    }
+
+    private String safeLower(String value) {
+        return StringUtils.hasText(value) ? value.toLowerCase(Locale.ROOT) : "";
+    }
+
+    private String normalizeCitationWhitespace(String content) {
+        return content
+                .replaceAll("[ \\t]+([,.;:!?])", "$1")
+                .replaceAll("[ \\t]{2,}", " ")
+                .replaceAll("(?m)[ \\t]+$", "");
+    }
+
+    private int parseCitationNumber(String rawNumber) {
+        try {
+            return Integer.parseInt(rawNumber);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private record CitationSelection(String content, List<CitationMetadata> citations) {
     }
 
     private void recordTimer(String name, long durationMs, String... tags) {
@@ -646,9 +1890,11 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                     meta = ChatMessageDTO.MetaData.builder().build();
                 }
                 meta.setAgentTrace(trace);
+                msg.setMetadata(meta);
                 UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
                 updateReq.setMetadata(meta);
                 chatMessageFacadeService.updateChatMessage(msg.getId(), updateReq);
+                publishContent(chatSessionId, msg.getId(), chatMessageConverter.toVO(msg));
                 log.info("Attached trace metadata to message {} for turn {}", msg.getId(), turnId);
                 return;
             }

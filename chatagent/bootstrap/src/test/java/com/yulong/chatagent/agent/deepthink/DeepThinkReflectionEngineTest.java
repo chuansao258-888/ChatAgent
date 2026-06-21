@@ -9,9 +9,11 @@ import com.yulong.chatagent.conversation.model.SseMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -67,6 +69,34 @@ class DeepThinkReflectionEngineTest {
         assertThat(notebook.getTotalLlmCalls()).isEqualTo(1);
         verify(messageBridge).publishStatusEvent(eq("session-1"), eq("turn-1"),
                 eq(SseMessage.Type.AI_THINKING), anyString());
+    }
+
+    @Test
+    void reflect_englishPlanUsesEnglishStatusAndInstruction() {
+        when(messageBridge.collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
+                anyList(), eq(llmService), eq(DecisionVisibility.INTERNAL_TRACE_ONLY),
+                eq(true), eq("REFLECT"), isNull()
+        )).thenReturn(response("""
+                {"status":"READY_TO_VERIFY","covered":["S1"],"missing":[],"contradictions":[],"revisedSteps":[]}
+                """));
+
+        DeepThinkReflectionResult result = engine.reflect("session-1", "turn-1",
+                englishPlan(), englishNotebook(), 1, 10);
+
+        assertThat(result.getStatus()).isEqualTo(DeepThinkReflectionResult.READY_TO_VERIFY);
+        verify(messageBridge).publishStatusEvent(eq("session-1"), eq("turn-1"),
+                eq(SseMessage.Type.AI_THINKING), eq("Reflecting..."));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        verify(messageBridge).collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), promptCaptor.capture(), anyString(),
+                anyList(), eq(llmService), eq(DecisionVisibility.INTERNAL_TRACE_ONLY),
+                eq(true), eq("REFLECT"), isNull());
+        assertThat(promptCaptor.getValue().getInstructions())
+                .anySatisfy(message -> {
+                    assertThat(message).isInstanceOf(UserMessage.class);
+                    assertThat(message.getText()).isEqualTo("Output the reflection JSON from the execution results.");
+                });
     }
 
     @Test
@@ -161,6 +191,22 @@ class DeepThinkReflectionEngineTest {
         DeepThinkNotebook notebook = new DeepThinkNotebook();
         notebook.recordStepCompletion(DeepThinkPlanStep.builder()
                 .id("S1").title("执行").objective("执行步骤").build(), "结论");
+        return notebook;
+    }
+
+    private DeepThinkPlan englishPlan() {
+        return DeepThinkPlan.builder()
+                .goal("Diagnose browser test flakiness")
+                .steps(List.of(DeepThinkPlanStep.builder()
+                        .id("S1").title("Check session state").objective("Compare storage state").status("COMPLETED")
+                        .build()))
+                .build();
+    }
+
+    private DeepThinkNotebook englishNotebook() {
+        DeepThinkNotebook notebook = new DeepThinkNotebook();
+        notebook.recordStepCompletion(DeepThinkPlanStep.builder()
+                .id("S1").title("Check session state").objective("Compare storage state").build(), "Session state differs");
         return notebook;
     }
 

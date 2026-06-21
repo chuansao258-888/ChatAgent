@@ -98,6 +98,20 @@ class ChatRoutingAdminFacadeServiceImplTest {
                 .hasMessageContaining("thinkingModel is required");
     }
 
+    @Test
+    void shouldAcceptAnthropicThinkingOverride() {
+        Fixture fixture = fixture();
+        UpdateChatRoutingCandidateOverrideRequest request = new UpdateChatRoutingCandidateOverrideRequest();
+        request.setCandidateId("glm-4");
+        request.setThinkingStrategy("anthropic_thinking");
+
+        fixture.facade.updateCandidateOverride(request);
+
+        ChatRoutingCandidateVO glm = fixture.facade.getRoutingState().getCandidates()[1];
+        assertThat(glm.getEffectiveThinkingStrategy()).isEqualTo("ANTHROPIC_THINKING");
+        assertThat(glm.getEffectiveSupportsThinking()).isTrue();
+    }
+
     private static Fixture fixture() {
         ChatRoutingProperties properties = new ChatRoutingProperties();
         properties.getHealth().setFailureThreshold(1);

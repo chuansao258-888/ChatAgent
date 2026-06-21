@@ -1,13 +1,73 @@
 package com.yulong.chatagent.agent.deepthink;
 
+import com.yulong.chatagent.agent.AgentMessageBridge;
+import com.yulong.chatagent.agent.DecisionVisibility;
+import com.yulong.chatagent.agent.prompt.PromptConstants;
+import com.yulong.chatagent.agent.prompt.PromptLoader;
+import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
+import com.yulong.chatagent.chat.routing.LLMService;
+import com.yulong.chatagent.conversation.model.SseMessage;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link DeepThinkJsonParser} — plan JSON parsing and extraction.
  */
 class DeepThinkPlannerTest {
+
+    @Test
+    void plan_englishQuestionUsesEnglishStatusAndInstruction() {
+        AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
+        LLMService llmService = mock(LLMService.class);
+        PromptLoader promptLoader = mock(PromptLoader.class);
+        when(promptLoader.render(eq(PromptConstants.DEEPTHINK_PLANNER), any()))
+                .thenReturn("rendered planner prompt");
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("""
+                        {"goal":"Diagnose browser test flakiness","complexity":"LOW","steps":[{"id":"S1","title":"Check session state","objective":"Compare storage state"}],"risks":[]}
+                        """)
+                .build();
+        when(messageBridge.collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
+                anyList(), eq(llmService), eq(DecisionVisibility.INTERNAL_TRACE_ONLY),
+                eq(false), eq("PLAN"), eq(null)
+        )).thenReturn(new BufferedStreamingResponse(
+                new ChatResponse(java.util.List.of(new Generation(assistant))), java.util.List.of()));
+        DeepThinkPlanner planner = new DeepThinkPlanner(messageBridge, llmService, java.util.List.of(), false, promptLoader);
+
+        DeepThinkPlan plan = planner.plan(
+                "session-1", "turn-1",
+                "Diagnose why a browser test fails after login.",
+                "", 3);
+
+        assertThat(plan).isNotNull();
+        verify(messageBridge).publishStatusEvent(
+                eq("session-1"), eq("turn-1"), eq(SseMessage.Type.AI_PLANNING), eq("Planning..."));
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        verify(messageBridge).collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), promptCaptor.capture(), anyString(),
+                anyList(), eq(llmService), eq(DecisionVisibility.INTERNAL_TRACE_ONLY),
+                eq(false), eq("PLAN"), eq(null));
+        assertThat(promptCaptor.getValue().getInstructions())
+                .anySatisfy(message -> {
+                    assertThat(message).isInstanceOf(UserMessage.class);
+                    assertThat(message.getText()).isEqualTo("Generate the execution plan from the information above.");
+                });
+    }
 
     @Test
     void parsePlan_validJson_returnsPlan() {

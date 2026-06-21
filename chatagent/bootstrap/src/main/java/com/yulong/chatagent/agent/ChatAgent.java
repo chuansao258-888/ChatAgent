@@ -47,7 +47,7 @@ import java.util.Map;
  * ChatAgent 本身不包含循环逻辑。
  */
 public class ChatAgent {
-    private static final Integer DEFAULT_MAX_MESSAGES = 20;
+    private static final Integer DEFAULT_MAX_MESSAGES = 80;
     private static final int RUNTIME_MEMORY_SLACK = 4;
 
     private final String agentId;

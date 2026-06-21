@@ -42,11 +42,13 @@ Thumbs.db
 **/.pytest_cache/
 
 artifacts/eval/
+artifacts/headed-e2e/
 chatagent/artifacts/
 /chatagent/bootstrap/artifacts/
 /chatagent/bootstrap/data/
 
 ui/.chrome-profile/
+.auth/
 
 data/milvus/
 data/rabbitmq/

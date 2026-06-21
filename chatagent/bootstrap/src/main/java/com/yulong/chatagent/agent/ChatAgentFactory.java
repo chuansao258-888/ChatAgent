@@ -69,13 +69,25 @@ public class ChatAgentFactory {
                             String rewrittenInput,
                             String userId,
                             AgentExecutionMode executionMode) {
+        return create(agentId, chatSessionId, turnId, intentResolution, rewrittenInput, userId, executionMode, null);
+    }
+
+    public ChatAgent create(String agentId,
+                            String chatSessionId,
+                            String turnId,
+                            IntentResolution intentResolution,
+                            String rewrittenInput,
+                            String userId,
+                            AgentExecutionMode executionMode,
+                            String currentUserInput) {
         // RuntimeContextLoader 负责重活：读取 Agent 定义、恢复记忆、解析摘要、筛选工具并拼系统提示词。
         AgentRuntimeContext context = agentRuntimeContextLoader.load(
                 agentId,
                 chatSessionId,
                 intentResolution,
                 rewrittenInput,
-                executionMode
+                executionMode,
+                currentUserInput
         );
 
         // ChatAgent 是纯运行态对象，不交给 Spring 管理；这样可以把每轮执行的 mutable state 隔离开。

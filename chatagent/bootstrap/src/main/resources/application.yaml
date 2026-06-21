@@ -39,35 +39,31 @@ spring:
     baseline-version: 1
     postgresql:
       transactional-lock: false
-  mail:
-    host: ""
-    port: 587
-    username: ${CHATAGENT_MAIL_USERNAME:}
-    password: ${CHATAGENT_MAIL_PASSWORD:}
-    default-encoding: UTF-8
-    properties:
-      mail:
-        smtp:
-          auth: false
-          starttls:
-            enable: false
-            required: false
   ai:
     deepseek:
       api-key: ${CHATAGENT_DEEPSEEK_API_KEY:}
-      base-url: https://api.deepseek.com
+      base-url: ${CHATAGENT_DEEPSEEK_BASE_URL:https://api.deepseek.com}
       chat:
         options:
-          model: deepseek-chat
+          model: deepseek-v4-flash
           temperature: 0.2
           top-p: 0.8
           max-tokens: 2048
-    zhipuai:
-      api-key: ${CHATAGENT_ZHIPUAI_API_KEY:}
-      base-url: https://open.bigmodel.cn/api/paas
+    anthropic:
+      api-key: ${CHATAGENT_ZAI_CODING_API_KEY:}
+      base-url: ${CHATAGENT_ZAI_CODING_ANTHROPIC_BASE_URL:https://api.z.ai/api/anthropic}
       chat:
         options:
-          model: glm-4.5-air
+          model: "glm-5.2"
+          temperature: 0.35
+          top-p: 0.85
+          max-tokens: 8192
+    zhipuai:
+      api-key: ${CHATAGENT_ZAI_CODING_API_KEY:}
+      base-url: ${CHATAGENT_ZAI_CODING_ZHIPU_BASE_URL:https://api.z.ai/api/coding/paas}
+      chat:
+        options:
+          model: glm-4.6v-flash
           temperature: 0.35
           top-p: 0.85
           max-tokens: 4096
@@ -136,9 +132,12 @@ milvus:
 
 chat:
   routing:
-    default-model: glm-5.1
-    deep-thinking-model: glm-5.1
+    default-model: "glm-5.2"
+    deep-thinking-model: "glm-5.2"
+    agent-primary-model: "glm-5.2"
+    agent-fallback-model: deepseek-v4-flash
     first-packet-timeout-seconds: 60
+    decision-total-timeout-seconds: 180
     stream-total-timeout-seconds: 300
     http-connect-timeout-seconds: 10
     http-read-timeout-seconds: 65
@@ -152,17 +151,19 @@ chat:
       out-of-service-when-all-routable-candidates-open: true
       warn-on-orphan-overrides: true
     candidates:
-      - id: glm-5.1
-        spring-client-key: glm-5.1
+      - id: "glm-5.2"
+        spring-client-key: "glm-5.2"
         priority: 5
         enabled: true
         supports-thinking: true
-        thinking-strategy: ZHIPU_THINKING_FLAG
-      - id: deepseek-reasoner
-        spring-client-key: deepseek-reasoner
+        thinking-strategy: ANTHROPIC_THINKING
+      - id: deepseek-v4-flash
+        spring-client-key: deepseek-v4-flash
         priority: 10
         enabled: true
         supports-thinking: true
+        thinking-strategy: MODEL_OVERRIDE
+        thinking-model: deepseek-v4-pro
 
 chatagent:
   id:
@@ -173,30 +174,30 @@ chatagent:
     minimum-score: 0.45
     ambiguity-gap: 0.2
     clarification-candidates: 2
-    classifier-model: deepseek-chat
-    rewrite-model: deepseek-chat
+    classifier-model: deepseek-v4-flash
+    rewrite-model: deepseek-v4-flash
   memory:
-    l1-window-turns: 8
-    l1-token-budget: 4000
-    summary-model: deepseek-chat
+    l1-window-turns: ${CHATAGENT_MEMORY_L1_WINDOW_TURNS:48}
+    l1-token-budget: ${CHATAGENT_MEMORY_L1_TOKEN_BUDGET:256000}
+    summary-model: deepseek-v4-flash
     summary-max-chars: 500
     l3:
       enabled: true
-      extractor-model: deepseek-chat
+      extractor-model: deepseek-v4-flash
       recall-top-k: 3
     compaction:
       v2:
         enabled: true
         min-pending-turns: 1
-        min-pending-tokens: 1200
-        l1-token-warning-ratio: 0.75
-        segment-max-chars: 1200
-        synopsis-max-chars: 2000
+        min-pending-tokens: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS:24000}
+        l1-token-warning-ratio: ${CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO:0.92}
+        segment-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS:6000}
+        synopsis-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS:16000}
         runtime-max-segments: 3
         max-retries: 2
         max-consecutive-failures: 3
         failure-backoff-seconds: 300
-        tool-result-max-chars: 2000
+        tool-result-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS:12000}
         tool-result-head-chars: 800
         tool-result-tail-chars: 800
   rag:
@@ -239,12 +240,12 @@ chatagent:
         poll-timeout-ms: 5000
       vlm:
         enabled: true
-        client-id: glm-4.6
-        model-id: glm-4v-flash
+        client-id: glm-4.6v-flash
+        model-id: glm-4.6v-flash
         prompt-version: v2
         max-tokens: 1200
         temperature: 0.1
-        timeout-ms: 5000
+        timeout-ms: 30000
         core-pool-size: 1
         max-pool-size: 2
         queue-capacity: 0

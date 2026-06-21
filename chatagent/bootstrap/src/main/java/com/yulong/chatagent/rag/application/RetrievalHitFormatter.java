@@ -44,6 +44,20 @@ public class RetrievalHitFormatter {
      * @return prompt text plus the matching citation metadata list
      */
     public FormattedRetrievalPrompt formatWithCitations(List<RetrievalHit> hits) {
+        return formatWithCitations(hits, 1);
+    }
+
+    /**
+     * Formats a retrieval batch using a turn-wide citation number offset.
+     *
+     * @param hits retrieval results ordered by relevance
+     * @param firstCitationNumber first number assigned to visible evidence in this batch
+     * @return prompt text plus citation metadata in the same order
+     */
+    public FormattedRetrievalPrompt formatWithCitations(List<RetrievalHit> hits, int firstCitationNumber) {
+        if (firstCitationNumber < 1) {
+            throw new IllegalArgumentException("firstCitationNumber must be at least 1");
+        }
         if (hits == null || hits.isEmpty()) {
             // 空结果也返回一段明确文本给模型，避免模型误以为工具调用失败或继续编造证据。
             return new FormattedRetrievalPrompt(
@@ -54,14 +68,14 @@ public class RetrievalHitFormatter {
 
         List<String> sections = new ArrayList<>(hits.size());
         List<CitationMetadata> citations = new ArrayList<>(hits.size());
-        for (int i = 0; i < hits.size(); i++) {
-            RetrievalHit hit = hits.get(i);
-            int citationNumber = i + 1;
-            // citations 按原始 hit 顺序生成，编号从 1 开始，与 prompt 中的 [n] 对齐。
-            citations.add(toCitationMetadata(hit));
-            if (shouldIncludeInPrompt(hit)) {
-                sections.add(formatSingleHit(hit, citationNumber));
+        for (RetrievalHit hit : hits) {
+            if (!shouldIncludeInPrompt(hit)) {
+                continue;
             }
+            int citationNumber = firstCitationNumber + sections.size();
+            // 只为实际暴露给模型的证据生成 citation，保证编号连续且与 metadata 顺序一致。
+            citations.add(toCitationMetadata(hit));
+            sections.add(formatSingleHit(hit, citationNumber));
         }
         if (sections.isEmpty()) {
             // 如果所有命中都被标记为 filtered，就不要把任何证据暴露给模型，也不要返回 citations。

@@ -18,7 +18,7 @@ class ChatModelRouterTest {
         when(registry.supports("glm-4.6")).thenReturn(true);
         when(registry.getRequired("glm-4.6")).thenReturn(chatClient);
 
-        ChatModelRouter router = new ChatModelRouter(registry, "deepseek-chat");
+        ChatModelRouter router = new ChatModelRouter(registry, "deepseek-v4-flash");
 
         ChatClient routed = router.route("glm-4.6");
 
@@ -29,9 +29,9 @@ class ChatModelRouterTest {
     void shouldFallbackToDefaultModelWhenRequestIsBlank() {
         ChatClientRegistry registry = mock(ChatClientRegistry.class);
         ChatClient chatClient = mock(ChatClient.class);
-        when(registry.getRequired("deepseek-chat")).thenReturn(chatClient);
+        when(registry.getRequired("deepseek-v4-flash")).thenReturn(chatClient);
 
-        ChatModelRouter router = new ChatModelRouter(registry, "deepseek-chat");
+        ChatModelRouter router = new ChatModelRouter(registry, "deepseek-v4-flash");
 
         ChatClient routed = router.route(" ");
 
@@ -42,13 +42,13 @@ class ChatModelRouterTest {
     void shouldFailFastForUnsupportedModel() {
         ChatClientRegistry registry = mock(ChatClientRegistry.class);
         when(registry.supports("unknown-model")).thenReturn(false);
-        when(registry.availableModels()).thenReturn(Set.of("deepseek-chat", "glm-4.6"));
+        when(registry.availableModels()).thenReturn(Set.of("deepseek-v4-flash", "glm-4.6"));
 
-        ChatModelRouter router = new ChatModelRouter(registry, "deepseek-chat");
+        ChatModelRouter router = new ChatModelRouter(registry, "deepseek-v4-flash");
 
         assertThatThrownBy(() -> router.route("unknown-model"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unsupported chat model: unknown-model")
-                .hasMessageContaining("deepseek-chat");
+                .hasMessageContaining("deepseek-v4-flash");
     }
 }

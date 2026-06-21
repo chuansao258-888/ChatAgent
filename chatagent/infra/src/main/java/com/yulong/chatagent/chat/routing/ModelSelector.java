@@ -7,16 +7,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 /**
  * 从 YAML 候选配置中选出当前可调用的 {@link ModelTarget} 列表。
  *
- * <p>流程：应用运行时 override → 过滤 disabled / 能力不匹配 / 未注册客户端的候选 → 按 priority
- * 升序排序 → 把首选模型提升到第一位。断路器许可获取延迟到 RoutingLLMService 真正调用前执行，
+ * <p>流程：应用运行时 override → 按 Agent 主/备模型 id 取候选 → 过滤 disabled / 能力不匹配 /
+ * 未注册客户端的候选。断路器许可获取延迟到 RoutingLLMService 真正调用前执行，
  * 避免在选择阶段批量占用 HALF_OPEN 探针配额。</p>
  */
 @Slf4j
@@ -34,20 +34,11 @@ public class ModelSelector {
     private final RoutingRuntimeOverridesStore runtimeOverridesStore;
 
     public List<ModelTarget> selectChatCandidates(boolean deepThinking) {
-        // deepThinking 请求优先使用 deepThinkingModel；普通请求使用 defaultModel。
-        // 这个 firstChoice 后面会被移动到候选列表第一位。
-        String firstChoiceId = resolveFirstChoice(deepThinking);
-
-        // 先应用运行时 override，再过滤可用性，最后按 priority 排序。
-        // collect 到 ArrayList 是为了后续 promoteFirstChoice 能 remove/add。
-        List<ChatRoutingProperties.CandidateConfig> ordered = configuredCandidates().stream()
+        // Agent 路由只承认 application.yaml 中显式配置的主/备模型顺序。
+        // Runtime override 可以禁用或调整能力元数据，但 priority 不再能把第三模型插到前面。
+        List<ChatRoutingProperties.CandidateConfig> ordered = configuredAgentCandidates().stream()
                 .filter(c -> isUsableCandidate(c, deepThinking))
-                .sorted(Comparator.comparing(
-                        ChatRoutingProperties.CandidateConfig::getPriority,
-                        Comparator.nullsLast(Integer::compareTo)))
-                .collect(Collectors.toCollection(ArrayList::new));
-
-        promoteFirstChoice(ordered, firstChoiceId);
+                .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
 
         // 只做无副作用的过滤（enabled / thinking / registry）。
         // 断路器 tryAcquire 由 RoutingLLMService 在真正调用模型前延迟执行，避免批量 HALF_OPEN 泄露。
@@ -63,21 +54,41 @@ public class ModelSelector {
                 })
                 // CandidateConfig 只是配置；ModelTarget = 配置 + 真正可调用的 ChatClient。
                 .map(c -> new ModelTarget(c.getId(), c, chatClientRegistry.getRequired(c.getSpringClientKey())))
-                .collect(Collectors.toList());
-        log.info("Model candidates selected: deepThinking={}, firstChoice={}, models={}",
+                .toList();
+        log.info("Model candidates selected: deepThinking={}, agentPrimary={}, agentFallback={}, models={}",
                 deepThinking,
-                firstChoiceId,
+                properties.getAgentPrimaryModel(),
+                properties.getAgentFallbackModel(),
                 targets.stream().map(ModelTarget::id).toList());
         return targets;
     }
 
-    private String resolveFirstChoice(boolean deepThinking) {
-        // deepThinking=true 时，如果显式配置了 deepThinkingModel，就让它成为首选。
-        if (deepThinking && properties.getDeepThinkingModel() != null
-                && !properties.getDeepThinkingModel().isBlank()) {
-            return properties.getDeepThinkingModel();
+    private List<ChatRoutingProperties.CandidateConfig> configuredAgentCandidates() {
+        Map<String, ChatRoutingProperties.CandidateConfig> candidatesById = new LinkedHashMap<>();
+        for (ChatRoutingProperties.CandidateConfig candidate : configuredCandidates()) {
+            if (candidate != null && StringUtils.hasText(candidate.getId())) {
+                candidatesById.putIfAbsent(candidate.getId(), candidate);
+            }
         }
-        return properties.getDefaultModel();
+        List<ChatRoutingProperties.CandidateConfig> ordered = new ArrayList<>(2);
+        addConfiguredAgentCandidate(ordered, candidatesById, properties.getAgentPrimaryModel());
+        addConfiguredAgentCandidate(ordered, candidatesById, properties.getAgentFallbackModel());
+        return ordered;
+    }
+
+    private void addConfiguredAgentCandidate(List<ChatRoutingProperties.CandidateConfig> ordered,
+                                             Map<String, ChatRoutingProperties.CandidateConfig> candidatesById,
+                                             String modelId) {
+        if (!StringUtils.hasText(modelId)
+                || ordered.stream().anyMatch(candidate -> modelId.equals(candidate.getId()))) {
+            return;
+        }
+        ChatRoutingProperties.CandidateConfig candidate = candidatesById.get(modelId);
+        if (candidate == null) {
+            log.warn("Configured Agent model [{}] is not present in chat.routing.candidates", modelId);
+            return;
+        }
+        ordered.add(candidate);
     }
 
     private List<ChatRoutingProperties.CandidateConfig> configuredCandidates() {
@@ -113,17 +124,4 @@ public class ModelSelector {
         return true;
     }
 
-    private void promoteFirstChoice(List<ChatRoutingProperties.CandidateConfig> ordered, String firstChoiceId) {
-        // 将默认模型/深度思考模型提升到第一位，但不破坏其他候选原有 priority 顺序。
-        if (!StringUtils.hasText(firstChoiceId)) {
-            return;
-        }
-        ordered.stream()
-                .filter(c -> firstChoiceId.equals(c.getId()))
-                .findFirst()
-                .ifPresent(first -> {
-                    ordered.remove(first);
-                    ordered.add(0, first);
-                });
-    }
 }

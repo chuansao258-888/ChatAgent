@@ -45,6 +45,8 @@ public class DeepThinkVerificationEngine {
                                               DeepThinkReflectionResult reflectionResult,
                                               int maxVerificationRounds,
                                               int maxTotalLlmCalls) {
+        String languageSource = DeepThinkLanguageSupport.planLanguageSource(plan);
+        boolean preferChinese = DeepThinkLanguageSupport.prefersChinese(languageSource);
         if (maxVerificationRounds <= 0) {
             return DeepThinkVerificationResult.skipped("verification disabled");
         }
@@ -55,7 +57,7 @@ public class DeepThinkVerificationEngine {
         }
 
         messageBridge.publishStatusEvent(chatSessionId, turnId,
-                SseMessage.Type.AI_THINKING, "正在验证...");
+                SseMessage.Type.AI_THINKING, preferChinese ? "正在验证..." : "Verifying...");
 
         String systemPrompt = buildSystemPrompt(plan, notebook, reflectionResult);
         BufferedStreamingResponse response = messageBridge.collectDecisionResponse(
@@ -63,7 +65,9 @@ public class DeepThinkVerificationEngine {
                 turnId,
                 new Prompt(List.of(
                         new SystemMessage(systemPrompt),
-                        new UserMessage("请根据观察结果输出验证 JSON。")
+                        new UserMessage(preferChinese
+                                ? "请根据观察结果输出验证 JSON。"
+                                : "Output the verification JSON from the observations.")
                 )),
                 systemPrompt,
                 List.of(),
@@ -78,7 +82,7 @@ public class DeepThinkVerificationEngine {
         DeepThinkVerificationResult parsed = DeepThinkJsonParser.parseVerificationResult(extractText(response));
         if (parsed == null) {
             log.warn("DeepThink verification JSON parse failed; final answer will include verification caveat");
-            return DeepThinkVerificationResult.skipped("未经完整验证");
+            return DeepThinkVerificationResult.skipped(preferChinese ? "未经完整验证" : "Not fully verified");
         }
         return parsed;
     }

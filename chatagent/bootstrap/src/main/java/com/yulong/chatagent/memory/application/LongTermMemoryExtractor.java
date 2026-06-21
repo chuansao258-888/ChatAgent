@@ -44,7 +44,7 @@ public class LongTermMemoryExtractor {
     public LongTermMemoryExtractor(PromptLoader promptLoader,
                                    ChatModelRouter chatModelRouter,
                                    ObjectMapper objectMapper,
-                                   @Value("${chatagent.memory.l3.extractor-model:deepseek-chat}") String extractorModel,
+                                   @Value("${chatagent.memory.l3.extractor-model:deepseek-v4-flash}") String extractorModel,
                                    @Value("${chatagent.memory.l3.extractor-prompt:memory/l3-extractor.md}") String extractorPrompt) {
         this.promptLoader = promptLoader;
         this.chatModelRouter = chatModelRouter;

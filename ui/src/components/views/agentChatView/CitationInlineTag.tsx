@@ -35,7 +35,9 @@ const CitationInlineTag: React.FC<CitationInlineTagProps> = ({
     <button
       type="button"
       onClick={onNavigate}
-      className="mx-0.5 inline-flex items-center rounded-full border border-[var(--citation-border)] bg-[var(--citation-bg)] px-2 py-0.5 align-baseline text-[11px] font-semibold leading-5 text-[var(--citation-text)] transition hover:border-[#dca35d]/55 hover:bg-[var(--citation-bg-hover)]"
+      aria-label={`Citation ${index}: ${buildLabel(citation)}`}
+      data-citation-index={index}
+      className="mx-0.5 inline-flex items-center whitespace-nowrap rounded-full border border-[var(--citation-border)] bg-[var(--citation-bg)] px-2 py-0.5 align-baseline text-[11px] font-semibold leading-5 text-[var(--citation-text)] transition hover:border-[#dca35d]/55 hover:bg-[var(--citation-bg-hover)]"
     >
       [{index}]
     </button>

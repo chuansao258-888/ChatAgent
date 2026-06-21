@@ -34,7 +34,7 @@
             created_at,
             updated_at
         ) VALUES (
-            #{id},
+            CAST(#{id} AS uuid),
             CAST(#{serverId} AS uuid),
             #{serverSlug},
             #{toolName},
@@ -61,7 +61,7 @@
             details_json = #{detailsJson},
             resolved_at = #{resolvedAt},
             updated_at = #{updatedAt}
-        WHERE id = #{id}
+        WHERE id = CAST(#{id} AS uuid)
     </update>
 
     <select id="selectOpenByServerAndType" resultMap="McpAlertEventMap">

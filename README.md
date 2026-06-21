@@ -298,13 +298,18 @@ is intentionally ignored.
 | `CHATAGENT_REDIS_PASSWORD` | Depends on Redis | Redis password. |
 | `CHATAGENT_RABBITMQ_USERNAME` | Yes for MQ flows | RabbitMQ username. |
 | `CHATAGENT_RABBITMQ_PASSWORD` | Yes for MQ flows | RabbitMQ password. |
-| `CHATAGENT_MAIL_USERNAME` | If mail is enabled | SMTP username. |
-| `CHATAGENT_MAIL_PASSWORD` | If mail is enabled | SMTP password or app password. |
 | `CHATAGENT_JWT_SECRET` | Yes outside throwaway local runs | Long random JWT signing secret. |
 | `CHATAGENT_DEEPSEEK_API_KEY` | If using DeepSeek | Chat provider credential. |
 | `CHATAGENT_ZHIPUAI_API_KEY` | If using ZhipuAI | Chat/VLM provider credential. |
 | `CHATAGENT_ZHIPUAI_API_KEY_2` | Optional for evaluation | Secondary ZhipuAI provider credential. |
 | `CHATAGENT_ZAI_CODING_API_KEY` | Optional for evaluation | Z.AI Coding Plan provider credential. |
+| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | Optional | Recent raw conversation tail before L2 compaction becomes eligible. |
+| `CHATAGENT_MEMORY_L1_TOKEN_BUDGET` | Optional | L1 memory token budget; defaults are sized for the GLM-5.2 1M context primary. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | Optional | Stable-token watermark that can trigger L2 compaction. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO` | Optional | L1 pressure ratio used as a compaction watermark. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS` | Optional | Maximum stored L2 segment summary length. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS` | Optional | Maximum rolling L2 synopsis length. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS` | Optional | Tool-result compaction threshold before prompt assembly. |
 | `CHATAGENT_RAG_RERANKER_API_KEY` | If the reranker requires auth | Reranker credential. |
 | `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | If MinerU requires auth | MinerU bearer token. |
 | `CHATAGENT_MILVUS_USERNAME` | If Milvus auth is enabled | Milvus username. |
@@ -580,33 +585,80 @@ npm run test
 npm run build
 ```
 
-### End-to-End (Playwright AX driver)
+### End-to-End (Formal Playwright)
 
-Browser E2E uses a small Playwright "AX driver" (`ui/e2e/driver/server.mjs`): a
-headed, persistent-context Chromium exposed over a tiny HTTP API, so an agent (or
-you) drives the live UI and reads the accessibility tree as text. Login persists
-across runs (a user-data-dir under `ui/.auth/`); the backend must be running.
+The primary browser E2E suite now uses formal Playwright specs under
+`ui/e2e/specs`. The backend must already be running on `localhost:8080`; the
+Playwright config starts Vite on `localhost:5173` and keeps one Chromium worker
+so refresh-cookie storage state stays stable.
 
 ```bash
 cd ui
-npm run e2e:install          # one-time: download the Chromium binary
-# from the repo root, start the stack:
-docker compose up -d         # postgres + redis + rabbitmq (+ milvus)
-npm run dev                  # UI dev server on 5173
-# backend: chatagent/mvnw.cmd -pl bootstrap spring-boot:run
-npm run e2e                  # headed driver on http://127.0.0.1:7878
+npm run e2e:install          # one-time: download Chromium
+npm run e2e                  # formal Playwright specs, headless by default
+npm run e2e:headed -- --grep @smoke
+npm run e2e:headed -- --grep "@smoke|@core-agent"
+npm run e2e:headed:full      # headed tier sequence with a fresh run id per tier
 ```
 
-Then drive it (the UI at 5173 talks to the backend at 8080):
+Useful tier tags:
+
+| Tag | Coverage |
+| --- | --- |
+| `@smoke` | Auth, refresh, route guards, basic session shell. |
+| `@core-agent` | Language following, ReAct, DeepThink, SSE recovery. |
+| `@memory` | L1/L2/L3 memory and multi-turn relevance. |
+| `@rag` | KB ingestion/retrieval, citations, evidence rendering, session files. |
+| `@tools` | MCP, web search fixture, safe built-in tools. |
+| `@intent` | Intent-tree draft/publish/activate and runtime hit behavior. |
+| `@routing` | First-packet routing fixture and real-provider smoke. |
+| `@admin` | Dashboard, users, KBs, assistant bindings, MCP Ops, MQ/routing evidence. |
+| `@vlm` | Multimodal/session-file provider capability path. |
+
+Some tiers need local fixtures before running:
+
+```powershell
+.\MCP\weather-server\start-http.ps1              # needed by @tools and @admin MCP paths
+cd ui
+npm run e2e:routing-fixture                      # needed by @routing fixture mode
+node e2e/fixtures/searxng-fixture.mjs            # needed by native web-search headed checks
+```
+
+Keep the browser/API origins on `localhost`, not `127.0.0.1`, so auth cookies
+rehydrate consistently. Set `PLAYWRIGHT_UI_BASE_URL` and
+`PLAYWRIGHT_API_BASE_URL` only when using different local ports.
+
+`npm run e2e:headed:full` runs the existing tiers one by one instead of using a
+single `@full` grep tag. This avoids duplicate generated-user IDs between
+Playwright processes and makes long runs easier to diagnose. For the `@routing`
+tier, the full runner defaults to `PLAYWRIGHT_ROUTING_PROVIDER_MODE=real` when
+the variable is unset so it works against the normal configured backend. Set
+`PLAYWRIGHT_ROUTING_PROVIDER_MODE=fixture`, start the routing fixture, and point
+the backend provider base URLs at it when you need deterministic fault-injection
+routing coverage.
+
+`CHATAGENT_JWT_SECRET` (>=32 bytes) and local database credentials are required
+to boot the backend and promote the generated admin fixture. Load private values
+from your ignored local environment; do not commit or paste values from
+`docs/env_variables.txt`.
+
+### End-to-End (Manual AX Driver)
+
+The older exploratory Playwright AX driver is still available when you want a
+headed, persistent browser exposed over a small HTTP API:
+
+```bash
+cd ui
+npm run e2e:driver              # driver on http://127.0.0.1:7878
+```
+
+Then drive it manually:
 
 ```bash
 curl -X POST localhost:7878/goto -d '{"url":"http://localhost:5173/"}'
-curl localhost:7878/ax                                   # accessibility tree (role + name)
+curl localhost:7878/ax
 curl -X POST localhost:7878/act -d '{"locator":{"role":"button","name":"Log in"},"action":"click"}'
 ```
-
-`CHATAGENT_JWT_SECRET` (>=32 bytes) is required to boot the backend — add it to
-your local `docs/env_variables.txt`. Set `PLAYWRIGHT_HEADLESS=1` for headless runs.
 
 ### Evaluation Tools
 

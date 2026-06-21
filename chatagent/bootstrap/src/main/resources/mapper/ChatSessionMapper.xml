@@ -150,7 +150,7 @@
                                cm.turn_seq - ROW_NUMBER() OVER (ORDER BY cm.turn_seq) AS continuity_key
                         FROM chat_message cm
                         WHERE cm.session_id = cs.id
-                          AND cm.role = 'USER'
+                          AND cm.role = 'user'
                           AND cm.turn_completed = TRUE
                           AND cm.turn_seq &gt; cs.last_completed_turn_seq
                     ) candidate

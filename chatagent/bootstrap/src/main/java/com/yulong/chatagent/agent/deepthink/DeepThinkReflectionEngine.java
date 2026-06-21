@@ -44,6 +44,8 @@ public class DeepThinkReflectionEngine {
                                              DeepThinkNotebook notebook,
                                              int maxReflectionRounds,
                                              int maxTotalLlmCalls) {
+        String languageSource = DeepThinkLanguageSupport.planLanguageSource(plan);
+        boolean preferChinese = DeepThinkLanguageSupport.prefersChinese(languageSource);
         int rounds = Math.max(0, maxReflectionRounds);
         if (rounds == 0) {
             return DeepThinkReflectionResult.skipped("reflection disabled");
@@ -58,7 +60,7 @@ public class DeepThinkReflectionEngine {
             }
 
             messageBridge.publishStatusEvent(chatSessionId, turnId,
-                    SseMessage.Type.AI_THINKING, "正在反思...");
+                    SseMessage.Type.AI_THINKING, preferChinese ? "正在反思..." : "Reflecting...");
 
             String systemPrompt = buildSystemPrompt(plan, notebook, round, rounds);
             BufferedStreamingResponse response = messageBridge.collectDecisionResponse(
@@ -66,7 +68,9 @@ public class DeepThinkReflectionEngine {
                     turnId,
                     new Prompt(List.of(
                             new SystemMessage(systemPrompt),
-                            new UserMessage("请基于执行结果输出反思 JSON。")
+                            new UserMessage(preferChinese
+                                    ? "请基于执行结果输出反思 JSON。"
+                                    : "Output the reflection JSON from the execution results.")
                     )),
                     systemPrompt,
                     List.of(),

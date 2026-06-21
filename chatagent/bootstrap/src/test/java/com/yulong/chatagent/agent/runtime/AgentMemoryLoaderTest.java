@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
@@ -37,11 +38,11 @@ class AgentMemoryLoaderTest {
         ObjectProvider<MeterRegistry> meterProvider = mock(ObjectProvider.class);
         when(meterProvider.getIfAvailable()).thenReturn(new SimpleMeterRegistry());
         toolResultCompactor = new ToolResultCompactor(200, 80, 80, meterProvider);
-        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor);
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 8, 1);
     }
 
     @Test
-    void shouldKeepMostRecentTurnsWithinTokenBudget() {
+    void shouldKeepRecentUserInputsWhenFullTurnsExceedTokenBudget() {
         AgentDTO agent = agentWithBudget(20);
         when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
                 message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "aaa"),
@@ -54,9 +55,8 @@ class AgentMemoryLoaderTest {
 
         List<Message> memory = agentMemoryLoader.load("session-1", agent);
 
-        assertThat(memory).hasSize(4);
         assertThat(memory).extracting(Message::getText)
-                .containsExactly("ccc", "ddd", "eee", "fff");
+                .containsExactly("aaa", "ccc", "ddd", "eee", "fff");
     }
 
     @Test
@@ -216,6 +216,149 @@ class AgentMemoryLoaderTest {
                 .startsWith("[Tool result compacted for context budget]");
         // Tool call ID must be preserved
         assertThat(toolResult.getResponses().get(0).id()).isEqualTo("call-1");
+    }
+
+    @Test
+    void shouldCompactOlderToolResultWhenAddingTurnWouldExceedTotalBudget() {
+        // The older turn fits by itself, but adding it to newer turns exceeds the total L1 budget.
+        // The loader should compact only the older tool result and keep the user's durable fact.
+        String mediumResponse = "R".repeat(150); // below char compaction maxChars=200
+        AgentDTO agent = agentWithBudget(350); // effective budget = 280
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER,
+                        "For this incident only, the identifier is INCIDENT-TEST."),
+                assistantWithToolCalls("m2", "turn-1", "Looking",
+                        new AssistantMessage.ToolCall("call-1", "function", "search", "{}")),
+                toolMessage("m3", "turn-1",
+                        new ToolResponseMessage.ToolResponse("call-1", "search", mediumResponse)),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.USER,
+                        "The project codename is NORTHSTAR-TEST."),
+                message("m5", "turn-2", ChatMessageDTO.RoleType.ASSISTANT,
+                        "Noted. The project codename is NORTHSTAR-TEST."),
+                message("m6", "turn-3", ChatMessageDTO.RoleType.USER,
+                        "What was the incident identifier?")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).extracting(Message::getText)
+                .contains(
+                        "For this incident only, the identifier is INCIDENT-TEST.",
+                        "The project codename is NORTHSTAR-TEST.",
+                        "What was the incident identifier?");
+
+        ToolResponseMessage toolResult = memory.stream()
+                .filter(ToolResponseMessage.class::isInstance)
+                .map(ToolResponseMessage.class::cast)
+                .findFirst().orElse(null);
+        assertThat(toolResult).isNotNull();
+        assertThat(toolResult.getResponses().get(0).responseData())
+                .startsWith("[Tool result compacted for context budget]");
+    }
+
+    @Test
+    void shouldKeepOnlyConfiguredRawTurnTail() {
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 3, 1);
+        AgentDTO agent = agentWithBudget(1000);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "turn one"),
+                message("m2", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, "answer one"),
+                message("m3", "turn-2", ChatMessageDTO.RoleType.USER, "turn two"),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.ASSISTANT, "answer two"),
+                message("m5", "turn-3", ChatMessageDTO.RoleType.USER, "turn three"),
+                message("m6", "turn-3", ChatMessageDTO.RoleType.ASSISTANT, "answer three"),
+                message("m7", "turn-4", ChatMessageDTO.RoleType.USER, "turn four"),
+                message("m8", "turn-4", ChatMessageDTO.RoleType.ASSISTANT, "answer four")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).extracting(Message::getText)
+                .containsExactly("turn two", "answer two", "turn three", "answer three", "turn four", "answer four");
+    }
+
+    @Test
+    void shouldKeepOpenCurrentTurnInAdditionToConfiguredCompletedTail() {
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 2, 1);
+        AgentDTO agent = agentWithBudget(1000);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "turn one"),
+                message("m2", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, "answer one"),
+                message("m3", "turn-2", ChatMessageDTO.RoleType.USER, "turn two"),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.ASSISTANT, "answer two"),
+                message("m5", "turn-3", ChatMessageDTO.RoleType.USER, "turn three"),
+                message("m6", "turn-3", ChatMessageDTO.RoleType.ASSISTANT, "answer three"),
+                message("m7", "turn-4", ChatMessageDTO.RoleType.USER, "current question")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).extracting(Message::getText)
+                .containsExactly("turn two", "answer two", "turn three", "answer three", "current question");
+    }
+
+    @Test
+    void shouldPreserveRecentUserCorrectionsWhenLongAnswersExhaustBudget() {
+        AgentDTO agent = agentWithBudget(400);
+        String longAnswer = "Detailed unrelated guidance. ".repeat(20);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER,
+                        "The rehearsal starts in room MAPLE and Priya owns it."),
+                message("m2", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, longAnswer),
+                message("m3", "turn-2", ChatMessageDTO.RoleType.USER,
+                        "Facilities moved the rehearsal from MAPLE to ORBIT."),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.ASSISTANT, longAnswer),
+                message("m5", "turn-3", ChatMessageDTO.RoleType.USER,
+                        "Priya handed ownership to Elena."),
+                message("m6", "turn-3", ChatMessageDTO.RoleType.ASSISTANT, longAnswer),
+                message("m7", "turn-4", ChatMessageDTO.RoleType.USER,
+                        "How should I reheat roasted vegetables?"),
+                message("m8", "turn-4", ChatMessageDTO.RoleType.ASSISTANT, longAnswer),
+                message("m9", "turn-5", ChatMessageDTO.RoleType.USER,
+                        "Who owns the rehearsal now, and where is it being held?")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).filteredOn(UserMessage.class::isInstance)
+                .extracting(Message::getText)
+                .contains(
+                        "Facilities moved the rehearsal from MAPLE to ORBIT.",
+                        "Priya handed ownership to Elena.",
+                        "Who owns the rehearsal now, and where is it being held?");
+        assertThat(memory).extracting(Message::getText).doesNotContain(longAnswer);
+    }
+
+    @Test
+    void shouldUseGlobalTokenBudgetAsFloorForLegacyAgentConfiguration() {
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 8, 500);
+        AgentDTO agent = agentWithBudget(100);
+        String firstAnswer = "first answer ".repeat(8);
+        String secondAnswer = "second answer ".repeat(8);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "first user question"),
+                message("m2", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, firstAnswer),
+                message("m3", "turn-2", ChatMessageDTO.RoleType.USER, "second user question"),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.ASSISTANT, secondAnswer)
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).extracting(Message::getText)
+                .containsExactly("first user question", firstAnswer, "second user question", secondAnswer);
+    }
+
+    @Test
+    void shouldReturnEmptyWhenLegacyMessagesHaveNoTurnId() {
+        AgentDTO agent = agentWithBudget(1000);
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", null, ChatMessageDTO.RoleType.USER, "legacy question"),
+                message("m2", null, ChatMessageDTO.RoleType.ASSISTANT, "legacy answer")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).isEmpty();
     }
 
     private AgentDTO agentWithBudget(int tokenBudget) {

@@ -3,6 +3,7 @@ package com.yulong.chatagent.agent.runtime;
 import com.yulong.chatagent.agent.AgentMessageBridge;
 import com.yulong.chatagent.agent.AgentRunException;
 import com.yulong.chatagent.agent.AgentRunResult;
+import com.yulong.chatagent.agent.DecisionVisibility;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
@@ -31,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -76,9 +78,13 @@ class ReactRuntimeEngineTest {
         )));
         BufferedStreamingResponse bufferedResponse = new BufferedStreamingResponse(directAnswer, List.of());
 
-        when(messageBridge.streamDecisionResponse(
-                eq("session-1"), eq("turn-1"), any(), any(), any(), eq(llmService)
+        when(messageBridge.collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(bufferedResponse);
+        when(messageBridge.streamFinalResponse(
+                eq("session-1"), eq("turn-1"), any(), eq(llmService), eq(false)
+        )).thenReturn("这是最终答案");
 
         AgentRunContext context = buildContext(List.of(mockToolCallback("tool1")));
         ReactRuntimeEngine engine = new ReactRuntimeEngine(context);
@@ -87,8 +93,7 @@ class ReactRuntimeEngineTest {
 
         assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
         assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
-        // 直接回答不应调用 streamFinalResponse（由 streamDecisionResponse 内部处理）
-        verify(messageBridge, never()).streamFinalResponse(any(), any(), any(), any(), anyBoolean());
+        verify(messageBridge).streamFinalResponse(eq("session-1"), eq("turn-1"), any(), eq(llmService), eq(false));
     }
 
     // ========== 无可用工具 ==========
@@ -124,8 +129,9 @@ class ReactRuntimeEngineTest {
         )));
         BufferedStreamingResponse bufferedResponse = new BufferedStreamingResponse(toolCallResponse, List.of());
 
-        when(messageBridge.streamDecisionResponse(
-                any(), any(), any(), any(), any(), eq(llmService)
+        when(messageBridge.collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(bufferedResponse);
         when(messageBridge.streamFinalResponse(
                 any(), any(), any(), eq(llmService), anyBoolean()
@@ -146,8 +152,9 @@ class ReactRuntimeEngineTest {
     @Test
     void exceptionDuringRun_shouldWrapInAgentRunException() {
         // 模型调用抛异常
-        when(messageBridge.streamDecisionResponse(
-                any(), any(), any(), any(), any(), eq(llmService)
+        when(messageBridge.collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenThrow(new RuntimeException("model failed"));
 
         AgentRunContext context = buildContext(List.of(mockToolCallback("tool1")));
@@ -170,9 +177,13 @@ class ReactRuntimeEngineTest {
         )));
         BufferedStreamingResponse bufferedResponse = new BufferedStreamingResponse(directAnswer, List.of());
 
-        when(messageBridge.streamDecisionResponse(
-                any(), any(), any(), any(), any(), eq(llmService)
+        when(messageBridge.collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(bufferedResponse);
+        when(messageBridge.streamFinalResponse(
+                eq("session-1"), eq("turn-1"), any(), eq(llmService), eq(false)
+        )).thenReturn("最终答案");
 
         AgentRunContext context = buildContext(List.of(mockToolCallback("tool1")));
         ReactRuntimeEngine engine = new ReactRuntimeEngine(context);
@@ -211,9 +222,13 @@ class ReactRuntimeEngineTest {
         )));
         BufferedStreamingResponse directBuffered = new BufferedStreamingResponse(directAnswer, List.of());
 
-        when(messageBridge.streamDecisionResponse(
-                any(), any(), any(), any(), any(), eq(llmService)
+        when(messageBridge.collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(bufferedResponse).thenReturn(directBuffered);
+        when(messageBridge.streamFinalResponse(
+                eq("session-1"), eq("turn-1"), any(), eq(llmService), eq(false)
+        )).thenReturn("最终答案");
 
         // maxToolCallsPerStep = 2
         AgentRunContext context = buildContextWithPolicy(20, 2, List.of(mockToolCallback("tool1")));
@@ -223,8 +238,9 @@ class ReactRuntimeEngineTest {
 
         assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
         // 应该执行了 2 步：第一步 5 个 tool call 被截断为 2，第二步直接回答
-        verify(messageBridge, times(2)).streamDecisionResponse(
-                any(), any(), any(), any(), any(), eq(llmService)
+        verify(messageBridge, times(2)).collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         );
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(messageBridge, times(2)).persistAndPublish(
@@ -256,8 +272,9 @@ class ReactRuntimeEngineTest {
         )));
         BufferedStreamingResponse bufferedResponse = new BufferedStreamingResponse(toolCallResponse, List.of());
 
-        when(messageBridge.streamDecisionResponse(
-                any(), any(), any(), any(), any(), eq(llmService)
+        when(messageBridge.collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(bufferedResponse);
         // forceFinalSynthesis 调用 streamFinalResponse 时抛异常
         when(messageBridge.streamFinalResponse(

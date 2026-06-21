@@ -45,7 +45,7 @@ class ChatAgentFactoryTest {
                 AgentExecutionMode.REACT
         );
 
-        when(contextLoader.load("agent-1", "session-1", null, null, null)).thenReturn(context);
+        when(contextLoader.load("agent-1", "session-1", null, null, null, null)).thenReturn(context);
 
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
@@ -89,7 +89,7 @@ class ChatAgentFactoryTest {
                 AgentExecutionMode.DEEPTHINK
         );
 
-        when(contextLoader.load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK))
+        when(contextLoader.load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK, null))
                 .thenReturn(context);
 
         ChatAgentFactory factory = new ChatAgentFactory(
@@ -109,7 +109,7 @@ class ChatAgentFactoryTest {
 
         AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
         assertThat(runContext.executionMode()).isEqualTo(AgentExecutionMode.DEEPTHINK);
-        verify(contextLoader).load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK);
+        verify(contextLoader).load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK, null);
 
         // DEEPTHINK mode should select DeepThinkRuntimeEngine
         AgentRuntimeEngine deepEngine = (AgentRuntimeEngine) ReflectionTestUtils.getField(chatAgent, "runtimeEngine");
@@ -137,7 +137,7 @@ class ChatAgentFactoryTest {
                 AgentExecutionMode.REACT
         );
 
-        when(contextLoader.load("agent-1", "session-1", null, null, null)).thenReturn(context);
+        when(contextLoader.load("agent-1", "session-1", null, null, null, null)).thenReturn(context);
 
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,

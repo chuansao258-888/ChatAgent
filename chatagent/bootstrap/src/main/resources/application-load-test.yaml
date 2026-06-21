@@ -28,11 +28,6 @@ chatagent:
     dispatchers:
       agent-run-enabled: true
 
-management:
-  health:
-    mail:
-      enabled: false
-
 logging:
   level:
     root: WARN
@@ -43,4 +38,3 @@ logging:
     com.yulong.chatagent.rag: WARN
     org.springframework.amqp: WARN
     org.springframework.web: WARN
-    org.springframework.mail: ERROR

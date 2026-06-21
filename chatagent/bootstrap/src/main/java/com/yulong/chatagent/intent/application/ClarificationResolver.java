@@ -31,6 +31,7 @@ public class ClarificationResolver {
 
     private static final Pattern DIGIT_PATTERN = Pattern.compile("(\\d+)");
     private static final Map<String, Integer> CHINESE_ORDINALS = buildChineseOrdinals();
+    private static final Map<String, Integer> ENGLISH_ORDINALS = buildEnglishOrdinals();
 
     public IntentNodeDTO resolve(String reply, List<IntentNodeDTO> candidates) {
         // 没有可解析的回答，或者当前根本没有候选项时，直接返回 null，交给上层继续澄清。
@@ -79,17 +80,71 @@ public class ClarificationResolver {
             return Integer.parseInt(digitMatcher.group(1));
         }
 
-        // 再尝试解析中文序数表达，如“一”“第二个”“两个”。
+        // 再尝试解析中文序数表达，如“一”“第二个”“第二项”“就第一个吧”。
         for (Map.Entry<String, Integer> entry : CHINESE_ORDINALS.entrySet()) {
             String token = entry.getKey();
             if (normalized.equals(token)
                     || normalized.equals("第" + token)
                     || normalized.equals("第" + token + "个")
-                    || normalized.equals(token + "个")) {
+                    || normalized.equals(token + "个")
+                    || containsChineseOrdinal(normalized, token)) {
+                return entry.getValue();
+            }
+        }
+        for (Map.Entry<String, Integer> entry : ENGLISH_ORDINALS.entrySet()) {
+            String token = entry.getKey();
+            if (normalized.matches(".*\\b" + Pattern.quote(token) + "\\b.*")) {
                 return entry.getValue();
             }
         }
         return null;
+    }
+
+    private boolean containsChineseOrdinal(String normalized, String token) {
+        return containsPrefixedChineseOrdinal(normalized, "第" + token)
+                || containsClassifiedChineseOrdinal(normalized, token);
+    }
+
+    private boolean containsPrefixedChineseOrdinal(String normalized, String marker) {
+        int index = normalized.indexOf(marker);
+        while (index >= 0) {
+            int next = skipWhitespace(normalized, index + marker.length());
+            if (next >= normalized.length()
+                    || isChineseOrdinalClassifier(normalized.charAt(next))
+                    || isSelectionParticleOrPunctuation(normalized.charAt(next))) {
+                return true;
+            }
+            index = normalized.indexOf(marker, index + 1);
+        }
+        return false;
+    }
+
+    private boolean containsClassifiedChineseOrdinal(String normalized, String token) {
+        int index = normalized.indexOf(token);
+        while (index >= 0) {
+            int next = skipWhitespace(normalized, index + token.length());
+            if (next < normalized.length() && isChineseOrdinalClassifier(normalized.charAt(next))) {
+                return true;
+            }
+            index = normalized.indexOf(token, index + 1);
+        }
+        return false;
+    }
+
+    private int skipWhitespace(String value, int index) {
+        int current = index;
+        while (current < value.length() && Character.isWhitespace(value.charAt(current))) {
+            current++;
+        }
+        return current;
+    }
+
+    private boolean isChineseOrdinalClassifier(char character) {
+        return "个项条类种位号".indexOf(character) >= 0;
+    }
+
+    private boolean isSelectionParticleOrPunctuation(char character) {
+        return "吧呢呀啊嘛哦了。.!！,，;；".indexOf(character) >= 0;
     }
 
     private static Map<String, Integer> buildChineseOrdinals() {
@@ -106,6 +161,31 @@ public class ClarificationResolver {
         ordinals.put("八", 8);
         ordinals.put("九", 9);
         ordinals.put("十", 10);
+        return ordinals;
+    }
+
+    private static Map<String, Integer> buildEnglishOrdinals() {
+        Map<String, Integer> ordinals = new LinkedHashMap<>();
+        ordinals.put("first", 1);
+        ordinals.put("second", 2);
+        ordinals.put("third", 3);
+        ordinals.put("fourth", 4);
+        ordinals.put("fifth", 5);
+        ordinals.put("sixth", 6);
+        ordinals.put("seventh", 7);
+        ordinals.put("eighth", 8);
+        ordinals.put("ninth", 9);
+        ordinals.put("tenth", 10);
+        ordinals.put("one", 1);
+        ordinals.put("two", 2);
+        ordinals.put("three", 3);
+        ordinals.put("four", 4);
+        ordinals.put("five", 5);
+        ordinals.put("six", 6);
+        ordinals.put("seven", 7);
+        ordinals.put("eight", 8);
+        ordinals.put("nine", 9);
+        ordinals.put("ten", 10);
         return ordinals;
     }
 }

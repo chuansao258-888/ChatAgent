@@ -85,10 +85,14 @@ class DeepThinkRuntimeBudgetTest {
         ChatResponse reactResponse = new ChatResponse(List.of(new Generation(reactMsg)));
         BufferedStreamingResponse reactBuffered = new BufferedStreamingResponse(reactResponse, List.of());
 
-        when(messageBridge.streamDecisionResponse(
+        when(messageBridge.collectDecisionResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
-                anyList(), eq(llmService)
+                anyList(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull()
         )).thenReturn(reactBuffered);
+        when(messageBridge.streamFinalResponse(
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
+        )).thenReturn("Direct answer via ReAct fallback");
 
         AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 30);
         AgentRunContext context = buildContext(policy);
@@ -100,10 +104,11 @@ class DeepThinkRuntimeBudgetTest {
         // Verify planner was called
         verify(messageBridge).publishStatusEvent(eq("session-1"), eq("turn-1"),
                 eq(SseMessage.Type.AI_PLANNING), anyString());
-        // Verify ReAct fallback was invoked (streamDecisionResponse called by ReactRuntimeEngine)
-        verify(messageBridge).streamDecisionResponse(
+        // Verify ReAct fallback was invoked through internal decision collection.
+        verify(messageBridge).collectDecisionResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
-                anyList(), eq(llmService));
+                anyList(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(false), isNull(), isNull());
     }
 
     @Test
@@ -298,7 +303,7 @@ class DeepThinkRuntimeBudgetTest {
         )).thenReturn(buffered("V1 结论"));
 
         when(messageBridge.streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(true)
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
         )).thenReturn("综合回答");
 
         AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 10, 1, 1);
@@ -361,7 +366,7 @@ class DeepThinkRuntimeBudgetTest {
                 """));
 
         when(messageBridge.streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(true)
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
         )).thenReturn("综合回答");
 
         AgentRunPolicyProperties properties = new AgentRunPolicyProperties();
@@ -443,7 +448,7 @@ class DeepThinkRuntimeBudgetTest {
                 """));
 
         when(messageBridge.streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(true)
+                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
         )).thenReturn("综合回答");
 
         AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 10, 1, 1);
