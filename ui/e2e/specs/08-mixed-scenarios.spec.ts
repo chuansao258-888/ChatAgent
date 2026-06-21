@@ -43,6 +43,7 @@ import {
 import {
   apiBaseUrl,
   e2eRunId,
+  liveWebSearchEnabled,
   normalStorageStatePath,
   uiBaseUrl,
 } from "../helpers/env";
@@ -50,6 +51,18 @@ import {
   expectChineseDominant,
   expectEnglishDominant,
 } from "../helpers/languageAssert";
+import {
+  classifyLiveWebSearchResultUrl,
+  containsLiveWebSearchFixtureFingerprint,
+  runLiveWebSearchPreflight,
+  WEB_SEARCH_BACKEND_TOOL_NAME,
+  WEB_SEARCH_MODEL_TOOL_NAME,
+  type LiveWebSearchPreflightResult,
+} from "../helpers/liveWebSearch";
+import {
+  createMixedScenarioRun,
+  type MixedScenarioRun,
+} from "../helpers/mixedScenario";
 import { readE2eUsers } from "../helpers/testUsers";
 import type { CitationMetadata } from "../../src/types";
 
@@ -148,6 +161,19 @@ interface CitationExpectation {
   documentName?: string;
 }
 
+interface MixedPromptChainRecord {
+  group: string;
+  turn: number;
+  basedOn: string;
+  generatedPrompt: string;
+}
+
+interface LiveWebSearchAnswerSummary {
+  turnId: string;
+  status: "public-source" | "unavailable";
+  publicUrls: Array<{ url: string; domain: string }>;
+}
+
 function suffix(): string {
   return e2eRunId.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase();
 }
@@ -204,6 +230,41 @@ function expectContentNotMatch(content: string, forbidden: string | RegExp): voi
     return;
   }
   expect(content).not.toMatch(forbidden);
+}
+
+function summarizeForPromptChain(content: string): string {
+  return content.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function generatePromptFromPrevious(
+  driver: MixedConversationDriver,
+  promptChain: MixedPromptChainRecord[],
+  previous: ChatTurnEvidence,
+  generatedPrompt: string,
+): string {
+  promptChain.push({
+    group: driver.label,
+    turn: driver.turnCount + 1,
+    basedOn: summarizeForPromptChain(previous.assistant.content),
+    generatedPrompt,
+  });
+  return generatedPrompt;
+}
+
+function extractHttpUrls(content: string): string[] {
+  return [
+    ...new Set(
+      Array.from(content.matchAll(/https?:\/\/[^\s<>"']+/g), (match) =>
+        match[0].replace(/[)\].,;!?]+$/g, ""),
+      ),
+    ),
+  ];
+}
+
+function isUnavailableLiveAnswer(content: string): boolean {
+  return /(?:unable|unavailable|could(?:n't| not)|no)\b.{0,80}\b(?:current|online|public|live|verify|verification|result|link)/i.test(
+    content,
+  );
 }
 
 function referencedCitationIndexes(content: string): number[] {
@@ -638,10 +699,131 @@ async function assertToolEvidence(
   return evidence;
 }
 
+async function assertLiveWebSearchAnswerEvidence(
+  testInfo: TestInfo,
+  label: string,
+  evidence: ChatTurnEvidence,
+): Promise<LiveWebSearchAnswerSummary> {
+  if (!evidence.user.turnId) {
+    throw new Error(`${label} live web-search turn has no persisted turnId.`);
+  }
+  expect(containsLiveWebSearchFixtureFingerprint(evidence.assistant.content))
+    .toBe(false);
+
+  const toolEvidence = await readToolCallEvidence(
+    evidence.sessionId,
+    evidence.user.turnId,
+  );
+  expect(
+    toolEvidence.calls.some((call) => call.name === WEB_SEARCH_MODEL_TOOL_NAME),
+  ).toBe(true);
+
+  const checkedUrls = extractHttpUrls(evidence.assistant.content).map((url) => ({
+    url,
+    check: classifyLiveWebSearchResultUrl(url),
+  }));
+  const rejectedUrls = checkedUrls.filter((candidate) => !candidate.check.ok);
+  expect(
+    rejectedUrls,
+    "Live web-search answer must not include fixture, localhost, private, or reserved test URLs.",
+  ).toEqual([]);
+  const publicUrls = checkedUrls
+    .filter((candidate) => candidate.check.ok)
+    .map((candidate) => ({
+      url: candidate.url,
+      domain: candidate.check.domain ?? "",
+    }));
+  const unavailable = isUnavailableLiveAnswer(evidence.assistant.content);
+  if (publicUrls.length === 0) {
+    expect(
+      unavailable,
+      "Live web-search answer must either include a public URL or explicitly say current online verification was unavailable.",
+    ).toBe(true);
+  }
+
+  const summary: LiveWebSearchAnswerSummary = {
+    turnId: evidence.user.turnId,
+    status: publicUrls.length > 0 ? "public-source" : "unavailable",
+    publicUrls,
+  };
+  await testInfo.attach(`${label}-live-web-search-answer-evidence`, {
+    body: JSON.stringify(
+      {
+        ...summary,
+        toolCalls: toolEvidence.calls.map((call) => call.name),
+      },
+      null,
+      2,
+    ),
+    contentType: "application/json",
+  });
+  return summary;
+}
+
+async function runLiveWebSearchSegment(
+  driver: MixedConversationDriver,
+  testInfo: TestInfo,
+  previousTurn: ChatTurnEvidence,
+  forbidden: Array<string | RegExp>,
+): Promise<void> {
+  const promptChain: MixedPromptChainRecord[] = [];
+  const answerSummaries: LiveWebSearchAnswerSummary[] = [];
+
+  const firstPrompt = generatePromptFromPrevious(
+    driver,
+    promptChain,
+    previousTurn,
+    "Before I close the handoff, can you check what's current online about OpenAI model news and give me the link you used?",
+  );
+  const firstTurn = await driver.runTurn(
+    firstPrompt,
+    [/OpenAI|model|news|release|update|current|online|unable|verify/i],
+    {
+      forbidden,
+      expectedTools: [WEB_SEARCH_MODEL_TOOL_NAME],
+    },
+  );
+  answerSummaries.push(
+    await assertLiveWebSearchAnswerEvidence(
+      testInfo,
+      `${driver.label}-turn-${driver.turnCount}`,
+      firstTurn,
+    ),
+  );
+
+  const secondPrompt = generatePromptFromPrevious(
+    driver,
+    promptChain,
+    firstTurn,
+    "Can you check one more current online detail from that update, like the date or headline I should mention?",
+  );
+  const secondTurn = await driver.runTurn(
+    secondPrompt,
+    [/OpenAI|date|headline|model|release|update|current|online|unable|verify/i],
+    {
+      forbidden,
+      expectedTools: [WEB_SEARCH_MODEL_TOOL_NAME],
+    },
+  );
+  answerSummaries.push(
+    await assertLiveWebSearchAnswerEvidence(
+      testInfo,
+      `${driver.label}-turn-${driver.turnCount}`,
+      secondTurn,
+    ),
+  );
+
+  await testInfo.attach(`${driver.label}-live-web-search-prompt-chain`, {
+    body: JSON.stringify({ promptChain, answerSummaries }, null, 2),
+    contentType: "application/json",
+  });
+}
+
 function createMixedDriver(
   label: string,
   page: Page,
   testInfo: TestInfo,
+  scenarioRun?: MixedScenarioRun,
 ): MixedConversationDriver {
   let previousAssistantContent = "";
   return {
@@ -652,10 +834,12 @@ function createMixedDriver(
     sessionId: null,
     turnCount: 0,
     async runTurn(prompt, expected, options = {}) {
-      this.prompts.push(prompt);
+      const renderedPrompt =
+        scenarioRun?.renderPrompt(label, this.turnCount + 1, prompt) ?? prompt;
+      this.prompts.push(renderedPrompt);
       const evidence = this.sessionId
-        ? await continueConversation(page, this.sessionId, prompt)
-        : await startChatAndWaitForAssistant(page, prompt, {
+        ? await continueConversation(page, this.sessionId, renderedPrompt)
+        : await startChatAndWaitForAssistant(page, renderedPrompt, {
             mode: "REACT",
             timeoutMs: TURN_TIMEOUT_MS,
           });
@@ -807,6 +991,8 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
     test.setTimeout(MIXED_JOURNEY_TIMEOUT_MS);
     const users = await readE2eUsers();
     const runSuffix = suffix();
+    const mixedScenario = await createMixedScenarioRun(e2eRunId, runSuffix);
+    const { profile } = mixedScenario;
     const adminApi = await createAdminApi();
     let originalActiveVersion: number | null = null;
     let originalBindings: string[] = [];
@@ -816,33 +1002,38 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
     const generatedKnowledgeBaseIds: string[] = [];
     let groupAContext: BrowserContext | null = null;
     let groupBContext: BrowserContext | null = null;
+    let groupADriver: MixedConversationDriver | null = null;
+    let groupBDriver: MixedConversationDriver | null = null;
+    let scenarioCompleted = false;
     let cleanupError: Error | null = null;
 
-    const groupAProject = `Ridgewater-${runSuffix}`;
-    const groupAOldRoom = `Maple-${runSuffix}`;
-    const groupAFileRoom = `Cedar-${runSuffix}`;
-    const groupACurrentRoom = `Iris-${runSuffix}`;
-    const groupAOwnerInitial = `Maya-${runSuffix}`;
-    const groupAOwnerCurrent = `Owen-${runSuffix}`;
+    const groupAProject = `${profile.groupA.project}-${runSuffix}`;
+    const groupAOldRoom = `${profile.groupA.oldRoom}-${runSuffix}`;
+    const groupAFileRoom = `${profile.groupA.fileRoom}-${runSuffix}`;
+    const groupACurrentRoom = `${profile.groupA.currentRoom}-${runSuffix}`;
+    const groupAOwnerInitial = `${profile.groupA.ownerInitial}-${runSuffix}`;
+    const groupAOwnerCurrent = `${profile.groupA.ownerCurrent}-${runSuffix}`;
     const groupAKbMarker = `MIXED-A-KB-${runSuffix}`;
     const groupADecoyMarker = `MIXED-A-DECOY-${runSuffix}`;
     const groupAUnboundMarker = `MIXED-A-UNBOUND-${runSuffix}`;
     const groupAFileMarker = `MIXED-A-FILE-${runSuffix}`;
-    const groupAFileName = `ridgewater-room-card-${runSuffix}.md`;
-    const rootAName = `${INTENT_PREFIX}${runSuffix} Ridgewater Desk`;
-    const rootBName = `${INTENT_PREFIX}${runSuffix} Operations Archive`;
-    const categoryAName = `${INTENT_PREFIX}${runSuffix} Workbench`;
-    const launchNotesName = `${INTENT_PREFIX}${runSuffix} Ridgewater Launch Notes`;
-    const roomCardName = `${INTENT_PREFIX}${runSuffix} Uploaded Room Card`;
+    const groupAFileName = `${profile.groupA.fileSlug}-${runSuffix}.md`;
+    const rootAName = `${INTENT_PREFIX}${runSuffix} ${profile.groupA.desk}`;
+    const rootBName = `${INTENT_PREFIX}${runSuffix} ${profile.groupA.archive}`;
+    const categoryAName = `${INTENT_PREFIX}${runSuffix} ${profile.groupA.workbench}`;
+    const launchNotesName = `${INTENT_PREFIX}${runSuffix} ${profile.groupA.notes}`;
+    const roomCardName = `${INTENT_PREFIX}${runSuffix} ${profile.groupA.fileLabel}`;
 
-    const groupBProject = `Harborlight-${runSuffix}`;
-    const groupBOldLocker = `Locker-${runSuffix}`;
-    const groupBCurrentLocker = `Vault-${runSuffix}`;
-    const groupBOwnerInitial = `Nolan-${runSuffix}`;
-    const groupBOwnerCurrent = `Priya-${runSuffix}`;
+    const groupBProject = `${profile.groupB.project}-${runSuffix}`;
+    const groupBOldLocker = `${profile.groupB.oldLocker}-${runSuffix}`;
+    const groupBCurrentLocker = `${profile.groupB.currentLocker}-${runSuffix}`;
+    const groupBOwnerInitial = `${profile.groupB.ownerInitial}-${runSuffix}`;
+    const groupBOwnerCurrent = `${profile.groupB.ownerCurrent}-${runSuffix}`;
     const groupBKbMarker = `MIXED-B-KB-${runSuffix}`;
     const groupBFileMarker = `MIXED-B-FILE-${runSuffix}`;
-    const groupBFileName = `harborlight-floor-note-${runSuffix}.md`;
+    const groupBFileName = `${profile.groupB.fileSlug}-${runSuffix}.md`;
+    const ambiguousPrompt = profile.ambiguousPrompt;
+    let liveWebSearchPreflight: LiveWebSearchPreflightResult | null = null;
 
     try {
       await deleteGeneratedKnowledgeBases(adminApi);
@@ -858,6 +1049,29 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
         await readAssistantAllowedTools(SYSTEM_ASSISTANT_ID)
       ).allowedTools;
       baselineCaptured = true;
+      if (liveWebSearchEnabled) {
+        liveWebSearchPreflight = await runLiveWebSearchPreflight(
+          adminApi.context,
+          adminApi.token,
+        );
+        await testInfo.attach("mixed-live-web-search-preflight", {
+          body: JSON.stringify(liveWebSearchPreflight, null, 2),
+          contentType: "application/json",
+        });
+      } else {
+        await testInfo.attach("mixed-live-web-search-mode", {
+          body: JSON.stringify(
+            {
+              enabled: false,
+              status: "skipped",
+              reason: "PLAYWRIGHT_LIVE_WEB_SEARCH is not true.",
+            },
+            null,
+            2,
+          ),
+          contentType: "application/json",
+        });
+      }
       const syncedMcp = await createAndSyncLocalWeatherMcp(users.admin);
       await testInfo.attach("mixed-mcp-sync-evidence", {
         body: JSON.stringify(
@@ -911,14 +1125,17 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
         ...originalBindings,
         ...generatedKnowledgeBaseIds,
       ]);
-      await setAssistantAllowedTools(SYSTEM_ASSISTANT_ID, [
-        ...originalAllowedTools,
-        SESSION_FILE_TOOL_NAME,
-        DATABASE_BACKEND_TOOL_NAME,
-        ...syncedMcp.activeTools.map((tool) => tool.exposedModelName),
-      ]);
+      await setAssistantAllowedTools(
+        SYSTEM_ASSISTANT_ID,
+        uniqueStrings([
+          ...originalAllowedTools,
+          SESSION_FILE_TOOL_NAME,
+          DATABASE_BACKEND_TOOL_NAME,
+          ...(liveWebSearchPreflight ? [WEB_SEARCH_BACKEND_TOOL_NAME] : []),
+          ...syncedMcp.activeTools.map((tool) => tool.exposedModelName),
+        ]),
+      );
 
-      const ambiguousPrompt = "operations";
       const groupAKbQuery =
         `Do you remember the ${groupAProject} handoff code and escalation contact?`;
       const groupAUnboundQuery =
@@ -1046,10 +1263,11 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
 
       const groupA = await openNormalChat(browser);
       groupAContext = groupA.context;
-      const groupADriver = createMixedDriver(
+      groupADriver = createMixedDriver(
         "intent-tree-group",
         groupA.page,
         testInfo,
+        mixedScenario,
       );
 
       await groupADriver.runTurn(
@@ -1236,11 +1454,19 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
         [groupAOwnerCurrent, groupACurrentRoom, /risk|ready|readiness|check/i],
         { forbidden: [groupAOwnerInitial, groupAOldRoom], noToolCalls: true },
       );
-      await groupADriver.runTurn(
+      const groupAQaTurn = await groupADriver.runTurn(
         "How much Q&A fits in fifteen minutes?",
         [/question|Q&A|agenda|time|reserve|buffer/i],
         { forbidden: [groupBKbMarker, groupBProject], noToolCalls: true },
       );
+      if (liveWebSearchPreflight) {
+        await runLiveWebSearchSegment(
+          groupADriver,
+          testInfo,
+          groupAQaTurn,
+          [groupAKbMarker, groupAFileMarker, groupBProject, groupBKbMarker],
+        );
+      }
       await groupADriver.runTurn(
         "Can you wrap this up with the current owner and room, plus the two codes we checked?",
         [groupAProject, groupAOwnerCurrent, groupACurrentRoom, groupAKbMarker, groupAFileMarker],
@@ -1284,10 +1510,11 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
 
       const groupB = await openNormalChat(browser);
       groupBContext = groupB.context;
-      const groupBDriver = createMixedDriver(
+      groupBDriver = createMixedDriver(
         "no-intent-group",
         groupB.page,
         testInfo,
+        mixedScenario,
       );
       const groupBDefaultKbQuery =
         `What code is on the ${groupBProject} readiness note, and who's the contact?`;
@@ -1587,8 +1814,21 @@ test.describe("@mixed-dialogue long realistic mixed scenarios", () => {
             ),
         ),
       ).toBe(false);
+      scenarioCompleted = true;
     } finally {
       const errors: string[] = [];
+      await mixedScenario
+        .persistManifest(
+          testInfo,
+          groupADriver?.prompts ?? [],
+          groupBDriver?.prompts ?? [],
+          scenarioCompleted,
+        )
+        .catch((error: unknown) => {
+          errors.push(
+            `mixed scenario manifest: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
       await groupAContext?.close().catch((error: unknown) => {
         errors.push(
           `close intent-tree browser context: ${error instanceof Error ? error.message : String(error)}`,
