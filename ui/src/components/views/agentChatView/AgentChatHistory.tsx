@@ -260,6 +260,154 @@ const ToolResponseDisplay: React.FC<{ toolResponse: ToolResponse }> = ({
   );
 };
 
+type VisibleChatItem =
+  | { kind: "message"; message: ChatMessageVO }
+  | { kind: "toolGroup"; messages: ChatMessageVO[] };
+
+const isVisibleToolActivityMessage = (message: ChatMessageVO): boolean => {
+  if (message.role === "tool" && message.metadata?.toolResponse) {
+    return true;
+  }
+
+  return (
+    message.role === "assistant" &&
+    Boolean(message.metadata?.toolCalls?.length) &&
+    !message.content.trim() &&
+    !message.metadata?.citations?.length &&
+    !message.metadata?.agentTrace
+  );
+};
+
+const buildVisibleChatItems = (messages: ChatMessageVO[]): VisibleChatItem[] => {
+  const items: VisibleChatItem[] = [];
+  let toolGroup: ChatMessageVO[] = [];
+
+  const flushToolGroup = () => {
+    if (toolGroup.length === 1) {
+      items.push({ kind: "message", message: toolGroup[0] });
+    } else if (toolGroup.length > 1) {
+      items.push({ kind: "toolGroup", messages: toolGroup });
+    }
+    toolGroup = [];
+  };
+
+  for (const message of messages) {
+    if (message.metadata?.internal) {
+      continue;
+    }
+
+    if (isVisibleToolActivityMessage(message)) {
+      toolGroup.push(message);
+      continue;
+    }
+
+    flushToolGroup();
+    items.push({ kind: "message", message });
+  }
+
+  flushToolGroup();
+  return items;
+};
+
+const summarizeToolNames = (messages: ChatMessageVO[]): string => {
+  const counts = new Map<string, number>();
+  for (const message of messages) {
+    if (message.metadata?.toolResponse?.name) {
+      const name = message.metadata.toolResponse.name;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+
+  if (counts.size === 0) {
+    for (const message of messages) {
+      for (const toolCall of message.metadata?.toolCalls ?? []) {
+        counts.set(toolCall.name, (counts.get(toolCall.name) ?? 0) + 1);
+      }
+    }
+  }
+
+  return [...counts.entries()]
+    .slice(0, 4)
+    .map(([name, count]) => `${name} x${count}`)
+    .join(", ");
+};
+
+const countToolActivities = (messages: ChatMessageVO[]): number => {
+  const responseCount = messages.filter(
+    (message) => message.metadata?.toolResponse,
+  ).length;
+  if (responseCount > 0) {
+    return responseCount;
+  }
+
+  const callCount = messages.reduce(
+    (total, message) => total + (message.metadata?.toolCalls?.length ?? 0),
+    0,
+  );
+  return callCount || messages.length;
+};
+
+const ToolActivityGroup: React.FC<{ messages: ChatMessageVO[] }> = ({
+  messages,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const toolSummary = summarizeToolNames(messages);
+  const activityCount = countToolActivities(messages);
+  const activityLabel = activityCount === 1 ? "call" : "calls";
+
+  return (
+    <div className="flex justify-start">
+      <div className="min-w-0 w-full max-w-3xl">
+        <div className="my-1 rounded-inset border border-white/8 bg-white/[0.025] text-xs text-slate-300">
+          <button
+            type="button"
+            aria-label={`Tool activity ${activityCount} ${activityLabel}${toolSummary ? ` ${toolSummary}` : ""}`}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+            className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-slate-300 transition-colors hover:text-slate-100"
+          >
+            {expanded ? (
+              <DownOutlined aria-hidden className="shrink-0 text-slate-500" />
+            ) : (
+              <RightOutlined aria-hidden className="shrink-0 text-slate-500" />
+            )}
+            <ToolOutlined aria-hidden className="shrink-0 text-sky-400" />
+            <span className="font-medium text-slate-200">Tool activity</span>
+            <span className="shrink-0 text-slate-500">
+              {activityCount} {activityLabel}
+            </span>
+            {toolSummary ? (
+              <span className="min-w-0 truncate font-mono text-slate-400">
+                {toolSummary}
+              </span>
+            ) : null}
+          </button>
+          {expanded ? (
+            <div className="border-t border-white/8 px-3 py-1">
+              {messages.map((message) => (
+                <div key={message.id} data-chat-message-id={message.id}>
+                  {message.metadata?.toolCalls?.length ? (
+                    <div className="flex flex-wrap gap-2 py-1">
+                      {message.metadata.toolCalls.map((toolCall) => (
+                        <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {message.metadata?.toolResponse ? (
+                    <ToolResponseDisplay
+                      toolResponse={message.metadata.toolResponse}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   messages,
   displayAgentStatus = false,
@@ -273,6 +421,7 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const previousLengthRef = useRef(messages.length);
   const scrollThreshold = 20;
+  const visibleItems = buildVisibleChatItems(messages);
 
   const checkIfNearBottom = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -362,10 +511,21 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8 md:px-10">
-        {messages
-          .filter((message) => !message.metadata?.internal)
-          .map((message) => (
-          <div key={message.id} data-chat-message-id={message.id}>
+        {visibleItems.map((item) => {
+          if (item.kind === "toolGroup") {
+            const first = item.messages[0];
+            const last = item.messages[item.messages.length - 1];
+            return (
+              <ToolActivityGroup
+                key={`tool-group-${first.id}-${last.id}`}
+                messages={item.messages}
+              />
+            );
+          }
+
+          const { message } = item;
+          return (
+            <div key={message.id} data-chat-message-id={message.id}>
             {message.role === "assistant" ? (
               <div className="flex justify-start">
                 <div className="min-w-0 w-full max-w-3xl text-[15px] leading-7 text-[#ececec] md:text-base">
@@ -425,8 +585,9 @@ const AgentChatHistory: React.FC<AgentChatHistoryProps> = ({
                 </div>
               </div>
             ) : null}
-          </div>
-        ))}
+            </div>
+          );
+        })}
 
         {displayAgentStatus ? (
           <div className="flex justify-start">

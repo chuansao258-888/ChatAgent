@@ -39,12 +39,17 @@ public class WebSearchProperties {
     /**
      * Default number of results when the caller does not specify.
      */
-    private int defaultMaxResults = 5;
+    private int defaultMaxResults = 3;
 
     /**
      * Hard upper cap on the number of results (backend clamp limit).
      */
-    private int maxResults = 8;
+    private int maxResults = 3;
+
+    /**
+     * Maximum snippet characters returned in model-facing tool output.
+     */
+    private int maxResultSnippetChars = 240;
 
     /**
      * Maximum allowed query length in characters.
@@ -62,5 +67,12 @@ public class WebSearchProperties {
      */
     public int getEffectiveSafeSearch() {
         return Math.max(0, Math.min(safeSearch, 2));
+    }
+
+    /**
+     * Return a positive snippet character cap for model-facing tool output.
+     */
+    public int getEffectiveMaxResultSnippetChars() {
+        return Math.max(1, maxResultSnippetChars);
     }
 }

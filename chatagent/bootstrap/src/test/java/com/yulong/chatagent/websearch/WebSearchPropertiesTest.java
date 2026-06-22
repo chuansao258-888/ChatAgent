@@ -14,8 +14,9 @@ class WebSearchPropertiesTest {
         assertThat(props.getSearxngBaseUrl()).isEqualTo("http://localhost:8888");
         assertThat(props.getConnectTimeoutMs()).isEqualTo(2000);
         assertThat(props.getResponseTimeoutMs()).isEqualTo(8000);
-        assertThat(props.getDefaultMaxResults()).isEqualTo(5);
-        assertThat(props.getMaxResults()).isEqualTo(8);
+        assertThat(props.getDefaultMaxResults()).isEqualTo(3);
+        assertThat(props.getMaxResults()).isEqualTo(3);
+        assertThat(props.getMaxResultSnippetChars()).isEqualTo(240);
         assertThat(props.getMaxQueryChars()).isEqualTo(300);
         assertThat(props.getSafeSearch()).isEqualTo(1);
     }
@@ -40,5 +41,21 @@ class WebSearchPropertiesTest {
         assertThat(props.getEffectiveSafeSearch()).isEqualTo(0);
         props.setSafeSearch(2);
         assertThat(props.getEffectiveSafeSearch()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldClampMaxResultSnippetCharsToPositiveValue() {
+        WebSearchProperties props = new WebSearchProperties();
+
+        assertThat(props.getEffectiveMaxResultSnippetChars()).isEqualTo(240);
+
+        props.setMaxResultSnippetChars(24);
+        assertThat(props.getEffectiveMaxResultSnippetChars()).isEqualTo(24);
+
+        props.setMaxResultSnippetChars(0);
+        assertThat(props.getEffectiveMaxResultSnippetChars()).isEqualTo(1);
+
+        props.setMaxResultSnippetChars(-10);
+        assertThat(props.getEffectiveMaxResultSnippetChars()).isEqualTo(1);
     }
 }

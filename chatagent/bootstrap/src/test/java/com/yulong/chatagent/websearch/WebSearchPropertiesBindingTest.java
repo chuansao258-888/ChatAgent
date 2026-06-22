@@ -20,8 +20,9 @@ class WebSearchPropertiesBindingTest {
         assertThat(properties.getSearxngBaseUrl()).isEqualTo("http://localhost:8888");
         assertThat(properties.getConnectTimeoutMs()).isEqualTo(2000);
         assertThat(properties.getResponseTimeoutMs()).isEqualTo(8000);
-        assertThat(properties.getDefaultMaxResults()).isEqualTo(5);
-        assertThat(properties.getMaxResults()).isEqualTo(8);
+        assertThat(properties.getDefaultMaxResults()).isEqualTo(3);
+        assertThat(properties.getMaxResults()).isEqualTo(3);
+        assertThat(properties.getMaxResultSnippetChars()).isEqualTo(240);
         assertThat(properties.getMaxQueryChars()).isEqualTo(300);
         assertThat(properties.getSafeSearch()).isEqualTo(1);
     }

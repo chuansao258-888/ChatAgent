@@ -8,9 +8,9 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 class WebSearchRequestTest {
 
-    private static final int HARD_MAX = 8;
+    private static final int HARD_MAX = 3;
     private static final int MAX_QUERY_CHARS = 300;
-    private static final int DEFAULT_MAX = 5;
+    private static final int DEFAULT_MAX = 3;
 
     @Nested
     class BasicValidation {
@@ -86,8 +86,8 @@ class WebSearchRequestTest {
 
         @Test
         void shouldUseConfiguredDefault() {
-            WebSearchRequest req = WebSearchRequest.validate("test", null, null, null, HARD_MAX, MAX_QUERY_CHARS, 6);
-            assertThat(req.maxResults()).isEqualTo(6);
+            WebSearchRequest req = WebSearchRequest.validate("test", null, null, null, HARD_MAX, MAX_QUERY_CHARS, 2);
+            assertThat(req.maxResults()).isEqualTo(2);
         }
 
         @Test
@@ -100,6 +100,12 @@ class WebSearchRequestTest {
         void shouldUseDefaultOf3() {
             WebSearchRequest req = WebSearchRequest.validate("test", null, null, null, HARD_MAX, MAX_QUERY_CHARS, 3);
             assertThat(req.maxResults()).isEqualTo(3);
+        }
+
+        @Test
+        void shouldTreatMisconfiguredHardMaxAsAtLeastOne() {
+            WebSearchRequest req = WebSearchRequest.validate("test", 99, null, null, 0, MAX_QUERY_CHARS, DEFAULT_MAX);
+            assertThat(req.maxResults()).isEqualTo(1);
         }
 
         @Test
@@ -116,8 +122,8 @@ class WebSearchRequestTest {
 
         @Test
         void shouldAcceptValidValue() {
-            WebSearchRequest req = WebSearchRequest.validate("test", 6, null, null, HARD_MAX, MAX_QUERY_CHARS, DEFAULT_MAX);
-            assertThat(req.maxResults()).isEqualTo(6);
+            WebSearchRequest req = WebSearchRequest.validate("test", 2, null, null, HARD_MAX, MAX_QUERY_CHARS, DEFAULT_MAX);
+            assertThat(req.maxResults()).isEqualTo(2);
         }
     }
 

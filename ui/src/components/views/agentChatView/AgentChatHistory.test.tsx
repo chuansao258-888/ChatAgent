@@ -129,6 +129,87 @@ describe("AgentChatHistory", () => {
     expect(screen.queryByText("tool result")).toBeNull();
   });
 
+  it("groups consecutive tool activity messages into one collapsible row", () => {
+    const messages: ChatMessageVO[] = [
+      makeMessage({ id: "user-1", role: "user", content: "Check current status" }),
+      makeMessage({
+        id: "assistant-tool-call-1",
+        role: "assistant",
+        content: "",
+        metadata: {
+          toolCalls: [
+            {
+              id: "call-1",
+              type: "function",
+              name: "webSearch",
+              arguments: "{\"query\":\"status\"}",
+            },
+          ],
+        },
+      }),
+      makeMessage({
+        id: "tool-1",
+        role: "tool",
+        content: "first raw tool output",
+        metadata: {
+          toolResponse: {
+            id: "call-1",
+            name: "webSearch",
+            responseData: "first public result payload",
+          },
+        },
+      }),
+      makeMessage({
+        id: "assistant-tool-call-2",
+        role: "assistant",
+        content: "",
+        metadata: {
+          toolCalls: [
+            {
+              id: "call-2",
+              type: "function",
+              name: "webSearch",
+              arguments: "{\"query\":\"status followup\"}",
+            },
+          ],
+        },
+      }),
+      makeMessage({
+        id: "tool-2",
+        role: "tool",
+        content: "second raw tool output",
+        metadata: {
+          toolResponse: {
+            id: "call-2",
+            name: "webSearch",
+            responseData: "second public result payload",
+          },
+        },
+      }),
+      makeMessage({
+        id: "assistant-1",
+        role: "assistant",
+        content: "The source-backed answer is ready.",
+      }),
+    ];
+
+    const { container } = render(<AgentChatHistory messages={messages} />);
+
+    const activity = screen.getByRole("button", {
+      name: /Tool activity 2 calls webSearch x2/,
+    });
+    expect(activity).toBeDefined();
+    expect(screen.queryByText(/first public result payload/)).toBeNull();
+    expect(container.querySelector("[data-chat-message-id='tool-1']")).toBeNull();
+
+    fireEvent.click(activity);
+
+    expect(screen.getByText(/first public result payload/)).toBeDefined();
+    expect(screen.getByText(/second public result payload/)).toBeDefined();
+    expect(container.querySelector("[data-chat-message-id='tool-1']")).not.toBeNull();
+    expect(container.querySelector("[data-chat-message-id='tool-2']")).not.toBeNull();
+  });
+
   it("keeps citation indexes, source order, and click navigation aligned", () => {
     const scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollIntoView = scrollIntoView;

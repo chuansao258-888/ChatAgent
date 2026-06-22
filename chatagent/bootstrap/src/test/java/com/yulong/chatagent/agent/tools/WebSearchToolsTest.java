@@ -34,8 +34,9 @@ class WebSearchToolsTest {
     void setUp() {
         properties = new WebSearchProperties();
         properties.setEnabled(true);
-        properties.setDefaultMaxResults(5);
-        properties.setMaxResults(8);
+        properties.setDefaultMaxResults(3);
+        properties.setMaxResults(3);
+        properties.setMaxResultSnippetChars(240);
         properties.setMaxQueryChars(300);
         healthChecker = mock(SearXNGHealthChecker.class);
         searchClient = mock(SearXNGWebSearchClient.class);
@@ -101,7 +102,7 @@ class WebSearchToolsTest {
         verify(searchClient).search(captor.capture());
         WebSearchRequest request = captor.getValue();
         assertThat(request.query()).isEqualTo("Spring Boot");
-        assertThat(request.maxResults()).isEqualTo(8);
+        assertThat(request.maxResults()).isEqualTo(3);
         assertThat(request.freshness()).isEqualTo(WebSearchRequest.Freshness.DAY);
         assertThat(request.domains()).containsExactly("spring.io");
     }
@@ -137,6 +138,29 @@ class WebSearchToolsTest {
         assertThat(output).contains("Source: google");
         assertThat(output).contains("Published: 2025-01-01T00:00:00Z");
         assertThat(output).contains("Note: Domain filter reduced results from 3 to 1.");
+    }
+
+    @Test
+    void successfulSearchShouldTrimLongSnippetsForModelConsumption() {
+        properties.setMaxResultSnippetChars(12);
+        when(searchClient.search(any(WebSearchRequest.class)))
+                .thenReturn(WebSearchResponse.success(List.of(
+                        new WebSearchResult(
+                                "Compact result",
+                                "https://example.org/news",
+                                "0123456789abcdef",
+                                null,
+                                "google",
+                                0.95
+                        )
+                )));
+
+        String output = tool.webSearch("compact result", null, null, null);
+
+        assertThat(output).contains("1. Compact result");
+        assertThat(output).contains("URL: https://example.org/news");
+        assertThat(output).contains("Snippet: 0123456789ab...");
+        assertThat(output).doesNotContain("cdef");
     }
 
     @Test

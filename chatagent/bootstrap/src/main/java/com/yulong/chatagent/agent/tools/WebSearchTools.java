@@ -120,7 +120,9 @@ public class WebSearchTools implements Tool {
                 sb.append("   URL: ").append(result.url()).append("\n");
             }
             if (hasText(result.snippet())) {
-                sb.append("   Snippet: ").append(result.snippet()).append("\n");
+                sb.append("   Snippet: ")
+                        .append(trimForToolOutput(result.snippet(), properties.getEffectiveMaxResultSnippetChars()))
+                        .append("\n");
             }
             if (hasText(result.engine())) {
                 sb.append("   Source: ").append(result.engine()).append("\n");
@@ -140,5 +142,12 @@ public class WebSearchTools implements Tool {
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String trimForToolOutput(String value, int maxChars) {
+        if (value == null || value.length() <= maxChars) {
+            return value;
+        }
+        return value.substring(0, maxChars) + "...";
     }
 }

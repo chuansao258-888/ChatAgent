@@ -328,8 +328,9 @@ chatagent:
     searxng-base-url: http://localhost:8888
     connect-timeout-ms: 2000
     response-timeout-ms: 8000
-    default-max-results: 5
-    max-results: 8
+    default-max-results: 3
+    max-results: 3
+    max-result-snippet-chars: 240
     max-query-chars: 300
     safe-search: 1
   mcp:

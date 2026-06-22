@@ -65,9 +65,10 @@ public record WebSearchRequest(
                     "query exceeds maximum length of " + maxQueryChars + " characters");
         }
 
-        int effectiveDefault = Math.min(Math.max(defaultMaxResults, 1), hardMaxResults);
+        int effectiveHardMax = Math.max(hardMaxResults, 1);
+        int effectiveDefault = Math.min(Math.max(defaultMaxResults, 1), effectiveHardMax);
         int maxResults = rawMaxResults != null
-                ? Math.min(Math.max(rawMaxResults, 1), hardMaxResults)
+                ? Math.min(Math.max(rawMaxResults, 1), effectiveHardMax)
                 : effectiveDefault;
 
         Freshness freshness = parseFreshness(rawFreshness);

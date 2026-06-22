@@ -27,9 +27,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 @ExtendWith(OutputCaptureExtension.class)
 class SearXNGWebSearchClientTest {
 
-    private static final int HARD_MAX = 8;
+    private static final int HARD_MAX = 3;
     private static final int MAX_QUERY_CHARS = 300;
-    private static final int DEFAULT_MAX = 5;
+    private static final int DEFAULT_MAX = 3;
 
     private WebSearchProperties properties;
     private ObjectMapper objectMapper;
@@ -204,8 +204,8 @@ class SearXNGWebSearchClientTest {
 
         @Test
         void shouldFindDomainMatchBeyondInitialMaxResults() {
-            // SearXNG returns 5 results where first 4 don't match, 5th does.
-            // With default maxResults=5, the matching result would be lost if
+            // SearXNG returns results where the first few don't match the domain.
+            // With the compact maxResults window, the matching result would be lost if
             // limit was applied before domain filter.
             var r1 = searxngResult("Other1", "https://other1.com/a", "A", "google", 0.9);
             var r2 = searxngResult("Other2", "https://other2.com/b", "B", "google", 0.8);
