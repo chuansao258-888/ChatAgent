@@ -41,9 +41,11 @@ Thumbs.db
 **/*.pyc
 **/.pytest_cache/
 
+/artifacts/
 artifacts/eval/
 artifacts/headed-e2e/
 chatagent/artifacts/
+/chatagent/data/
 /chatagent/bootstrap/artifacts/
 /chatagent/bootstrap/data/
 

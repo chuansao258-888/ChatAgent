@@ -2,28 +2,34 @@ package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Resolves the boundary between stable (L2-eligible) turns and the preserved L1 tail.
+ * Resolves the boundary between already summarized turns and the next rolling L2 batch.
  * <p>
- * Stable turns are those outside the most recent {@code l1WindowTurns} turns.
- * The stable anchor is the endSeqNo of the newest stable turn.
- * L2 compaction should only summarize up to this anchor, never into the L1 tail.
+ * V2 rolling behavior keeps raw runtime memory aligned with the L2 watermark:
+ * when there are pending turns after {@code summarized_until_seq_no}, the resolver
+ * selects the oldest {@code compactionBatchTurns} as the next compaction batch.
+ * The policy decides whether the pending raw turn count has reached the configured
+ * trigger threshold.
  */
 @Component
 public class CompactionBoundaryResolver {
 
     private final TurnBasedContextExtractor turnBasedContextExtractor;
     private final ChatSessionSummaryRepository chatSessionSummaryRepository;
+    private final int compactionBatchTurns;
 
     public CompactionBoundaryResolver(TurnBasedContextExtractor turnBasedContextExtractor,
-                                      ChatSessionSummaryRepository chatSessionSummaryRepository) {
+                                      ChatSessionSummaryRepository chatSessionSummaryRepository,
+                                      @Value("${chatagent.memory.compaction.v2.compaction-batch-turns:20}") int compactionBatchTurns) {
         this.turnBasedContextExtractor = turnBasedContextExtractor;
         this.chatSessionSummaryRepository = chatSessionSummaryRepository;
+        this.compactionBatchTurns = Math.max(compactionBatchTurns, 1);
     }
 
     public CompactionBoundary resolve(String sessionId, int l1WindowTurns) {
@@ -46,17 +52,20 @@ public class CompactionBoundaryResolver {
 
         List<AtomicConversationTurn> allTurns = turnBasedContextExtractor.extractAllTurns(sessionId);
         int totalTurns = allTurns.size();
-        int preservedTailTurns = Math.min(totalTurns, l1WindowTurns);
+        List<AtomicConversationTurn> unsummarizedTurns = allTurns.stream()
+                .filter(turn -> turn.endSeqNo() > summarizedUntilSeqNo)
+                .toList();
+        int preservedTailTurns = Math.min(unsummarizedTurns.size(), Math.max(l1WindowTurns, 1));
 
-        if (totalTurns <= l1WindowTurns) {
+        if (unsummarizedTurns.isEmpty()) {
             return new CompactionBoundary(
                     sessionId, summarizedUntilSeqNo, 0L,
                     totalTurns, preservedTailTurns, allTurns,
                     consecutiveFailures, backoffActive);
         }
 
-        int stableCount = totalTurns - l1WindowTurns;
-        long stableAnchorSeqNo = allTurns.get(stableCount - 1).endSeqNo();
+        int batchSize = Math.min(compactionBatchTurns, unsummarizedTurns.size());
+        long stableAnchorSeqNo = unsummarizedTurns.get(batchSize - 1).endSeqNo();
 
         return new CompactionBoundary(
                 sessionId, summarizedUntilSeqNo, stableAnchorSeqNo,

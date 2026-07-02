@@ -58,19 +58,19 @@ class MemoryCompactionPolicyTest {
 
     @Test
     void shouldTriggerOnPendingTurns() {
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 1, 1200, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 10, 1200, 0.75, 4000);
         CompactionBoundary boundary = boundaryWith(2, 10, 8);
 
         CompactionDecision decision = policy.evaluate(boundary, 100, 2000);
 
         assertThat(decision.shouldCompact()).isTrue();
-        assertThat(decision.trigger()).isEqualTo(CompactionTrigger.PENDING_TURNS);
+        assertThat(decision.trigger()).isEqualTo(CompactionTrigger.UNSUMMARIZED_TURNS);
     }
 
     @Test
     void shouldTriggerOnPendingTokensWhenTurnCountBelowThreshold() {
-        // min-pending-turns=10 is above the stable count of 2, so turn trigger won't fire
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 10, 1200, 0.75, 4000);
+        // trigger-unsummarized-turns=30 is above total unsummarized count of 10.
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 30, 1200, 0.75, 4000);
         CompactionBoundary boundary = boundaryWith(2, 10, 8);
 
         CompactionDecision decision = policy.evaluate(boundary, 1500, 2000);
@@ -81,7 +81,7 @@ class MemoryCompactionPolicyTest {
 
     @Test
     void shouldNotTriggerOnPendingTokensWhenBelowTokenThreshold() {
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 10, 5000, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 30, 5000, 0.75, 4000);
         CompactionBoundary boundary = boundaryWith(2, 10, 8);
 
         CompactionDecision decision = policy.evaluate(boundary, 1500, 2000);
@@ -94,7 +94,7 @@ class MemoryCompactionPolicyTest {
     @Test
     void shouldTriggerOnL1PressureWhenTurnAndTokenThresholdsNotMet() {
         // Both turn and token thresholds set above fixture values
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 10, 5000, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 30, 5000, 0.75, 4000);
         CompactionBoundary boundary = boundaryWith(2, 10, 8);
 
         // L1 raw estimate = 3500 > 4000 * 0.75 = 3000
@@ -106,7 +106,7 @@ class MemoryCompactionPolicyTest {
 
     @Test
     void shouldReturnBelowThresholdWhenNothingTriggers() {
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 10, 5000, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 30, 5000, 0.75, 4000);
         CompactionBoundary boundary = boundaryWith(2, 10, 8);
 
         CompactionDecision decision = policy.evaluate(boundary, 500, 2000);
@@ -123,12 +123,12 @@ class MemoryCompactionPolicyTest {
         CompactionDecision decision = policy.evaluate(boundary, 5000, 3500);
 
         assertThat(decision.shouldCompact()).isTrue();
-        assertThat(decision.trigger()).isEqualTo(CompactionTrigger.PENDING_TURNS);
+        assertThat(decision.trigger()).isEqualTo(CompactionTrigger.UNSUMMARIZED_TURNS);
     }
 
     @Test
     void shouldPrioritizePendingTokensOverL1Pressure() {
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 10, 100, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 30, 100, 0.75, 4000);
         CompactionBoundary boundary = boundaryWith(2, 10, 8);
 
         CompactionDecision decision = policy.evaluate(boundary, 5000, 3500);
@@ -140,9 +140,9 @@ class MemoryCompactionPolicyTest {
     @Test
     void shouldNotTriggerOnAlreadySummarizedStableTurns() {
         // 20 turns, L1 tail = 8, so 12 stable. Watermark at turn 11 (endSeqNo=33).
-        // Only turn 12 (endSeqNo=36) is pending. min-pending-turns=2 > 1 pending.
+        // Only one batch turn is selected, and total unsummarized turns=9 < trigger=20.
         // With pending token estimate too low, should return BELOW_THRESHOLD.
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 2, 5000, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 20, 5000, 0.75, 4000);
 
         List<AtomicConversationTurn> turns = java.util.stream.IntStream.range(0, 20)
                 .mapToObj(i -> new AtomicConversationTurn(
@@ -150,11 +150,10 @@ class MemoryCompactionPolicyTest {
                 .toList();
         // stableAnchorSeqNo = endSeqNo of turn 12 = 36
         // summarizedUntilSeqNo = 33 (covers turns 1-11)
-        // pendingStableTurnCount = 1 (only turn 12 has endSeqNo=36 > 33 && <= 36)
+        // unsummarizedTurnCount = 9 (turns 12-20), still below trigger=20.
         CompactionBoundary boundary = new CompactionBoundary(
                 "s-1", 33L, 36L, 20, 8, turns, 0, false);
 
-        // Only 1 pending stable turn < min-pending-turns=2
         // Tokens and L1 pressure below threshold
         CompactionDecision decision = policy.evaluate(boundary, 500, 2000);
 
@@ -165,7 +164,7 @@ class MemoryCompactionPolicyTest {
     @Test
     void shouldTriggerOnPendingTokensWithExistingWatermark() {
         // Same setup but tokens exceed threshold
-        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 2, 100, 0.75, 4000);
+        MemoryCompactionPolicy policy = new MemoryCompactionPolicy(true, 20, 100, 0.75, 4000);
 
         List<AtomicConversationTurn> turns = java.util.stream.IntStream.range(0, 20)
                 .mapToObj(i -> new AtomicConversationTurn(
@@ -176,8 +175,8 @@ class MemoryCompactionPolicyTest {
 
         CompactionDecision decision = policy.evaluate(boundary, 500, 2000);
 
-        // 1 pending turn < min-pending-turns=2, but tokens from the caller's
-        // pending estimate (passed as 500) >= minPendingTokens=100
+        // unsummarized turn count is below trigger=20, but tokens from the
+        // selected batch estimate (passed as 500) >= minPendingTokens=100.
         assertThat(decision.shouldCompact()).isTrue();
         assertThat(decision.trigger()).isEqualTo(CompactionTrigger.PENDING_TOKENS);
     }

@@ -21,7 +21,7 @@ import java.util.List;
  * <p>
  * 每当一个完整 turn 结束后，它都会尝试判断：
  * <ul>
- *     <li>是否有稳定的（已滑出 L1 tail 的）turn 需要压缩到 L2；</li>
+ *     <li>是否有足够多的未压缩 raw turn 需要滚动压缩到 L2；</li>
  *     <li>当前 session 是否已有别的摘要任务在跑；</li>
  *     <li>当前事件对应的 anchor 是否已经被历史摘要覆盖；</li>
  *     <li>V2 token-aware policy 是否允许执行压缩。</li>
@@ -72,7 +72,7 @@ public class AsyncSummaryListener {
         CompactionBoundary boundary = compactionBoundaryResolver.resolve(event.sessionId(), l1WindowTurns);
 
         int pendingStableTokens = TokenEstimator.estimateTurns(boundary.pendingStableTurns());
-        int l1RawTokenEstimate = TokenEstimator.estimateTurns(boundary.tailTurns());
+        int l1RawTokenEstimate = TokenEstimator.estimateTurns(boundary.unsummarizedTurns());
 
         CompactionDecision decision = memoryCompactionPolicy.evaluate(boundary, pendingStableTokens, l1RawTokenEstimate);
         recordDecision(decision);

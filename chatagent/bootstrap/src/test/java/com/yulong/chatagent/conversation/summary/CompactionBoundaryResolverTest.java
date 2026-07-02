@@ -27,29 +27,33 @@ class CompactionBoundaryResolverTest {
 
     @BeforeEach
     void setUp() {
-        resolver = new CompactionBoundaryResolver(turnBasedContextExtractor, chatSessionSummaryRepository);
+        resolver = new CompactionBoundaryResolver(turnBasedContextExtractor, chatSessionSummaryRepository, 2);
     }
 
     @Test
-    void shouldReturnNoStableTurnsWhenBelowL1Window() {
+    void shouldReturnNoStableTurnsWhenWatermarkCoversAllTurns() {
         List<AtomicConversationTurn> turns = List.of(
                 turn("t-1", 1L, 3L),
                 turn("t-2", 4L, 6L),
                 turn("t-3", 7L, 9L)
         );
         when(turnBasedContextExtractor.extractAllTurns("s-1")).thenReturn(turns);
-        when(chatSessionSummaryRepository.findBySessionId("s-1")).thenReturn(null);
+        when(chatSessionSummaryRepository.findBySessionId("s-1")).thenReturn(ChatSessionSummaryDTO.builder()
+                .sessionId("s-1")
+                .summarizedUntilSeqNo(9L)
+                .build());
 
         CompactionBoundary boundary = resolver.resolve("s-1", 8);
 
         assertThat(boundary.hasStableTurns()).isFalse();
         assertThat(boundary.stableAnchorSeqNo()).isZero();
         assertThat(boundary.totalTurns()).isEqualTo(3);
-        assertThat(boundary.preservedTailTurns()).isEqualTo(3);
+        assertThat(boundary.preservedTailTurns()).isZero();
+        assertThat(boundary.unsummarizedTurnCount()).isZero();
     }
 
     @Test
-    void shouldComputeStableAnchorFromTurnBoundary() {
+    void shouldComputeStableAnchorFromOldestRollingBatch() {
         List<AtomicConversationTurn> turns = List.of(
                 turn("t-1", 1L, 3L),
                 turn("t-2", 4L, 6L),
@@ -66,9 +70,10 @@ class CompactionBoundaryResolverTest {
 
         CompactionBoundary boundary = resolver.resolve("s-1", 8);
 
-        // 9 total turns, 8 preserved → 1 stable turn, anchor = endSeqNo of turn 1 = 3
-        assertThat(boundary.stableAnchorSeqNo()).isEqualTo(3L);
-        assertThat(boundary.stableTurnCount()).isEqualTo(1);
+        // Batch size is 2, so the next L2 anchor is the endSeqNo of turn 2.
+        assertThat(boundary.stableAnchorSeqNo()).isEqualTo(6L);
+        assertThat(boundary.stableTurnCount()).isEqualTo(2);
+        assertThat(boundary.unsummarizedTurnCount()).isEqualTo(9);
         assertThat(boundary.hasStableTurns()).isTrue();
         assertThat(boundary.totalTurns()).isEqualTo(9);
         assertThat(boundary.preservedTailTurns()).isEqualTo(8);
@@ -152,16 +157,17 @@ class CompactionBoundaryResolverTest {
 
         CompactionBoundary boundary = resolver.resolve("s-1", 3);
 
-        // 5 total, 3 preserved → 2 stable
+        // Stable now means the next rolling batch; tail means all unsummarized raw turns.
         assertThat(boundary.stableTurns()).hasSize(2);
         assertThat(boundary.stableTurns().get(0).turnId()).isEqualTo("t-1");
         assertThat(boundary.stableTurns().get(1).turnId()).isEqualTo("t-2");
-        assertThat(boundary.tailTurns()).hasSize(3);
-        assertThat(boundary.tailTurns().get(0).turnId()).isEqualTo("t-3");
+        assertThat(boundary.tailTurns()).hasSize(5);
+        assertThat(boundary.tailTurns().get(0).turnId()).isEqualTo("t-1");
     }
 
     @Test
-    void shouldReturnEmptyStableWhenAllTurnsInTail() {
+    void shouldUseAllPendingTurnsWhenPendingCountIsBelowBatchSize() {
+        resolver = new CompactionBoundaryResolver(turnBasedContextExtractor, chatSessionSummaryRepository, 5);
         List<AtomicConversationTurn> turns = List.of(
                 turn("t-1", 1L, 3L),
                 turn("t-2", 4L, 6L)
@@ -171,15 +177,15 @@ class CompactionBoundaryResolverTest {
 
         CompactionBoundary boundary = resolver.resolve("s-1", 5);
 
-        assertThat(boundary.stableTurns()).isEmpty();
+        assertThat(boundary.stableTurns()).hasSize(2);
+        assertThat(boundary.stableAnchorSeqNo()).isEqualTo(6L);
         assertThat(boundary.tailTurns()).hasSize(2);
     }
 
     @Test
-    void shouldReturnOnlyPendingStableTurnsAfterWatermark() {
-        // 20 turns, L1 tail = 8, summary watermark at endSeqNo of turn 11 (33)
-        // Turns 1-12 are stable (outside L1 tail), turns 13-20 are tail
-        // Only turn 12 (endSeqNo=36) is pending (endSeqNo > 33 && endSeqNo <= 36)
+    void shouldReturnOnlyOldestBatchAfterWatermark() {
+        // 20 turns, summary watermark at endSeqNo of turn 11 (33).
+        // The next rolling batch is turns 12-13 because resolver batch size is 2.
         List<AtomicConversationTurn> turns = java.util.stream.IntStream.rangeClosed(1, 20)
                 .mapToObj(i -> turn("t-" + i, (i - 1) * 3L + 1, i * 3L))
                 .toList();
@@ -192,16 +198,16 @@ class CompactionBoundaryResolverTest {
 
         CompactionBoundary boundary = resolver.resolve("s-1", 8);
 
-        // 12 stable turns total, but only 1 pending
-        assertThat(boundary.stableTurnCount()).isEqualTo(12);
-        assertThat(boundary.pendingStableTurnCount()).isEqualTo(1);
-        assertThat(boundary.pendingStableTurns()).hasSize(1);
+        assertThat(boundary.unsummarizedTurnCount()).isEqualTo(9);
+        assertThat(boundary.pendingStableTurnCount()).isEqualTo(2);
+        assertThat(boundary.pendingStableTurns()).hasSize(2);
         assertThat(boundary.pendingStableTurns().get(0).turnId()).isEqualTo("t-12");
-        assertThat(boundary.pendingStableTurns().get(0).endSeqNo()).isEqualTo(36L);
+        assertThat(boundary.pendingStableTurns().get(1).turnId()).isEqualTo("t-13");
+        assertThat(boundary.stableAnchorSeqNo()).isEqualTo(39L);
     }
 
     @Test
-    void shouldReturnEmptyPendingWhenWatermarkCoversAllStable() {
+    void shouldReturnEmptyPendingWhenWatermarkCoversAllTurns() {
         List<AtomicConversationTurn> turns = List.of(
                 turn("t-1", 1L, 3L),
                 turn("t-2", 4L, 6L),
@@ -211,15 +217,12 @@ class CompactionBoundaryResolverTest {
         when(turnBasedContextExtractor.extractAllTurns("s-1")).thenReturn(turns);
         ChatSessionSummaryDTO summary = ChatSessionSummaryDTO.builder()
                 .sessionId("s-1")
-                .summarizedUntilSeqNo(6L) // covers turns 1-2
+                .summarizedUntilSeqNo(12L)
                 .build();
         when(chatSessionSummaryRepository.findBySessionId("s-1")).thenReturn(summary);
 
         CompactionBoundary boundary = resolver.resolve("s-1", 2);
 
-        // 2 stable turns (t-1, t-2), but watermark at 6 covers both (3 ≤ 6, 6 ≤ 6)
-        // stableAnchorSeqNo = 6 (endSeqNo of t-2)
-        // pending: endSeqNo > 6 && endSeqNo <= 6 → empty
         assertThat(boundary.hasStableTurns()).isFalse();
         assertThat(boundary.pendingStableTurnCount()).isZero();
         assertThat(boundary.pendingStableTurns()).isEmpty();

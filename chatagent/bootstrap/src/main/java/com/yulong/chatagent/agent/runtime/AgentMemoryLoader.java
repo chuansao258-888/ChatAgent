@@ -1,8 +1,10 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -40,15 +42,18 @@ public class AgentMemoryLoader {
     private static final int COMPACTED_ASSISTANT_MAX_CHARS = 160;
 
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatSessionSummaryRepository chatSessionSummaryRepository;
     private final ToolResultCompactor toolResultCompactor;
     private final int l1WindowTurns;
     private final int globalTokenBudget;
 
     public AgentMemoryLoader(ChatMessageRepository chatMessageRepository,
+                             ChatSessionSummaryRepository chatSessionSummaryRepository,
                              ToolResultCompactor toolResultCompactor,
                              @Value("${chatagent.memory.l1-window-turns:48}") int l1WindowTurns,
                              @Value("${chatagent.memory.l1-token-budget:256000}") int globalTokenBudget) {
         this.chatMessageRepository = chatMessageRepository;
+        this.chatSessionSummaryRepository = chatSessionSummaryRepository;
         this.toolResultCompactor = toolResultCompactor;
         this.l1WindowTurns = Math.max(l1WindowTurns, 1);
         this.globalTokenBudget = Math.max(globalTokenBudget, 1);
@@ -70,7 +75,13 @@ public class AgentMemoryLoader {
         int effectiveBudget = (int) (tokenBudget * TOKEN_SAFETY_MARGIN);
 
         // 先多取一些最近消息，再按 turn 级别向前筛选，避免数据库分页直接切断上下文。
-        List<ChatMessageDTO> chatMessages = chatMessageRepository.findRecentBySessionId(chatSessionId, 100);
+        // 已经被 L2 watermark 覆盖的旧 turn 只通过 Historical Context Summary 进入模型，
+        // 不再作为 raw L1 memory 重复发送。
+        long summarizedUntilSeqNo = summarizedUntilSeqNo(chatSessionId);
+        List<ChatMessageDTO> chatMessages = chatMessageRepository.findRecentBySessionId(chatSessionId, 100)
+                .stream()
+                .filter(message -> message.getSeqNo() == null || message.getSeqNo() > summarizedUntilSeqNo)
+                .toList();
         if (chatMessages.isEmpty()) {
             return List.of();
         }
@@ -135,6 +146,13 @@ public class AgentMemoryLoader {
         boolean hasAssistant = turnMessages.stream()
                 .anyMatch(message -> message.getRole() == ChatMessageDTO.RoleType.ASSISTANT);
         return hasUser && !hasAssistant;
+    }
+
+    private long summarizedUntilSeqNo(String chatSessionId) {
+        ChatSessionSummaryDTO summary = chatSessionSummaryRepository.findBySessionId(chatSessionId);
+        return summary == null || summary.getSummarizedUntilSeqNo() == null
+                ? 0L
+                : summary.getSummarizedUntilSeqNo();
     }
 
     private List<Message> convertToBudgetCompactMessages(List<ChatMessageDTO> turnMessages) {

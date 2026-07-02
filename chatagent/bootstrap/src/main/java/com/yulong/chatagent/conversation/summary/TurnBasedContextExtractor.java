@@ -39,7 +39,7 @@ public class TurnBasedContextExtractor {
 
     /**
      * Extract all summarizable turns for a session, regardless of summary watermark.
-     * Used by {@link CompactionBoundaryResolver} to determine which turns are stable vs L1 tail.
+     * Used by {@link CompactionBoundaryResolver} to determine the next unsummarized rolling batch.
      */
     public List<AtomicConversationTurn> extractAllTurns(String sessionId) {
         List<ChatMessageDTO> allMessages = chatMessageRepository.findBySessionId(sessionId);

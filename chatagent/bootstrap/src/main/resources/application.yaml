@@ -188,7 +188,8 @@ chatagent:
     compaction:
       v2:
         enabled: true
-        min-pending-turns: 1
+        trigger-unsummarized-turns: ${CHATAGENT_MEMORY_COMPACTION_V2_TRIGGER_UNSUMMARIZED_TURNS:30}
+        compaction-batch-turns: ${CHATAGENT_MEMORY_COMPACTION_V2_COMPACTION_BATCH_TURNS:20}
         min-pending-tokens: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS:24000}
         l1-token-warning-ratio: ${CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO:0.92}
         segment-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS:6000}
@@ -318,7 +319,7 @@ chatagent:
       ingest-task-policy: FAIL_FAST
       session-exec-policy: FAIL_OPEN
     dispatchers:
-      agent-run-enabled: false
+      agent-run-enabled: true
   session-guard:
     enabled: true
     ttl-ms: 120000

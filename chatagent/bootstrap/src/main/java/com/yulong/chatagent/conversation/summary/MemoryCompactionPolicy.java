@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
  * <p>
  * Trigger priority:
  * <ol>
- *     <li>pending stable turns ≥ min-pending-turns</li>
+ *     <li>unsummarized raw turns ≥ trigger-unsummarized-turns</li>
  *     <li>pending stable tokens ≥ min-pending-tokens</li>
  *     <li>L1 raw load exceeds l1-token-budget × l1-token-warning-ratio</li>
  * </ol>
@@ -17,19 +17,19 @@ import org.springframework.stereotype.Component;
 public class MemoryCompactionPolicy {
 
     private final boolean v2Enabled;
-    private final int minPendingTurns;
+    private final int triggerUnsummarizedTurns;
     private final int minPendingTokens;
     private final double l1TokenWarningRatio;
     private final int l1TokenBudget;
 
     public MemoryCompactionPolicy(
             @Value("${chatagent.memory.compaction.v2.enabled:true}") boolean v2Enabled,
-            @Value("${chatagent.memory.compaction.v2.min-pending-turns:1}") int minPendingTurns,
+            @Value("${chatagent.memory.compaction.v2.trigger-unsummarized-turns:30}") int triggerUnsummarizedTurns,
             @Value("${chatagent.memory.compaction.v2.min-pending-tokens:24000}") int minPendingTokens,
             @Value("${chatagent.memory.compaction.v2.l1-token-warning-ratio:0.92}") double l1TokenWarningRatio,
             @Value("${chatagent.memory.l1-token-budget:256000}") int l1TokenBudget) {
         this.v2Enabled = v2Enabled;
-        this.minPendingTurns = Math.max(minPendingTurns, 1);
+        this.triggerUnsummarizedTurns = Math.max(triggerUnsummarizedTurns, 1);
         this.minPendingTokens = Math.max(minPendingTokens, 100);
         this.l1TokenWarningRatio = l1TokenWarningRatio;
         this.l1TokenBudget = l1TokenBudget;
@@ -39,8 +39,8 @@ public class MemoryCompactionPolicy {
      * Evaluate whether compaction should proceed for the given boundary.
      *
      * @param boundary           resolved stable/tail boundary
-     * @param pendingStableTokens estimated tokens of stable turns in the pending range
-     * @param l1RawTokenEstimate  estimated tokens of the L1 preserved tail
+     * @param pendingStableTokens estimated tokens of turns selected for the next compaction batch
+     * @param l1RawTokenEstimate  estimated tokens of unsummarized raw turns after the L2 watermark
      * @return decision with trigger reason
      */
     public CompactionDecision evaluate(CompactionBoundary boundary,
@@ -58,8 +58,8 @@ public class MemoryCompactionPolicy {
             return new CompactionDecision(false, CompactionTrigger.BACKOFF_ACTIVE);
         }
 
-        if (boundary.pendingStableTurnCount() >= minPendingTurns) {
-            return new CompactionDecision(true, CompactionTrigger.PENDING_TURNS);
+        if (boundary.unsummarizedTurnCount() >= triggerUnsummarizedTurns) {
+            return new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS);
         }
 
         if (pendingStableTokens >= minPendingTokens) {

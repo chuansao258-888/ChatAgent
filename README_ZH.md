@@ -253,9 +253,11 @@ chatagent/bootstrap/src/main/resources/application.yaml
 | `CHATAGENT_ZHIPUAI_API_KEY` | 使用 ZhipuAI 时需要 | Chat/VLM provider 凭据。 |
 | `CHATAGENT_ZHIPUAI_API_KEY_2` | 评测可选 | 第二个 ZhipuAI provider 凭据。 |
 | `CHATAGENT_ZAI_CODING_API_KEY` | 评测可选 | Z.AI Coding Plan provider 凭据。 |
-| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | 可选 | L2 压缩可触发前保留的最近原始对话尾部轮数。 |
+| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | 可选 | L2 watermark 之后仍作为 L1 prompt 原始上下文保留的最近对话尾部轮数。 |
 | `CHATAGENT_MEMORY_L1_TOKEN_BUDGET` | 可选 | L1 记忆 token 预算；默认值按 GLM-5.2 1M 上下文主模型放大。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | 可选 | 可触发 L2 压缩的稳定 token 水位。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_TRIGGER_UNSUMMARIZED_TURNS` | 可选 | 可触发滚动 L2 压缩的未摘要原始 turn 数。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_COMPACTION_BATCH_TURNS` | 可选 | 单次 L2 压缩最多汇总的最早未摘要 turn 数。 |
+| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | 可选 | 可触发 L2 压缩的待压缩批次 token 水位。 |
 | `CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO` | 可选 | L1 压力触发压缩时使用的预算比例。 |
 | `CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS` | 可选 | L2 segment 摘要最大长度。 |
 | `CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS` | 可选 | L2 滚动 synopsis 最大长度。 |
@@ -352,32 +354,67 @@ curl http://localhost:8080/api/user/me
 
 `/api/user/me` 需要登录后携带有效 access token。
 
-### 端到端测试（Playwright AX 驱动）
+### 端到端测试（正式 Playwright）
 
-浏览器 E2E 使用一个轻量的 Playwright "AX 驱动"（`ui/e2e/driver/server.mjs`）：一个有头、
-持久化上下文的 Chromium，通过极简 HTTP API 暴露，方便 agent（或你本人）驱动真实 UI 并以
-文本形式读取可访问性树。登录会持久化（`ui/.auth/` 下的 user-data-dir）；需要后端在运行。
+主要浏览器 E2E 已迁移到 `ui/e2e/specs` 下的正式 Playwright specs。运行前需要后端已经监听
+`localhost:8080`；Playwright 配置会启动 Vite 到 `localhost:5173`，并使用单 Chromium worker，
+避免 refresh-cookie storage state 在并发进程间漂移。
 
 ```bash
 cd ui
 npm run e2e:install          # 首次：下载 Chromium
-# 仓库根目录下启动栈：
-docker compose up -d         # postgres + redis + rabbitmq（+ milvus）
-npm run dev                  # UI 开发服务器（5173）
-# 后端：chatagent/mvnw.cmd -pl bootstrap spring-boot:run
-npm run e2e                  # 有头驱动，监听 http://127.0.0.1:7878
+npm run e2e                  # 正式 Playwright specs，默认 headless
+npm run e2e:headed -- --grep @smoke
+npm run e2e:headed -- --grep "@smoke|@core-agent"
+npm run e2e:headed:full      # 按 tier 顺序执行，每个 tier 使用新的 run id
 ```
 
-随后驱动它（5173 的 UI 访问 8080 的后端）：
+常用 tier 标签：
+
+| 标签 | 覆盖范围 |
+| --- | --- |
+| `@smoke` | 登录、refresh、路由保护、基础会话壳。 |
+| `@core-agent` | 语言跟随、ReAct、DeepThink、SSE 恢复。 |
+| `@memory` | L1/L2/L3 记忆和多轮相关性。 |
+| `@rag` | 知识库摄取/检索、引用、证据展示、会话文件。 |
+| `@tools` | MCP、Web Search fixture、安全内置工具。 |
+| `@intent` | 意图树草稿/发布/激活和运行时命中。 |
+| `@routing` | 首包路由 fixture 和真实 provider smoke。 |
+| `@admin` | 仪表盘、用户、知识库、助手绑定、MCP 运维、MQ/routing 证据。 |
+| `@vlm` | 多模态/会话文件 provider 能力路径。 |
+
+部分 tier 需要先启动本地 fixture：
+
+```powershell
+.\MCP\weather-server\start-http.ps1              # @tools 和 @admin 的 MCP 路径需要
+cd ui
+npm run e2e:routing-fixture                      # @routing fixture 模式需要
+node e2e/fixtures/searxng-fixture.mjs            # native web-search headed 检查需要
+```
+
+浏览器和 API origin 请保持 `localhost`，不要混用 `127.0.0.1`，否则 auth cookie 可能无法稳定复用。
+只有本地端口不同时才设置 `PLAYWRIGHT_UI_BASE_URL` 和 `PLAYWRIGHT_API_BASE_URL`。
+
+`CHATAGENT_JWT_SECRET`（>=32 字节）和本地数据库凭据是启动后端和提升生成 admin fixture 的前提。
+请从被忽略的本地环境加载私有值，不要提交或粘贴 `docs/env_variables.txt` 里的内容。
+
+### 端到端测试（手动 AX Driver）
+
+旧的探索式 Playwright AX driver 仍然可用，适合需要一个有头、持久化浏览器并通过小型 HTTP API
+手动驱动页面时使用：
+
+```bash
+cd ui
+npm run e2e:driver              # driver 监听 http://127.0.0.1:7878
+```
+
+随后可以手动驱动它：
 
 ```bash
 curl -X POST localhost:7878/goto -d '{"url":"http://localhost:5173/"}'
 curl localhost:7878/ax                                   # 可访问性树（role + name）
 curl -X POST localhost:7878/act -d '{"locator":{"role":"button","name":"Log in"},"action":"click"}'
 ```
-
-后端启动需要 `CHATAGENT_JWT_SECRET`（>=32 字节）——加到你本地的 `docs/env_variables.txt`。
-无头模式设置 `PLAYWRIGHT_HEADLESS=1`。
 
 ## API
 

@@ -101,12 +101,34 @@ class AsyncSummaryListenerTest {
     }
 
     @Test
+    void shouldPassSelectedBatchTokensAndUnsummarizedRawTokensToPolicy() {
+        ConversationTurnCompletedEvent event = new ConversationTurnCompletedEvent("session-1", "turn-1", 12L);
+        AtomicConversationTurn selectedBatchTurn =
+                new AtomicConversationTurn("t-1", 1L, 4L, List.of("alpha"), "beta");
+        AtomicConversationTurn unsummarizedTailTurn =
+                new AtomicConversationTurn("t-2", 5L, 8L, List.of("gamma"), "delta");
+        CompactionBoundary boundary = new CompactionBoundary(
+                "session-1", 0L, 4L, 2, 2,
+                List.of(selectedBatchTurn, unsummarizedTailTurn), 0, false);
+        int selectedBatchTokens = TokenEstimator.estimateTurns(List.of(selectedBatchTurn));
+        int unsummarizedRawTokens = TokenEstimator.estimateTurns(List.of(selectedBatchTurn, unsummarizedTailTurn));
+        when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
+        when(memoryCompactionPolicy.evaluate(boundary, selectedBatchTokens, unsummarizedRawTokens))
+                .thenReturn(new CompactionDecision(false, CompactionTrigger.BELOW_THRESHOLD));
+
+        asyncSummaryListener.handle(event);
+
+        verify(memoryCompactionPolicy).evaluate(boundary, selectedBatchTokens, unsummarizedRawTokens);
+        verify(redisLockManager, never()).tryLock("session-1");
+    }
+
+    @Test
     void shouldUnlockAndSkipWhenAnchorAlreadyCovered() {
         ConversationTurnCompletedEvent event = new ConversationTurnCompletedEvent("session-1", "turn-1", 12L);
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(true);
 
@@ -122,7 +144,7 @@ class AsyncSummaryListenerTest {
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
         when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))
@@ -135,7 +157,7 @@ class AsyncSummaryListenerTest {
         // Must use stable anchor (8L), NOT event.lastSeqNo (12L)
         verify(incrementalSummarizer).summarizeWithDetails("session-1", 8L);
         verify(redisLockManager).unlock("session-1", "token-1");
-        assertThat(policyCounter("run", "PENDING_TURNS")).isEqualTo(1.0);
+        assertThat(policyCounter("run", "UNSUMMARIZED_TURNS")).isEqualTo(1.0);
     }
 
     @Test
@@ -146,7 +168,7 @@ class AsyncSummaryListenerTest {
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
         when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))
@@ -169,7 +191,7 @@ class AsyncSummaryListenerTest {
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
         when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))
@@ -188,7 +210,7 @@ class AsyncSummaryListenerTest {
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
         when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))
@@ -220,7 +242,7 @@ class AsyncSummaryListenerTest {
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
         when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))
@@ -263,7 +285,7 @@ class AsyncSummaryListenerTest {
         CompactionBoundary boundary = stableBoundary("session-1", 8L);
         when(compactionBoundaryResolver.resolve("session-1", 3)).thenReturn(boundary);
         when(memoryCompactionPolicy.evaluate(boundary, 0, 0))
-                .thenReturn(new CompactionDecision(true, CompactionTrigger.PENDING_TURNS));
+                .thenReturn(new CompactionDecision(true, CompactionTrigger.UNSUMMARIZED_TURNS));
         when(redisLockManager.tryLock("session-1")).thenReturn("token-1");
         when(summaryWatermarkService.isAnchorCovered("session-1", 8L)).thenReturn(false);
         when(incrementalSummarizer.summarizeWithDetails("session-1", 8L))

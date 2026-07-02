@@ -303,9 +303,11 @@ is intentionally ignored.
 | `CHATAGENT_ZHIPUAI_API_KEY` | If using ZhipuAI | Chat/VLM provider credential. |
 | `CHATAGENT_ZHIPUAI_API_KEY_2` | Optional for evaluation | Secondary ZhipuAI provider credential. |
 | `CHATAGENT_ZAI_CODING_API_KEY` | Optional for evaluation | Z.AI Coding Plan provider credential. |
-| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | Optional | Recent raw conversation tail before L2 compaction becomes eligible. |
+| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | Optional | Recent raw conversation tail preserved in the L1 prompt after the L2 watermark. |
 | `CHATAGENT_MEMORY_L1_TOKEN_BUDGET` | Optional | L1 memory token budget; defaults are sized for the GLM-5.2 1M context primary. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | Optional | Stable-token watermark that can trigger L2 compaction. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_TRIGGER_UNSUMMARIZED_TURNS` | Optional | Unsummarized raw-turn count that can trigger rolling L2 compaction. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_COMPACTION_BATCH_TURNS` | Optional | Maximum oldest unsummarized turns summarized in one L2 compaction batch. |
+| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | Optional | Token watermark for the selected pending L2 compaction batch. |
 | `CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO` | Optional | L1 pressure ratio used as a compaction watermark. |
 | `CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS` | Optional | Maximum stored L2 segment summary length. |
 | `CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS` | Optional | Maximum rolling L2 synopsis length. |

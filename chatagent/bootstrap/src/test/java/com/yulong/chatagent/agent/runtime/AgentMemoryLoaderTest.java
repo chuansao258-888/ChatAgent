@@ -1,8 +1,10 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
+import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
+import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,9 @@ class AgentMemoryLoaderTest {
     @Mock
     private ChatMessageRepository chatMessageRepository;
 
+    @Mock
+    private ChatSessionSummaryRepository chatSessionSummaryRepository;
+
     private ToolResultCompactor toolResultCompactor;
 
     private AgentMemoryLoader agentMemoryLoader;
@@ -38,7 +43,7 @@ class AgentMemoryLoaderTest {
         ObjectProvider<MeterRegistry> meterProvider = mock(ObjectProvider.class);
         when(meterProvider.getIfAvailable()).thenReturn(new SimpleMeterRegistry());
         toolResultCompactor = new ToolResultCompactor(200, 80, 80, meterProvider);
-        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 8, 1);
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, chatSessionSummaryRepository, toolResultCompactor, 8, 1);
     }
 
     @Test
@@ -258,7 +263,7 @@ class AgentMemoryLoaderTest {
 
     @Test
     void shouldKeepOnlyConfiguredRawTurnTail() {
-        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 3, 1);
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, chatSessionSummaryRepository, toolResultCompactor, 3, 1);
         AgentDTO agent = agentWithBudget(1000);
         when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
                 message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "turn one"),
@@ -278,8 +283,30 @@ class AgentMemoryLoaderTest {
     }
 
     @Test
+    void shouldExcludeTurnsAlreadyCoveredByL2Watermark() {
+        AgentDTO agent = agentWithBudget(1000);
+        when(chatSessionSummaryRepository.findBySessionId("session-1")).thenReturn(ChatSessionSummaryDTO.builder()
+                .sessionId("session-1")
+                .summarizedUntilSeqNo(4L)
+                .build());
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "covered question", 1L),
+                message("m2", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, "covered answer", 2L),
+                message("m3", "turn-2", ChatMessageDTO.RoleType.USER, "also covered", 3L),
+                message("m4", "turn-2", ChatMessageDTO.RoleType.ASSISTANT, "also covered answer", 4L),
+                message("m5", "turn-3", ChatMessageDTO.RoleType.USER, "raw question", 5L),
+                message("m6", "turn-3", ChatMessageDTO.RoleType.ASSISTANT, "raw answer", 6L)
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).extracting(Message::getText)
+                .containsExactly("raw question", "raw answer");
+    }
+
+    @Test
     void shouldKeepOpenCurrentTurnInAdditionToConfiguredCompletedTail() {
-        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 2, 1);
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, chatSessionSummaryRepository, toolResultCompactor, 2, 1);
         AgentDTO agent = agentWithBudget(1000);
         when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
                 message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "turn one"),
@@ -331,7 +358,7 @@ class AgentMemoryLoaderTest {
 
     @Test
     void shouldUseGlobalTokenBudgetAsFloorForLegacyAgentConfiguration() {
-        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, toolResultCompactor, 8, 500);
+        agentMemoryLoader = new AgentMemoryLoader(chatMessageRepository, chatSessionSummaryRepository, toolResultCompactor, 8, 500);
         AgentDTO agent = agentWithBudget(100);
         String firstAnswer = "first answer ".repeat(8);
         String secondAnswer = "second answer ".repeat(8);
@@ -371,12 +398,17 @@ class AgentMemoryLoaderTest {
     }
 
     private ChatMessageDTO message(String id, String turnId, ChatMessageDTO.RoleType role, String content) {
+        return message(id, turnId, role, content, null);
+    }
+
+    private ChatMessageDTO message(String id, String turnId, ChatMessageDTO.RoleType role, String content, Long seqNo) {
         return ChatMessageDTO.builder()
                 .id(id)
                 .sessionId("session-1")
                 .turnId(turnId)
                 .role(role)
                 .content(content)
+                .seqNo(seqNo)
                 .build();
     }
 
