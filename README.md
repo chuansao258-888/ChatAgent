@@ -12,6 +12,20 @@ chat system that is not only interactive, but also measurable: ingestion,
 retrieval, reranking, answer generation, memory extraction, intent routing, and
 tool behavior all have dedicated runtime code and evaluation support.
 
+## Application Screenshots
+
+These screenshots were captured from the local React frontend connected to the
+Spring Boot backend with Docker-backed PostgreSQL, Redis, RabbitMQ, and Milvus
+services running.
+
+| Chat workspace | Admin dashboard |
+| --- | --- |
+| ![Chat workspace](docs/assets/readme/chat-workspace.png) | ![Admin dashboard](docs/assets/readme/admin-dashboard.png) |
+
+| Knowledge bases | Intent tree |
+| --- | --- |
+| ![Knowledge base catalog](docs/assets/readme/knowledge-bases.png) | ![Intent routing workspace](docs/assets/readme/intent-tree.png) |
+
 ## Features
 
 - Multi-turn chat sessions with server-sent events (SSE) streaming.

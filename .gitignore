@@ -66,7 +66,11 @@ postman/*local*.json
 
 # Local/private documentation can contain plans, ADR drafts, interview notes,
 # and secret-bearing environment references. Keep the entire folder local.
-docs/
+docs/*
+!docs/assets/
+docs/assets/*
+!docs/assets/readme/
+!docs/assets/readme/*.png
 
 # Postman collections are local-only
 /postman/
