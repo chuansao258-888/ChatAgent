@@ -8,6 +8,8 @@ import com.yulong.chatagent.conversation.model.request.CreateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.request.UpdateChatMessageRequest;
 import com.yulong.chatagent.conversation.model.response.CreateChatMessageResponse;
 import com.yulong.chatagent.conversation.model.vo.ChatMessageVO;
+import com.yulong.chatagent.ratelimit.entry.EntryRateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,6 +40,7 @@ public class ChatMessageController {
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ConversationOrchestratorService conversationOrchestratorService;
     private final SessionConcurrencyGuard sessionConcurrencyGuard;
+    private final EntryRateLimiter entryRateLimiter;
 
     /**
      * 查询指定会话的完整消息历史（过滤 internal trace 消息）。
@@ -60,7 +63,10 @@ public class ChatMessageController {
      * @return 已创建的用户消息 ID 等信息
      */
     @PostMapping("/chat-messages")
-    public ApiResponse<CreateChatMessageResponse> createChatMessage(@RequestBody CreateChatMessageRequest request) {
+    public ApiResponse<CreateChatMessageResponse> createChatMessage(@RequestBody CreateChatMessageRequest request,
+                                                                     HttpServletRequest httpRequest) {
+        // 入口限流先于会话锁和任何持久化执行，避免被拒请求产生 DB/outbox 副作用。
+        entryRateLimiter.checkAllowed(httpRequest);
         // 入口锁只保护“开始一轮 turn”这个动作，避免同一个 session
         // 在极短时间内并发进入两次编排，导致消息顺序、记忆窗口和 SSE 状态混乱。
         try (SessionConcurrencyGuard.SessionLock ignored = sessionConcurrencyGuard.acquire(request.getSessionId())) {
