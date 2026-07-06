@@ -12,6 +12,8 @@ import com.yulong.chatagent.mq.lock.LockWatchdog;
 import com.yulong.chatagent.mq.outbox.event.AgentRunTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
+import com.yulong.chatagent.ratelimit.capacity.AgentRunCapacityLimiter;
+import com.yulong.chatagent.ratelimit.capacity.CapacityGateResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -35,6 +37,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     private final ChatAgentMqProperties properties;
     private final ChatEventProcessor chatEventProcessor;
     private final ChatSessionRepository chatSessionRepository;
+    private final AgentRunCapacityLimiter capacityLimiter;
 
     public AgentRunTaskListener(ObjectMapper objectMapper,
                                 ChatAgentMqProperties properties,
@@ -42,12 +45,14 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                                 DistributedLockManager distributedLockManager,
                                 LockWatchdog lockWatchdog,
                                 ChatEventProcessor chatEventProcessor,
-                                ChatSessionRepository chatSessionRepository) {
+                                ChatSessionRepository chatSessionRepository,
+                                AgentRunCapacityLimiter capacityLimiter) {
         super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.chatEventProcessor = chatEventProcessor;
         this.chatSessionRepository = chatSessionRepository;
+        this.capacityLimiter = capacityLimiter;
     }
 
     @RabbitListener(
@@ -104,6 +109,16 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
             return TaskReadiness.waitRequired("waiting for previous turn sequence");
         }
         return TaskReadiness.proceed();
+    }
+
+    @Override
+    protected CapacityGateResult acquireCapacity(AgentRunTaskPayload payload, MqMessageIdentity identity) {
+        // 在 readiness PROCEED 后、processTask 前获取全局执行许可。
+        // owner/eventId/turnId 组合成唯一的 permit member，便于排查哪台实例在持许可。
+        AgentRunCapacityLimiter.PermitContext context = AgentRunCapacityLimiter.PermitContext.forTask(
+                consumerName(), identity.eventId(), payload.toChatEvent().getTurnId()
+        );
+        return capacityLimiter.tryAcquire(context);
     }
 
     @Override

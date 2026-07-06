@@ -12,6 +12,9 @@ import com.yulong.chatagent.mq.lock.MqTaskLockLease;
 import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
+import com.yulong.chatagent.ratelimit.capacity.CapacityGateResult;
+import com.yulong.chatagent.ratelimit.capacity.NoopPermit;
+import com.yulong.chatagent.ratelimit.capacity.Permit;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
@@ -139,20 +142,43 @@ public abstract class AbstractRetryingMqConsumer<T> {
                         identity.taskType(), identity.eventId(), readiness.reason());
                 return;
             }
-            // 真正的业务处理由子类实现：agent.run 会进 ChatEventProcessor，ingest 会跑文档入库。
-            processTask(payload, identity);
-            if (lease != null) {
-                distributedLockManager.markCompleted(lease);
-            }
-            channel.basicAck(deliveryTag, false);
-            log.info("MQ task processed successfully: taskType={}, eventId={}, idempotencyKey={}",
-                    identity.taskType(), identity.eventId(), identity.idempotencyKey());
-        } catch (Exception e) {
-            if (isRetryable(e)) {
-                handleRetryableFailure(payload, message, channel, deliveryTag, identity, lease, sessionLease, e);
+            // 容量门在 readiness PROCEED 后、processTask 前执行。
+            // 钩子默认 no-op（知识库入库等不保护执行容量）；agent.run 子类覆写为真实许可获取。
+            CapacityGateResult capacityResult = acquireCapacity(payload, identity);
+            if (capacityResult instanceof CapacityGateResult.WaitInQueue) {
+                // 容量不足：与 readiness WAIT 相同的延迟重投路径，不增加 retryCount。
+                // 释放 task lock 后重投；session-exec 锁由本方法外层 finally 释放，
+                // 因此分支必须 return 经 finally，不能在 helper 内手动释放 session-exec（避免 double release）。
+                safeReleaseTaskLockForWait(identity, lease);
+                requeueWithDelay(originalMessage(message, identity), channel, deliveryTag, identity, "execution capacity denied");
                 return;
             }
-            handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+            if (capacityResult instanceof CapacityGateResult.FailFast) {
+                // Redis 不可用且策略为 FAIL_FAST：按终态失败处理。
+                throw new CapacityUnavailableException("execution capacity unavailable (Redis FAIL_FAST)");
+            }
+            CapacityGateResult.Proceed proceed = (CapacityGateResult.Proceed) capacityResult;
+            // 许可用 try-with-resources 包住 processTask，确保无论成功/异常都释放。
+            try (Permit ignoredPermit = proceed.permit()) {
+                // 真正的业务处理由子类实现：agent.run 会进 ChatEventProcessor，ingest 会跑文档入库。
+                processTask(payload, identity);
+                if (lease != null) {
+                    distributedLockManager.markCompleted(lease);
+                }
+                channel.basicAck(deliveryTag, false);
+                log.info("MQ task processed successfully: taskType={}, eventId={}, idempotencyKey={}",
+                        identity.taskType(), identity.eventId(), identity.idempotencyKey());
+            }
+        } catch (Exception e) {
+            // CapacityUnavailableException 是终态：Redis 故障 + FAIL_FAST 时重试也不会立即恢复。
+            if (e instanceof CapacityUnavailableException) {
+                handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+            } else if (isRetryable(e)) {
+                handleRetryableFailure(payload, message, channel, deliveryTag, identity, lease, sessionLease, e);
+                return;
+            } else {
+                handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+            }
         } finally {
             safeReleaseSessionExecLock(sessionLease);
         }
@@ -297,6 +323,22 @@ public abstract class AbstractRetryingMqConsumer<T> {
         return TaskReadiness.proceed();
     }
 
+    /**
+     * Execution-capacity gate hook. The default is a no-op so non-agent
+     * consumers (e.g. knowledge ingest) are unaffected.
+     *
+     * <p>{@code AgentRunTaskListener} overrides this to acquire a Redis-backed
+     * global permit before Agent execution.</p>
+     *
+     * @param payload  deserialized task payload
+     * @param identity MQ message identity
+     * @return gate result; default is {@link CapacityGateResult#proceed(Permit) proceed}
+     *         with a {@link NoopPermit}
+     */
+    protected CapacityGateResult acquireCapacity(T payload, MqMessageIdentity identity) {
+        return CapacityGateResult.proceed(NoopPermit.instance());
+    }
+
     protected void onRetriesExhausted(T payload, MqMessageIdentity identity, Exception exception) {
     }
 
@@ -399,6 +441,18 @@ public abstract class AbstractRetryingMqConsumer<T> {
     @FunctionalInterface
     private interface FailureHook {
         void run() throws Exception;
+    }
+
+    /**
+     * Terminal exception thrown when execution capacity is unavailable and the
+     * configured policy is {@code FAIL_FAST}. Handled as a terminal failure
+     * (not retried) because Redis will not recover within the retry window.
+     */
+    public static final class CapacityUnavailableException extends RuntimeException {
+
+        public CapacityUnavailableException(String message) {
+            super(message);
+        }
     }
 
     protected enum TaskReadinessOutcome {

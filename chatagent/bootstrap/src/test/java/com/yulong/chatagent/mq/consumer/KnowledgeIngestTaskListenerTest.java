@@ -142,7 +142,9 @@ class KnowledgeIngestTaskListenerTest {
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
-                retryCount
+                retryCount,
+                null,
+                null
         );
         MessageProperties properties = new MessageProperties();
         properties.setDeliveryTag(7L);
@@ -168,7 +170,9 @@ class KnowledgeIngestTaskListenerTest {
                         "chat.direct",
                         "ingest.task",
                         Instant.parse("2026-03-30T00:00:00Z"),
-                        0
+                        0,
+                null,
+                null
                         )
                 ),
                 null

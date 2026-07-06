@@ -135,7 +135,9 @@ class DistributedLockManagerTest {
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
-                0
+                0,
+                null,
+                null
         );
     }
 }

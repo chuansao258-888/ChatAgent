@@ -149,7 +149,9 @@ class MqAdminFacadeServiceImplTest {
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
-                3
+                3,
+                null,
+                null
         );
         return MqOutbox.builder()
                 .id("outbox-1")
@@ -174,7 +176,9 @@ class MqAdminFacadeServiceImplTest {
                 "chat.direct",
                 "ingest.task",
                 Instant.parse("2026-03-30T00:00:00Z"),
-                3
+                3,
+                null,
+                null
         );
         byte[] body = objectMapper.writeValueAsBytes(Map.of(
                 "knowledgeBaseId", "kb-1",

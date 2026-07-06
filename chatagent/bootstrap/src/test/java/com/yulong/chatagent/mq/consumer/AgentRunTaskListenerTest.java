@@ -18,6 +18,9 @@ import com.yulong.chatagent.mq.outbox.event.AgentRunTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
+import com.yulong.chatagent.ratelimit.capacity.AgentRunCapacityLimiter;
+import com.yulong.chatagent.ratelimit.capacity.CapacityGateResult;
+import com.yulong.chatagent.ratelimit.capacity.NoopPermit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,6 +63,9 @@ class AgentRunTaskListenerTest {
 
     @Mock
     private Channel channel;
+
+    @Mock
+    private AgentRunCapacityLimiter capacityLimiter;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -307,9 +314,10 @@ class AgentRunTaskListenerTest {
                 distributedLockManager,
                 lockWatchdog,
                 chatEventProcessor,
-                chatSessionRepository
+                chatSessionRepository,
+                capacityLimiter
         );
-        
+
         when(distributedLockManager.tryAcquire(any(), anyString())).thenThrow(new RuntimeException("Redis down"));
 
         // Fatal error bubbles up to consume() which defaults to basicNack(true) in AbstractRetryingMqConsumer.java
@@ -322,6 +330,10 @@ class AgentRunTaskListenerTest {
     private AgentRunTaskListener newListener() {
         ChatAgentMqProperties properties = new ChatAgentMqProperties();
         properties.getDispatchers().setAgentRunEnabled(true);
+        // Capacity gate defaults to proceed so existing tests are unaffected by
+        // the new hook; capacity-specific behavior is covered in dedicated tests.
+        lenient().when(capacityLimiter.tryAcquire(any()))
+                .thenReturn(CapacityGateResult.proceed(NoopPermit.instance()));
         return new AgentRunTaskListener(
                 objectMapper,
                 properties,
@@ -329,7 +341,8 @@ class AgentRunTaskListenerTest {
                 distributedLockManager,
                 lockWatchdog,
                 chatEventProcessor,
-                chatSessionRepository
+                chatSessionRepository,
+                capacityLimiter
         );
     }
 
@@ -360,7 +373,9 @@ class AgentRunTaskListenerTest {
                 "chat.direct",
                 "agent.run",
                 Instant.parse("2026-03-30T00:00:00Z"),
-                retryCount
+                retryCount,
+                null,
+                null
         );
         MessageProperties properties = new MessageProperties();
         properties.setDeliveryTag(7L);
@@ -386,7 +401,9 @@ class AgentRunTaskListenerTest {
                         "chat.direct",
                         "agent.run",
                         Instant.parse("2026-03-30T00:00:00Z"),
-                        0
+                        0,
+                null,
+                null
                         )
                 ),
                 null
