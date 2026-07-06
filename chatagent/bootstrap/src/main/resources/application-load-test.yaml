@@ -9,24 +9,15 @@ spring:
   rabbitmq:
     listener:
       simple:
-        auto-startup: false
-  datasource:
-    hikari:
-      maximum-pool-size: 50
-      minimum-idle: 10
-      connection-timeout: 10000
-
-server:
-  tomcat:
-    threads:
-      max: 250
-    max-connections: 4096
-    accept-count: 200
+        auto-startup: true
 
 chatagent:
   mq:
     dispatchers:
       agent-run-enabled: true
+  loadtest:
+    mock-ttft-ms: 400
+    mock-stream-total-ms: 800
 
 logging:
   level:

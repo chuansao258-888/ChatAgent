@@ -62,6 +62,46 @@ final class ChatAgentLoadDsl {
         return session.set("messageBody", body);
     }
 
+    /**
+     * Opens an SSE connection for the current session and keeps it open. The e2e
+     * simulation relies on this one persistent connection per virtual user to
+     * receive turn-completion events.
+     */
+    static ChainBuilder openSseForSession() {
+        return exec(io.gatling.javaapi.http.HttpDsl.sse("Open SSE")
+                .sseName("chat-sse")
+                .get("/api/sse/connect/#{sessionId}?access_token=#{accessToken}"));
+    }
+
+    static ChainBuilder closeSse() {
+        return exec(io.gatling.javaapi.http.HttpDsl.sse("Close SSE").sseName("chat-sse").close());
+    }
+
+    /**
+     * Waits on the open SSE stream for the AI_DONE event matching the current
+     * session turnId. The server always emits SSE event name "message"; the
+     * real signal is in the JSON data payload
+     * ($.type == "AI_DONE" && $.payload.turnId == #{turnId}).
+     *
+     * <p>Uses the Gatling SSE setCheck + await pattern: setCheck returns the
+     * await-capable builder, on which we register the check message. Unmatched
+     * streaming messages (other types or other turnIds) are consumed and do not
+     * satisfy the check.</p>
+     *
+     * @param awaitSeconds max seconds to wait for the matching event
+     */
+    static ChainBuilder waitOnSseForTurnDone(int awaitSeconds) {
+        return exec(io.gatling.javaapi.http.HttpDsl.sse("Wait for AI_DONE")
+                .sseName("chat-sse")
+                .setCheck()
+                .await(java.time.Duration.ofSeconds(awaitSeconds))
+                .on(io.gatling.javaapi.http.HttpDsl.sse.checkMessage("AI_DONE for turn")
+                        .check(
+                                io.gatling.javaapi.core.CoreDsl.jsonPath("$.type").find().is("AI_DONE"),
+                                io.gatling.javaapi.core.CoreDsl.jsonPath("$.payload.turnId").find().isEL("#{turnId}")
+                        )));
+    }
+
     static String prop(String key, String envKey, String defaultValue) {
         String value = System.getProperty(key);
         if (value == null || value.isBlank()) {
