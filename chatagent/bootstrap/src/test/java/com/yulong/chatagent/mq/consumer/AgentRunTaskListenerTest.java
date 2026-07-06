@@ -18,6 +18,7 @@ import com.yulong.chatagent.mq.outbox.event.AgentRunTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
+import com.yulong.chatagent.ratelimit.RateLimitProperties;
 import com.yulong.chatagent.ratelimit.capacity.AgentRunCapacityLimiter;
 import com.yulong.chatagent.ratelimit.capacity.CapacityGateResult;
 import com.yulong.chatagent.ratelimit.capacity.NoopPermit;
@@ -68,6 +69,7 @@ class AgentRunTaskListenerTest {
     private AgentRunCapacityLimiter capacityLimiter;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RateLimitProperties rateLimitProperties = new RateLimitProperties();
 
     @Test
     void shouldAckSuccessfulAgentRunMessage() throws Exception {
@@ -315,7 +317,8 @@ class AgentRunTaskListenerTest {
                 lockWatchdog,
                 chatEventProcessor,
                 chatSessionRepository,
-                capacityLimiter
+                capacityLimiter,
+                rateLimitProperties
         );
 
         when(distributedLockManager.tryAcquire(any(), anyString())).thenThrow(new RuntimeException("Redis down"));
@@ -342,7 +345,8 @@ class AgentRunTaskListenerTest {
                 lockWatchdog,
                 chatEventProcessor,
                 chatSessionRepository,
-                capacityLimiter
+                capacityLimiter,
+                rateLimitProperties
         );
     }
 

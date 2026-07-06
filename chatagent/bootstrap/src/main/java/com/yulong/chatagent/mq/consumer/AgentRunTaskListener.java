@@ -12,8 +12,10 @@ import com.yulong.chatagent.mq.lock.LockWatchdog;
 import com.yulong.chatagent.mq.outbox.event.AgentRunTaskPayload;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
+import com.yulong.chatagent.ratelimit.RateLimitProperties;
 import com.yulong.chatagent.ratelimit.capacity.AgentRunCapacityLimiter;
 import com.yulong.chatagent.ratelimit.capacity.CapacityGateResult;
+import com.yulong.chatagent.conversation.model.SseMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -38,6 +40,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     private final ChatEventProcessor chatEventProcessor;
     private final ChatSessionRepository chatSessionRepository;
     private final AgentRunCapacityLimiter capacityLimiter;
+    private final RateLimitProperties rateLimitProperties;
 
     public AgentRunTaskListener(ObjectMapper objectMapper,
                                 ChatAgentMqProperties properties,
@@ -46,13 +49,30 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                                 LockWatchdog lockWatchdog,
                                 ChatEventProcessor chatEventProcessor,
                                 ChatSessionRepository chatSessionRepository,
-                                AgentRunCapacityLimiter capacityLimiter) {
-        super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog);
+                                AgentRunCapacityLimiter capacityLimiter,
+                                RateLimitProperties rateLimitProperties) {
+        this(objectMapper, properties, rabbitMqMessagePublisher, distributedLockManager,
+                lockWatchdog, chatEventProcessor, chatSessionRepository, capacityLimiter,
+                rateLimitProperties, java.time.Clock.systemUTC());
+    }
+
+    AgentRunTaskListener(ObjectMapper objectMapper,
+                         ChatAgentMqProperties properties,
+                         RabbitMqMessagePublisher rabbitMqMessagePublisher,
+                         DistributedLockManager distributedLockManager,
+                         LockWatchdog lockWatchdog,
+                         ChatEventProcessor chatEventProcessor,
+                         ChatSessionRepository chatSessionRepository,
+                         AgentRunCapacityLimiter capacityLimiter,
+                         RateLimitProperties rateLimitProperties,
+                         java.time.Clock clock) {
+        super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog, clock);
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.chatEventProcessor = chatEventProcessor;
         this.chatSessionRepository = chatSessionRepository;
         this.capacityLimiter = capacityLimiter;
+        this.rateLimitProperties = rateLimitProperties;
     }
 
     @RabbitListener(
@@ -119,6 +139,51 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                 consumerName(), identity.eventId(), payload.toChatEvent().getTurnId()
         );
         return capacityLimiter.tryAcquire(context);
+    }
+
+    @Override
+    protected long capacityWaitTimeoutMs() {
+        return rateLimitProperties.getAgentRun().getWaitTimeoutMs();
+    }
+
+    @Override
+    protected long capacityWaitStatusIntervalMs() {
+        return rateLimitProperties.getAgentRun().getWaitStatusIntervalMs();
+    }
+
+    @Override
+    protected java.time.Instant publishCapacityWaitStatus(AgentRunTaskPayload payload,
+                                                          java.time.Instant startedAt,
+                                                          java.time.Instant lastNotifiedAt,
+                                                          java.time.Instant now,
+                                                          long intervalMs) {
+        // 首次 WAIT（lastNotifiedAt 为空）立即发；之后按 intervalMs 节流。
+        if (lastNotifiedAt == null || !now.minusMillis(intervalMs).isBefore(lastNotifiedAt)) {
+            ChatEvent event = payload.toChatEvent();
+            try {
+                chatEventProcessor.publishCapacityWaitStatus(event);
+            } catch (Exception ex) {
+                // SSE 发送失败不应阻断重投；状态丢失由既有 pending-turn 兜底补偿。
+                log.warn("Failed to publish capacity wait status, continuing requeue: sessionId={}, turnId={}, error={}",
+                        event.getSessionId(), event.getTurnId(), ex.getMessage());
+            }
+            return now;
+        }
+        // 节流窗口内不重复发，保留上次的 lastNotifiedAt。
+        return lastNotifiedAt;
+    }
+
+    @Override
+    protected void onCapacityWaitTimeout(AgentRunTaskPayload payload, MqMessageIdentity identity) {
+        // 容量等待超时是面向用户的终态：回滚本 turn 局部输出、补发 fallback assistant 消息、
+        // 发 AI_ERROR/AI_DONE 并完成 turn，让后续 turn 不被 turn-sequence readiness 阻塞。
+        ChatEvent event = payload.toChatEvent();
+        IllegalStateException timeoutEx = new IllegalStateException(
+                "Agent execution capacity wait timed out after "
+                        + rateLimitProperties.getAgentRun().getWaitTimeoutMs() + "ms");
+        chatEventProcessor.publishFailure(event, timeoutEx);
+        log.warn("Capacity wait timed out, completing turn as terminal failure: eventId={}, sessionId={}, turnId={}",
+                identity.eventId(), event.getSessionId(), event.getTurnId());
     }
 
     @Override

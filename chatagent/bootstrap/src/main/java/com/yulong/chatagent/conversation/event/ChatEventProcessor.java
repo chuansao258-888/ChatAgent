@@ -98,6 +98,25 @@ public class ChatEventProcessor {
     }
 
     /**
+     * Publishes a queue/wait status event during capacity-gated execution wait.
+     *
+     * <p>Uses the existing {@code AI_EXECUTING} SSE schema with {@code turnId}
+     * and {@code statusText} so no new UI contract is introduced. The caller
+     * (capacity gate) is responsible for throttling how often this is invoked.</p>
+     *
+     * @param event chat event identifying the waiting turn
+     */
+    public void publishCapacityWaitStatus(ChatEvent event) {
+        sseService.publish(event.getSessionId(), SseMessage.builder()
+                .type(SseMessage.Type.AI_EXECUTING)
+                .payload(SseMessage.Payload.builder()
+                        .turnId(event.getTurnId())
+                        .statusText("当前请求较多，正在排队...")
+                        .build())
+                .build());
+    }
+
+    /**
      * 删除某个 turn 下已经生成的 assistant/tool 消息。
      * <p>
      * MQ 重试或 DLQ replay 前会调用这里，避免同一轮输出重复落库、重复展示。
