@@ -96,8 +96,12 @@ final class ChatAgentLoadDsl {
                 .setCheck()
                 .await(java.time.Duration.ofSeconds(awaitSeconds))
                 .on(io.gatling.javaapi.http.HttpDsl.sse.checkMessage("AI_DONE for turn")
-                        .check(
-                                io.gatling.javaapi.core.CoreDsl.jsonPath("$.type").find().is("AI_DONE"),
+                        // Only apply the turnId check to messages whose type is AI_DONE;
+                        // all other streaming messages (content chunks, executing, etc.)
+                        // are consumed without satisfying or failing the check.
+                        .checkIf((String message, io.gatling.javaapi.core.Session session) ->
+                                message != null && message.contains("\"type\":\"AI_DONE\""))
+                        .then(
                                 io.gatling.javaapi.core.CoreDsl.jsonPath("$.payload.turnId").find().isEL("#{turnId}")
                         )));
     }

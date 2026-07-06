@@ -18,6 +18,12 @@ chatagent:
   loadtest:
     mock-ttft-ms: 400
     mock-stream-total-ms: 800
+  memory:
+    l3:
+      enabled: false
+
+milvus:
+  enabled: false
 
 logging:
   level:
