@@ -119,7 +119,6 @@ public class AgentRunCapacityLimiter {
             return CapacityGateResult.proceed(new LocalCapPermit(localCapSemaphore, metricsRecorder));
         }
         metricsRecorder.recordCapacityAcquire("denied", "local_cap");
-        metricsRecorder.recordCapacityWait("requeued");
         return CapacityGateResult.waitInQueue();
     }
 
@@ -157,7 +156,6 @@ public class AgentRunCapacityLimiter {
             }
             if (granted != null) {
                 metricsRecorder.recordCapacityAcquire("denied", "redis");
-                metricsRecorder.recordCapacityWait("requeued");
                 return CapacityGateResult.waitInQueue();
             }
             return handleRedisUnavailable();
@@ -182,7 +180,6 @@ public class AgentRunCapacityLimiter {
             return CapacityGateResult.proceed(new LocalCapPermit(localCapSemaphore, metricsRecorder));
         }
         metricsRecorder.recordCapacityAcquire("denied", "local_cap");
-        metricsRecorder.recordCapacityWait("requeued");
         return CapacityGateResult.waitInQueue();
     }
 
@@ -210,6 +207,13 @@ public class AgentRunCapacityLimiter {
             long waitedMs = Math.max(0L, java.time.Duration.between(startedAt, java.time.Instant.now()).toMillis());
             metricsRecorder.recordCapacityWaitDuration(waitedMs);
         }
+    }
+
+    /**
+     * Records that a capacity WAIT was handed off to the delayed MQ requeue.
+     */
+    public void recordWaitRequeued() {
+        metricsRecorder.recordCapacityWait("requeued");
     }
 
     private void renewQuietly(String permitId, StringRedisTemplate redisTemplate) {

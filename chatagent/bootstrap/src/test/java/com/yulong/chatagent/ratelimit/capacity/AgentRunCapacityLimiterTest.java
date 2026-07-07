@@ -171,7 +171,7 @@ class AgentRunCapacityLimiterTest {
     }
 
     @Test
-    void shouldRecordWaitRequeuedCounterWhenCapacityDenied() {
+    void shouldNotRecordWaitRequeuedCounterBeforeMqRequeueSucceeds() {
         io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
                 new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         @SuppressWarnings("unchecked")
@@ -186,8 +186,7 @@ class AgentRunCapacityLimiterTest {
 
         io.micrometer.core.instrument.Counter waitCounter = registry.find("chatagent.agent_run.capacity.waits")
                 .tag("outcome", "requeued").counter();
-        assertThat(waitCounter).isNotNull();
-        assertThat(waitCounter.count()).isEqualTo(1.0);
+        assertThat(waitCounter).isNull();
     }
 
     private AgentRunCapacityLimiter newLimiter(StringRedisTemplate redisTemplate, Semaphore semaphore) {

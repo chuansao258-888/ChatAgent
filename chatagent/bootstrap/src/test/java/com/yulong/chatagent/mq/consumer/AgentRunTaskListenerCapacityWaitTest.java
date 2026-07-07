@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageProperties;
@@ -37,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -92,6 +94,7 @@ class AgentRunTaskListenerCapacityWaitTest {
         // First WAIT publishes status immediately (lastNotifiedAt was null).
         verify(chatEventProcessor, times(1)).publishCapacityWaitStatus(any());
         verify(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(Message.class), anyString());
+        verify(capacityLimiter, times(1)).recordWaitRequeued();
         // Non-terminal WAIT must NOT publish failure; turn is left pending for requeue.
         verify(chatEventProcessor, never()).publishFailure(any(ChatEvent.class), any());
     }
@@ -109,6 +112,7 @@ class AgentRunTaskListenerCapacityWaitTest {
         // Suppressed: no status published, still requeued.
         verify(chatEventProcessor, never()).publishCapacityWaitStatus(any());
         verify(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(Message.class), anyString());
+        verify(capacityLimiter, times(1)).recordWaitRequeued();
     }
 
     @Test
@@ -157,8 +161,22 @@ class AgentRunTaskListenerCapacityWaitTest {
         // ACKed as terminal (not requeued).
         verify(channel, times(1)).basicAck(eq(7L), eq(false));
         verify(rabbitMqMessagePublisher, never()).publish(anyString(), anyString(), any(Message.class), anyString());
+        verify(capacityLimiter, never()).recordWaitRequeued();
         // Task lock marked completed so it does not block future replays.
         verify(distributedLockManager, times(1)).markCompleted(any());
+    }
+
+    @Test
+    void shouldNotRecordRequeuedWhenDelayedPublishFails() throws Exception {
+        when(capacityLimiter.tryAcquire(any())).thenReturn(CapacityGateResult.waitInQueue());
+        doThrow(new AmqpException("retry exchange down"))
+                .when(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(Message.class), anyString());
+        AgentRunTaskListener listener = newListener();
+
+        listener.handle(buildMessage(null, null), channel);
+
+        verify(capacityLimiter, never()).recordWaitRequeued();
+        verify(channel, times(1)).basicNack(eq(7L), eq(false), eq(true));
     }
 
     private AgentRunTaskListener newListener() {

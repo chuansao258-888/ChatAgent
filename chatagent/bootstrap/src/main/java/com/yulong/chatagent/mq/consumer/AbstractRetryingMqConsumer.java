@@ -180,7 +180,10 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 // 必须用 MqMessageHeaders 重建完整 headers，而非 buildRetryMessage（只刷新 RETRY_COUNT，
                 // 会丢失新的 capacityWait 字段——计划明确要求序列化完整 identity）。
                 safeReleaseTaskLockForWait(identity, lease);
-                requeueWithDelay(rebuildMessageWithIdentity(message, waitIdentity), channel, deliveryTag, waitIdentity, "execution capacity denied");
+                if (requeueWithDelay(rebuildMessageWithIdentity(message, waitIdentity), channel,
+                        deliveryTag, waitIdentity, "execution capacity denied")) {
+                    onCapacityWaitRequeued(payload, waitIdentity);
+                }
                 return;
             }
             if (capacityResult instanceof CapacityGateResult.FailFast) {
@@ -459,6 +462,9 @@ public abstract class AbstractRetryingMqConsumer<T> {
     protected void onCapacityWaitTimeout(T payload, MqMessageIdentity identity) {
     }
 
+    protected void onCapacityWaitRequeued(T payload, MqMessageIdentity identity) {
+    }
+
     protected void onRetriesExhausted(T payload, MqMessageIdentity identity, Exception exception) {
     }
 
@@ -499,11 +505,11 @@ public abstract class AbstractRetryingMqConsumer<T> {
         }
     }
 
-    private void requeueWithDelay(Message originalMessage,
-                                  Channel channel,
-                                  long deliveryTag,
-                                  MqMessageIdentity identity,
-                                  String reason) throws IOException {
+    private boolean requeueWithDelay(Message originalMessage,
+                                     Channel channel,
+                                     long deliveryTag,
+                                     MqMessageIdentity identity,
+                                     String reason) throws IOException {
         try {
             // 延迟重投不是 basicNack(requeue=true) 立刻回队尾，而是进入 retry queue 等一段时间再回来。
             rabbitMqMessagePublisher.publish(
@@ -515,10 +521,12 @@ public abstract class AbstractRetryingMqConsumer<T> {
             channel.basicAck(deliveryTag, false);
             log.info("MQ task moved to delayed requeue: taskType={}, eventId={}, reason={}",
                     identity.taskType(), identity.eventId(), reason);
+            return true;
         } catch (AmqpException requeueException) {
             log.warn("Failed to move MQ task to delayed requeue, falling back to nack(requeue=true): taskType={}, eventId={}, reason={}",
                     identity.taskType(), identity.eventId(), reason, requeueException);
             channel.basicNack(deliveryTag, false, true);
+            return false;
         }
     }
 

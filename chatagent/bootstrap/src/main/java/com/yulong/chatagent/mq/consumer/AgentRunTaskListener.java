@@ -188,6 +188,11 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     }
 
     @Override
+    protected void onCapacityWaitRequeued(AgentRunTaskPayload payload, MqMessageIdentity identity) {
+        capacityLimiter.recordWaitRequeued();
+    }
+
+    @Override
     protected void processTask(AgentRunTaskPayload payload, MqMessageIdentity identity) {
         ChatEvent event = payload.toChatEvent();
 
