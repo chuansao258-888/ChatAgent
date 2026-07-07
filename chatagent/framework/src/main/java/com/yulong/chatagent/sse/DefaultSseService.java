@@ -69,6 +69,10 @@ public class DefaultSseService implements SseService {
         } catch (Exception e) {
             // Remove broken emitters immediately so later sends do not keep failing.
             clients.remove(streamKey, sender);
+            if (SseClientDisconnects.isLikelyClientDisconnect(e)) {
+                log.debug("SSE client disconnected during local delivery: streamKey={}", streamKey);
+                return;
+            }
             log.warn("SSE connection lost during local delivery: streamKey={}", streamKey, e);
         }
     }

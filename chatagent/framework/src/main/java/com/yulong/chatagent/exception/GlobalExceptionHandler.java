@@ -2,6 +2,7 @@ package com.yulong.chatagent.exception;
 
 import com.yulong.chatagent.errorcode.BaseErrorCode;
 import com.yulong.chatagent.model.common.ApiResponse;
+import com.yulong.chatagent.sse.SseClientDisconnects;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +10,8 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import java.io.IOException;
 
 @RestControllerAdvice
 @Slf4j
@@ -58,6 +61,24 @@ public class GlobalExceptionHandler {
                         BaseErrorCode.CLIENT_ERROR,
                         "Uploaded file exceeds the configured size limit"
                 ));
+    }
+
+    /**
+     * Treats client disconnects during streaming response writes as already-handled.
+     * Non-disconnect IOExceptions are rethrown for the fallback handler.
+     *
+     * @param e IOException from a streaming response write
+     * @return 204 No Content for client-disconnect cases (the client is gone);
+     *         never returned for non-disconnect cases (rethrown instead)
+     * @throws IOException when the exception is not a client disconnect
+     */
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity<Void> handleIOException(IOException e) throws IOException {
+        if (SseClientDisconnects.isLikelyClientDisconnect(e)) {
+            log.debug("Client disconnected before response write completed, traceId={}", TraceContext.getTraceId());
+            return ResponseEntity.noContent().build();
+        }
+        throw e;
     }
 
     /**

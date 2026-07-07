@@ -53,13 +53,60 @@ final class ChatAgentLoadDsl {
 
     static Session prepareChatMessage(Session session) {
         String content = session.contains("content") ? session.getString("content") : "Hello";
+        String turnId = UUID.randomUUID().toString();
         String body = "{"
                 + "\"sessionId\":\"" + json(session.getString("sessionId")) + "\","
-                + "\"turnId\":\"" + UUID.randomUUID() + "\","
+                + "\"turnId\":\"" + turnId + "\","
                 + "\"role\":\"user\","
                 + "\"content\":\"" + json(content) + "\""
                 + "}";
-        return session.set("messageBody", body);
+        return session
+                .set("turnId", turnId)
+                .set("messageBody", body);
+    }
+
+    /**
+     * Opens an SSE connection for the current session. The e2e simulation uses
+     * a fresh session and SSE connection per measured turn so stale buffered
+     * terminal events cannot satisfy the next turn's check.
+     */
+    static ChainBuilder openSseForSession() {
+        return exec(io.gatling.javaapi.http.HttpDsl.sse("Open SSE")
+                .sseName("chat-sse")
+                .get("/api/sse/connect/#{sessionId}?access_token=#{accessToken}"));
+    }
+
+    static ChainBuilder closeSse() {
+        return exec(io.gatling.javaapi.http.HttpDsl.sse("Close SSE").sseName("chat-sse").close());
+    }
+
+    /**
+     * Waits on the open SSE stream for the AI_DONE event matching the current
+     * session turnId. The server always emits SSE event name "message"; the
+     * real signal is in the JSON data payload
+     * ($.type == "AI_DONE" && $.payload.turnId == #{turnId}).
+     *
+     * <p>Uses the Gatling SSE setCheck + await pattern: setCheck returns the
+     * await-capable builder, on which we register the check message. Unmatched
+     * streaming messages (other types or other turnIds) are consumed and do not
+     * satisfy the check.</p>
+     *
+     * @param awaitSeconds max seconds to wait for the matching event
+     */
+    static ChainBuilder waitOnSseForTurnDone(int awaitSeconds) {
+        return exec(io.gatling.javaapi.http.HttpDsl.sse("Wait for AI_DONE")
+                .sseName("chat-sse")
+                .setCheck()
+                .await(java.time.Duration.ofSeconds(awaitSeconds))
+                .on(io.gatling.javaapi.http.HttpDsl.sse.checkMessage("AI_DONE for turn")
+                        // Only apply the turnId check to messages whose type is AI_DONE;
+                        // all other streaming messages (content chunks, executing, etc.)
+                        // are consumed without satisfying or failing the check.
+                        .checkIf((String message, io.gatling.javaapi.core.Session session) ->
+                                message != null && message.contains("\"type\":\"AI_DONE\""))
+                        .then(
+                                io.gatling.javaapi.core.CoreDsl.jsonPath("$.payload.turnId").find().isEL("#{turnId}")
+                        )));
     }
 
     static String prop(String key, String envKey, String defaultValue) {

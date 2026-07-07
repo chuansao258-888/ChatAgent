@@ -7,7 +7,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
@@ -37,14 +37,29 @@ class SseEmitterSenderTest {
     }
 
     @Test
-    void sendEvent_wrapsIOException_asServiceException() throws Exception {
-        doThrow(new IOException("broken")).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+    void sendEvent_wrapsClientDisconnectIOExceptionWithoutAsyncErrorDispatch() throws Exception {
+        doThrow(new IOException("broken pipe")).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
 
         assertThatThrownBy(() -> sender.sendEvent("evt", "data"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessage("Failed to send SSE event");
 
-        verify(emitter).completeWithError(any(IOException.class));
+        verify(emitter, never()).complete();
+        verify(emitter, never()).completeWithError(any());
+    }
+
+    @Test
+    void sendEvent_wrapsNonDisconnectIOExceptionAndCompletesWithError() throws Exception {
+        IOException error = new IOException("disk unavailable");
+        doThrow(error).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        assertThatThrownBy(() -> sender.sendEvent("evt", "data"))
+                .isInstanceOf(ServiceException.class)
+                .hasMessage("Failed to send SSE event")
+                .hasCause(error);
+
+        verify(emitter, never()).complete();
+        verify(emitter).completeWithError(error);
     }
 
     @Test
@@ -72,19 +87,41 @@ class SseEmitterSenderTest {
     }
 
     @Test
-    void fail_callsCompleteWithError() {
-        Throwable error = new RuntimeException("oops");
+    void fail_marksClientDisconnectClosedWithoutAsyncErrorDispatch() {
+        Throwable error = new IOException("connection reset");
         sender.fail(error);
 
+        verify(emitter, never()).complete();
+        verify(emitter, never()).completeWithError(any());
+    }
+
+    @Test
+    void fail_nonClientErrorCompletesWithError() {
+        Throwable error = new RuntimeException("oops");
+
+        sender.fail(error);
+
+        verify(emitter, never()).complete();
         verify(emitter).completeWithError(error);
     }
 
     @Test
     void fail_afterComplete_doesNotCallCompleteWithErrorAgain() {
         sender.complete();
-        sender.fail(new RuntimeException("late error"));
+        sender.fail(new IOException("connection reset"));
 
         verify(emitter, times(1)).complete();
+        verify(emitter, never()).completeWithError(any());
+    }
+
+    @Test
+    void fail_doesNotCompleteAgainAfterClientDisconnect() {
+        doThrow(new IllegalStateException("Response not usable after response errors."))
+                .when(emitter).complete();
+
+        assertThatNoException().isThrownBy(() -> sender.fail(new IOException("broken pipe")));
+
+        verify(emitter, never()).complete();
         verify(emitter, never()).completeWithError(any());
     }
 }
