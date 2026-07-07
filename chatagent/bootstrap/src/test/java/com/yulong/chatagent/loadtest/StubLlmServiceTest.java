@@ -41,10 +41,13 @@ class StubLlmServiceTest {
     void streamDecisionShouldReturnCannedResponseWithoutToolCall() {
         LoadTestProperties props = new LoadTestProperties();
         props.setMockTtftMs(10L);
+        props.setMockStreamTotalMs(20L);
         StubLLMService stub = new StubLLMService(props);
 
+        long start = System.nanoTime();
         var response = stub.streamDecisionWithRouting(
                 new Prompt("decide"), "system", java.util.List.of(), false);
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertThat(response).isNotNull();
         assertThat(response.response().getResult().getOutput()).isInstanceOf(AssistantMessage.class);
@@ -56,6 +59,9 @@ class StubLlmServiceTest {
                 .isEqualTo(com.yulong.chatagent.chat.routing.BufferedStreamingResponse.EventType.CONTENT);
         // No tool calls in the assistant message → ReAct loop terminates.
         assertThat(response.response().getResult().getOutput().getToolCalls()).isNullOrEmpty();
+        // The decision overload must also spend the streaming window, not just TTFT.
+        // Elapsed must exceed TTFT alone, proving the stream-total window was applied.
+        assertThat(elapsedMs).isGreaterThan(props.getMockTtftMs());
     }
 
     @Test

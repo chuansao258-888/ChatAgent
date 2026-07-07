@@ -38,11 +38,12 @@ public class StubChatModel implements ChatModel {
 
     @Override
     public Flux<ChatResponse> stream(Prompt prompt) {
-        // Emit a single canned chunk after TTFT, then complete.
-        return Flux.concat(
-                Flux.just(buildChunk()),
-                Flux.empty()
-        ).delaySequence(java.time.Duration.ofMillis(Math.max(1L, ttftMs)));
+        // Emit a canned chunk after TTFT, then complete after the streaming
+        // window so the total latency is TTFT + streamTotal (matching the
+        // StubLLMService round-trip semantics).
+        long totalDelay = Math.max(1L, ttftMs + streamTotalMs);
+        return Flux.just(buildChunk())
+                .delayElements(java.time.Duration.ofMillis(totalDelay));
     }
 
     private ChatResponse buildChunk() {

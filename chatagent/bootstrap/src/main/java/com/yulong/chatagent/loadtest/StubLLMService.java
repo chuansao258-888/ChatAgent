@@ -91,10 +91,12 @@ public class StubLLMService implements LLMService {
                                                                StreamCallback callback,
                                                                boolean deepThinking) {
         sleepQuietly(properties.getMockTtftMs());
+        long chunkDelayMs = deriveChunkDelayMs();
         if (callback != null) {
             callback.onSignal();
             for (String chunk : CANNED_CHUNKS) {
                 callback.onContent(chunk);
+                sleepQuietly(chunkDelayMs);
             }
         }
         AssistantMessage assistantMessage = new AssistantMessage(CANNED_ANSWER);
