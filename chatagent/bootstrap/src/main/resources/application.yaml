@@ -373,6 +373,21 @@ chatagent:
     rollout:
       mode: ALL
       allowed-agent-ids: []
+  rate-limit:
+    entry:
+      enabled: true
+      requests-per-second: 2
+      burst-capacity: 5
+      redis-failure-policy: LOCAL_BUCKET
+    agent-run:
+      enabled: true
+      max-concurrency: 3
+      permit-ttl-ms: 180000
+      permit-renew-interval-ms: 20000
+      wait-timeout-ms: 120000
+      wait-status-interval-ms: 5000
+      redis-failure-policy: LOCAL_CAP
+      local-capacity-on-redis-failure: 1
 
 auth:
   jwt:

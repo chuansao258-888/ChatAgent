@@ -23,7 +23,9 @@ public record MqMessageIdentity(
         String originalExchange,
         String originalRoutingKey,
         Instant firstPublishedAt,
-        int retryCount
+        int retryCount,
+        Instant capacityWaitStartedAt,
+        Instant capacityWaitLastNotifiedAt
 ) {
 
     public MqMessageIdentity {
@@ -41,6 +43,7 @@ public record MqMessageIdentity(
         if (retryCount < 0) {
             throw new IllegalArgumentException(MqMessageHeaders.RETRY_COUNT + " must not be negative");
         }
+        // capacityWait* 字段刻意可空：旧消息没有这些 header，缺省即为 null。
     }
 
     public static MqMessageIdentity initial(String taskType,
@@ -69,12 +72,15 @@ public record MqMessageIdentity(
                 originalExchange,
                 originalRoutingKey,
                 Instant.now(),
-                0
+                0,
+                // 容量等待时间在新消息上初始化为 null；WAIT 路径才会写入。
+                null,
+                null
         );
     }
 
     public MqMessageIdentity withRetryCount(int nextRetryCount) {
-        // 重试只改变 retryCount，不改变 eventId/idempotencyKey/traceId。
+        // 重试只改变 retryCount，不改变 eventId/idempotencyKey/traceId，也不重置容量等待时间。
         // 这样同一任务的所有重试仍能被识别为同一个业务任务。
         return new MqMessageIdentity(
                 eventId,
@@ -85,7 +91,36 @@ public record MqMessageIdentity(
                 originalExchange,
                 originalRoutingKey,
                 firstPublishedAt,
-                nextRetryCount
+                nextRetryCount,
+                capacityWaitStartedAt,
+                capacityWaitLastNotifiedAt
+        );
+    }
+
+    /**
+     * Returns a copy of this identity with updated capacity-wait timing.
+     *
+     * <p>Used by the capacity-gate WAIT requeue path to record when waiting
+     * started and when the last queue-status SSE was emitted, without
+     * changing the stable identity fields or {@code retryCount}.</p>
+     *
+     * @param startedAt    instant the capacity wait started, or {@code null} to leave unset
+     * @param lastNotifiedAt instant of the most recent status notification, or {@code null}
+     * @return new identity with updated capacity-wait fields
+     */
+    public MqMessageIdentity withCapacityWait(Instant startedAt, Instant lastNotifiedAt) {
+        return new MqMessageIdentity(
+                eventId,
+                idempotencyKey,
+                traceId,
+                taskType,
+                sessionId,
+                originalExchange,
+                originalRoutingKey,
+                firstPublishedAt,
+                retryCount,
+                startedAt,
+                lastNotifiedAt
         );
     }
 

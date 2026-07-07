@@ -12,6 +12,9 @@ import com.yulong.chatagent.mq.lock.MqTaskLockLease;
 import com.yulong.chatagent.mq.support.MqMessageHeaders;
 import com.yulong.chatagent.mq.support.MqMessageIdentity;
 import com.yulong.chatagent.mq.support.RabbitMqMessagePublisher;
+import com.yulong.chatagent.ratelimit.capacity.CapacityGateResult;
+import com.yulong.chatagent.ratelimit.capacity.NoopPermit;
+import com.yulong.chatagent.ratelimit.capacity.Permit;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
@@ -20,6 +23,8 @@ import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -36,20 +41,36 @@ import java.util.UUID;
 @Slf4j
 public abstract class AbstractRetryingMqConsumer<T> {
 
+    /**
+     * Sentinel returned by {@link #handleCapacityWait} when the wait has timed
+     * out and the caller should complete the turn and ACK instead of requeuing.
+     */
+    protected static final MqMessageIdentity TERMINAL_CAPACITY_WAIT = null;
+
     private final ChatAgentMqProperties properties;
     private final RabbitMqMessagePublisher rabbitMqMessagePublisher;
     private final DistributedLockManager distributedLockManager;
     private final LockWatchdog lockWatchdog;
     private final String ownerId;
+    private final Clock clock;
 
     protected AbstractRetryingMqConsumer(ChatAgentMqProperties properties,
                                          RabbitMqMessagePublisher rabbitMqMessagePublisher,
                                          DistributedLockManager distributedLockManager,
                                          LockWatchdog lockWatchdog) {
+        this(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog, Clock.systemUTC());
+    }
+
+    AbstractRetryingMqConsumer(ChatAgentMqProperties properties,
+                               RabbitMqMessagePublisher rabbitMqMessagePublisher,
+                               DistributedLockManager distributedLockManager,
+                               LockWatchdog lockWatchdog,
+                               Clock clock) {
         this.properties = properties;
         this.rabbitMqMessagePublisher = rabbitMqMessagePublisher;
         this.distributedLockManager = distributedLockManager;
         this.lockWatchdog = lockWatchdog;
+        this.clock = clock;
         this.ownerId = consumerName() + ":" + UUID.randomUUID();
     }
 
@@ -139,20 +160,58 @@ public abstract class AbstractRetryingMqConsumer<T> {
                         identity.taskType(), identity.eventId(), readiness.reason());
                 return;
             }
-            // 真正的业务处理由子类实现：agent.run 会进 ChatEventProcessor，ingest 会跑文档入库。
-            processTask(payload, identity);
-            if (lease != null) {
-                distributedLockManager.markCompleted(lease);
-            }
-            channel.basicAck(deliveryTag, false);
-            log.info("MQ task processed successfully: taskType={}, eventId={}, idempotencyKey={}",
-                    identity.taskType(), identity.eventId(), identity.idempotencyKey());
-        } catch (Exception e) {
-            if (isRetryable(e)) {
-                handleRetryableFailure(payload, message, channel, deliveryTag, identity, lease, sessionLease, e);
+            // 容量门在 readiness PROCEED 后、processTask 前执行。
+            // 钩子默认 no-op（知识库入库等不保护执行容量）；agent.run 子类覆写为真实许可获取。
+            CapacityGateResult capacityResult = acquireCapacity(payload, identity);
+            if (capacityResult instanceof CapacityGateResult.WaitInQueue) {
+                // 容量不足：先检查是否已超 wait-timeout，否则节流发排队状态后延迟重投。
+                // 两条分支都必须 return 经外层 finally，由 safeReleaseSessionExecLock 释放 session-exec，
+                // 不能在 helper 内手动释放 session-exec（避免 double release）。
+                MqMessageIdentity waitIdentity = handleCapacityWait(payload, identity);
+                if (waitIdentity == TERMINAL_CAPACITY_WAIT) {
+                    // 超时：按终态完成 turn 并 ACK。task lock 在钩子内标记 completed 后不再持有。
+                    if (lease != null) {
+                        runFailureHook(() -> distributedLockManager.markCompleted(lease), "capacity-wait-timeout-complete");
+                    }
+                    channel.basicAck(deliveryTag, false);
+                    return;
+                }
+                // 未超时：释放 task lock 后用更新了容量等待字段的 identity 延迟重投，不增加 retryCount。
+                // 必须用 MqMessageHeaders 重建完整 headers，而非 buildRetryMessage（只刷新 RETRY_COUNT，
+                // 会丢失新的 capacityWait 字段——计划明确要求序列化完整 identity）。
+                safeReleaseTaskLockForWait(identity, lease);
+                if (requeueWithDelay(rebuildMessageWithIdentity(message, waitIdentity), channel,
+                        deliveryTag, waitIdentity, "execution capacity denied")) {
+                    onCapacityWaitRequeued(payload, waitIdentity);
+                }
                 return;
             }
-            handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+            if (capacityResult instanceof CapacityGateResult.FailFast) {
+                // Redis 不可用且策略为 FAIL_FAST：按终态失败处理。
+                throw new CapacityUnavailableException("execution capacity unavailable (Redis FAIL_FAST)");
+            }
+            CapacityGateResult.Proceed proceed = (CapacityGateResult.Proceed) capacityResult;
+            // 许可用 try-with-resources 包住 processTask，确保无论成功/异常都释放。
+            try (Permit ignoredPermit = proceed.permit()) {
+                // 真正的业务处理由子类实现：agent.run 会进 ChatEventProcessor，ingest 会跑文档入库。
+                processTask(payload, identity);
+                if (lease != null) {
+                    distributedLockManager.markCompleted(lease);
+                }
+                channel.basicAck(deliveryTag, false);
+                log.info("MQ task processed successfully: taskType={}, eventId={}, idempotencyKey={}",
+                        identity.taskType(), identity.eventId(), identity.idempotencyKey());
+            }
+        } catch (Exception e) {
+            // CapacityUnavailableException 是终态：Redis 故障 + FAIL_FAST 时重试也不会立即恢复。
+            if (e instanceof CapacityUnavailableException) {
+                handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+            } else if (isRetryable(e)) {
+                handleRetryableFailure(payload, message, channel, deliveryTag, identity, lease, sessionLease, e);
+                return;
+            } else {
+                handleTerminalFailure(payload, channel, deliveryTag, identity, lease, e);
+            }
         } finally {
             safeReleaseSessionExecLock(sessionLease);
         }
@@ -297,6 +356,115 @@ public abstract class AbstractRetryingMqConsumer<T> {
         return TaskReadiness.proceed();
     }
 
+    /**
+     * Execution-capacity gate hook. The default is a no-op so non-agent
+     * consumers (e.g. knowledge ingest) are unaffected.
+     *
+     * <p>{@code AgentRunTaskListener} overrides this to acquire a Redis-backed
+     * global permit before Agent execution.</p>
+     *
+     * @param payload  deserialized task payload
+     * @param identity MQ message identity
+     * @return gate result; default is {@link CapacityGateResult#proceed(Permit) proceed}
+     *         with a {@link NoopPermit}
+     */
+    protected CapacityGateResult acquireCapacity(T payload, MqMessageIdentity identity) {
+        return CapacityGateResult.proceed(NoopPermit.instance());
+    }
+
+    /**
+     * Handles a capacity WAIT: checks the wait timeout, and if not exceeded,
+     * emits a throttled queue-status notification and returns an updated
+     * identity carrying the refreshed {@code capacityWaitStartedAt} /
+     * {@code capacityWaitLastNotifiedAt} fields for requeue.
+     *
+     * <p>Base implementation performs no SSE emission (no-op status hook) and
+     * uses a fixed {@link #capacityWaitTimeoutMs()} for the timeout check, so
+     * non-agent consumers are unaffected. Returns the sentinel
+     * {@link #TERMINAL_CAPACITY_WAIT} when the wait has timed out.</p>
+     *
+     * @param payload  deserialized task payload
+     * @param identity current MQ message identity
+     * @return updated identity for requeue, or {@link #TERMINAL_CAPACITY_WAIT} on timeout
+     */
+    protected MqMessageIdentity handleCapacityWait(T payload, MqMessageIdentity identity) {
+        Instant now = clock.instant();
+        Instant startedAt = identity.capacityWaitStartedAt() != null
+                ? identity.capacityWaitStartedAt() : now;
+        long timeoutMs = capacityWaitTimeoutMs();
+        if (timeoutMs > 0 && now.minusMillis(timeoutMs).isAfter(startedAt)) {
+            onCapacityWaitTimeout(payload, identity);
+            return TERMINAL_CAPACITY_WAIT;
+        }
+        long intervalMs = capacityWaitStatusIntervalMs();
+        Instant lastNotifiedAt = identity.capacityWaitLastNotifiedAt();
+        Instant nextNotifiedAt = publishCapacityWaitStatus(payload, startedAt, lastNotifiedAt, now, intervalMs);
+        return identity.withCapacityWait(startedAt, nextNotifiedAt);
+    }
+
+    /**
+     * Capacity-wait timeout in milliseconds. {@code <= 0} disables the timeout
+     * (waits indefinitely). Base default is 0; agent consumers override to bind
+     * the wait.
+     *
+     * @return timeout in ms, or 0 to disable
+     */
+    protected long capacityWaitTimeoutMs() {
+        return 0L;
+    }
+
+    /**
+     * Minimum interval between queue-status notifications in milliseconds.
+     *
+     * @return interval in ms
+     */
+    protected long capacityWaitStatusIntervalMs() {
+        return 0L;
+    }
+
+    /**
+     * Emits a throttled queue-status notification during capacity WAIT.
+     *
+     * <p>Throttle rule: send immediately when {@code lastNotifiedAt} is absent
+     * (first WAIT), otherwise send only after {@code intervalMs} has elapsed.
+     * Returns the {@code Instant} to record as the new
+     * {@code capacityWaitLastNotifiedAt} — {@code now} when a notification was
+     * sent, or {@code lastNotifiedAt} unchanged when suppressed.</p>
+     *
+     * @param payload        deserialized task payload
+     * @param startedAt      wait start instant
+     * @param lastNotifiedAt last notification instant, or {@code null} on first WAIT
+     * @param now            current instant
+     * @param intervalMs     minimum interval between notifications
+     * @return the instant to record as last-notified
+     */
+    protected Instant publishCapacityWaitStatus(T payload,
+                                                Instant startedAt,
+                                                Instant lastNotifiedAt,
+                                                Instant now,
+                                                long intervalMs) {
+        // Base no-op: never sends SSE, preserves lastNotifiedAt as-is so the
+        // identity is stable across requeues for non-agent consumers.
+        return lastNotifiedAt;
+    }
+
+    /**
+     * Terminal handler invoked when a capacity wait exceeds its timeout.
+     *
+     * <p>Base implementation is a no-op. Agent consumers override to publish a
+     * user-visible failure (rollback, fallback assistant message, AI_ERROR /
+     * AI_DONE) and complete the turn so later turns are not blocked by turn
+     * sequence readiness.</p>
+     *
+     * @param payload  deserialized task payload
+     * @param identity MQ message identity
+     */
+    protected void onCapacityWaitTimeout(T payload, MqMessageIdentity identity) {
+    }
+
+    protected void onCapacityWaitRequeued(T payload, MqMessageIdentity identity) {
+    }
+
     protected void onRetriesExhausted(T payload, MqMessageIdentity identity, Exception exception) {
     }
 
@@ -337,11 +505,11 @@ public abstract class AbstractRetryingMqConsumer<T> {
         }
     }
 
-    private void requeueWithDelay(Message originalMessage,
-                                  Channel channel,
-                                  long deliveryTag,
-                                  MqMessageIdentity identity,
-                                  String reason) throws IOException {
+    private boolean requeueWithDelay(Message originalMessage,
+                                     Channel channel,
+                                     long deliveryTag,
+                                     MqMessageIdentity identity,
+                                     String reason) throws IOException {
         try {
             // 延迟重投不是 basicNack(requeue=true) 立刻回队尾，而是进入 retry queue 等一段时间再回来。
             rabbitMqMessagePublisher.publish(
@@ -353,16 +521,36 @@ public abstract class AbstractRetryingMqConsumer<T> {
             channel.basicAck(deliveryTag, false);
             log.info("MQ task moved to delayed requeue: taskType={}, eventId={}, reason={}",
                     identity.taskType(), identity.eventId(), reason);
+            return true;
         } catch (AmqpException requeueException) {
             log.warn("Failed to move MQ task to delayed requeue, falling back to nack(requeue=true): taskType={}, eventId={}, reason={}",
                     identity.taskType(), identity.eventId(), reason, requeueException);
             channel.basicNack(deliveryTag, false, true);
+            return false;
         }
     }
 
     private Message originalMessage(Message message, MqMessageIdentity identity) {
         // WAIT 分支不是业务失败，所以 retryCount 不增加，只按当前 identity 原样重投。
         return buildRetryMessage(message, identity);
+    }
+
+    private Message rebuildMessageWithIdentity(Message message, MqMessageIdentity identity) {
+        // 容量 WAIT 重投需要把更新后的 capacityWait* 字段写回 headers。
+        // buildRetryMessage 只刷新 RETRY_COUNT，会保留旧的 capacity-wait header（或缺失），
+        // 所以这里用 MqMessageHeaders.apply 完整重写 identity 相关 header，body 保持不变。
+        return MessageBuilder.fromMessage(message)
+                .andProperties(applyIdentityProperties(message, identity))
+                .build();
+    }
+
+    private static org.springframework.amqp.core.MessageProperties applyIdentityProperties(
+            Message message, MqMessageIdentity identity) {
+        org.springframework.amqp.core.MessageProperties props = new org.springframework.amqp.core.MessageProperties();
+        // 保留原 message 的 delivery tag 之外的非 identity header（content-type 等）。
+        props.setContentType(message.getMessageProperties().getContentType());
+        MqMessageHeaders.apply(props, identity);
+        return props;
     }
 
     private void safeReleaseTaskLockForWait(MqMessageIdentity identity, MqTaskLockLease lease) {
@@ -399,6 +587,18 @@ public abstract class AbstractRetryingMqConsumer<T> {
     @FunctionalInterface
     private interface FailureHook {
         void run() throws Exception;
+    }
+
+    /**
+     * Terminal exception thrown when execution capacity is unavailable and the
+     * configured policy is {@code FAIL_FAST}. Handled as a terminal failure
+     * (not retried) because Redis will not recover within the retry window.
+     */
+    public static final class CapacityUnavailableException extends RuntimeException {
+
+        public CapacityUnavailableException(String message) {
+            super(message);
+        }
     }
 
     protected enum TaskReadinessOutcome {

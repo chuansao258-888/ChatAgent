@@ -24,6 +24,9 @@ public final class MqMessageHeaders {
     public static final String ORIGINAL_ROUTING_KEY = "x-original-routing-key";
     public static final String FIRST_PUBLISHED_AT = "x-first-published-at";
     public static final String RETRY_COUNT = "x-retry-count";
+    // 容量等待时间 header：对旧消息是可选的，缺失时反序列化为 null。
+    public static final String CAPACITY_WAIT_STARTED_AT = "x-agent-capacity-wait-started-at";
+    public static final String CAPACITY_WAIT_LAST_NOTIFIED_AT = "x-agent-capacity-wait-last-notified-at";
 
     // 旧 header 改写保护入口已停用：当前 MQ 重试路径直接使用 MqMessageIdentity
     // 重建规范 header，不再逐个判断 headerName 是否不可变。
@@ -69,6 +72,13 @@ public final class MqMessageHeaders {
         // firstPublishedAt 保留第一次发布的时间，不随 retry 改变，方便排查消息年龄。
         headers.put(FIRST_PUBLISHED_AT, identity.firstPublishedAt().toString());
         headers.put(RETRY_COUNT, identity.retryCount());
+        // 容量等待时间只在非空时写出；旧消息没有这些值，缺失即为 null。
+        if (identity.capacityWaitStartedAt() != null) {
+            headers.put(CAPACITY_WAIT_STARTED_AT, identity.capacityWaitStartedAt().toString());
+        }
+        if (identity.capacityWaitLastNotifiedAt() != null) {
+            headers.put(CAPACITY_WAIT_LAST_NOTIFIED_AT, identity.capacityWaitLastNotifiedAt().toString());
+        }
         return headers;
     }
 
@@ -93,7 +103,10 @@ public final class MqMessageHeaders {
                 getRequiredText(headers, ORIGINAL_EXCHANGE),
                 getRequiredText(headers, ORIGINAL_ROUTING_KEY),
                 Instant.parse(getRequiredText(headers, FIRST_PUBLISHED_AT)),
-                getNonNegativeInt(headers, RETRY_COUNT)
+                getNonNegativeInt(headers, RETRY_COUNT),
+                // 容量等待字段对旧消息可选：缺失时返回 null，不破坏既有 MQ 消息反序列化。
+                getOptionalInstant(headers, CAPACITY_WAIT_STARTED_AT),
+                getOptionalInstant(headers, CAPACITY_WAIT_LAST_NOTIFIED_AT)
         );
     }
 
@@ -114,6 +127,15 @@ public final class MqMessageHeaders {
         if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
             return stringValue.trim();
         }
+        return null;
+    }
+
+    private static Instant getOptionalInstant(Map<String, ?> headers, String headerName) {
+        Object value = headers.get(headerName);
+        if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+            return Instant.parse(stringValue.trim());
+        }
+        // 旧 MQ 消息没有这些容量等待 header；缺失即为 null。
         return null;
     }
 

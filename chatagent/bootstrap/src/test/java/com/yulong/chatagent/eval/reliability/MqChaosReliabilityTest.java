@@ -462,7 +462,9 @@ class MqChaosReliabilityTest {
                     "chat.direct",
                     "ingest.task",
                     Instant.parse("2026-03-30T00:00:00Z"),
-                    retryCount
+                    retryCount,
+                null,
+                null
             );
         }
 
