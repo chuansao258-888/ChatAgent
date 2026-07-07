@@ -1,5 +1,7 @@
 package com.yulong.chatagent.loadtest;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.chat.ChatClientRegistry;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class StubChatModelRouterTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void routeShouldReturnNonStubChatClientRegardlessOfRequestedModel() {
@@ -39,6 +43,23 @@ class StubChatModelRouterTest {
         StubChatModel model = new StubChatModel(1L, 1L);
         var response = model.call(new Prompt("anything"));
 
-        assertThat(response.getResult().getOutput().getText()).isNotBlank();
+        assertThat(response.getResult().getOutput().getText())
+                .contains("压测")
+                .contains("模拟回答");
+    }
+
+    @Test
+    void stubChatModelCallShouldReturnStructuredSummaryJsonForSummarizerPrompt() throws Exception {
+        StubChatModel model = new StubChatModel(1L, 1L);
+        var response = model.call(new Prompt("You are a structured memory summarizer for an enterprise AI assistant."));
+
+        Map<String, Object> parsed = OBJECT_MAPPER.readValue(
+                response.getResult().getOutput().getText(),
+                new TypeReference<>() {
+                });
+
+        assertThat(parsed)
+                .containsKeys("summary", "facts", "decisions", "open_tasks", "entities");
+        assertThat(parsed.get("summary").toString()).contains("压测");
     }
 }

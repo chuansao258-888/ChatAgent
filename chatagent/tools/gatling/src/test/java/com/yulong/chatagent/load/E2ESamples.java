@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
@@ -13,11 +14,14 @@ import java.util.stream.Collectors;
  *
  * <p>Gatling's built-in assertions cannot cover arbitrary session-derived
  * percentiles, so samples are appended here per turn and the percentiles are
- * computed post-run from the collected data.</p>
+ * computed post-run from the collected data. Samples are also written
+ * incrementally to a CSV so that data survives a Gatling ForkException that
+ * kills the JVM before {@code after()} runs.</p>
  */
 public final class E2ESamples {
 
     private static final ConcurrentLinkedQueue<Long> SAMPLES = new ConcurrentLinkedQueue<>();
+    private static final Path LIVE_CSV = Path.of("tools", "gatling", "target", "gatling", "e2e-report", "e2e-samples-live.csv");
 
     private E2ESamples() {
     }
@@ -26,12 +30,19 @@ public final class E2ESamples {
     public static void record(long durationNanos) {
         if (durationNanos > 0L) {
             SAMPLES.add(durationNanos);
+            appendLiveCsv(durationNanos);
         }
     }
 
-    /** Clears all samples (called once per simulation JVM, before the run). */
+    /** Clears all samples and truncates the live CSV (called once per simulation JVM, before the run). */
     public static void reset() {
         SAMPLES.clear();
+        try {
+            Files.createDirectories(LIVE_CSV.getParent());
+            Files.writeString(LIVE_CSV, "e2e_ms\n");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to reset e2e live CSV", e);
+        }
     }
 
     /** Returns the number of samples collected. */
@@ -75,6 +86,15 @@ public final class E2ESamples {
             return file;
         } catch (IOException e) {
             throw new RuntimeException("Failed to write e2e samples CSV", e);
+        }
+    }
+
+    private static void appendLiveCsv(long durationNanos) {
+        try {
+            double ms = durationNanos / 1_000_000.0d;
+            Files.writeString(LIVE_CSV, ms + "\n", StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            // Live CSV is best-effort; don't fail the turn if the disk write fails.
         }
     }
 }

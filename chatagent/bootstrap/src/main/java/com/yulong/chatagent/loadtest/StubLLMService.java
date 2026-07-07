@@ -44,7 +44,7 @@ public class StubLLMService implements LLMService {
      * exercised, not just a single final write.
      */
     private static final String[] CANNED_CHUNKS = {
-            "This ", "is ", "a ", "stub ", "response ", "from ", "the ", "load-test ", "profile."
+            "这是", "压测", "环境", "的", "模拟", "回答。", "已收到", "你的问题，", "并返回", "稳定结果。"
     };
 
     private static final String CANNED_ANSWER = String.join("", CANNED_CHUNKS);

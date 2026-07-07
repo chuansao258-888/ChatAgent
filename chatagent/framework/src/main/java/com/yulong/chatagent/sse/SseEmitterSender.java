@@ -65,13 +65,25 @@ public class SseEmitterSender {
 
     /**
      * Marks the stream as failed with the given cause and logs a warning.
-     * No-op when the emitter is already terminated.
+     * No-op when the emitter is already terminated. Client-disconnect errors
+     * are demoted to debug and do not attempt completion (the client is gone).
      *
      * @param throwable failure cause
      */
     public void fail(Throwable throwable) {
+        if (SseClientDisconnects.isLikelyClientDisconnect(throwable)) {
+            closed.set(true);
+            log.debug("SSE client disconnected during send: {}", throwable.toString());
+            return;
+        }
         if (closed.compareAndSet(false, true)) {
-            emitter.completeWithError(throwable);
+            try {
+                emitter.completeWithError(throwable);
+            } catch (Exception completionFailure) {
+                if (!SseClientDisconnects.isLikelyClientDisconnect(completionFailure)) {
+                    log.warn("SSE error completion failed after send failure", completionFailure);
+                }
+            }
         }
         log.warn("SSE send failed", throwable);
     }

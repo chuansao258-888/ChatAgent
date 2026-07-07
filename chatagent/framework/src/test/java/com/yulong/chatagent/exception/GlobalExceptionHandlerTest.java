@@ -10,7 +10,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.io.IOException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class GlobalExceptionHandlerTest {
 
@@ -53,6 +56,24 @@ class GlobalExceptionHandlerTest {
 
         assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(entity.getBody().getMessage()).contains("size limit");
+    }
+
+    @Test
+    void handleIOException_clientDisconnectReturnsNoContent() throws Exception {
+        IOException ex = new IOException("broken pipe");
+
+        ResponseEntity<Void> entity = handler.handleIOException(ex);
+
+        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
+    @Test
+    void handleIOException_otherIoExceptionIsRethrown() {
+        IOException ex = new IOException("disk unavailable");
+
+        assertThatExceptionOfType(IOException.class)
+                .isThrownBy(() -> handler.handleIOException(ex))
+                .withMessage("disk unavailable");
     }
 
     @Test

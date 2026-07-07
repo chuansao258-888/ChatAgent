@@ -16,8 +16,8 @@ chatagent:
     dispatchers:
       agent-run-enabled: true
   loadtest:
-    mock-ttft-ms: 400
-    mock-stream-total-ms: 800
+    mock-ttft-ms: 100
+    mock-stream-total-ms: 200
   memory:
     l3:
       enabled: false

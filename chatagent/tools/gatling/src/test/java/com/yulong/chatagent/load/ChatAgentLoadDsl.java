@@ -53,19 +53,22 @@ final class ChatAgentLoadDsl {
 
     static Session prepareChatMessage(Session session) {
         String content = session.contains("content") ? session.getString("content") : "Hello";
+        String turnId = UUID.randomUUID().toString();
         String body = "{"
                 + "\"sessionId\":\"" + json(session.getString("sessionId")) + "\","
-                + "\"turnId\":\"" + UUID.randomUUID() + "\","
+                + "\"turnId\":\"" + turnId + "\","
                 + "\"role\":\"user\","
                 + "\"content\":\"" + json(content) + "\""
                 + "}";
-        return session.set("messageBody", body);
+        return session
+                .set("turnId", turnId)
+                .set("messageBody", body);
     }
 
     /**
-     * Opens an SSE connection for the current session and keeps it open. The e2e
-     * simulation relies on this one persistent connection per virtual user to
-     * receive turn-completion events.
+     * Opens an SSE connection for the current session. The e2e simulation uses
+     * a fresh session and SSE connection per measured turn so stale buffered
+     * terminal events cannot satisfy the next turn's check.
      */
     static ChainBuilder openSseForSession() {
         return exec(io.gatling.javaapi.http.HttpDsl.sse("Open SSE")

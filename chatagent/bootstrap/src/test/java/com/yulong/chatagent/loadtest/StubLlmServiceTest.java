@@ -65,6 +65,24 @@ class StubLlmServiceTest {
     }
 
     @Test
+    void cannedResponseShouldBeChineseDominantForChineseLoadPrompts() {
+        LoadTestProperties props = new LoadTestProperties();
+        props.setMockTtftMs(1L);
+        props.setMockStreamTotalMs(1L);
+        StubLLMService stub = new StubLLMService(props);
+
+        RecordingCallback callback = new RecordingCallback();
+        stub.streamChat(new Prompt("年假可以结转到下一年吗"), false, callback);
+        var response = stub.streamDecisionWithRouting(
+                new Prompt("报销住宿标准是多少"), "system", java.util.List.of(), false);
+
+        String streamed = String.join("", callback.content);
+        String decision = response.response().getResult().getOutput().getText();
+        assertThat(streamed).contains("压测").contains("稳定结果");
+        assertThat(decision).contains("压测").contains("稳定结果");
+    }
+
+    @Test
     void shouldNotThrowOnEmptyPrompt() {
         LoadTestProperties props = new LoadTestProperties();
         props.setMockTtftMs(1L);
