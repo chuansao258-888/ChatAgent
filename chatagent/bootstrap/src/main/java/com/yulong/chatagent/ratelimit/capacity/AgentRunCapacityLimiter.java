@@ -116,9 +116,10 @@ public class AgentRunCapacityLimiter {
         boolean acquired = localCapSemaphore.tryAcquire();
         if (acquired) {
             metricsRecorder.recordCapacityAcquire("fallback", "local_cap");
-            return CapacityGateResult.proceed(new LocalCapPermit(localCapSemaphore));
+            return CapacityGateResult.proceed(new LocalCapPermit(localCapSemaphore, metricsRecorder));
         }
         metricsRecorder.recordCapacityAcquire("denied", "local_cap");
+        metricsRecorder.recordCapacityWait("requeued");
         return CapacityGateResult.waitInQueue();
     }
 
@@ -156,6 +157,7 @@ public class AgentRunCapacityLimiter {
             }
             if (granted != null) {
                 metricsRecorder.recordCapacityAcquire("denied", "redis");
+                metricsRecorder.recordCapacityWait("requeued");
                 return CapacityGateResult.waitInQueue();
             }
             return handleRedisUnavailable();
@@ -177,22 +179,37 @@ public class AgentRunCapacityLimiter {
         boolean acquired = localCapSemaphore.tryAcquire();
         if (acquired) {
             metricsRecorder.recordCapacityAcquire("fallback", "local_cap");
-            return CapacityGateResult.proceed(new LocalCapPermit(localCapSemaphore));
+            return CapacityGateResult.proceed(new LocalCapPermit(localCapSemaphore, metricsRecorder));
         }
         metricsRecorder.recordCapacityAcquire("denied", "local_cap");
+        metricsRecorder.recordCapacityWait("requeued");
         return CapacityGateResult.waitInQueue();
     }
 
     private Permit startRenewal(String permitId, StringRedisTemplate redisTemplate) {
         long intervalMs = properties.getAgentRun().getPermitRenewIntervalMs();
         long ttlMs = properties.getAgentRun().getPermitTtlMs();
+        long acquiredAtNanos = System.nanoTime();
         ScheduledFuture<?> future = scheduler.scheduleWithFixedDelay(
                 () -> renewQuietly(permitId, redisTemplate),
                 intervalMs,
                 intervalMs,
                 TimeUnit.MILLISECONDS
         );
-        return new RedisPermit(permitId, redisTemplate, future, ttlMs, metricsRecorder);
+        return new RedisPermit(permitId, redisTemplate, future, ttlMs, metricsRecorder, acquiredAtNanos);
+    }
+
+    /**
+     * Records that a capacity wait timed out, including how long the turn waited.
+     *
+     * @param startedAt the instant the capacity wait began (from MqMessageIdentity)
+     */
+    public void recordWaitTimeout(java.time.Instant startedAt) {
+        metricsRecorder.recordCapacityWait("timeout");
+        if (startedAt != null) {
+            long waitedMs = Math.max(0L, java.time.Duration.between(startedAt, java.time.Instant.now()).toMillis());
+            metricsRecorder.recordCapacityWaitDuration(waitedMs);
+        }
     }
 
     private void renewQuietly(String permitId, StringRedisTemplate redisTemplate) {
@@ -242,23 +259,25 @@ public class AgentRunCapacityLimiter {
         private final ScheduledFuture<?> renewalFuture;
         private final long ttlMs;
         private final RateLimitMetricsRecorder metricsRecorder;
+        private final long acquiredAtNanos;
 
         private RedisPermit(String permitId,
                             StringRedisTemplate redisTemplate,
                             ScheduledFuture<?> renewalFuture,
                             long ttlMs,
-                            RateLimitMetricsRecorder metricsRecorder) {
+                            RateLimitMetricsRecorder metricsRecorder,
+                            long acquiredAtNanos) {
             this.permitId = permitId;
             this.redisTemplate = redisTemplate;
             this.renewalFuture = renewalFuture;
             this.ttlMs = ttlMs;
             this.metricsRecorder = metricsRecorder;
+            this.acquiredAtNanos = acquiredAtNanos;
         }
 
         @Override
         public void close() {
             renewalFuture.cancel(false);
-            long heldMs = 0;
             try {
                 redisTemplate.execute(RELEASE_SCRIPT, List.of(ACTIVE_PERMITS_KEY), permitId);
             } catch (Exception e) {
@@ -266,6 +285,7 @@ public class AgentRunCapacityLimiter {
                 log.warn("Permit release failed, leaving it to expire via TTL: member={}, ttlMs={}, error={}",
                         permitId, ttlMs, e.getMessage());
             }
+            long heldMs = Math.max(0L, (System.nanoTime() - acquiredAtNanos) / 1_000_000L);
             metricsRecorder.recordPermitHoldDuration(heldMs);
         }
     }
@@ -274,14 +294,20 @@ public class AgentRunCapacityLimiter {
     private static final class LocalCapPermit implements Permit {
 
         private final Semaphore semaphore;
+        private final RateLimitMetricsRecorder metricsRecorder;
+        private final long acquiredAtNanos;
 
-        private LocalCapPermit(Semaphore semaphore) {
+        private LocalCapPermit(Semaphore semaphore, RateLimitMetricsRecorder metricsRecorder) {
             this.semaphore = semaphore;
+            this.metricsRecorder = metricsRecorder;
+            this.acquiredAtNanos = System.nanoTime();
         }
 
         @Override
         public void close() {
             semaphore.release();
+            long heldMs = Math.max(0L, (System.nanoTime() - acquiredAtNanos) / 1_000_000L);
+            metricsRecorder.recordPermitHoldDuration(heldMs);
         }
     }
 

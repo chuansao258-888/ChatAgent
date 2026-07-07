@@ -177,6 +177,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     protected void onCapacityWaitTimeout(AgentRunTaskPayload payload, MqMessageIdentity identity) {
         // 容量等待超时是面向用户的终态：回滚本 turn 局部输出、补发 fallback assistant 消息、
         // 发 AI_ERROR/AI_DONE 并完成 turn，让后续 turn 不被 turn-sequence readiness 阻塞。
+        capacityLimiter.recordWaitTimeout(identity.capacityWaitStartedAt());
         ChatEvent event = payload.toChatEvent();
         IllegalStateException timeoutEx = new IllegalStateException(
                 "Agent execution capacity wait timed out after "

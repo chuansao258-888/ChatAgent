@@ -116,6 +116,18 @@ public class RateLimitMetricsRecorder {
         meterRegistry.counter("chatagent.agent_run.capacity.redis.failures").increment();
     }
 
+    /**
+     * Records a Redis failure encountered by the entry token-bucket limiter.
+     * Separate from the capacity limiter counter so dashboards do not conflate
+     * the two layers.
+     */
+    public void recordEntryRedisFailure() {
+        if (meterRegistry == null) {
+            return;
+        }
+        meterRegistry.counter("chatagent.rate_limit.entry.redis.failures").increment();
+    }
+
     private static String normalize(String value) {
         return StringUtils.hasText(value) ? value.trim() : UNKNOWN;
     }

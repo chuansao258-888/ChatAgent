@@ -118,7 +118,7 @@ public class EntryRateLimiter {
             Long allowed = redisTemplate.execute(
                     TOKEN_BUCKET_SCRIPT,
                     List.of(key),
-                    String.valueOf(entry.getRequestsPerSecond()),
+                    String.valueOf(entry.getBurstCapacity()),
                     String.valueOf(entry.getRequestsPerSecond()),
                     String.valueOf(1),
                     String.valueOf(nowMillis),
@@ -137,7 +137,7 @@ public class EntryRateLimiter {
         } catch (Exception e) {
             log.warn("Entry rate-limit Redis call failed, applying fallback policy: scope={}, error={}",
                     identity.scope(), e.getMessage());
-            metricsRecorder.recordCapacityRedisFailure();
+            metricsRecorder.recordEntryRedisFailure();
             return handleRedisUnavailable(identity, entry);
         }
     }

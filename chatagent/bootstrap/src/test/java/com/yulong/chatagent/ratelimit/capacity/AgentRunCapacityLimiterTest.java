@@ -147,11 +147,60 @@ class AgentRunCapacityLimiterTest {
         assertThat(c1.member()).startsWith("o:e:t:");
     }
 
+    @Test
+    void shouldRecordPermitHoldDurationOnLocalCapPermitClose() throws Exception {
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        @SuppressWarnings("unchecked")
+        ObjectProvider<MeterRegistry> regProvider = mock(ObjectProvider.class);
+        when(regProvider.getIfAvailable()).thenReturn(registry);
+        RateLimitMetricsRecorder realRecorder = new RateLimitMetricsRecorder(regProvider);
+
+        Semaphore semaphore = new Semaphore(1);
+        AgentRunCapacityLimiter limiter = newLimiterWithRecorder(null, semaphore, realRecorder);
+
+        CapacityGateResult result = limiter.tryAcquire(context);
+        assertThat(result).isInstanceOf(CapacityGateResult.Proceed.class);
+        // Hold the permit briefly so the recorded duration is positive.
+        Thread.sleep(10);
+        ((CapacityGateResult.Proceed) result).permit().close();
+
+        io.micrometer.core.instrument.Timer holdTimer = registry.find("chatagent.agent_run.capacity.permit.hold.duration").timer();
+        assertThat(holdTimer).isNotNull();
+        assertThat(holdTimer.count()).isEqualTo(1L);
+    }
+
+    @Test
+    void shouldRecordWaitRequeuedCounterWhenCapacityDenied() {
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        @SuppressWarnings("unchecked")
+        ObjectProvider<MeterRegistry> regProvider = mock(ObjectProvider.class);
+        when(regProvider.getIfAvailable()).thenReturn(registry);
+        RateLimitMetricsRecorder realRecorder = new RateLimitMetricsRecorder(regProvider);
+
+        AgentRunCapacityLimiter limiter = newLimiterWithRecorder(null, new Semaphore(0), realRecorder);
+
+        CapacityGateResult result = limiter.tryAcquire(context);
+        assertThat(result).isInstanceOf(CapacityGateResult.WaitInQueue.class);
+
+        io.micrometer.core.instrument.Counter waitCounter = registry.find("chatagent.agent_run.capacity.waits")
+                .tag("outcome", "requeued").counter();
+        assertThat(waitCounter).isNotNull();
+        assertThat(waitCounter.count()).isEqualTo(1.0);
+    }
+
     private AgentRunCapacityLimiter newLimiter(StringRedisTemplate redisTemplate, Semaphore semaphore) {
+        return newLimiterWithRecorder(redisTemplate, semaphore, metricsRecorder);
+    }
+
+    private AgentRunCapacityLimiter newLimiterWithRecorder(StringRedisTemplate redisTemplate,
+                                                            Semaphore semaphore,
+                                                            RateLimitMetricsRecorder recorder) {
         @SuppressWarnings("unchecked")
         ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(redisTemplate);
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        return new AgentRunCapacityLimiter(properties, metricsRecorder, provider, scheduler, semaphore);
+        return new AgentRunCapacityLimiter(properties, recorder, provider, scheduler, semaphore);
     }
 }

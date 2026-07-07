@@ -118,6 +118,33 @@ class EntryRateLimiterTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void shouldPassBurstCapacityAndRefillRateAsDistinctRedisArgs() {
+        // Regression: the Lua script's ARGV[1] is capacity (burst) and ARGV[2] is
+        // refillPerSecond. They must NOT both be requestsPerSecond, otherwise the
+        // Redis bucket's burst is wrong (e.g. burst=2 instead of configured 5).
+        properties.getEntry().setRequestsPerSecond(1);
+        properties.getEntry().setBurstCapacity(3);
+
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        when(redisTemplate.execute(any(), anyList(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(1L);
+        ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redisTemplate);
+        EntryRateLimiter redisBackedLimiter = new EntryRateLimiter(properties, metricsRecorder, identityResolver, provider);
+
+        redisBackedLimiter.checkAllowed(request);
+
+        org.mockito.ArgumentCaptor<String> argv = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(redisTemplate).execute(any(), anyList(), argv.capture(), argv.capture(), argv.capture(),
+                argv.capture(), argv.capture());
+        java.util.List<String> args = argv.getAllValues();
+        // ARGV[1] = capacity (burst), ARGV[2] = refillPerSecond.
+        assertThat(args.get(0)).isEqualTo("3"); // burstCapacity
+        assertThat(args.get(1)).isEqualTo("1"); // requestsPerSecond (refill)
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void shouldFallBackToLocalWhenRedisThrows() {
         StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
         when(redisTemplate.execute(any(), anyList(), anyString(), anyString(), anyString(), anyString(), anyString()))
@@ -175,5 +202,34 @@ class EntryRateLimiterTest {
         assertThat(ex.getErrorMessage())
                 .isEqualTo("Too many chat requests. Please wait a moment and try again.");
         assertThat(ex.getErrorCode().httpStatus().value()).isEqualTo(429);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldRecordEntryRedisFailureOnEntryLayerNotCapacityMetric() {
+        // Regression: entry Redis failures must increment the entry counter, not
+        // the capacity limiter counter (they were previously conflated).
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        ObjectProvider<MeterRegistry> regProvider = mock(ObjectProvider.class);
+        when(regProvider.getIfAvailable()).thenReturn(registry);
+        RateLimitMetricsRecorder realRecorder = new RateLimitMetricsRecorder(regProvider);
+
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        when(redisTemplate.execute(any(), anyList(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("redis down"));
+        ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redisTemplate);
+        EntryRateLimiter limiter = new EntryRateLimiter(properties, realRecorder, identityResolver, provider);
+
+        // Local bucket fallback (burst=1) allows the first call through.
+        assertThatCode(() -> limiter.checkAllowed(request)).doesNotThrowAnyException();
+
+        // Entry Redis failure counter incremented; capacity counter NOT.
+        io.micrometer.core.instrument.Counter entryCounter = registry.find("chatagent.rate_limit.entry.redis.failures").counter();
+        io.micrometer.core.instrument.Counter capacityCounter = registry.find("chatagent.agent_run.capacity.redis.failures").counter();
+        assertThat(entryCounter).isNotNull();
+        assertThat(entryCounter.count()).isEqualTo(1.0);
+        assertThat(capacityCounter).isNull();
     }
 }
