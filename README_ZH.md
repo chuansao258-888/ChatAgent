@@ -593,8 +593,6 @@ python -m compileall -q chatagent_eval tests
 
 ### 代码与文档规范
 
-- 架构边界、一致性、简洁性、错误语义和证据门禁以
-  [`ENGINEERING_STANDARDS.md`](ENGINEERING_STANDARDS.md) 为准。
 - 每个独立任务使用对应的 feature 分支；同一任务的各 Phase 和 review-fix
   保持在同一分支，并且只在 cross-review 验收后创建 Phase checkpoint。
 - 不要把密钥写入源码、文档、测试、artifact 或日志。

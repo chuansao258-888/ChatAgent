@@ -686,8 +686,6 @@ python -m compileall -q chatagent_eval tests
 
 ### Code and Documentation Rules
 
-- Follow [`ENGINEERING_STANDARDS.md`](ENGINEERING_STANDARDS.md) for architecture,
-  consistency, simplicity, failure semantics, and evidence gates.
 - Start each distinct task on its matching feature branch, keep all phases and
   review fixes for that task on the same branch, and checkpoint each phase only
   after cross-review acceptance.
