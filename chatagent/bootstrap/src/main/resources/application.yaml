@@ -176,6 +176,11 @@ chatagent:
     clarification-candidates: 2
     classifier-model: deepseek-v4-flash
     rewrite-model: deepseek-v4-flash
+  agent:
+    turn-contract:
+      enabled: ${CHATAGENT_AGENT_TURN_CONTRACT_ENABLED:true}
+      retrieval-enforcement: ${CHATAGENT_AGENT_RETRIEVAL_ENFORCEMENT:warn}
+      emit-debug-metadata: ${CHATAGENT_AGENT_TURN_CONTRACT_DEBUG_METADATA:false}
   memory:
     l1-window-turns: ${CHATAGENT_MEMORY_L1_WINDOW_TURNS:48}
     l1-token-budget: ${CHATAGENT_MEMORY_L1_TOKEN_BUDGET:256000}

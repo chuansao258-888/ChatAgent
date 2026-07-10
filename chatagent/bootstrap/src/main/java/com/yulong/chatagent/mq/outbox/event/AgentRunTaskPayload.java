@@ -3,6 +3,7 @@ package com.yulong.chatagent.mq.outbox.event;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.intent.application.IntentResolution;
 
@@ -24,7 +25,8 @@ public record AgentRunTaskPayload(
         String rewrittenInput,
         String userId,
         AgentExecutionMode executionMode,
-        boolean forceRollback
+        boolean forceRollback,
+        TurnExecutionContract executionContract
 ) {
 
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
@@ -40,9 +42,10 @@ public record AgentRunTaskPayload(
             @JsonProperty("rewrittenInput") String rewrittenInput,
             @JsonProperty(value = "userId", defaultValue = "") String userId,
             @JsonProperty("executionMode") AgentExecutionMode executionMode,
-            @JsonProperty(value = "forceRollback", defaultValue = "false") boolean forceRollback
+            @JsonProperty(value = "forceRollback", defaultValue = "false") boolean forceRollback,
+            @JsonProperty("executionContract") TurnExecutionContract executionContract
     ) {
-        // JsonCreator 构造器保证老消息缺少 userId/executionMode/forceRollback 字段时仍能兼容反序列化。
+        // JsonCreator 构造器保证老消息缺少 userId/executionMode/forceRollback/executionContract 字段时仍能兼容反序列化。
         this.agentId = agentId;
         this.sessionId = sessionId;
         this.turnId = turnId;
@@ -55,6 +58,7 @@ public record AgentRunTaskPayload(
         this.userId = userId == null ? "" : userId;
         this.executionMode = executionMode == null ? AgentExecutionMode.REACT : executionMode;
         this.forceRollback = forceRollback;
+        this.executionContract = executionContract;
     }
 
     public AgentRunTaskPayload(String agentId,
@@ -69,7 +73,7 @@ public record AgentRunTaskPayload(
                                String userId,
                                boolean forceRollback) {
         this(agentId, sessionId, turnId, turnSeq, chatMessageId, userInput, recentHistorySize,
-                intentResolution, rewrittenInput, userId, AgentExecutionMode.REACT, forceRollback);
+                intentResolution, rewrittenInput, userId, AgentExecutionMode.REACT, forceRollback, null);
     }
 
     public static AgentRunTaskPayload fromChatEvent(ChatEvent event) {
@@ -86,7 +90,8 @@ public record AgentRunTaskPayload(
                 event.getRewrittenInput(),
                 event.getUserId(),
                 event.getExecutionMode(),
-                false
+                false,
+                event.getExecutionContract()
         );
     }
 
@@ -104,7 +109,8 @@ public record AgentRunTaskPayload(
                 rewrittenInput,
                 userId,
                 executionMode,
-                forceRollback
+                forceRollback,
+                executionContract
         );
     }
 
@@ -121,7 +127,8 @@ public record AgentRunTaskPayload(
                 intentResolution,
                 rewrittenInput,
                 userId,
-                executionMode
+                executionMode,
+                executionContract
         );
     }
 }

@@ -1,7 +1,12 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -25,6 +30,8 @@ import java.util.regex.Pattern;
 @Component
 public class ConversationTurnPreparationService {
 
+    private static final Logger log = LoggerFactory.getLogger(ConversationTurnPreparationService.class);
+
     private static final Pattern CONTEXTUAL_FOLLOW_UP = Pattern.compile(
             "\\b(current|now|it|that|this|these|those|same|previous|earlier|latest|owner|room|invite|handoff|values)\\b"
                     + "|\\b(?:who(?:'s|\\s+is)\\s+on\\s+point|on\\s+point|point\\s+person|who\\s+(?:owns|handles|has|is\\s+handling)\\s+(?:it|this|that))\\b"
@@ -42,6 +49,8 @@ public class ConversationTurnPreparationService {
     private final IntentRouter intentRouter;
     private final QueryRewriter queryRewriter;
     private final SystemIntentResponseRenderer systemIntentResponseRenderer;
+    private final TurnExecutionContractBuilder contractBuilder;
+    private final TurnContractProperties contractProperties;
 
     public ConversationTurnPreparationService(IntentTreeCacheManager intentTreeCacheManager,
                                               PendingIntentResolutionStore pendingIntentResolutionStore,
@@ -49,7 +58,9 @@ public class ConversationTurnPreparationService {
                                               ClarificationResponseBuilder clarificationResponseBuilder,
                                               IntentRouter intentRouter,
                                               QueryRewriter queryRewriter,
-                                              SystemIntentResponseRenderer systemIntentResponseRenderer) {
+                                              SystemIntentResponseRenderer systemIntentResponseRenderer,
+                                              TurnExecutionContractBuilder contractBuilder,
+                                              TurnContractProperties contractProperties) {
         this.intentTreeCacheManager = intentTreeCacheManager;
         this.pendingIntentResolutionStore = pendingIntentResolutionStore;
         this.clarificationResolver = clarificationResolver;
@@ -57,6 +68,8 @@ public class ConversationTurnPreparationService {
         this.intentRouter = intentRouter;
         this.queryRewriter = queryRewriter;
         this.systemIntentResponseRenderer = systemIntentResponseRenderer;
+        this.contractBuilder = contractBuilder;
+        this.contractProperties = contractProperties;
     }
 
     /**
@@ -70,18 +83,21 @@ public class ConversationTurnPreparationService {
      * </ul>
      */
     public TurnPreparationResult prepare(String agentId, String sessionId, String userInput) {
-        // 基础入参不完整时，直接透传给 Agent。
+        // 基础入参不完整时，按普通聊天透传给 Agent。
         // 这里不抛错，是因为某些场景下“没有可用路由结果”本身就是允许的默认路径。
+        // 注意：passthrough 仍会进入异步 Agent runtime（orchestrator 对所有非 direct 结果都会 dispatch），
+        // 因此 enabled=true 时也要为本路 turn 构建 contract，避免 warn 模式覆盖出现空缺。
         if (!StringUtils.hasText(agentId) || !StringUtils.hasText(sessionId) || !StringUtils.hasText(userInput)) {
-            return TurnPreparationResult.passthrough();
+            return dispatchWithContract(null, userInput, userInput);
         }
 
         IntentTreeSnapshot snapshot = intentTreeCacheManager.loadActiveSnapshot(agentId);
         if (snapshot.isEmpty()) {
             // 当前 agent 没有可用 intent tree，说明这一轮不做意图边界控制。
             // 同时清掉历史 pending clarification，避免用户卡在过期澄清状态里。
+            // 这里仍然是 dispatch 到 Agent runtime，所以也要带 contract。
             pendingIntentResolutionStore.delete(sessionId);
-            return TurnPreparationResult.passthrough();
+            return dispatchWithContract(null, userInput, userInput);
         }
 
         PendingIntentResolution pending = pendingIntentResolutionStore.get(sessionId);
@@ -114,7 +130,7 @@ public class ConversationTurnPreparationService {
                     // A substantive follow-up is a new conversational turn, not a failed option reply.
                     // Let users leave a nested clarification without having to explicitly cancel it.
                     pendingIntentResolutionStore.delete(sessionId);
-                    return TurnPreparationResult.dispatch(null, canonicalQuery);
+                    return dispatchWithContract(null, canonicalQuery, userInput);
                 }
                 // 用户回复仍然不足以确定唯一候选时，继续 direct reply 做二次澄清。
                 // 注意这里不会进入 Agent，也不会清掉 pending。
@@ -140,7 +156,7 @@ public class ConversationTurnPreparationService {
                 // Forcing an intent-tree child selection here interrupts ordinary multi-turn chat,
                 // e.g. "who owns it now and which room should be on the invite?"
                 pendingIntentResolutionStore.delete(sessionId);
-                return TurnPreparationResult.dispatch(null, canonicalQuery);
+                return dispatchWithContract(null, canonicalQuery, userInput);
             }
             // 这里把本轮澄清候选和原始 query 记录下来，
             // 下一次用户回复时才能走“澄清 continuation”分支。
@@ -164,7 +180,7 @@ public class ConversationTurnPreparationService {
         if (!routingResult.hasResolution()) {
             // 没有 resolution 不代表失败，只是这一轮没有可用意图边界。
             // 这种情况下仍然可以把原始 query dispatch 给 Agent。
-            return TurnPreparationResult.dispatch(null, canonicalQuery);
+            return dispatchWithContract(null, canonicalQuery, userInput);
         }
 
         IntentResolution resolution = routingResult.resolution();
@@ -175,7 +191,34 @@ public class ConversationTurnPreparationService {
 
         // 非 SYSTEM 的正常意图会携带 resolution 和 rewrite 后的 query 进入 Agent，
         // 这样后续工具筛选、RAG scope 和 prompt 都能利用这个边界。
-        return TurnPreparationResult.dispatch(resolution, queryRewriter.rewrite(canonicalQuery, resolution));
+        String rewritten = queryRewriter.rewrite(canonicalQuery, resolution);
+        return dispatchWithContract(resolution, rewritten, canonicalQuery);
+    }
+
+    /**
+     * 把 dispatch 结果带上 Phase 1 的 warn 模式 contract。
+     *
+     * <p>当 {@code chatagent.agent.turn-contract.enabled=false} 时不构建 contract，
+     * 保持与 legacy 行为完全一致；这是紧急回滚开关。</p>
+     */
+    private TurnPreparationResult dispatchWithContract(IntentResolution resolution, String dispatchedInput, String originalUserInput) {
+        if (!contractProperties.isEnabled()) {
+            return TurnPreparationResult.dispatch(resolution, dispatchedInput);
+        }
+        try {
+            TurnExecutionContract contract = contractBuilder.build(resolution, originalUserInput, dispatchedInput, null);
+            if (contractProperties.isEmitDebugMetadata()) {
+                // 只记录枚举值和模式，不记录用户原文/查询内容。
+                log.info("Turn contract built (warn mode): intentKind={}, label={}, sourceNeed={}, retrievalMode={}, retrievalSource={}, enforcement={}",
+                        contract.intent().kind(), contract.analysis().primaryIntent(), contract.analysis().sourceNeed(),
+                        contract.retrieval().mode(), contract.retrieval().source(), contractProperties.getRetrievalEnforcement());
+            }
+            return TurnPreparationResult.dispatch(resolution, dispatchedInput, contract);
+        } catch (RuntimeException ex) {
+            // contract 构建失败不能影响 dispatch 主链路；降级为无 contract 的 dispatch。
+            log.warn("Turn contract build failed, dispatching without contract: {}", ex.getMessage());
+            return TurnPreparationResult.dispatch(resolution, dispatchedInput);
+        }
     }
 
     private boolean isContextualFollowUp(String userInput) {

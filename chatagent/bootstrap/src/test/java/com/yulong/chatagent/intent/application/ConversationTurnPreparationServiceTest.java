@@ -1,5 +1,8 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
@@ -13,6 +16,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,17 +45,28 @@ class ConversationTurnPreparationServiceTest {
     @Mock
     private SystemIntentResponseRenderer systemIntentResponseRenderer;
 
-    @Test
-    void shouldReturnRetryClarificationWhenPendingReplyCannotBeResolved() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
+    @Mock
+    private TurnExecutionContractBuilder contractBuilder;
+
+    private final TurnContractProperties contractProperties = new TurnContractProperties();
+
+    private ConversationTurnPreparationService newService() {
+        return new ConversationTurnPreparationService(
                 intentTreeCacheManager,
                 pendingIntentResolutionStore,
                 clarificationResolver,
                 clarificationResponseBuilder,
                 intentRouter,
                 queryRewriter,
-                systemIntentResponseRenderer
+                systemIntentResponseRenderer,
+                contractBuilder,
+                contractProperties
         );
+    }
+
+    @Test
+    void shouldReturnRetryClarificationWhenPendingReplyCannotBeResolved() {
+        ConversationTurnPreparationService service = newService();
         IntentNodeDTO candidate = IntentNodeDTO.builder()
                 .id("topic-1")
                 .name("年假政策")
@@ -78,15 +93,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldRouteSelectedClarificationWithOriginalQueryAndClearPending() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         IntentNodeDTO alpha = IntentNodeDTO.builder()
                 .id("topic-1")
                 .name("Operations Alpha")
@@ -130,15 +137,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldAbandonPendingClarificationForSubstantiveContextualFollowUp() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
                 .name("Ridgewater Launch Notes")
@@ -174,15 +173,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldKeepPendingClarificationForVaguePronounSelection() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
                 .name("Ridgewater Launch Notes")
@@ -216,15 +207,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldRenderSystemIntentDirectly() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
                 new IntentTreeSnapshot("assistant-1", 1, List.of(IntentNodeDTO.builder().id("root").build()), java.util.Map.of())
         );
@@ -248,15 +231,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldBypassNewClarificationForContextualFollowUpQuestion() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
                 .name("Ridgewater Launch Notes")
@@ -286,15 +261,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldBypassNewClarificationForPointPersonFollowUp() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
                 .name("Ridgewater Launch Notes")
@@ -324,15 +291,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldClearExpiredPendingClarificationWhenCandidatesAreGone() {
-        ConversationTurnPreparationService service = new ConversationTurnPreparationService(
-                intentTreeCacheManager,
-                pendingIntentResolutionStore,
-                clarificationResolver,
-                clarificationResponseBuilder,
-                intentRouter,
-                queryRewriter,
-                systemIntentResponseRenderer
-        );
+        ConversationTurnPreparationService service = newService();
         when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
                 new IntentTreeSnapshot(
                         "assistant-1",
@@ -353,6 +312,85 @@ class ConversationTurnPreparationServiceTest {
 
         assertThat(result.isDirectReply()).isTrue();
         assertThat(result.directReply()).isEqualTo("expired");
+        verify(pendingIntentResolutionStore).delete("session-1");
+    }
+
+    @Test
+    void shouldCarryExecutionContractOnDispatchedTurnWhenEnabled() {
+        // Phase 1 warn 模式：开启时每个 dispatch 结果都应带上 contract。
+        contractProperties.setEnabled(true);
+        ConversationTurnPreparationService service = newService();
+        IntentResolution resolution = new IntentResolution(
+                IntentKind.KB,
+                List.of(IntentNodeDTO.builder().id("leaf").name("年假").build()),
+                List.of("kb-1"),
+                ScopePolicy.STRICT,
+                List.of(),
+                null
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, List.of(IntentNodeDTO.builder().id("leaf").name("年假").build()), java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(null);
+        when(intentRouter.route("assistant-1", "年假怎么申请")).thenReturn(IntentRoutingResult.resolved(resolution));
+        when(queryRewriter.rewrite("年假怎么申请", resolution)).thenReturn("年假 申请");
+        TurnExecutionContract builtContract = new TurnExecutionContractBuilder().build(resolution, "年假怎么申请", "年假 申请", null);
+        when(contractBuilder.build(resolution, "年假怎么申请", "年假 申请", null)).thenReturn(builtContract);
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", "年假怎么申请");
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.executionContract()).isSameAs(builtContract);
+        assertThat(result.intentResolution()).isEqualTo(resolution);
+        assertThat(result.rewrittenInput()).isEqualTo("年假 申请");
+        verify(contractBuilder).build(resolution, "年假怎么申请", "年假 申请", null);
+    }
+
+    @Test
+    void shouldOmitExecutionContractWhenDisabled() {
+        // 紧急回滚开关：关闭时不构建 contract，行为与 legacy 完全一致。
+        contractProperties.setEnabled(false);
+        ConversationTurnPreparationService service = newService();
+        IntentResolution resolution = new IntentResolution(
+                IntentKind.KB,
+                List.of(IntentNodeDTO.builder().id("leaf").name("年假").build()),
+                List.of("kb-1"),
+                ScopePolicy.STRICT,
+                List.of(),
+                null
+        );
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 1, List.of(IntentNodeDTO.builder().id("leaf").name("年假").build()), java.util.Map.of())
+        );
+        when(pendingIntentResolutionStore.get("session-1")).thenReturn(null);
+        when(intentRouter.route("assistant-1", "年假怎么申请")).thenReturn(IntentRoutingResult.resolved(resolution));
+        when(queryRewriter.rewrite("年假怎么申请", resolution)).thenReturn("年假 申请");
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", "年假怎么申请");
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.executionContract()).isNull();
+        assertThat(result.intentResolution()).isEqualTo(resolution);
+        assertThat(result.rewrittenInput()).isEqualTo("年假 申请");
+        verify(contractBuilder, never()).build(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void shouldCarryContractOnPassthroughWhenIntentTreeEmpty() {
+        // passthrough turn（空 intent tree）仍然会被 orchestrator dispatch 进 Agent runtime，
+        // 所以 enabled=true 时也必须带 contract，否则 warn 模式覆盖出现空缺。
+        contractProperties.setEnabled(true);
+        ConversationTurnPreparationService service = newService();
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
+                new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of())
+        );
+        TurnExecutionContract passthroughContract = new TurnExecutionContractBuilder().build(null, "你好", "你好", null);
+        when(contractBuilder.build(null, "你好", "你好", null)).thenReturn(passthroughContract);
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", "你好");
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.executionContract()).isSameAs(passthroughContract);
         verify(pendingIntentResolutionStore).delete("session-1");
     }
 }

@@ -5,6 +5,7 @@ out/
 # Local agent workflow files
 .agents/
 .claude/
+.zcode/
 .agent-workflow/
 AGENTS.md
 CLAUDE.md

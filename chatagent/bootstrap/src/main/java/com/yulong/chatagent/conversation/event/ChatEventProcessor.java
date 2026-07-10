@@ -50,6 +50,14 @@ public class ChatEventProcessor {
                     event.getAgentId(), event.getSessionId(), event.getChatMessageId(), event.getRecentHistorySize(),
                     event.getIntentResolution() == null ? "DEFAULT" : event.getIntentResolution().kind(),
                     event.getExecutionMode());
+            // Phase 1 warn 模式：确认 contract 在 dispatched turn 上是否存在；Phase 3 起 contract 将参与检索/工具决策。
+            if (event.getExecutionContract() != null) {
+                log.debug("Turn contract present: version={}, primaryIntent={}, sourceNeed={}, retrievalMode={}, enforcement=warn",
+                        event.getExecutionContract().version(),
+                        event.getExecutionContract().analysis().primaryIntent(),
+                        event.getExecutionContract().analysis().sourceNeed(),
+                        event.getExecutionContract().retrieval().mode());
+            }
 
             if (!chatModelAvailability.hasConfiguredProvider()) {
                 // 本地开发环境可能没有配置模型 API key；直接给用户可见的降级说明，而不是静默失败。

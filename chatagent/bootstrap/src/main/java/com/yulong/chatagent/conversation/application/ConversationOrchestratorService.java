@@ -189,7 +189,8 @@ public class ConversationOrchestratorService {
                         preparationResult.intentResolution(),
                         preparationResult.rewrittenInput(),
                         resolveSessionUserId(turnContext.request().getSessionId()),
-                        turnContext.executionMode()
+                        turnContext.executionMode(),
+                        preparationResult.executionContract()
                 )
         );
     }

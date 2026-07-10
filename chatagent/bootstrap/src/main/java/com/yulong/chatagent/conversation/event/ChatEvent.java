@@ -1,6 +1,7 @@
 package com.yulong.chatagent.conversation.event;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import lombok.Data;
 
@@ -31,6 +32,7 @@ public class ChatEvent {
     private String rewrittenInput;
     private String userId;
     private AgentExecutionMode executionMode;
+    private TurnExecutionContract executionContract;
 
     public ChatEvent(String agentId,
                      String sessionId,
@@ -79,6 +81,22 @@ public class ChatEvent {
                      String rewrittenInput,
                      String userId,
                      AgentExecutionMode executionMode) {
+        this(agentId, sessionId, turnId, turnSeq, chatMessageId, userInput, recentHistorySize,
+                intentResolution, rewrittenInput, userId, executionMode, null);
+    }
+
+    public ChatEvent(String agentId,
+                     String sessionId,
+                     String turnId,
+                     Long turnSeq,
+                     String chatMessageId,
+                     String userInput,
+                     int recentHistorySize,
+                     IntentResolution intentResolution,
+                     String rewrittenInput,
+                     String userId,
+                     AgentExecutionMode executionMode,
+                     TurnExecutionContract executionContract) {
         // 这里不做额外业务逻辑，只负责把 turn 执行所需的最小字段稳定封装起来。
         this.agentId = agentId;
         this.sessionId = sessionId;
@@ -91,5 +109,7 @@ public class ChatEvent {
         this.rewrittenInput = rewrittenInput;
         this.userId = userId;
         this.executionMode = executionMode == null ? AgentExecutionMode.REACT : executionMode;
+        // Phase 1: contract 在 warn 模式下出现在每个 dispatched turn 上；可空以兼容关闭场景。
+        this.executionContract = executionContract;
     }
 }
