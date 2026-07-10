@@ -13,5 +13,7 @@ public enum RetrievalSource {
     /** Agent default knowledge bases (fallback). */
     AGENT_DEFAULT_KB,
     /** Mixed session files and knowledge bases. */
-    MIXED_SESSION_AND_KB
+    MIXED_SESSION_AND_KB,
+    /** Web-search tool (not RAG). Used for current/latest/news turns. */
+    WEB_SEARCH
 }

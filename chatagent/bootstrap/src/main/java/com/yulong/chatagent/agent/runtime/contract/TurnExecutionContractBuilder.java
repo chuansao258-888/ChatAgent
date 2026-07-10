@@ -29,6 +29,14 @@ public class TurnExecutionContractBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(TurnExecutionContractBuilder.class);
 
+    private final QueryPlanBuilder queryPlanBuilder;
+    private final SourceReferenceClassifier classifier;
+
+    public TurnExecutionContractBuilder(QueryPlanBuilder queryPlanBuilder, SourceReferenceClassifier classifier) {
+        this.queryPlanBuilder = queryPlanBuilder;
+        this.classifier = classifier;
+    }
+
     /**
      * Build a contract for one dispatched turn.
      *
@@ -45,20 +53,22 @@ public class TurnExecutionContractBuilder {
         String originalText = StringUtils.hasText(userInput) ? userInput : "";
         IntentKind kind = resolution == null ? null : resolution.kind();
         IntentLabel primaryLabel = derivePrimaryIntentLabel(kind);
-        SourceNeed sourceNeed = deriveSourceNeed(kind, resolution);
+        SourceReferenceClassifier.SourceClassification classification = classifier.classify(originalText);
+        SourceNeed sourceNeed = classifier.deriveSourceNeed(classification, kind);
+        TimeSensitivity timeSensitivity = classifier.deriveTimeSensitivity(classification);
         TurnAnalysis analysis = new TurnAnalysis(
                 originalText,
                 primaryLabel,
                 List.of(),
                 sourceNeed,
-                deriveToolNeed(kind),
-                TimeSensitivity.UNKNOWN,
+                deriveToolNeed(kind, sourceNeed),
+                timeSensitivity,
                 ActionRisk.READ_ONLY,
                 AmbiguityPlan.none(),
                 deriveConfidence(resolution)
         );
 
-        QueryPlan queryPlan = buildQueryPlan(sourceNeed, rewrittenInput);
+        QueryPlan queryPlan = queryPlanBuilder.build(resolution, sourceNeed, originalText, rewrittenInput);
         IntentContract intent = new IntentContract(
                 kind,
                 primaryLabel,
@@ -101,38 +111,20 @@ public class TurnExecutionContractBuilder {
         };
     }
 
-    private SourceNeed deriveSourceNeed(IntentKind kind, IntentResolution resolution) {
-        if (kind == IntentKind.KB) {
-            return SourceNeed.KB;
-        }
+    private ToolNeed deriveToolNeed(IntentKind kind, SourceNeed sourceNeed) {
         if (kind == IntentKind.TOOL) {
-            // A TOOL intent may still reference uploaded assets; Phase 1 keeps it conservative.
-            return SourceNeed.NONE;
+            return ToolNeed.REQUIRED;
         }
-        return SourceNeed.NONE;
-    }
-
-    private ToolNeed deriveToolNeed(IntentKind kind) {
-        if (kind == IntentKind.TOOL) {
+        // WEB turns require the web-search tool; they do not use RAG retrieval.
+        if (sourceNeed == SourceNeed.WEB) {
             return ToolNeed.REQUIRED;
         }
         return ToolNeed.NONE;
     }
 
     private double deriveConfidence(IntentResolution resolution) {
-        // Phase 1 has no calibrated confidence model; record a conservative neutral value.
+        // Phase 1/2 have no calibrated confidence model; record a conservative neutral value.
         return resolution == null ? 0.3d : 0.6d;
-    }
-
-    private QueryPlan buildQueryPlan(SourceNeed sourceNeed, String rewrittenInput) {
-        // Phase 1: only NONE or a single conservative query carrying the rewritten input.
-        // Phase 2 will add preservation validation and MULTI_QUERY/DECOMPOSED.
-        if (sourceNeed == SourceNeed.NONE || !StringUtils.hasText(rewrittenInput)) {
-            return QueryPlan.none();
-        }
-        RetrievalSource source = sourceNeed == SourceNeed.KB ? RetrievalSource.INTENT_KB : RetrievalSource.SESSION_FILES;
-        QuerySpec spec = new QuerySpec(rewrittenInput, source, List.of());
-        return new QueryPlan(QueryPlanMode.SINGLE_QUERY, QueryOperation.QA, List.of(spec), List.of());
     }
 
     private RetrievalPlan buildRetrievalPlan(IntentResolution resolution) {
@@ -152,9 +144,12 @@ public class TurnExecutionContractBuilder {
     }
 
     private boolean isRetrievalVisible(IntentKind kind, SourceNeed sourceNeed) {
-        // Mirrors current AgentToolCallbackFactory behavior: KB intent exposes the retrieval tool.
-        // This field is recorded only in Phase 1; AgentToolCallbackFactory still reads IntentResolution.
-        return kind == IntentKind.KB || sourceNeed != SourceNeed.NONE;
+        // RAG retrieval visibility: KB intent exposes the retrieval tool. WEB turns do NOT
+        // use RAG (they use the web-search tool), so WEB must not make RAG visible.
+        if (sourceNeed == SourceNeed.WEB) {
+            return false;
+        }
+        return kind == IntentKind.KB || sourceNeed == SourceNeed.FILE || sourceNeed == SourceNeed.MIXED;
     }
 
     private AnswerContract buildAnswerContract(RetrievalPlan retrieval) {

@@ -88,7 +88,7 @@ class AgentRunTaskPayloadTest {
                 List.of(),
                 null
         );
-        TurnExecutionContract contract = new TurnExecutionContractBuilder()
+        TurnExecutionContract contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
                 .build(resolution, "年假怎么申请？", "年假 申请 流程", AgentExecutionMode.DEEPTHINK);
         ChatEvent event = new ChatEvent(
                 "agent-1",

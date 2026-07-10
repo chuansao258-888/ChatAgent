@@ -12,7 +12,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Phase 1 unit tests for {@link TurnExecutionContractBuilder}.
+ * Phase 1/2 unit tests for {@link TurnExecutionContractBuilder}.
  *
  * <p>They assert the conservative derivation from the resolved intent and that
  * the contract is present and internally consistent for each turn kind. These
@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class TurnExecutionContractBuilderTest {
 
-    private final TurnExecutionContractBuilder builder = new TurnExecutionContractBuilder();
+    private final TurnExecutionContractBuilder builder = ContractTestSupport.contractBuilder();
 
     @Test
     void shouldRequireRetrievalAndCitationForKbIntentWithScopedKbs() {
@@ -114,6 +114,59 @@ class TurnExecutionContractBuilderTest {
         TurnExecutionContract contract = builder.build(resolution, "年假怎么申请？", "年假 申请", AgentExecutionMode.REACT);
 
         assertThat(contract.analysis().originalUserText()).isEqualTo("年假怎么申请？");
+    }
+
+    @Test
+    void shouldClassifyMixedSourceWhenKbIntentAlsoNamesUploadedFile() {
+        // Phase 2 acceptance: a mixed KB+file request should produce distinct source-specific query specs.
+        IntentResolution resolution = kbResolution();
+        String original = "Compare the policy with my uploaded spreadsheet report.xlsx.";
+
+        TurnExecutionContract contract = builder.build(resolution, original, "policy comparison", AgentExecutionMode.REACT);
+
+        assertThat(contract.analysis().sourceNeed()).isEqualTo(SourceNeed.MIXED);
+        // Phase 2 emits MULTI_QUERY (not DECOMPOSED) with distinct per-source query texts.
+        assertThat(contract.queryPlan().mode()).isEqualTo(QueryPlanMode.MULTI_QUERY);
+        assertThat(contract.queryPlan().operation()).isEqualTo(QueryOperation.COMPARE);
+        assertThat(contract.queryPlan().queries()).hasSize(2);
+        assertThat(contract.queryPlan().queries()).extracting(QuerySpec::source)
+                .contains(RetrievalSource.INTENT_KB, RetrievalSource.SESSION_FILES);
+        // The two query texts must be distinct (P2 finding: no label-only decomposition).
+        assertThat(contract.queryPlan().queries().get(0).text())
+                .isNotEqualTo(contract.queryPlan().queries().get(1).text());
+    }
+
+    @Test
+    void shouldDeriveWebSourceAndCurrentTimeSensitivityForLatestRequest() {
+        // ATC-PLAN-F01: latest/current must reach WEB + CURRENT through the public builder entry.
+        // WEB turns require the web-search tool, do NOT use RAG, and map to WEB_SEARCH source.
+        TurnExecutionContract contract = builder.build(null, "What is the latest news on the product?", null, AgentExecutionMode.REACT);
+
+        assertThat(contract.analysis().sourceNeed()).isEqualTo(SourceNeed.WEB);
+        assertThat(contract.analysis().timeSensitivity()).isEqualTo(TimeSensitivity.CURRENT);
+        assertThat(contract.analysis().toolNeed()).isEqualTo(ToolNeed.REQUIRED);
+        assertThat(contract.queryPlan().mode()).isEqualTo(QueryPlanMode.SINGLE_QUERY);
+        assertThat(contract.queryPlan().queries().get(0).source()).isEqualTo(RetrievalSource.WEB_SEARCH);
+        // WEB does NOT use RAG retrieval.
+        assertThat(contract.retrieval().mode()).isEqualTo(RetrievalMode.DISABLED);
+        assertThat(contract.tools().retrievalVisible()).isFalse();
+    }
+
+    @Test
+    void shouldDeriveWebSourceForChineseCurrentnessRequest() {
+        // P2 regression: Chinese currentness through the public builder entry.
+        TurnExecutionContract contract = builder.build(null, "今天的价格是多少？", null, AgentExecutionMode.REACT);
+
+        assertThat(contract.analysis().sourceNeed()).isEqualTo(SourceNeed.WEB);
+        assertThat(contract.analysis().timeSensitivity()).isEqualTo(TimeSensitivity.CURRENT);
+    }
+
+    @Test
+    void shouldNotMisclassifyBareFileWordAsSessionFile() {
+        // P2 regression: "file a tax return" / "excel at Java" must NOT be FILE.
+        TurnExecutionContract contract = builder.build(null, "How do I file a tax return?", null, AgentExecutionMode.REACT);
+
+        assertThat(contract.analysis().sourceNeed()).isNotEqualTo(SourceNeed.FILE);
     }
 
     private IntentResolution kbResolution() {

@@ -6,9 +6,10 @@ import java.util.List;
  * Conservative retrieval/search plan built from the original user request and
  * {@link TurnAnalysis}.
  *
- * <p>Phase 1 only derives {@code NONE} (no retrieval query) or
- * {@code SINGLE_QUERY} carrying the rewritten input for one source. Phase 2 will
- * add {@code MULTI_QUERY} and {@code DECOMPOSED} plus a preservation validator.</p>
+ * <p>Phase 1/2 derive {@code NONE}, {@code SINGLE_QUERY}, and {@code MULTI_QUERY}.
+ * {@code DECOMPOSED} (ordered sub-questions) is deferred to a later phase that
+ * owns real target-aware decomposition; Phase 2 represents multi-source
+ * comparison as {@code MULTI_QUERY} with distinct per-source query texts.</p>
  *
  * @param mode          plan mode
  * @param operation     intended operation (QA/COMPARE/SUMMARIZE/EXTRACT/VERIFY)

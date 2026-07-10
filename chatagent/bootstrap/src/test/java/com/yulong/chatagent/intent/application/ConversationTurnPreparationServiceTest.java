@@ -334,7 +334,7 @@ class ConversationTurnPreparationServiceTest {
         when(pendingIntentResolutionStore.get("session-1")).thenReturn(null);
         when(intentRouter.route("assistant-1", "年假怎么申请")).thenReturn(IntentRoutingResult.resolved(resolution));
         when(queryRewriter.rewrite("年假怎么申请", resolution)).thenReturn("年假 申请");
-        TurnExecutionContract builtContract = new TurnExecutionContractBuilder().build(resolution, "年假怎么申请", "年假 申请", null);
+        TurnExecutionContract builtContract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder().build(resolution, "年假怎么申请", "年假 申请", null);
         when(contractBuilder.build(resolution, "年假怎么申请", "年假 申请", null)).thenReturn(builtContract);
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "年假怎么申请");
@@ -384,7 +384,7 @@ class ConversationTurnPreparationServiceTest {
         when(intentTreeCacheManager.loadActiveSnapshot("assistant-1")).thenReturn(
                 new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of())
         );
-        TurnExecutionContract passthroughContract = new TurnExecutionContractBuilder().build(null, "你好", "你好", null);
+        TurnExecutionContract passthroughContract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder().build(null, "你好", "你好", null);
         when(contractBuilder.build(null, "你好", "你好", null)).thenReturn(passthroughContract);
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "你好");
