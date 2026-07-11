@@ -406,7 +406,7 @@ public class IntentTreeFacadeServiceImpl implements IntentTreeFacadeService {
     /**
      * 校验意图树的结构约束。
      *
-     * 运行时 IntentRouter 是按 DOMAIN -> CATEGORY -> TOPIC 逐层向下打分的，
+     * 运行时意图理解引擎按 DOMAIN -> CATEGORY -> TOPIC 树结构评估候选，
      * 所以后台必须保证树的层级清晰，否则路由时 childrenOf/current path 会失去语义。
      */
     private void validateNodePlacement(IntentNodeDTO existingNode,

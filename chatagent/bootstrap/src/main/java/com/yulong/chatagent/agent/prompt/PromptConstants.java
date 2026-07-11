@@ -31,7 +31,6 @@ public final class PromptConstants {
     public static final String AGENT_INTENT_BOUNDARY_KB_ONLY = "agent/sections/intent-boundary-kb-only.md";
 
     // ── 意图路由 ───────────────────────────────────────────────────────
-    public static final String INTENT_CLASSIFIER = "intent/classifier.md";
     public static final String INTENT_STRUCTURED_CLASSIFIER = "intent/structured-classifier-v1.md";
     public static final String INTENT_QUERY_REWRITE = "intent/query-rewrite.md";
 

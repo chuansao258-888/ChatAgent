@@ -41,9 +41,8 @@ outcomes for every fixture case — **not live model accuracy**.
 ## Live-model holdout (ATC-AC-030): NOT EXECUTED
 
 Three independent live-model holdout runs (`LiveIntentPolicyEvaluationTest`)
-have not been executed. Per user decision (2026-07-11), `ATC-AC-030` is deferred
-to a follow-up sub-gate. Phase 3 (`ATC-AC-028`) remains blocked until the live
-gate truly passes. The deterministic metrics above do not substitute for live
-model accuracy.
+were explicitly deferred by user decision (2026-07-11) to a follow-up gate.
+The deterministic metrics above validate frozen-policy integration only and do
+not claim or substitute for live-model accuracy.
 
 Reports contain aggregate metrics, enum slices, hashes, reason codes, and safe case IDs only.

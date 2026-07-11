@@ -20,7 +20,7 @@ public interface PendingIntentResolutionStore {
 
     /**
      * 保存新的澄清状态。
-     * 通常发生在 IntentRouter 返回 clarification candidates 之后。
+     * 通常发生在意图理解引擎返回 clarification candidates 之后。
      */
     void save(PendingIntentResolution pendingIntentResolution);
 

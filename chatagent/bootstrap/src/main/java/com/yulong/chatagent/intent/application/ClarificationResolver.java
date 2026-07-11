@@ -40,7 +40,7 @@ public class ClarificationResolver {
         this.signalAnalyzer = signalAnalyzer;
     }
 
-    /** Legacy-compatible single-selection facade used only by legacy/shadow routing. */
+    /** Single-selection facade retained for callers that do not need typed reply outcomes. */
     public IntentNodeDTO resolve(String reply, List<IntentNodeDTO> candidates) {
         ClarificationReply typed = resolveTyped(reply, candidates);
         return typed.outcome() == ReplyOutcome.SELECT_ONE ? typed.selected().get(0) : null;

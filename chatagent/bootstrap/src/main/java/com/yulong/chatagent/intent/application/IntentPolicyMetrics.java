@@ -23,10 +23,6 @@ public class IntentPolicyMetrics {
                 "profile", boundedProfile(decision.policyProfileVersion()));
     }
 
-    public void recordShadowMismatch(boolean mismatch) {
-        increment("chatagent.agent.intent.shadow_mismatch", "mismatch", Boolean.toString(mismatch));
-    }
-
     public void recordClassifierFailure(IntentClassifierFailure failure) {
         if (failure != null && failure != IntentClassifierFailure.NONE) {
             increment("chatagent.agent.intent.classifier_failure", "reason", failure.name());

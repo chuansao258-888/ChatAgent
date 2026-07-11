@@ -21,7 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.time.Instant;
 
-/** Orchestrates legacy/shadow/enforce intent preparation before Agent dispatch. */
+/** Orchestrates enforce/safe intent preparation before Agent dispatch. */
 @Component
 public class ConversationTurnPreparationService {
 
@@ -31,7 +31,6 @@ public class ConversationTurnPreparationService {
     private final PendingIntentResolutionStore pendingIntentResolutionStore;
     private final ClarificationResolver clarificationResolver;
     private final ClarificationResponseBuilder clarificationResponseBuilder;
-    private final IntentRouter intentRouter;
     private final QueryRewriter queryRewriter;
     private final SystemIntentResponseRenderer systemIntentResponseRenderer;
     private final TurnExecutionContractBuilder contractBuilder;
@@ -45,7 +44,6 @@ public class ConversationTurnPreparationService {
                                               PendingIntentResolutionStore pendingIntentResolutionStore,
                                               ClarificationResolver clarificationResolver,
                                               ClarificationResponseBuilder clarificationResponseBuilder,
-                                              IntentRouter intentRouter,
                                               QueryRewriter queryRewriter,
                                               SystemIntentResponseRenderer systemIntentResponseRenderer,
                                               TurnExecutionContractBuilder contractBuilder,
@@ -58,7 +56,6 @@ public class ConversationTurnPreparationService {
         this.pendingIntentResolutionStore = pendingIntentResolutionStore;
         this.clarificationResolver = clarificationResolver;
         this.clarificationResponseBuilder = clarificationResponseBuilder;
-        this.intentRouter = intentRouter;
         this.queryRewriter = queryRewriter;
         this.systemIntentResponseRenderer = systemIntentResponseRenderer;
         this.contractBuilder = contractBuilder;
@@ -88,66 +85,7 @@ public class ConversationTurnPreparationService {
             return dispatchWithContract(null, context.userInput(), context.userInput(), context, null);
         }
         PendingIntentResolution pending = pendingIntentResolutionStore.get(context.sessionId());
-        IntentPolicyMode mode = intentPolicyProperties.getMode();
-        if (mode == IntentPolicyMode.LEGACY) {
-            return prepareLegacy(context, snapshot, pending, null);
-        }
-        if (mode == IntentPolicyMode.SHADOW) {
-            IntentUnderstandingResult shadow = safeUnderstand(context, snapshot, pending);
-            TurnPreparationResult legacy = prepareLegacy(context, snapshot, pending, shadow);
-            return legacy;
-        }
         return preparePolicy(context, snapshot, pending);
-    }
-
-    private TurnPreparationResult prepareLegacy(TurnPreparationContext context,
-                                                IntentTreeSnapshot snapshot,
-                                                PendingIntentResolution pending,
-                                                IntentUnderstandingResult shadow) {
-        IntentRoutingResult routingResult;
-        String canonicalQuery = context.userInput().trim();
-        if (pending != null) {
-            List<IntentNodeDTO> candidates = resolveCandidates(snapshot, pending.orderedCandidateNodeIds());
-            if (candidates.isEmpty()) {
-                pendingIntentResolutionStore.delete(context.sessionId());
-                return TurnPreparationResult.direct(clarificationResponseBuilder.build(
-                        List.of(), pending.getParentPath(), true, originalOrCurrent(pending, context.userInput())));
-            }
-            IntentNodeDTO selected = clarificationResolver.resolve(context.userInput(), candidates);
-            if (selected == null) {
-                if (signalAnalyzer.isSubstantiveContextualTurn(context.userInput())
-                        || signalAnalyzer.isExplicitTopicSwitch(context.userInput())) {
-                    pendingIntentResolutionStore.delete(context.sessionId());
-                    return dispatchWithContract(null, canonicalQuery, context.userInput(), context, shadow);
-                }
-                return TurnPreparationResult.direct(clarificationResponseBuilder.build(
-                        candidates, pending.getParentPath(), true, context.userInput()));
-            }
-            pendingIntentResolutionStore.delete(context.sessionId());
-            canonicalQuery = originalOrCurrent(pending, context.userInput());
-            routingResult = intentRouter.route(context.agentId(), canonicalQuery, selected.getId());
-        } else {
-            routingResult = intentRouter.route(context.agentId(), canonicalQuery);
-        }
-        recordShadowMismatch(shadow, routingResult);
-        if (routingResult.requiresClarification()) {
-            if (signalAnalyzer.isSubstantiveContextualTurn(canonicalQuery)) {
-                pendingIntentResolutionStore.delete(context.sessionId());
-                return dispatchWithContract(null, canonicalQuery, context.userInput(), context, shadow);
-            }
-            saveLegacyPending(context.sessionId(), canonicalQuery, routingResult);
-            return TurnPreparationResult.direct(clarificationResponseBuilder.build(
-                    routingResult.clarificationCandidates(), routingResult.parentPath(), false, context.userInput()));
-        }
-        if (!routingResult.hasResolution()) {
-            return dispatchWithContract(null, canonicalQuery, context.userInput(), context, shadow);
-        }
-        IntentResolution resolution = routingResult.resolution();
-        if (resolution.kind() == IntentKind.SYSTEM) {
-            return TurnPreparationResult.direct(systemIntentResponseRenderer.render(resolution, canonicalQuery));
-        }
-        String rewritten = queryRewriter.rewrite(canonicalQuery, resolution);
-        return dispatchWithContract(resolution, rewritten, canonicalQuery, context, shadow);
     }
 
     private TurnPreparationResult preparePolicy(TurnPreparationContext context,
@@ -538,18 +476,6 @@ public class ConversationTurnPreparationService {
                 candidate -> candidate.getId().equals(result.decision().primaryNodeId()));
     }
 
-    private IntentUnderstandingResult safeUnderstand(TurnPreparationContext context,
-                                                     IntentTreeSnapshot snapshot,
-                                                     PendingIntentResolution pending) {
-        try {
-            return understandingEngine.understand(
-                    buildRequest(context, snapshot, pending, context.userInput()));
-        } catch (RuntimeException exception) {
-            log.warn("Shadow intent understanding failed: reason={}", exception.getClass().getSimpleName());
-            return null;
-        }
-    }
-
     private IntentUnderstandingRequest buildRequest(TurnPreparationContext context,
                                                     IntentTreeSnapshot snapshot,
                                                     PendingIntentResolution pending,
@@ -558,41 +484,6 @@ public class ConversationTurnPreparationService {
                 context.agentId(), context.sessionId(), userInput,
                 context.recentVisibleTurns(), context.contextAvailable(), context.contextTruncated(),
                 pending, snapshot, context.sessionAssetSummary(), context.executionMode());
-    }
-
-    private void saveLegacyPending(String sessionId,
-                                   String canonicalQuery,
-                                   IntentRoutingResult routingResult) {
-        pendingIntentResolutionStore.save(PendingIntentResolution.builder()
-                .sessionId(sessionId)
-                .candidateNodeIds(routingResult.clarificationCandidates().stream()
-                        .map(IntentNodeDTO::getId).toList())
-                .originalQuery(canonicalQuery)
-                .parentPath(routingResult.parentPath())
-                .clarificationKind(ClarificationKind.ROUTE_CHOICE)
-                .attemptCount(0)
-                .policyProfileVersion("legacy")
-                .contractVersion(TurnExecutionContract.VERSION)
-                .build());
-    }
-
-    private void recordShadowMismatch(IntentUnderstandingResult shadow,
-                                      IntentRoutingResult legacy) {
-        if (shadow == null) {
-            return;
-        }
-        boolean mismatch;
-        if (legacy.requiresClarification()) {
-            mismatch = shadow.decision().outcome() != IntentRouteOutcome.AMBIGUOUS_ROUTE;
-        } else if (legacy.hasResolution()) {
-            String legacyNodeId = legacy.resolution().path().isEmpty() ? null
-                    : legacy.resolution().path().get(legacy.resolution().path().size() - 1).getId();
-            mismatch = shadow.decision().outcome() != IntentRouteOutcome.KNOWN_INTENT
-                    || !java.util.Objects.equals(legacyNodeId, shadow.decision().primaryNodeId());
-        } else {
-            mismatch = !shadow.decision().isPassThrough();
-        }
-        metrics.recordShadowMismatch(mismatch);
     }
 
     private TurnPreparationResult dispatchWithContract(IntentResolution resolution,

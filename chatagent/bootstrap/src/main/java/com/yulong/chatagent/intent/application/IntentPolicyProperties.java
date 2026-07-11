@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @Data
 public class IntentPolicyProperties {
 
-    private IntentPolicyMode mode = IntentPolicyMode.SHADOW;
+    private IntentPolicyMode mode = IntentPolicyMode.ENFORCE;
     private String profileVersion = "v1";
     private int recentContextTurns = 4;
     private int recentContextMaxChars = 4000;

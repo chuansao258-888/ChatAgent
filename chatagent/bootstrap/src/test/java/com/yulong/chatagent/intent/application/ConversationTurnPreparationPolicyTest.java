@@ -40,7 +40,6 @@ class ConversationTurnPreparationPolicyTest {
     @Mock private PendingIntentResolutionStore pendingStore;
     @Mock private ClarificationResolver clarificationResolver;
     @Mock private ClarificationResponseBuilder responseBuilder;
-    @Mock private IntentRouter legacyRouter;
     @Mock private QueryRewriter queryRewriter;
     @Mock private SystemIntentResponseRenderer systemRenderer;
     @Mock private TurnExecutionContractBuilder contractBuilder;
@@ -106,23 +105,6 @@ class ConversationTurnPreparationPolicyTest {
         assertThat(routePending.orderedCandidateNodeIds())
                 .containsExactly("leave", "expense");
         assertThat(routePending.getPolicyProfileVersion()).isEqualTo("v1");
-    }
-
-    @Test
-    void shouldKeepLegacyDecisionUserVisibleInShadowMode() {
-        ConversationTurnPreparationService service = service(IntentPolicyMode.SHADOW);
-        IntentResolution legacyResolution = snapshot.resolveNode("leave");
-        when(understandingEngine.understand(any())).thenReturn(result(IntentRouteOutcome.GENERAL_CHAT));
-        when(legacyRouter.route("agent", "annual leave process"))
-                .thenReturn(IntentRoutingResult.resolved(legacyResolution));
-        when(queryRewriter.rewrite("annual leave process", legacyResolution)).thenReturn("legacy rewrite");
-
-        TurnPreparationResult prepared = service.prepare(context("annual leave process"));
-
-        assertThat(prepared.isDirectReply()).isFalse();
-        assertThat(prepared.intentResolution()).isEqualTo(legacyResolution);
-        assertThat(prepared.rewrittenInput()).isEqualTo("legacy rewrite");
-        verify(metrics).recordShadowMismatch(true);
     }
 
     @Test
@@ -395,7 +377,7 @@ class ConversationTurnPreparationPolicyTest {
         policyProperties.setMaxClarificationAttempts(2);
         return new ConversationTurnPreparationService(
                 treeCacheManager, pendingStore, clarificationResolver, responseBuilder,
-                legacyRouter, queryRewriter, systemRenderer, contractBuilder, contractProperties,
+                queryRewriter, systemRenderer, contractBuilder, contractProperties,
                 understandingEngine, policyProperties, signalAnalyzer, metrics);
     }
 

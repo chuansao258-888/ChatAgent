@@ -171,13 +171,10 @@ chatagent:
       worker-id: 1
   intent:
     tool-scope-mode: AGENT_DEFAULT_WITH_INTENT_NARROWING
-    minimum-score: 0.45
-    ambiguity-gap: 0.2
-    clarification-candidates: 2
     classifier-model: deepseek-v4-flash
     rewrite-model: deepseek-v4-flash
     decision-policy:
-      mode: ${CHATAGENT_INTENT_DECISION_MODE:shadow}
+      mode: ${CHATAGENT_INTENT_DECISION_MODE:enforce}
       profile-version: ${CHATAGENT_INTENT_POLICY_PROFILE_VERSION:v1}
       recent-context-turns: ${CHATAGENT_INTENT_RECENT_CONTEXT_TURNS:4}
       recent-context-max-chars: ${CHATAGENT_INTENT_RECENT_CONTEXT_MAX_CHARS:4000}

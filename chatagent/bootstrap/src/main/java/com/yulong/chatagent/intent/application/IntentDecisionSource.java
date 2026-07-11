@@ -5,6 +5,5 @@ public enum IntentDecisionSource {
     DETERMINISTIC,
     CLASSIFIER,
     CALIBRATED_POLICY,
-    SAFE_FALLBACK,
-    LEGACY_SHADOW
+    SAFE_FALLBACK
 }
