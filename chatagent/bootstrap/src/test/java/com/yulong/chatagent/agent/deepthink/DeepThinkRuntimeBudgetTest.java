@@ -474,7 +474,7 @@ class DeepThinkRuntimeBudgetTest {
                 "agent-1", "test-agent", "session-1", "turn-1",
                 "system prompt", promptLoader, llmService, chatMemory,
                 chatOptions, tools, "file summary", "user profile",
-                messageBridge, policy, AgentExecutionMode.DEEPTHINK
+                messageBridge, policy, AgentExecutionMode.DEEPTHINK, null
         );
     }
 

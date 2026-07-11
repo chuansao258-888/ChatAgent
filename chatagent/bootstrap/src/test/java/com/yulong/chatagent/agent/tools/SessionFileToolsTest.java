@@ -1,8 +1,15 @@
 package com.yulong.chatagent.agent.tools;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnExecutionContractHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.rag.application.FormattedRetrievalPrompt;
 import com.yulong.chatagent.rag.application.RagService;
 import com.yulong.chatagent.rag.application.RetrievalHitFormatter;
@@ -37,6 +44,9 @@ class SessionFileToolsTest {
     void tearDown() {
         CurrentChatSessionHolder.clear();
         CurrentTurnHolder.clear();
+        CurrentIntentResolutionHolder.clear();
+        CurrentTurnExecutionContractHolder.clear();
+        CurrentTurnKnowledgeHitHolder.clear();
     }
 
     @Test
@@ -64,6 +74,37 @@ class SessionFileToolsTest {
         assertThat(hitsCaptor.getValue())
                 .extracting(RetrievalHit::sourceType)
                 .containsExactly(RagSourceType.SESSION_FILE, RagSourceType.KNOWLEDGE_BASE);
+    }
+
+    @Test
+    void shouldUseQueryPlanSourceForContractRetrieval() {
+        CurrentChatSessionHolder.set("session-1");
+        CurrentTurnHolder.set("turn-1");
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder().build(
+                null, "summarize uploaded report.pdf", "summarize uploaded report.pdf",
+                AgentExecutionMode.REACT);
+        CurrentTurnExecutionContractHolder.set(contract);
+        when(ragService.similaritySearchBySession(
+                "session-1",
+                "summarize uploaded report.pdf",
+                null,
+                contract.retrieval(),
+                RetrievalSource.SESSION_FILES))
+                .thenReturn(List.of());
+        when(retrievalHitFormatter.formatWithCitations(List.of()))
+                .thenReturn(new FormattedRetrievalPrompt("No evidence found.", List.of()));
+        SessionFileTools tools = new SessionFileTools(
+                ragService, retrievalHitFormatter, new CurrentTurnCitationHolder());
+
+        String result = tools.knowledgeQuery("summarize uploaded report.pdf");
+
+        assertThat(result).isEqualTo("No evidence found.");
+        verify(ragService).similaritySearchBySession(
+                "session-1",
+                "summarize uploaded report.pdf",
+                null,
+                contract.retrieval(),
+                RetrievalSource.SESSION_FILES);
     }
 
     private RetrievalHit hit(RagSourceType sourceType, String documentName) {

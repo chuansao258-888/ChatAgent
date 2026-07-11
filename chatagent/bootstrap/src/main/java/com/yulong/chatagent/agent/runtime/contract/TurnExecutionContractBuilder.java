@@ -18,10 +18,9 @@ import java.util.List;
  * Builds a {@link TurnExecutionContract} from the existing turn-preparation
  * inputs.
  *
- * <p>Phase 1 derivation is conservative and deterministic: it maps the resolved
- * {@link IntentResolution} onto the contract enums without changing any
- * downstream behavior. Later phases will enrich {@link TurnAnalysis} and
- * {@link QueryPlan} and make the runtime enforce {@link RetrievalPlan}.</p>
+ * <p>Derivation is deterministic: it combines the resolved intent and the
+ * structured understanding result into the query, retrieval, tool, and answer
+ * policies consumed by the runtime.</p>
  *
  * <p>Inputs that are {@code null} (passthrough turns, no intent tree) produce a
  * minimal general-chat contract so every dispatched turn still carries a
@@ -94,7 +93,7 @@ public class TurnExecutionContractBuilder {
                 resolution,
                 resolution == null ? "" : resolution.pathLabel()
         );
-        RetrievalPlan retrieval = buildRetrievalPlan(resolution);
+        RetrievalPlan retrieval = buildRetrievalPlan(resolution, sourceNeed);
         ToolPolicy tools = new ToolPolicy(
                 resolution == null ? List.of() : resolution.allowedTools(),
                 isRetrievalVisible(kind, sourceNeed)
@@ -176,23 +175,26 @@ public class TurnExecutionContractBuilder {
     }
 
     private double deriveConfidence(IntentResolution resolution) {
-        // Phase 1/2 have no calibrated confidence model; record a conservative neutral value.
+        // Legacy callers have no calibrated confidence model; record a conservative neutral value.
         return resolution == null ? 0.3d : 0.6d;
     }
 
-    private RetrievalPlan buildRetrievalPlan(IntentResolution resolution) {
-        if (resolution == null || resolution.kind() != IntentKind.KB) {
-            // Non-KB turns keep retrieval disabled in Phase 1; the current keyword gate still owns ALLOWED cases.
+    private RetrievalPlan buildRetrievalPlan(IntentResolution resolution, SourceNeed sourceNeed) {
+        if (sourceNeed == SourceNeed.NONE || sourceNeed == SourceNeed.WEB) {
             return RetrievalPlan.disabled();
         }
-        List<String> scopedKbIds = resolution.scopedKbIds();
+        List<String> scopedKbIds = resolution == null ? List.of() : resolution.scopedKbIds();
         boolean hasScopedKbs = scopedKbIds != null && !scopedKbIds.isEmpty();
-        RetrievalSource source = hasScopedKbs ? RetrievalSource.INTENT_KB : RetrievalSource.AGENT_DEFAULT_KB;
-        RetrievalFallbackPolicy fallback = resolution.scopePolicy() == ScopePolicy.FALLBACK_ALLOWED
+        RetrievalSource source = switch (sourceNeed) {
+            case FILE -> RetrievalSource.SESSION_FILES;
+            case MIXED -> RetrievalSource.MIXED_SESSION_AND_KB;
+            case KB -> hasScopedKbs ? RetrievalSource.INTENT_KB : RetrievalSource.AGENT_DEFAULT_KB;
+            case NONE, WEB -> RetrievalSource.NONE;
+        };
+        RetrievalFallbackPolicy fallback = resolution != null
+                && resolution.scopePolicy() == ScopePolicy.FALLBACK_ALLOWED
                 ? RetrievalFallbackPolicy.AGENT_DEFAULT_KB
                 : RetrievalFallbackPolicy.NONE;
-        // Phase 1 records REQUIRED_BEFORE_ANSWER for KB intents but does not enforce it yet
-        // (warn mode). Phase 3 enforces it and removes the keyword gate.
         return new RetrievalPlan(RetrievalMode.REQUIRED_BEFORE_ANSWER, source, scopedKbIds, fallback, true);
     }
 

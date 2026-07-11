@@ -13,6 +13,7 @@ import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnExecutionContractHolder;
 import com.yulong.chatagent.agent.runtime.ReactRuntimeEngine;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
@@ -110,6 +111,31 @@ public class ChatAgent {
                      AgentMessageBridge messageBridge,
                      AgentRunPolicyProperties policyProperties,
                      AgentExecutionMode executionMode) {
+        this(agentId, name, description, systemPrompt, promptLoader, llmService,
+                maxMessages, memory, availableTools, sessionFileSummary, sessionSummary,
+                relevantLongTermMemories, userId, turnId, chatSessionId, messageBridge,
+                policyProperties, executionMode, null);
+    }
+
+    public ChatAgent(String agentId,
+                     String name,
+                     String description,
+                     String systemPrompt,
+                     PromptLoader promptLoader,
+                     LLMService llmService,
+                     Integer maxMessages,
+                     List<Message> memory,
+                     List<ToolCallback> availableTools,
+                     String sessionFileSummary,
+                     String sessionSummary,
+                     String relevantLongTermMemories,
+                     String userId,
+                     String turnId,
+                     String chatSessionId,
+                     AgentMessageBridge messageBridge,
+                     AgentRunPolicyProperties policyProperties,
+                     AgentExecutionMode executionMode,
+                     com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract executionContract) {
         this.agentId = agentId;
         this.name = name;
         this.chatSessionId = chatSessionId;
@@ -173,7 +199,8 @@ public class ChatAgent {
                 resolvedRelevantLongTermMemories,
                 messageBridge,
                 policy,
-                this.executionMode
+                this.executionMode,
+                executionContract
         );
 
         // Select runtime engine based on execution mode
@@ -247,6 +274,7 @@ public class ChatAgent {
             CurrentTurnKnowledgeHitHolder.reset();
             CurrentChatSessionHolder.set(this.chatSessionId);
             CurrentTurnHolder.set(this.turnId);
+            CurrentTurnExecutionContractHolder.set(this.runContext.executionContract());
 
             return this.runtimeEngine.run(this.runContext);
         } catch (AgentRunException e) {
@@ -264,6 +292,7 @@ public class ChatAgent {
             // Servlet/MQ 线程会被复用，ThreadLocal 不清理会把上一个用户的上下文泄漏给下一个请求。
             CurrentTurnKnowledgeHitHolder.clear();
             CurrentIntentResolutionHolder.clear();
+            CurrentTurnExecutionContractHolder.clear();
             CurrentTurnHolder.clear();
             CurrentChatSessionHolder.clear();
         }

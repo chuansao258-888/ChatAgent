@@ -219,7 +219,7 @@ class DeepThinkSseFlowIntegrationTest {
                 "agent-1", "test-agent", "session-1", "turn-1",
                 "system prompt", promptLoader, llmService, chatMemory,
                 chatOptions, tools, "file summary", "user profile",
-                messageBridge, policy, mode
+                messageBridge, policy, mode, null
         );
     }
 

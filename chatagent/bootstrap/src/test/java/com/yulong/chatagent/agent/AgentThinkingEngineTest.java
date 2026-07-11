@@ -906,11 +906,82 @@ class AgentThinkingEngineTest {
         verify(messageBridge, never()).persistAndPublish(any(), any(), any());
     }
 
+    @Test
+    void shouldNotSuppressRetrievalWhenContractRequiresIt() {
+        // Phase 3 ATC-P03-AC-01: when the contract says REQUIRED_BEFORE_ANSWER,
+        // the keyword gate must not suppress retrieval even without trigger words.
+        ToolCallback sessionFileTool = mock(ToolCallback.class);
+        when(sessionFileTool.getToolDefinition()).thenReturn(ToolDefinition.builder()
+                .name("SessionFileSearchTool").description("search").inputSchema("{}").build());
+        when(chatMemory.get(SESSION_ID)).thenReturn(List.of(
+                new UserMessage("年假怎么申请")  // no source keywords, but KB intent
+        ));
+        com.yulong.chatagent.intent.application.IntentResolution resolution =
+                new com.yulong.chatagent.intent.application.IntentResolution(
+                        com.yulong.chatagent.intent.model.IntentKind.KB,
+                        List.of(),
+                        List.of("kb-1"),
+                        com.yulong.chatagent.intent.model.ScopePolicy.STRICT,
+                        List.of(),
+                        null);
+        com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract contract =
+                com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                        .build(resolution, "年假怎么申请", "年假怎么申请",
+                                com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT);
+
+        engineWithTools(List.of(sessionFileTool), "", contract)
+                .think(chatMemory, SESSION_ID);
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(messageBridge).persistAndPublish(eq(SESSION_ID), eq(TURN_ID), messageCaptor.capture());
+        AssistantMessage persisted = (AssistantMessage) messageCaptor.getValue();
+        assertThat(persisted.getToolCalls()).hasSize(1);
+        assertThat(persisted.getToolCalls().get(0).name()).isEqualTo("SessionFileSearchTool");
+        assertThat(persisted.getToolCalls().get(0).arguments()).contains("年假怎么申请");
+    }
+
+    @Test
+    void shouldEmitEverySourceSpecificQueryForRequiredMixedRetrieval() {
+        ToolCallback retrievalTool = mock(ToolCallback.class);
+        when(retrievalTool.getToolDefinition()).thenReturn(ToolDefinition.builder()
+                .name("SessionFileSearchTool").description("search").inputSchema("{}").build());
+        String request = "Compare the policy with my uploaded spreadsheet report.xlsx.";
+        when(chatMemory.get(SESSION_ID)).thenReturn(List.of(new UserMessage(request)));
+        com.yulong.chatagent.intent.application.IntentResolution resolution =
+                new com.yulong.chatagent.intent.application.IntentResolution(
+                        com.yulong.chatagent.intent.model.IntentKind.KB,
+                        List.of(),
+                        List.of("kb-1"),
+                        com.yulong.chatagent.intent.model.ScopePolicy.STRICT,
+                        List.of(),
+                        null);
+        com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract contract =
+                com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                        .build(resolution, request, "policy comparison",
+                                com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT);
+
+        engineWithTools(List.of(retrievalTool), "", contract).think(chatMemory, SESSION_ID);
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(messageBridge).persistAndPublish(eq(SESSION_ID), eq(TURN_ID), messageCaptor.capture());
+        AssistantMessage persisted = (AssistantMessage) messageCaptor.getValue();
+        assertThat(persisted.getToolCalls()).hasSize(2);
+        assertThat(persisted.getToolCalls())
+                .extracting(AssistantMessage.ToolCall::arguments)
+                .doesNotHaveDuplicates()
+                .anySatisfy(arguments -> assertThat(arguments).contains("report.xlsx"));
+    }
+
     private AgentThinkingEngine engineWithTools(List<ToolCallback> tools) {
         return engineWithTools(tools, "session file summary");
     }
 
     private AgentThinkingEngine engineWithTools(List<ToolCallback> tools, String sessionFileSummary) {
+        return engineWithTools(tools, sessionFileSummary, null);
+    }
+
+    private AgentThinkingEngine engineWithTools(List<ToolCallback> tools, String sessionFileSummary,
+                                                 com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract contract) {
         return new AgentThinkingEngine(
                 TestPromptLoader.create(),
                 llmService,
@@ -922,7 +993,8 @@ class AgentThinkingEngineTest {
                 "relevant long-term memory",
                 TURN_ID,
                 messageBridge,
-                4  // maxToolCallsPerStep
+                4,  // maxToolCallsPerStep
+                contract
         );
     }
 

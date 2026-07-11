@@ -4,6 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
+import com.yulong.chatagent.agent.runtime.contract.QuerySpec;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
@@ -99,6 +103,7 @@ public class AgentThinkingEngine {
     private final String turnId;
     private final AgentMessageBridge messageBridge;
     private final int maxToolCallsPerStep;
+    private final TurnExecutionContract executionContract;
 
     public AgentThinkingEngine(PromptLoader promptLoader,
                         LLMService llmService,
@@ -109,6 +114,20 @@ public class AgentThinkingEngine {
                         String turnId,
                         AgentMessageBridge messageBridge,
                         int maxToolCallsPerStep) {
+        this(promptLoader, llmService, chatOptions, availableTools, sessionFileSummary,
+                relevantLongTermMemories, turnId, messageBridge, maxToolCallsPerStep, null);
+    }
+
+    public AgentThinkingEngine(PromptLoader promptLoader,
+                        LLMService llmService,
+                        ChatOptions chatOptions,
+                        List<ToolCallback> availableTools,
+                        String sessionFileSummary,
+                        String relevantLongTermMemories,
+                        String turnId,
+                        AgentMessageBridge messageBridge,
+                        int maxToolCallsPerStep,
+                        TurnExecutionContract executionContract) {
         this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.chatOptions = chatOptions;
@@ -118,6 +137,7 @@ public class AgentThinkingEngine {
         this.turnId = turnId;
         this.messageBridge = messageBridge;
         this.maxToolCallsPerStep = maxToolCallsPerStep;
+        this.executionContract = executionContract;
     }
 
     /**
@@ -153,6 +173,9 @@ public class AgentThinkingEngine {
 
         // 没有可用工具时无需做“工具决策”，直接走最终答案流，减少一次不必要的路由判断。
         if (this.availableTools.isEmpty()) {
+            if (requiresRetrieval()) {
+                throw new IllegalStateException("Required retrieval tool is unavailable for this turn");
+            }
             log.info("No tools available for this turn. Streaming final response directly.");
             ChatResponse finalResponse = streamFinalAnswer(
                     chatSessionId, buildFinalAnswerPrompt(promptMessages, latestUserRequest));
@@ -244,7 +267,7 @@ public class AgentThinkingEngine {
     }
 
     private AssistantMessage buildMandatorySessionFileCall(List<Message> promptMessages) {
-        if (!StringUtils.hasText(this.sessionFileSummary)) {
+        if (!requiresRetrieval() && !StringUtils.hasText(this.sessionFileSummary)) {
             return null;
         }
 
@@ -272,22 +295,51 @@ public class AgentThinkingEngine {
             return null;
         }
 
-        String arguments;
-        try {
-            arguments = OBJECT_MAPPER.writeValueAsString(Map.of("query", latestUserText));
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to serialize mandatory session-file query", exception);
-        }
-        AssistantMessage.ToolCall toolCall = new AssistantMessage.ToolCall(
-                "session-file-" + UUID.randomUUID(),
-                "function",
-                SESSION_FILE_SEARCH_TOOL,
-                arguments
-        );
+        List<String> queries = mandatoryRetrievalQueries(latestUserText);
+        List<AssistantMessage.ToolCall> toolCalls = queries.stream()
+                .map(this::sessionFileToolCall)
+                .toList();
         return AssistantMessage.builder()
                 .content("")
-                .toolCalls(List.of(toolCall))
+                .toolCalls(toolCalls)
                 .build();
+    }
+
+    private List<String> mandatoryRetrievalQueries(String latestUserText) {
+        if (!requiresRetrieval() || executionContract.queryPlan() == null) {
+            return List.of(latestUserText);
+        }
+        List<String> planned = executionContract.queryPlan().queries().stream()
+                .filter(Objects::nonNull)
+                .filter(query -> isRagSource(query.source()))
+                .map(QuerySpec::text)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .limit(Math.max(maxToolCallsPerStep, 1))
+                .toList();
+        return planned.isEmpty() ? List.of(latestUserText) : planned;
+    }
+
+    private AssistantMessage.ToolCall sessionFileToolCall(String query) {
+        try {
+            String arguments = OBJECT_MAPPER.writeValueAsString(Map.of("query", query));
+            return new AssistantMessage.ToolCall(
+                    "session-file-" + UUID.randomUUID(),
+                    "function",
+                    SESSION_FILE_SEARCH_TOOL,
+                    arguments
+            );
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize mandatory retrieval query", exception);
+        }
+    }
+
+    private boolean isRagSource(RetrievalSource source) {
+        return source == RetrievalSource.SESSION_FILES
+                || source == RetrievalSource.INTENT_KB
+                || source == RetrievalSource.AGENT_DEFAULT_KB
+                || source == RetrievalSource.MIXED_SESSION_AND_KB;
     }
 
     private List<AssistantMessage.ToolCall> suppressUnsupportedSessionFileSearchCalls(
@@ -300,13 +352,18 @@ public class AgentThinkingEngine {
                 .filter(toolCall -> !SESSION_FILE_SEARCH_TOOL.equals(toolCall.name()))
                 .toList();
         if (filtered.size() != toolCalls.size()) {
-            log.info("Suppressed unsupported session-file search tool call: traceId={}, turnId={}, latestUserRequest={}",
-                    TraceContext.getTraceId(), turnId, abbreviateForLog(latestUserText));
+            log.info("Suppressed unsupported session-file search tool call: traceId={}, turnId={}, reason=contract_or_legacy_gate",
+                    TraceContext.getTraceId(), turnId);
         }
         return filtered;
     }
 
     private boolean shouldRouteSessionFileSearch(String latestUserText) {
+        // Phase 3: when the contract says retrieval is REQUIRED_BEFORE_ANSWER,
+        // never suppress retrieval because of missing user trigger words.
+        if (requiresRetrieval()) {
+            return true;
+        }
         if (!StringUtils.hasText(latestUserText) || !StringUtils.hasText(this.sessionFileSummary)) {
             return false;
         }
@@ -316,6 +373,12 @@ public class AgentThinkingEngine {
                 && !GENERIC_KNOWLEDGE_ADVICE_REQUEST.matcher(latestUserText).find()
                 && KNOWLEDGE_SCOPE_REFERENCE.matcher(latestUserText).find();
         return shouldSearchAttachedFile || shouldSearchBoundKnowledge;
+    }
+
+    private boolean requiresRetrieval() {
+        return executionContract != null
+                && executionContract.retrieval() != null
+                && executionContract.retrieval().mode() == RetrievalMode.REQUIRED_BEFORE_ANSWER;
     }
 
     private boolean shouldClarifyAmbiguousTopicFragment(String latestUserText) {
@@ -334,14 +397,6 @@ public class AgentThinkingEngine {
         }
         int tokenCount = normalized.split("\\s+").length;
         return tokenCount <= 3 && AMBIGUOUS_TOPIC_FRAGMENT.matcher(normalized).matches();
-    }
-
-    private String abbreviateForLog(String value) {
-        if (!StringUtils.hasText(value)) {
-            return "";
-        }
-        String normalized = value.replaceAll("\\s+", " ").trim();
-        return normalized.length() <= 180 ? normalized : normalized.substring(0, 180) + "...";
     }
 
     private boolean hasSessionFileResponseAfter(List<Message> promptMessages, int latestUserIndex) {

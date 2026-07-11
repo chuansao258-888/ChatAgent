@@ -2,10 +2,14 @@ package com.yulong.chatagent.agent.tools;
 
 import com.yulong.chatagent.agent.runtime.CurrentChatSessionHolder;
 import com.yulong.chatagent.agent.runtime.CurrentIntentResolutionHolder;
+import com.yulong.chatagent.agent.runtime.CurrentTurnExecutionContractHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.agent.runtime.contract.QuerySpec;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.rag.application.FormattedRetrievalPrompt;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import com.yulong.chatagent.rag.model.RagSourceType;
@@ -80,9 +84,16 @@ public class SessionFileTools implements Tool {
         // 如果这里为 null，RAG 层会退回到会话/Agent 默认绑定的知识范围。
         IntentResolution intentResolution = CurrentIntentResolutionHolder.get();
         // intentResolution 会限制可检索知识库范围，避免 KB 意图路由后的越界检索。
-        List<RetrievalHit> results = prioritizeSessionFileHitsWhenRequested(
-                query,
-                ragService.similaritySearchBySession(chatSessionId, query, intentResolution));
+        TurnExecutionContract executionContract = CurrentTurnExecutionContractHolder.get();
+        List<RetrievalHit> rawResults = executionContract == null
+                ? ragService.similaritySearchBySession(chatSessionId, query, intentResolution)
+                : ragService.similaritySearchBySession(
+                        chatSessionId,
+                        query,
+                        intentResolution,
+                        executionContract.retrieval(),
+                        resolveQuerySource(executionContract, query));
+        List<RetrievalHit> results = prioritizeSessionFileHitsWhenRequested(query, rawResults);
         // 记录本轮是否命中知识，用于 AgentRunResult 和 Dashboard 指标。
         // 注意：这里只表示“检索是否返回结果”，不表示最终回答是否采用了这些结果。
         CurrentTurnKnowledgeHitHolder.recordRetrievalResult(!results.isEmpty());
@@ -101,6 +112,18 @@ public class SessionFileTools implements Tool {
         }
         // 一轮内再次检索时继续编号，避免不同 tool_response 都从 [1] 开始而让最终引用错位。
         return retrievalHitFormatter.formatWithCitations(results, firstCitationNumber).promptText();
+    }
+
+    private RetrievalSource resolveQuerySource(TurnExecutionContract contract, String query) {
+        if (contract.queryPlan() != null && StringUtils.hasText(query)) {
+            for (QuerySpec spec : contract.queryPlan().queries()) {
+                if (spec != null && StringUtils.hasText(spec.text())
+                        && spec.text().trim().equals(query.trim())) {
+                    return spec.source();
+                }
+            }
+        }
+        return contract.retrieval() == null ? RetrievalSource.NONE : contract.retrieval().source();
     }
 
     private List<RetrievalHit> prioritizeSessionFileHitsWhenRequested(String query, List<RetrievalHit> results) {

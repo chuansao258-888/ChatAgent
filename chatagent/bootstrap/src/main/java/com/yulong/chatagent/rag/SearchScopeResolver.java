@@ -1,6 +1,10 @@
 package com.yulong.chatagent.rag;
 
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalFallbackPolicy;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalPlan;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.file.port.ChatSessionFileRepository;
 import com.yulong.chatagent.intent.application.IntentResolution;
@@ -82,12 +86,20 @@ public class SearchScopeResolver {
 
     public List<RetrievalHit> searchBySession(String chatSessionId, String queryText) {
         // 没有意图上下文的兼容入口：查当前会话文件 + Agent 默认绑定知识库。
-        return searchBySession(chatSessionId, queryText, null);
+        return searchBySession(chatSessionId, queryText, null, null, null);
     }
 
     public List<RetrievalHit> searchBySession(String chatSessionId,
                                               String queryText,
                                               IntentResolution intentResolution) {
+        return searchBySession(chatSessionId, queryText, intentResolution, null, null);
+    }
+
+    public List<RetrievalHit> searchBySession(String chatSessionId,
+                                              String queryText,
+                                              IntentResolution intentResolution,
+                                              RetrievalPlan retrievalPlan,
+                                              RetrievalSource querySource) {
         if (!StringUtils.hasText(chatSessionId) || !StringUtils.hasText(queryText)) {
             // sessionId 或 query 为空时无法构造可靠检索范围，直接返回空结果。
             return List.of();
@@ -100,18 +112,55 @@ public class SearchScopeResolver {
                 // 会话不存在说明上游上下文已经失效；这里不抛异常，避免 RAG miss 放大成整轮失败。
                 return List.of();
             }
+            if (retrievalPlan != null && retrievalPlan.mode() == RetrievalMode.DISABLED) {
+                return List.of();
+            }
 
             // 先分别拿两路候选：当前会话附件、Agent/意图允许的知识库。
             // 两路来源的相似度分数未必完全可比，所以后面先用 RRF 做融合，再统一 rerank。
-            List<String> sessionFileIds = resolveSessionFileIds(chatSessionId);
-            List<MilvusSearchHit> sessionHits = sessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(sessionFileIds, queryText);
-            List<MilvusSearchHit> knowledgeBaseHits = resolveKnowledgeHits(chatSession, queryText, intentResolution);
+            RetrievalSource effectiveSource = effectiveSource(retrievalPlan, querySource);
+            List<MilvusSearchHit> sessionHits = shouldSearchSessionFiles(retrievalPlan, effectiveSource)
+                    ? sessionFileSimilaritySearcher.searchCandidateHitsBySessionFileIds(
+                            resolveSessionFileIds(chatSessionId), queryText)
+                    : List.of();
+            List<MilvusSearchHit> knowledgeBaseHits = retrievalPlan == null
+                    ? resolveKnowledgeHits(chatSession, queryText, intentResolution)
+                    : resolveKnowledgeHits(chatSession, queryText, retrievalPlan, effectiveSource);
 
             return rerankAndLimit(queryText, fuseHits(knowledgeBaseHits, sessionHits));
         } finally {
             long durationMs = System.currentTimeMillis() - startMs;
             recordTimer("chatagent.rag.retrieval.latency", durationMs);
         }
+    }
+
+    private RetrievalSource effectiveSource(RetrievalPlan plan, RetrievalSource querySource) {
+        if (plan == null) {
+            return null;
+        }
+        if (querySource == plan.source()) {
+            return querySource;
+        }
+        if (plan.source() == RetrievalSource.MIXED_SESSION_AND_KB && isMixedPlanSource(querySource)) {
+            return querySource;
+        }
+        return plan.source();
+    }
+
+    private boolean isMixedPlanSource(RetrievalSource source) {
+        return source == RetrievalSource.SESSION_FILES
+                || source == RetrievalSource.INTENT_KB
+                || source == RetrievalSource.AGENT_DEFAULT_KB
+                || source == RetrievalSource.MIXED_SESSION_AND_KB;
+    }
+
+    private boolean shouldSearchSessionFiles(RetrievalPlan plan, RetrievalSource source) {
+        if (plan == null) {
+            return true;
+        }
+        return source == RetrievalSource.SESSION_FILES
+                || source == RetrievalSource.MIXED_SESSION_AND_KB
+                || plan.fallbackPolicy() == RetrievalFallbackPolicy.SESSION_FILES_ONLY;
     }
 
     private List<String> resolveSessionFileIds(String chatSessionId) {
@@ -165,6 +214,39 @@ public class SearchScopeResolver {
                 .filter(id -> !scopedKnowledgeBaseIds.contains(id))
                 .toList();
         return knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(fallbackKnowledgeBaseIds, queryText);
+    }
+
+    private List<MilvusSearchHit> resolveKnowledgeHits(ChatSessionDTO chatSession,
+                                                       String queryText,
+                                                       RetrievalPlan plan,
+                                                       RetrievalSource source) {
+        if (source == null
+                || source == RetrievalSource.NONE
+                || source == RetrievalSource.WEB_SEARCH
+                || source == RetrievalSource.SESSION_FILES) {
+            return List.of();
+        }
+        if (source == RetrievalSource.AGENT_DEFAULT_KB) {
+            return knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                    resolveKnowledgeBaseIds(chatSession.getAgentId()), queryText);
+        }
+
+        List<String> scopedIds = knowledgeBaseRepository.filterActiveIds(plan.scopedKbIds());
+        if (source == RetrievalSource.MIXED_SESSION_AND_KB && scopedIds.isEmpty()) {
+            return knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                    resolveKnowledgeBaseIds(chatSession.getAgentId()), queryText);
+        }
+        List<MilvusSearchHit> scopedHits =
+                knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(scopedIds, queryText);
+        if (!scopedHits.isEmpty() || plan.fallbackPolicy() != RetrievalFallbackPolicy.AGENT_DEFAULT_KB) {
+            return scopedHits;
+        }
+        List<String> agentKnowledgeBaseIds = resolveKnowledgeBaseIds(chatSession.getAgentId());
+        List<String> fallbackIds = agentKnowledgeBaseIds.stream()
+                .filter(id -> !scopedIds.contains(id))
+                .toList();
+        return knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                fallbackIds, queryText);
     }
 
     private List<ScopedHit> fuseHits(List<MilvusSearchHit> knowledgeBaseHits, List<MilvusSearchHit> sessionHits) {

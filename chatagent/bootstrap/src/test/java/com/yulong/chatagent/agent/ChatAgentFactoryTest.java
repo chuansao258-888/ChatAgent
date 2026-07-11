@@ -7,6 +7,9 @@ import com.yulong.chatagent.agent.runtime.AgentRunContext;
 import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
 import com.yulong.chatagent.agent.runtime.AgentRuntimeEngine;
 import com.yulong.chatagent.agent.runtime.ReactRuntimeEngine;
+import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.LLMService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
@@ -21,6 +24,61 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatAgentFactoryTest {
+
+    @Test
+    void shouldPassContractToRuntimeLoaderOnlyInEnforceMode() {
+        LLMService llmService = mock(LLMService.class);
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder()
+                .build(null, "use the uploaded report.xlsx", null, AgentExecutionMode.REACT);
+        AgentRuntimeContext context = runtimeContext(contract);
+        when(contextLoader.load("agent-1", "session-1", null, null,
+                AgentExecutionMode.REACT, "use the uploaded report.xlsx", contract))
+                .thenReturn(context);
+
+        TurnContractProperties properties = new TurnContractProperties();
+        properties.setRetrievalEnforcement("enforce");
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), llmService, contextLoader, messageBridge,
+                new AgentRunPolicyProperties(), properties);
+
+        ChatAgent agent = factory.create("agent-1", "session-1", "turn-1", null,
+                null, "user-1", AgentExecutionMode.REACT,
+                "use the uploaded report.xlsx", contract);
+
+        verify(contextLoader).load("agent-1", "session-1", null, null,
+                AgentExecutionMode.REACT, "use the uploaded report.xlsx", contract);
+        AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(agent, "runContext");
+        assertThat(runContext.executionContract()).isSameAs(contract);
+    }
+
+    @Test
+    void shouldKeepWarnModeOnLegacyRuntimePath() {
+        LLMService llmService = mock(LLMService.class);
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        AgentMessageBridge messageBridge = mock(AgentMessageBridge.class);
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder()
+                .build(null, "use the uploaded report.xlsx", null, AgentExecutionMode.REACT);
+        when(contextLoader.load("agent-1", "session-1", null, null,
+                AgentExecutionMode.REACT, "use the uploaded report.xlsx"))
+                .thenReturn(runtimeContext(null));
+
+        TurnContractProperties properties = new TurnContractProperties();
+        properties.setRetrievalEnforcement("warn");
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), llmService, contextLoader, messageBridge,
+                new AgentRunPolicyProperties(), properties);
+
+        ChatAgent agent = factory.create("agent-1", "session-1", "turn-1", null,
+                null, "user-1", AgentExecutionMode.REACT,
+                "use the uploaded report.xlsx", contract);
+
+        verify(contextLoader).load("agent-1", "session-1", null, null,
+                AgentExecutionMode.REACT, "use the uploaded report.xlsx");
+        AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(agent, "runContext");
+        assertThat(runContext.executionContract()).isNull();
+    }
 
     @Test
     void shouldCreateAgentUsingRuntimeContext() {
@@ -42,14 +100,16 @@ class ChatAgentFactoryTest {
                 "session file summary",
                 "session summary",
                 "relevant long-term memory",
-                AgentExecutionMode.REACT
+                AgentExecutionMode.REACT,
+                null
         );
 
         when(contextLoader.load("agent-1", "session-1", null, null, null, null)).thenReturn(context);
 
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
-                new AgentRunPolicyProperties()
+                new AgentRunPolicyProperties(),
+                new TurnContractProperties()
         );
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
@@ -86,7 +146,8 @@ class ChatAgentFactoryTest {
                 "session file summary",
                 "session summary",
                 "relevant long-term memory",
-                AgentExecutionMode.DEEPTHINK
+                AgentExecutionMode.DEEPTHINK,
+                null
         );
 
         when(contextLoader.load("agent-1", "session-1", null, null, AgentExecutionMode.DEEPTHINK, null))
@@ -94,7 +155,8 @@ class ChatAgentFactoryTest {
 
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
-                new AgentRunPolicyProperties()
+                new AgentRunPolicyProperties(),
+                new TurnContractProperties()
         );
 
         ChatAgent chatAgent = factory.create(
@@ -134,19 +196,28 @@ class ChatAgentFactoryTest {
                 "session file summary",
                 "session summary",
                 "",
-                AgentExecutionMode.REACT
+                AgentExecutionMode.REACT,
+                null
         );
 
         when(contextLoader.load("agent-1", "session-1", null, null, null, null)).thenReturn(context);
 
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
-                new AgentRunPolicyProperties()
+                new AgentRunPolicyProperties(),
+                new TurnContractProperties()
         );
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
 
         AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(chatAgent, "runContext");
         assertThat(runContext.relevantLongTermMemories()).isEmpty();
+    }
+
+    private AgentRuntimeContext runtimeContext(TurnExecutionContract contract) {
+        return new AgentRuntimeContext(
+                "agent-1", "Support", "support agent", "system prompt", "glm-4.6", 12,
+                List.of(), List.of(), "session file summary", "session summary", "",
+                AgentExecutionMode.REACT, contract);
     }
 }

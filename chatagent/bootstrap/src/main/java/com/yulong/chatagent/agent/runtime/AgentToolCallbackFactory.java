@@ -1,6 +1,9 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.agent.tools.Tool;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.IntentToolScopeMode;
@@ -67,9 +70,15 @@ public class AgentToolCallbackFactory {
     }
 
     public List<ToolCallback> create(AgentDTO agentConfig, IntentResolution intentResolution) {
+        return create(agentConfig, intentResolution, null);
+    }
+
+    public List<ToolCallback> create(AgentDTO agentConfig,
+                                     IntentResolution intentResolution,
+                                     TurnExecutionContract executionContract) {
         // 第一步：先从“后端工具对象”维度筛出本轮允许使用的 Tool。
         // 这里的筛选依据是 Tool.getName()，也就是 AgentDTO.allowedTools 里配置的名字。
-        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, intentResolution);
+        List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, intentResolution, executionContract);
 
         // 第二步：把 Tool 展开成 Spring AI 的 ToolCallback。
         // key 用的是 ToolDefinition.name()，因为最终模型调用时也是按这个名字发起 tool call。
@@ -109,6 +118,12 @@ public class AgentToolCallbackFactory {
     }
 
     private List<Tool> resolveRuntimeTools(AgentDTO agentConfig, IntentResolution intentResolution) {
+        return resolveRuntimeTools(agentConfig, intentResolution, null);
+    }
+
+    private List<Tool> resolveRuntimeTools(AgentDTO agentConfig,
+                                           IntentResolution intentResolution,
+                                           TurnExecutionContract executionContract) {
         // fixed tools 默认先加入，例如 SessionFileSearchTool。
         // 注意：fixed 不是“永远暴露给模型”，后面 still 会按 intent 决定是否隐藏。
         List<Tool> runtimeTools = new ArrayList<>(toolFacadeService.getFixedTools());
@@ -128,7 +143,8 @@ public class AgentToolCallbackFactory {
 
         // fixed tool 也可能被隐藏：典型例子是 SessionFileSearchTool。
         // 如果本轮不是 KB 意图，就不该把文件检索工具塞给模型，避免模型乱检索。
-        runtimeTools.removeIf(tool -> shouldHideFixedTool(tool, intentResolution, allowedToolNames, optionalTools, agentConfig));
+        runtimeTools.removeIf(tool -> shouldHideFixedTool(
+                tool, intentResolution, executionContract, allowedToolNames, optionalTools, agentConfig));
 
         // 根据配置选择两种工具开放策略：
         // 1. STRICT_TOOL_ONLY：只有 TOOL 意图才开放 optional tools。
@@ -229,12 +245,16 @@ public class AgentToolCallbackFactory {
 
     private boolean shouldHideFixedTool(Tool tool,
                                         IntentResolution intentResolution,
+                                        TurnExecutionContract executionContract,
                                         List<String> allowedToolNames,
                                         List<Tool> optionalTools,
                                         AgentDTO agentConfig) {
         // 会话文件检索虽然是 fixed tool，但在非 KB 意图下可能需要隐藏，避免模型无谓检索知识库。
         if (tool == null || !"SessionFileSearchTool".equals(tool.getName())) {
             return false;
+        }
+        if (executionContract != null) {
+            return !contractAllowsRetrieval(executionContract);
         }
         if (intentResolution != null) {
             if (intentResolution.kind() == IntentKind.KB) {
@@ -256,6 +276,16 @@ public class AgentToolCallbackFactory {
         // AGENT_DEFAULT_WITH_INTENT_NARROWING 模式会倾向于隐藏 fixed 的文件检索工具。
         return toolScopeMode == IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING
                 && hasRuntimeOptionalTools(optionalTools, allowedToolNames, agentConfig);
+    }
+
+    private boolean contractAllowsRetrieval(TurnExecutionContract contract) {
+        if (contract.tools() == null || !contract.tools().retrievalVisible()
+                || contract.retrieval() == null
+                || contract.retrieval().mode() == RetrievalMode.DISABLED) {
+            return false;
+        }
+        RetrievalSource source = contract.retrieval().source();
+        return source != null && source != RetrievalSource.NONE && source != RetrievalSource.WEB_SEARCH;
     }
 
     private boolean hasRuntimeOptionalTools(List<Tool> optionalTools,

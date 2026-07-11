@@ -18,7 +18,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Phase 1/2 unit tests for {@link TurnExecutionContractBuilder}.
+ * Contract construction tests across the implemented turn-contract phases.
  *
  * <p>They assert the conservative derivation from the resolved intent and that
  * the contract is present and internally consistent for each turn kind. These

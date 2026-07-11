@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.intent.application.IntentResolution;
 
 /**
@@ -38,5 +39,15 @@ public interface AgentRuntimeContextLoader {
                                      AgentExecutionMode executionMode,
                                      String currentUserInput) {
         return load(agentId, chatSessionId, intentResolution, rewrittenInput, executionMode);
+    }
+
+    default AgentRuntimeContext load(String agentId,
+                                     String chatSessionId,
+                                     IntentResolution intentResolution,
+                                     String rewrittenInput,
+                                     AgentExecutionMode executionMode,
+                                     String currentUserInput,
+                                     TurnExecutionContract executionContract) {
+        return load(agentId, chatSessionId, intentResolution, rewrittenInput, executionMode, currentUserInput);
     }
 }

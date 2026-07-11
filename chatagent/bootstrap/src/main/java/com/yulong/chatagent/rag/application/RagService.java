@@ -1,6 +1,8 @@
 package com.yulong.chatagent.rag.application;
 
 import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalPlan;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.rag.SearchScopeResolver;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
 import com.yulong.chatagent.rag.model.RetrievalHit;
@@ -55,6 +57,15 @@ public class RagService {
         // Agent runtime 入口：intentResolution 会把 KB 检索限定在本轮意图允许的知识库范围内。
         // SessionFileTools.knowledgeQuery 走这个方法。
         return searchScopeResolver.searchBySession(chatSessionId, query, intentResolution);
+    }
+
+    public List<RetrievalHit> similaritySearchBySession(String chatSessionId,
+                                                        String query,
+                                                        IntentResolution intentResolution,
+                                                        RetrievalPlan retrievalPlan,
+                                                        RetrievalSource querySource) {
+        return searchScopeResolver.searchBySession(
+                chatSessionId, query, intentResolution, retrievalPlan, querySource);
     }
 
     // similaritySearchByKnowledgeBaseIds 是旧 eval 门面，生产 Agent runtime 不调用。

@@ -8,9 +8,8 @@ import org.springframework.stereotype.Component;
  * Rollout configuration for the Agent Turn Execution Contract.
  *
  * <p>Bound from {@code chatagent.agent.turn-contract.*}. Defaults match the
- * plan's release/rollback narrative: the contract is enabled and runs in warn
- * mode, so it is observed but does not change retrieval/tool behavior. Phase 3
- * switches {@code retrieval-enforcement} to {@code enforce}.</p>
+ * plan's release/rollback narrative. Phase 3 makes retrieval enforcement the
+ * local default while {@code off} and {@code warn} remain rollback modes.</p>
  */
 @Component
 @ConfigurationProperties(prefix = "chatagent.agent.turn-contract")
@@ -28,7 +27,11 @@ public class TurnContractProperties {
      * {@code warn} = derive contract and log mismatches, {@code enforce} =
      * contract controls retrieval/tool decisions.
      */
-    private String retrievalEnforcement = "warn";
+    private String retrievalEnforcement = "enforce";
+
+    public boolean isRetrievalEnforced() {
+        return "enforce".equalsIgnoreCase(retrievalEnforcement);
+    }
 
     /**
      * Whether to emit contract debug metadata (enum values and IDs only, never

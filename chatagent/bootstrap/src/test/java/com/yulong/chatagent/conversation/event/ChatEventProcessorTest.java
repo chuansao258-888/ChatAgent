@@ -107,7 +107,7 @@ class ChatEventProcessorTest {
         ChatEvent event = new ChatEvent("agent-1", "session-1", "turn-1", "msg-1", "hello", 3, null, "rewritten", null);
         when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
         when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1", AgentExecutionMode.REACT, "hello"))
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", event.getIntentResolution(), "rewritten", "user-1", AgentExecutionMode.REACT, "hello", null))
                 .thenReturn(chatAgent);
         when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
                 .thenReturn(CreateChatMessageResponse.builder().chatMessageId("assistant-1").build());
@@ -177,13 +177,13 @@ class ChatEventProcessorTest {
         AgentRunResult runResult = AgentRunResult.success(42L, true);
 
         when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
-        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK, "hello"))
+        when(chatAgentFactory.create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK, "hello", null))
                 .thenReturn(chatAgent);
         when(chatAgent.run()).thenReturn(runResult);
 
         processor.process(event);
 
-        verify(chatAgentFactory).create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK, "hello");
+        verify(chatAgentFactory).create("agent-1", "session-1", "turn-1", resolution, "rewritten", "user-1", AgentExecutionMode.DEEPTHINK, "hello", null);
         verify(chatTurnMetricRecorder).record(event, runResult);
         verify(conversationTurnCompletionPublisher).publishCompletedTurn("session-1", "turn-1");
     }

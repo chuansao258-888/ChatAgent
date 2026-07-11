@@ -7,6 +7,9 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
@@ -306,6 +309,36 @@ class DefaultAgentRuntimeContextLoaderTest {
         assertThat(context.toolCallbacks())
                 .extracting(callback -> callback.getToolDefinition().name())
                 .containsExactly("SessionFileSearchTool", "localTool");
+    }
+
+    @Test
+    void shouldKeepRequiredRetrievalToolWhenSummaryHasNoAssetPrefix() {
+        AgentDTO agent = minimalAgent();
+        ToolCallback sessionFileSearchTool =
+                namedToolCallback("SessionFileSearchTool", "Search knowledge");
+        IntentResolution resolution = new IntentResolution(
+                IntentKind.KB, List.of(), List.of("kb-1"),
+                ScopePolicy.STRICT, List.of(), null);
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder().build(
+                resolution, "How do I request annual leave?", "annual leave request",
+                AgentExecutionMode.REACT);
+
+        when(agentDefinitionLoader.load("agent-1")).thenReturn(new AgentDefinition(agent));
+        when(agentMemoryLoader.load("session-1", agent))
+                .thenReturn(List.of(new UserMessage("How do I request annual leave?")));
+        when(sessionFileSummaryResolver.resolve(agent, "session-1")).thenReturn("");
+        when(sessionSummaryResolver.resolve("session-1")).thenReturn("");
+        when(agentToolCallbackFactory.create(agent, resolution, contract))
+                .thenReturn(List.of(sessionFileSearchTool));
+
+        AgentRuntimeContext context = loader.load(
+                "agent-1", "session-1", resolution, "annual leave request",
+                AgentExecutionMode.REACT, "How do I request annual leave?", contract);
+
+        assertThat(context.toolCallbacks())
+                .extracting(callback -> callback.getToolDefinition().name())
+                .containsExactly("SessionFileSearchTool");
+        assertThat(context.executionContract()).isSameAs(contract);
     }
 
     @Test

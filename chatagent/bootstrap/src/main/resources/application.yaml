@@ -185,7 +185,7 @@ chatagent:
   agent:
     turn-contract:
       enabled: ${CHATAGENT_AGENT_TURN_CONTRACT_ENABLED:true}
-      retrieval-enforcement: ${CHATAGENT_AGENT_RETRIEVAL_ENFORCEMENT:warn}
+      retrieval-enforcement: ${CHATAGENT_AGENT_RETRIEVAL_ENFORCEMENT:enforce}
       emit-debug-metadata: ${CHATAGENT_AGENT_TURN_CONTRACT_DEBUG_METADATA:false}
   memory:
     l1-window-turns: ${CHATAGENT_MEMORY_L1_WINDOW_TURNS:48}

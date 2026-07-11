@@ -1,6 +1,9 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.agent.application.ToolFacadeService;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.tools.WebSearchTools;
 import com.yulong.chatagent.agent.tools.Tool;
 import com.yulong.chatagent.agent.tools.ToolType;
@@ -28,6 +31,48 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class AgentToolCallbackFactoryTest {
+
+    @Test
+    void shouldExposeRetrievalToolWhenContractRequiresFileRetrieval() {
+        ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
+        when(toolFacadeService.getFixedTools()).thenReturn(List.of(
+                fixedTool("TerminateTool"),
+                fixedTool("SessionFileSearchTool")));
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of());
+        AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
+                toolFacadeService, rolloutPolicy("ALL"),
+                IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING);
+        AgentDTO agent = AgentDTO.builder().id("assistant-1").allowedTools(List.of()).build();
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder().build(
+                null, "summarize the uploaded report.pdf", "summarize the uploaded report.pdf",
+                AgentExecutionMode.REACT);
+
+        List<ToolCallback> callbacks = factory.create(
+                agent, resolution(IntentKind.CLARIFY, List.of(), List.of()), contract);
+
+        assertThat(callbackNames(callbacks))
+                .containsExactlyInAnyOrder("TerminateTool", "SessionFileSearchTool");
+    }
+
+    @Test
+    void shouldHideRetrievalToolWhenContractDisablesRetrieval() {
+        ToolFacadeService toolFacadeService = mock(ToolFacadeService.class);
+        when(toolFacadeService.getFixedTools()).thenReturn(List.of(
+                fixedTool("TerminateTool"),
+                fixedTool("SessionFileSearchTool")));
+        when(toolFacadeService.getOptionalTools()).thenReturn(List.of());
+        AgentToolCallbackFactory factory = new AgentToolCallbackFactory(
+                toolFacadeService, rolloutPolicy("ALL"),
+                IntentToolScopeMode.AGENT_DEFAULT_WITH_INTENT_NARROWING);
+        AgentDTO agent = AgentDTO.builder().id("assistant-1").allowedTools(List.of()).build();
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder().build(
+                null, "hello there", "hello there", AgentExecutionMode.REACT);
+
+        List<ToolCallback> callbacks = factory.create(
+                agent, resolution(IntentKind.KB, List.of(), List.of("kb-1")), contract);
+
+        assertThat(callbackNames(callbacks)).containsExactly("TerminateTool");
+    }
 
     @Test
     void shouldPreserveLegacyGrantSemanticsWhenScopeModeIsStrictToolOnly() {

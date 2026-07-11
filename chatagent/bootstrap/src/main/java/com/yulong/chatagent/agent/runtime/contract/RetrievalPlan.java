@@ -5,10 +5,8 @@ import java.util.List;
 /**
  * The retrieval policy for the turn.
  *
- * <p>This is the contract portion that Phase 3 will make the single owner of
- * whether retrieval is required, which source it targets, how it falls back, and
- * whether citation is required. Phase 1 derives it from the intent kind; it is
- * not yet enforced by the runtime.</p>
+ * <p>This is the single runtime owner of whether retrieval is required, which
+ * source it targets, how it falls back, and whether citation is required.</p>
  *
  * @param mode              whether and when retrieval must run
  * @param source            which retrieval source is primary

@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -24,6 +25,7 @@ import java.util.List;
  * @param sessionSummary L2 历史摘要
  * @param relevantLongTermMemories L3 相关长期记忆（Phase 5 接入 recall 后填充）
  * @param executionMode 本轮用户选择并解析后的执行模式
+ * @param executionContract enforce 模式下的本轮策略合同；legacy/warn 路径为 null
  */
 public record AgentRuntimeContext(
         String agentId,
@@ -37,6 +39,7 @@ public record AgentRuntimeContext(
         String sessionFileSummary,
         String sessionSummary,
         String relevantLongTermMemories,
-        AgentExecutionMode executionMode
+        AgentExecutionMode executionMode,
+        TurnExecutionContract executionContract
 ) {
 }

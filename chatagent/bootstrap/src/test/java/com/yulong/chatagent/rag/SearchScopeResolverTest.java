@@ -1,6 +1,10 @@
 package com.yulong.chatagent.rag;
 
 import com.yulong.chatagent.agent.port.AgentKnowledgeBaseRepository;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalFallbackPolicy;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalPlan;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.file.port.ChatSessionFileRepository;
 import com.yulong.chatagent.intent.application.IntentResolution;
@@ -248,6 +252,97 @@ class SearchScopeResolverTest {
             assertThat(hit.isFallback()).isFalse();
         });
         verify(knowledgeDocumentSignalService, never()).attachSignals(anyList());
+    }
+
+    @Test
+    void shouldSearchOnlyScopedKbForStrictContractSource() {
+        when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder()
+                .id("session-1").agentId("assistant-1").build());
+        when(knowledgeBaseRepository.filterActiveIds(List.of("scoped-kb")))
+                .thenReturn(List.of("scoped-kb"));
+        when(knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                List.of("scoped-kb"), "leave policy"))
+                .thenReturn(List.of(candidateHit(
+                        "chunk-1", "scoped-kb", "doc-1", "Policy", 0,
+                        "Leave", "leave content", "leave content", 0.9d)));
+        when(retrievalReranker.rerank(eq("leave policy"), anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        RetrievalPlan plan = new RetrievalPlan(
+                RetrievalMode.REQUIRED_BEFORE_ANSWER,
+                RetrievalSource.INTENT_KB,
+                List.of("scoped-kb"),
+                RetrievalFallbackPolicy.NONE,
+                true);
+
+        List<RetrievalHit> hits = searchScopeResolver.searchBySession(
+                "session-1", "leave policy", null, plan, RetrievalSource.INTENT_KB);
+
+        assertThat(hits).extracting(RetrievalHit::sourceId).containsExactly("scoped-kb");
+        verify(sessionFileSimilaritySearcher, never())
+                .searchCandidateHitsBySessionFileIds(anyList(), eq("leave policy"));
+        verify(knowledgeBaseSimilaritySearcher, never())
+                .searchCandidateHitsByKnowledgeBaseIds(List.of("default-kb"), "leave policy");
+    }
+
+    @Test
+    void shouldNotLetQueryPlanSourceEscapeStrictRetrievalSource() {
+        when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder()
+                .id("session-1").agentId("assistant-1").build());
+        when(knowledgeBaseRepository.filterActiveIds(List.of("scoped-kb")))
+                .thenReturn(List.of("scoped-kb"));
+        when(knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                List.of("scoped-kb"), "leave policy"))
+                .thenReturn(List.of());
+        RetrievalPlan plan = new RetrievalPlan(
+                RetrievalMode.REQUIRED_BEFORE_ANSWER,
+                RetrievalSource.INTENT_KB,
+                List.of("scoped-kb"),
+                RetrievalFallbackPolicy.NONE,
+                true);
+
+        searchScopeResolver.searchBySession(
+                "session-1", "leave policy", null, plan, RetrievalSource.SESSION_FILES);
+
+        verify(sessionFileSimilaritySearcher, never())
+                .searchCandidateHitsBySessionFileIds(anyList(), eq("leave policy"));
+        verify(knowledgeBaseSimilaritySearcher)
+                .searchCandidateHitsByKnowledgeBaseIds(List.of("scoped-kb"), "leave policy");
+    }
+
+    @Test
+    void shouldApplyOnlyContractDeclaredAgentKbFallback() {
+        when(chatSessionRepository.findById("session-1")).thenReturn(ChatSessionDTO.builder()
+                .id("session-1").agentId("assistant-1").build());
+        when(agentKnowledgeBaseRepository.findKnowledgeBaseIdsByAgentId("assistant-1"))
+                .thenReturn(List.of("default-kb"));
+        when(knowledgeBaseRepository.filterActiveIds(List.of("scoped-kb")))
+                .thenReturn(List.of("scoped-kb"));
+        when(knowledgeBaseRepository.filterActiveIds(List.of("default-kb")))
+                .thenReturn(List.of("default-kb"));
+        when(knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                List.of("scoped-kb"), "travel policy")).thenReturn(List.of());
+        when(knowledgeBaseSimilaritySearcher.searchCandidateHitsByKnowledgeBaseIds(
+                List.of("default-kb"), "travel policy"))
+                .thenReturn(List.of(candidateHit(
+                        "chunk-1", "default-kb", "doc-1", "Handbook", 0,
+                        "Travel", "travel content", "travel content", 0.8d)));
+        when(retrievalReranker.rerank(eq("travel policy"), anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        RetrievalPlan plan = new RetrievalPlan(
+                RetrievalMode.REQUIRED_BEFORE_ANSWER,
+                RetrievalSource.INTENT_KB,
+                List.of("scoped-kb"),
+                RetrievalFallbackPolicy.AGENT_DEFAULT_KB,
+                true);
+
+        List<RetrievalHit> hits = searchScopeResolver.searchBySession(
+                "session-1", "travel policy", null, plan, RetrievalSource.INTENT_KB);
+
+        assertThat(hits).extracting(RetrievalHit::sourceId).containsExactly("default-kb");
+        verify(knowledgeBaseSimilaritySearcher)
+                .searchCandidateHitsByKnowledgeBaseIds(List.of("scoped-kb"), "travel policy");
+        verify(knowledgeBaseSimilaritySearcher)
+                .searchCandidateHitsByKnowledgeBaseIds(List.of("default-kb"), "travel policy");
     }
 
     private MilvusSearchHit candidateHit(String chunkId,

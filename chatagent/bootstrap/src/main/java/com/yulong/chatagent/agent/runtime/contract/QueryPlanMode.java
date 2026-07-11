@@ -3,8 +3,8 @@ package com.yulong.chatagent.agent.runtime.contract;
 /**
  * Modes a {@link QueryPlan} can take.
  *
- * <p>Phase 1 only derives {@code NONE} and {@code SINGLE_QUERY}. {@code MULTI_QUERY}
- * and {@code DECOMPOSED} are added when Phase 2 builds source-specific query specs.</p>
+ * <p>Current construction derives {@code NONE}, {@code SINGLE_QUERY}, and
+ * {@code MULTI_QUERY}; {@code DECOMPOSED} is reserved for ordered sub-question planning.</p>
  */
 public enum QueryPlanMode {
     /** No retrieval/search query is needed. */

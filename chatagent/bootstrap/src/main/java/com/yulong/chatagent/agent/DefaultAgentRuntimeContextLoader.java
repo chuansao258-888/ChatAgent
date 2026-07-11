@@ -10,6 +10,8 @@ import com.yulong.chatagent.agent.runtime.AgentMemoryLoader;
 import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentSessionSummaryResolver;
 import com.yulong.chatagent.agent.runtime.AgentToolCallbackFactory;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.ChatRoutingProperties;
 import com.yulong.chatagent.memory.application.LongTermMemoryRecallService;
 import com.yulong.chatagent.support.dto.AgentDTO;
@@ -92,6 +94,18 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                     String rewrittenInput,
                                     AgentExecutionMode executionMode,
                                     String currentUserInput) {
+        return load(agentId, chatSessionId, intentResolution, rewrittenInput,
+                executionMode, currentUserInput, null);
+    }
+
+    @Override
+    public AgentRuntimeContext load(String agentId,
+                                    String chatSessionId,
+                                    IntentResolution intentResolution,
+                                    String rewrittenInput,
+                                    AgentExecutionMode executionMode,
+                                    String currentUserInput,
+                                    TurnExecutionContract executionContract) {
         // 1. 读取静态 Agent 配置，包括系统提示词、工具 allowlist 和 chatOptions。
         AgentDefinition definition = agentDefinitionLoader.load(agentId);
         AgentDTO agentConfig = definition.config();
@@ -101,8 +115,11 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         String sessionFileSummary = sessionFileSummaryResolver.resolve(agentConfig, chatSessionId);
         String sessionSummary = sessionSummaryResolver.resolve(chatSessionId);
         // 3. 工具列表要结合 Agent 配置和意图结果动态收窄，避免模型看到不该使用的工具。
-        List<ToolCallback> toolCallbacks = agentToolCallbackFactory.create(agentConfig, intentResolution);
-        toolCallbacks = filterUnavailableSessionFileSearchTool(chatSessionId, sessionFileSummary, toolCallbacks);
+        List<ToolCallback> toolCallbacks = executionContract == null
+                ? agentToolCallbackFactory.create(agentConfig, intentResolution)
+                : agentToolCallbackFactory.create(agentConfig, intentResolution, executionContract);
+        toolCallbacks = filterUnavailableSessionFileSearchTool(
+                chatSessionId, sessionFileSummary, toolCallbacks, executionContract);
 
         // 3.5 L3 recall: embed query, search user memories, format for prompt injection.
         String query = resolveQuery(rewrittenInput, memory);
@@ -133,7 +150,8 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                 sessionFileSummary,
                 sessionSummary,
                 relevantLongTermMemories,
-                executionMode == null ? AgentExecutionMode.REACT : executionMode
+                executionMode == null ? AgentExecutionMode.REACT : executionMode,
+                executionContract
         );
     }
 
@@ -237,7 +255,11 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
 
     private List<ToolCallback> filterUnavailableSessionFileSearchTool(String chatSessionId,
                                                                       String sessionFileSummary,
-                                                                      List<ToolCallback> toolCallbacks) {
+                                                                      List<ToolCallback> toolCallbacks,
+                                                                      TurnExecutionContract executionContract) {
+        if (requiresRetrieval(executionContract)) {
+            return toolCallbacks == null ? List.of() : toolCallbacks;
+        }
         if (toolCallbacks == null || toolCallbacks.isEmpty() || hasRetrievableSessionAssets(sessionFileSummary)) {
             return toolCallbacks == null ? List.of() : toolCallbacks;
         }
@@ -251,6 +273,12 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                     chatSessionId);
         }
         return filteredToolCallbacks;
+    }
+
+    private boolean requiresRetrieval(TurnExecutionContract contract) {
+        return contract != null
+                && contract.retrieval() != null
+                && contract.retrieval().mode() == RetrievalMode.REQUIRED_BEFORE_ANSWER;
     }
 
     private boolean hasRetrievableSessionAssets(String sessionFileSummary) {

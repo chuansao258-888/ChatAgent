@@ -78,7 +78,8 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
                 context.relevantLongTermMemories(),
                 context.turnId(),
                 context.messageBridge(),
-                policy.getMaxToolCallsPerStep()
+                policy.getMaxToolCallsPerStep(),
+                context.executionContract()
         );
 
         this.toolExecutionEngine = new AgentToolExecutionEngine(

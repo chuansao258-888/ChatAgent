@@ -320,7 +320,7 @@ class ReactRuntimeEngineTest {
                 "relevant long-term memory",
                 messageBridge,
                 policy,
-                AgentExecutionMode.REACT
+                AgentExecutionMode.REACT, null
         );
     }
 
