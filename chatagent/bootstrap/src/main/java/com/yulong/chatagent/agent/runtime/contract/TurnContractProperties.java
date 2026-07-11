@@ -30,7 +30,7 @@ public class TurnContractProperties {
     private String retrievalEnforcement = "enforce";
 
     public boolean isRetrievalEnforced() {
-        return "enforce".equalsIgnoreCase(retrievalEnforcement);
+        return enabled && "enforce".equalsIgnoreCase(retrievalEnforcement);
     }
 
     /**

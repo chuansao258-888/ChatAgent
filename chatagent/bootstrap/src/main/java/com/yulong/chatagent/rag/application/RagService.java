@@ -5,6 +5,7 @@ import com.yulong.chatagent.agent.runtime.contract.RetrievalPlan;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.rag.SearchScopeResolver;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import org.springframework.stereotype.Service;
 
@@ -66,6 +67,15 @@ public class RagService {
                                                         RetrievalSource querySource) {
         return searchScopeResolver.searchBySession(
                 chatSessionId, query, intentResolution, retrievalPlan, querySource);
+    }
+
+    /** Contract-authoritative retrieval with typed execution outcome. */
+    public RetrievalExecutionResult similaritySearchByContract(String chatSessionId,
+                                                                String query,
+                                                                RetrievalPlan retrievalPlan,
+                                                                RetrievalSource querySource) {
+        return searchScopeResolver.searchByContract(
+                chatSessionId, query, retrievalPlan, querySource);
     }
 
     // similaritySearchByKnowledgeBaseIds 是旧 eval 门面，生产 Agent runtime 不调用。

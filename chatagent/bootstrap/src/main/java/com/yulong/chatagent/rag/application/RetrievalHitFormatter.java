@@ -3,6 +3,8 @@ package com.yulong.chatagent.rag.application;
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.rag.model.CitationMetadata;
+import com.yulong.chatagent.rag.model.RetrievalExecutionOutcome;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -47,6 +49,36 @@ public class RetrievalHitFormatter {
         return formatWithCitations(hits, 1);
     }
 
+    public FormattedRetrievalPrompt formatExecutionResult(RetrievalExecutionResult result) {
+        return formatExecutionResult(result, 1);
+    }
+
+    public FormattedRetrievalPrompt formatExecutionResult(RetrievalExecutionResult result,
+                                                          int firstCitationNumber) {
+        if (result == null) {
+            throw new IllegalArgumentException("retrieval result is required");
+        }
+        if (result.outcome() == RetrievalExecutionOutcome.FAILED) {
+            throw new IllegalStateException("Failed retrieval cannot be formatted as an evidence miss");
+        }
+        if (result.outcome() == RetrievalExecutionOutcome.BLOCKED_NO_SCOPE) {
+            return new FormattedRetrievalPrompt(
+                    "Retrieval could not run because no allowed source scope is available.",
+                    List.of());
+        }
+        if (result.outcome() == RetrievalExecutionOutcome.DISABLED) {
+            return new FormattedRetrievalPrompt("Retrieval is disabled for this turn.", List.of());
+        }
+        if (result.outcome() == RetrievalExecutionOutcome.NO_HIT) {
+            return emptyPrompt(result.requestedSource());
+        }
+        FormattedRetrievalPrompt formatted = formatWithCitations(result.hits(), firstCitationNumber);
+        if (formatted.citations().isEmpty()) {
+            return emptyPrompt(result.requestedSource());
+        }
+        return formatted;
+    }
+
     /**
      * Formats a retrieval batch using a turn-wide citation number offset.
      *
@@ -89,6 +121,18 @@ public class RetrievalHitFormatter {
                 "evidenceSections", String.join("\n\n---\n\n", sections)
         )).trim();
         return new FormattedRetrievalPrompt(prompt, List.copyOf(citations));
+    }
+
+    private FormattedRetrievalPrompt emptyPrompt(
+            com.yulong.chatagent.agent.runtime.contract.RetrievalSource source) {
+        String message = switch (source) {
+            case SESSION_FILES -> "No relevant attached session-file content found.";
+            case INTENT_KB, AGENT_DEFAULT_KB -> "No relevant knowledge-base evidence found.";
+            case MIXED_SESSION_AND_KB ->
+                    "No relevant session-file or knowledge-base evidence found.";
+            case NONE, WEB_SEARCH -> "No relevant retrieval evidence found.";
+        };
+        return new FormattedRetrievalPrompt(message, List.of());
     }
 
     private boolean shouldIncludeInPrompt(RetrievalHit hit) {

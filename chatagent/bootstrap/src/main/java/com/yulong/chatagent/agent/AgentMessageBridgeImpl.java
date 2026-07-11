@@ -248,6 +248,9 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             List<CitationMetadata> citations = (toolCalls == null || toolCalls.isEmpty())
                     ? currentTurnCitationHolder.take(chatSessionId, turnId)
                     : List.of();
+            var retrievalMetadata = (toolCalls == null || toolCalls.isEmpty())
+                    ? currentTurnCitationHolder.takeRetrievalMetadata(chatSessionId, turnId)
+                    : null;
             CitationSelection citationSelection = selectReferencedCitations(assistantMessage.getText(), citations);
             ChatMessageDTO chatMessageDTO = ChatMessageDTO.builder()
                     .role(ChatMessageDTO.RoleType.ASSISTANT)
@@ -257,6 +260,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                     .metadata(ChatMessageDTO.MetaData.builder()
                             .toolCalls(toolCalls)
                             .citations(citationSelection.citations().isEmpty() ? null : citationSelection.citations())
+                            .retrieval(retrievalMetadata)
                             .build())
                     .build();
             send(chatMessageDTO);
@@ -404,6 +408,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 }
                 ChatMessageDTO.MetaData finalMetadata = ChatMessageDTO.MetaData.builder()
                         .citations(citationSelection.citations().isEmpty() ? null : citationSelection.citations())
+                        .retrieval(currentTurnCitationHolder.takeRetrievalMetadata(chatSessionId, turnId))
                         .build();
                 UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
                 updateReq.setContent(finalContent);
@@ -438,6 +443,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 }
                 chatMessageFacadeService.updateChatMessage(chatMessageDTO.getId(), updateReq);
                 currentTurnCitationHolder.take(chatSessionId, turnId);
+                currentTurnCitationHolder.takeRetrievalMetadata(chatSessionId, turnId);
 
                 // 先推一条带中断提示的正文快照，让前端能显示已经生成的部分。
                 SseMessage errorMsg = new SseMessage(
@@ -1255,6 +1261,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 .turnId(turnId)
                 .metadata(ChatMessageDTO.MetaData.builder()
                         .citations(citations.isEmpty() ? null : citations)
+                        .retrieval(currentTurnCitationHolder.peekRetrievalMetadata(chatSessionId, turnId))
                         .build())
                 .build();
         CreateChatMessageResponse created = chatMessageFacadeService.createChatMessage(chatMessageDTO);
@@ -1354,6 +1361,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         finalContent = citationSelection.content();
         ChatMessageDTO.MetaData finalMetadata = ChatMessageDTO.MetaData.builder()
                 .citations(citationSelection.citations().isEmpty() ? null : citationSelection.citations())
+                .retrieval(currentTurnCitationHolder.takeRetrievalMetadata(chatSessionId, turnId))
                 .build();
         UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
         updateReq.setContent(finalContent);

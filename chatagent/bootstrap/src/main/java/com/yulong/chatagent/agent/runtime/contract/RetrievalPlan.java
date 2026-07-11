@@ -13,16 +13,28 @@ import java.util.List;
  * @param scopedKbIds       intent-bound KB ids in scope
  * @param fallbackPolicy    what to do when the primary source misses
  * @param citationRequired  whether evidence-backed answers must carry citations
+ * @param routes            independently scoped query routes; empty for legacy payloads
  */
 public record RetrievalPlan(
         RetrievalMode mode,
         RetrievalSource source,
         List<String> scopedKbIds,
         RetrievalFallbackPolicy fallbackPolicy,
-        boolean citationRequired
+        boolean citationRequired,
+        List<RetrievalRoutePlan> routes
 ) {
     public RetrievalPlan {
         scopedKbIds = scopedKbIds == null ? List.of() : List.copyOf(scopedKbIds);
+        routes = routes == null ? List.of() : List.copyOf(routes);
+    }
+
+    /** Source- and JSON-compatible constructor for pre-route callers and payloads. */
+    public RetrievalPlan(RetrievalMode mode,
+                         RetrievalSource source,
+                         List<String> scopedKbIds,
+                         RetrievalFallbackPolicy fallbackPolicy,
+                         boolean citationRequired) {
+        this(mode, source, scopedKbIds, fallbackPolicy, citationRequired, List.of());
     }
 
     /** A disabled, no-retrieval plan. */

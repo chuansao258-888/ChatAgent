@@ -8,10 +8,14 @@ import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.agent.runtime.contract.QuerySpec;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalPlan;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalRoutePlan;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.rag.application.FormattedRetrievalPrompt;
 import com.yulong.chatagent.rag.model.RetrievalHit;
+import com.yulong.chatagent.rag.model.RetrievalExecutionOutcome;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
 import com.yulong.chatagent.rag.model.RagSourceType;
 import com.yulong.chatagent.rag.application.RagService;
 import com.yulong.chatagent.rag.application.RetrievalHitFormatter;
@@ -73,9 +77,13 @@ public class SessionFileTools implements Tool {
 
     @org.springframework.ai.tool.annotation.Tool(
             name = "SessionFileSearchTool",
-            description = "Run similarity search against the files attached to the current chat session and the bound internal assistant knowledge bases. Argument: query."
+            description = "Run similarity search against the current turn's backend-authorized session files and knowledge bases. Arguments: query and optional opaque routeKey."
     )
-    public String knowledgeQuery(String query) {
+    public String knowledgeQuery(
+            @org.springframework.ai.tool.annotation.ToolParam(description = "Retrieval query") String query,
+            @org.springframework.ai.tool.annotation.ToolParam(
+                    description = "Opaque backend-issued route key",
+                    required = false) String routeKey) {
         // 工具参数只包含 query；session/turn/intent 都从后端运行上下文读取。
         // 这一步是安全边界：模型不能自己指定 sessionId 或 turnId，因此无法通过工具参数越权查询别的会话。
         String chatSessionId = CurrentChatSessionHolder.require();
@@ -85,21 +93,47 @@ public class SessionFileTools implements Tool {
         IntentResolution intentResolution = CurrentIntentResolutionHolder.get();
         // intentResolution 会限制可检索知识库范围，避免 KB 意图路由后的越界检索。
         TurnExecutionContract executionContract = CurrentTurnExecutionContractHolder.get();
-        List<RetrievalHit> rawResults = executionContract == null
-                ? ragService.similaritySearchBySession(chatSessionId, query, intentResolution)
-                : ragService.similaritySearchBySession(
-                        chatSessionId,
-                        query,
-                        intentResolution,
-                        executionContract.retrieval(),
-                        resolveQuerySource(executionContract, query));
-        List<RetrievalHit> results = prioritizeSessionFileHitsWhenRequested(query, rawResults);
+        RetrievalExecutionResult executionResult = null;
+        List<RetrievalHit> results;
+        if (executionContract == null) {
+            results = prioritizeSessionFileHitsWhenRequested(
+                    query, ragService.similaritySearchBySession(chatSessionId, query, intentResolution));
+        } else {
+            ContractRetrievalRequest request = resolveContractRequest(executionContract, query, routeKey);
+            executionResult = ragService.similaritySearchByContract(
+                    chatSessionId, request.query(), request.plan(), request.source());
+            if (executionResult.outcome() == RetrievalExecutionOutcome.FAILED) {
+                CurrentTurnKnowledgeHitHolder.recordRetrievalResult(executionResult, executionContract);
+                currentTurnCitationHolder.recordRetrievalResult(
+                        chatSessionId, turnId, executionResult, executionContract);
+                throw new IllegalStateException(
+                        "Contract retrieval failed: " + executionResult.reasonCode());
+            }
+            results = prioritizeSessionFileHitsWhenRequested(request.query(), executionResult.hits());
+            if (!results.equals(executionResult.hits())) {
+                executionResult = new RetrievalExecutionResult(
+                        executionResult.outcome(),
+                        executionResult.requestedSource(),
+                        executionResult.actualSources(),
+                        executionResult.policyFallbackApplied(),
+                        results,
+                        executionResult.reasonCode());
+            }
+        }
         // 记录本轮是否命中知识，用于 AgentRunResult 和 Dashboard 指标。
         // 注意：这里只表示“检索是否返回结果”，不表示最终回答是否采用了这些结果。
-        CurrentTurnKnowledgeHitHolder.recordRetrievalResult(!results.isEmpty());
+        if (executionResult == null) {
+            CurrentTurnKnowledgeHitHolder.recordRetrievalResult(!results.isEmpty());
+        } else {
+            CurrentTurnKnowledgeHitHolder.recordRetrievalResult(executionResult, executionContract);
+            currentTurnCitationHolder.recordRetrievalResult(
+                    chatSessionId, turnId, executionResult, executionContract);
+        }
         // 返回给模型的是带 [1]/[2] 引用标记的证据文本；引用元数据另存，最终回答落库时消费。
         // promptText 和 citations 必须保持同一顺序，否则模型回答里的 [1] 与前端展示的来源会对不上。
-        FormattedRetrievalPrompt formatted = retrievalHitFormatter.formatWithCitations(results);
+        FormattedRetrievalPrompt formatted = executionResult == null
+                ? retrievalHitFormatter.formatWithCitations(results)
+                : retrievalHitFormatter.formatExecutionResult(executionResult);
         // citations 不直接拼进 tool_response 的 JSON metadata，而是按 session+turn 暂存。
         // 后面只有当最终 assistant 消息确认保留时，AgentMessageBridge 才会 take 出来写入 message.metadata。
         int firstCitationNumber = currentTurnCitationHolder.appendAndGetFirstCitationNumber(
@@ -111,7 +145,58 @@ public class SessionFileTools implements Tool {
             return formatted.promptText();
         }
         // 一轮内再次检索时继续编号，避免不同 tool_response 都从 [1] 开始而让最终引用错位。
-        return retrievalHitFormatter.formatWithCitations(results, firstCitationNumber).promptText();
+        return executionResult == null
+                ? retrievalHitFormatter.formatWithCitations(results, firstCitationNumber).promptText()
+                : retrievalHitFormatter.formatExecutionResult(executionResult, firstCitationNumber).promptText();
+    }
+
+    /** Source-compatible convenience entry point for direct callers and tests. */
+    public String knowledgeQuery(String query) {
+        return knowledgeQuery(query, null);
+    }
+
+    private ContractRetrievalRequest resolveContractRequest(TurnExecutionContract contract,
+                                                            String query,
+                                                            String routeKey) {
+        RetrievalPlan retrieval = contract.retrieval();
+        if (retrieval == null || retrieval.routes().isEmpty()) {
+            return new ContractRetrievalRequest(
+                    query, retrieval, resolveQuerySource(contract, query));
+        }
+        RetrievalRoutePlan route;
+        if (!StringUtils.hasText(routeKey)) {
+            if (retrieval.routes().size() != 1) {
+                throw new IllegalArgumentException(
+                        "A routeKey is required for multi-route retrieval");
+            }
+            route = retrieval.routes().get(0);
+        } else {
+            route = retrieval.routes().stream()
+                    .filter(candidate -> candidate.key().equals(routeKey.trim()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown retrieval routeKey"));
+        }
+        if (contract.queryPlan() == null
+                || route.queryIndex() < 0
+                || route.queryIndex() >= contract.queryPlan().queries().size()) {
+            throw new IllegalStateException("Retrieval route references an invalid query");
+        }
+        QuerySpec spec = contract.queryPlan().queries().get(route.queryIndex());
+        if (spec == null || spec.source() != route.source() || !StringUtils.hasText(spec.text())) {
+            throw new IllegalStateException("Retrieval route does not match its query plan");
+        }
+        RetrievalPlan routePlan = new RetrievalPlan(
+                retrieval.mode(),
+                route.source(),
+                route.scopedKbIds(),
+                route.fallbackPolicy(),
+                retrieval.citationRequired());
+        return new ContractRetrievalRequest(spec.text().trim(), routePlan, route.source());
+    }
+
+    private record ContractRetrievalRequest(String query,
+                                            RetrievalPlan plan,
+                                            RetrievalSource source) {
     }
 
     private RetrievalSource resolveQuerySource(TurnExecutionContract contract, String query) {

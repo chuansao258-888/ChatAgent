@@ -35,6 +35,26 @@ class QueryPlanBuilderTest {
     }
 
     @Test
+    void shouldKeepOneQueryPerOrderedKbRouteWhenTextsMatch() {
+        String query = "Answer the Annual Leave and Travel Expense questions.";
+
+        QueryPlan plan = builder.buildForRoutes(
+                List.of(
+                        kbResolution("leave", "kb-leave", ScopePolicy.STRICT),
+                        kbResolution("expense", "kb-expense", ScopePolicy.FALLBACK_ALLOWED)),
+                SourceNeed.KB,
+                query,
+                query);
+
+        assertThat(plan.mode()).isEqualTo(QueryPlanMode.MULTI_QUERY);
+        assertThat(plan.queries()).hasSize(2);
+        assertThat(plan.queries()).extracting(QuerySpec::source)
+                .containsExactly(RetrievalSource.INTENT_KB, RetrievalSource.INTENT_KB);
+        assertThat(plan.queries()).extracting(QuerySpec::text)
+                .containsExactly(query, query);
+    }
+
+    @Test
     void shouldUseAgentDefaultKbWhenScopedKbIdsEmpty() {
         // ATC-P02-F05: empty scoped KB IDs → AGENT_DEFAULT_KB, matching RetrievalPlan.
         IntentResolution emptyScoped = new IntentResolution(
@@ -80,6 +100,29 @@ class QueryPlanBuilderTest {
                 .filter(q -> q.source() == RetrievalSource.SESSION_FILES).findFirst().orElseThrow();
         assertThat(fileSpec.text()).contains("report.xlsx");
         assertThat(fileSpec.text()).isNotEmpty();
+    }
+
+    @Test
+    void shouldAppendOneSessionFileQueryAfterEveryOrderedKbRoute() {
+        String original = "Answer Annual Leave and Travel Expense using uploaded report.pdf.";
+
+        QueryPlan plan = builder.buildForRoutes(
+                List.of(
+                        kbResolution("leave", "kb-leave", ScopePolicy.STRICT),
+                        kbResolution("expense", "kb-expense", ScopePolicy.FALLBACK_ALLOWED)),
+                SourceNeed.MIXED,
+                original,
+                original);
+
+        assertThat(plan.mode()).isEqualTo(QueryPlanMode.MULTI_QUERY);
+        assertThat(plan.queries()).extracting(QuerySpec::source)
+                .containsExactly(
+                        RetrievalSource.INTENT_KB,
+                        RetrievalSource.INTENT_KB,
+                        RetrievalSource.SESSION_FILES);
+        assertThat(plan.queries().subList(0, 2)).extracting(QuerySpec::text)
+                .containsExactly(original, original);
+        assertThat(plan.queries().get(2).text()).contains("report.pdf");
     }
 
     @Test
@@ -178,11 +221,15 @@ class QueryPlanBuilderTest {
     }
 
     private IntentResolution kbResolution() {
+        return kbResolution("leaf", "kb-1", ScopePolicy.STRICT);
+    }
+
+    private IntentResolution kbResolution(String nodeId, String kbId, ScopePolicy scopePolicy) {
         return new IntentResolution(
                 IntentKind.KB,
-                List.of(IntentNodeDTO.builder().id("leaf").name("年假").build()),
-                List.of("kb-1"),
-                ScopePolicy.STRICT,
+                List.of(IntentNodeDTO.builder().id(nodeId).name(nodeId).build()),
+                List.of(kbId),
+                scopePolicy,
                 List.of(),
                 null
         );

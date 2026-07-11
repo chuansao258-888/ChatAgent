@@ -5,8 +5,13 @@ import com.yulong.chatagent.agent.AgentRunException;
 import com.yulong.chatagent.agent.AgentRunResult;
 import com.yulong.chatagent.agent.DecisionVisibility;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
+import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
+import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.intent.model.IntentKind;
+import com.yulong.chatagent.intent.model.ScopePolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +34,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
@@ -168,6 +174,39 @@ class ReactRuntimeEngineTest {
         // AgentRunException 携带 failure result
     }
 
+    @Test
+    void requiredRetrievalWithoutNamedTool_shouldFailBeforeModelAndClassifyRetrievalError() {
+        IntentResolution resolution = new IntentResolution(
+                IntentKind.KB,
+                List.of(),
+                List.of("kb-leave"),
+                ScopePolicy.STRICT,
+                List.of(),
+                null
+        );
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder()
+                .build(resolution, "annual leave", "annual leave", AgentExecutionMode.REACT);
+        AgentRunContext context = buildContext(
+                List.of(mockToolCallback("localTool")),
+                contract
+        );
+        ReactRuntimeEngine engine = new ReactRuntimeEngine(context);
+
+        AgentRunException exception = catchThrowableOfType(
+                () -> engine.run(context), AgentRunException.class);
+
+        assertThat(exception).hasRootCauseMessage(
+                "Contract requires retrieval but SessionFileSearchTool is not available");
+        assertThat(exception.getResult().status()).isEqualTo(AgentRunResult.Status.ERROR);
+        assertThat(exception.getResult().errorType()).isEqualTo("RETRIEVAL_FAIL");
+        verify(messageBridge, never()).collectDecisionResponse(
+                any(), any(), any(), any(), any(), eq(llmService),
+                any(), anyBoolean(), any(), any());
+        verify(messageBridge, never()).streamFinalResponse(
+                any(), any(), any(), eq(llmService), anyBoolean());
+        verify(messageBridge, never()).persistAndPublish(any(), any(), any());
+    }
+
     // ========== 重复运行拒绝 ==========
 
     @Test
@@ -295,11 +334,23 @@ class ReactRuntimeEngineTest {
         return buildContextWithMaxSteps(20, tools);
     }
 
+    private AgentRunContext buildContext(List<ToolCallback> tools,
+                                         TurnExecutionContract executionContract) {
+        return buildContextWithPolicy(20, 4, tools, executionContract);
+    }
+
     private AgentRunContext buildContextWithMaxSteps(int maxSteps, List<ToolCallback> tools) {
         return buildContextWithPolicy(maxSteps, 4, tools);
     }
 
     private AgentRunContext buildContextWithPolicy(int maxSteps, int maxToolCallsPerStep, List<ToolCallback> tools) {
+        return buildContextWithPolicy(maxSteps, maxToolCallsPerStep, tools, null);
+    }
+
+    private AgentRunContext buildContextWithPolicy(int maxSteps,
+                                                   int maxToolCallsPerStep,
+                                                   List<ToolCallback> tools,
+                                                   TurnExecutionContract executionContract) {
         chatMemory.add("session-1", new SystemMessage("system prompt"));
         chatMemory.add("session-1", new UserMessage("user question"));
 
@@ -320,7 +371,7 @@ class ReactRuntimeEngineTest {
                 "relevant long-term memory",
                 messageBridge,
                 policy,
-                AgentExecutionMode.REACT, null
+                AgentExecutionMode.REACT, executionContract
         );
     }
 

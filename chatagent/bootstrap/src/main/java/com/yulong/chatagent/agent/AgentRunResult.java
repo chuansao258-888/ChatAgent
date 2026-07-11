@@ -1,5 +1,7 @@
 package com.yulong.chatagent.agent;
 
+import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
+import com.yulong.chatagent.rag.model.RetrievalOutcomeMetadata;
 import org.springframework.util.StringUtils;
 
 import java.util.concurrent.TimeoutException;
@@ -21,8 +23,13 @@ public record AgentRunResult(
         Status status,
         long durationMs,
         String errorType,
-        boolean knowledgeHit
+        boolean knowledgeHit,
+        RetrievalOutcomeMetadata retrieval
 ) {
+
+    public AgentRunResult(Status status, long durationMs, String errorType, boolean knowledgeHit) {
+        this(status, durationMs, errorType, knowledgeHit, null);
+    }
 
     public enum Status {
         SUCCESS,
@@ -36,7 +43,8 @@ public record AgentRunResult(
      * 用于区分“知识库查不到”和“普通非知识任务”。
      */
     public static AgentRunResult success(long durationMs, boolean knowledgeHit) {
-        return new AgentRunResult(Status.SUCCESS, durationMs, null, knowledgeHit);
+        return new AgentRunResult(Status.SUCCESS, durationMs, null, knowledgeHit,
+                CurrentTurnKnowledgeHitHolder.metadataSnapshot());
     }
 
     /**
@@ -45,7 +53,8 @@ public record AgentRunResult(
      * Dashboard 更适合按少量错误类型聚合，而不是存储完整异常类名或堆栈。
      */
     public static AgentRunResult failure(long durationMs, boolean knowledgeHit, Throwable throwable) {
-        return new AgentRunResult(Status.ERROR, durationMs, classifyError(throwable), knowledgeHit);
+        return new AgentRunResult(Status.ERROR, durationMs, classifyError(throwable), knowledgeHit,
+                CurrentTurnKnowledgeHitHolder.metadataSnapshot());
     }
 
     private static String classifyError(Throwable throwable) {

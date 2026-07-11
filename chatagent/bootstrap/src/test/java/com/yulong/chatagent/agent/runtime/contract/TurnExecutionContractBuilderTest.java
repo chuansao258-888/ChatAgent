@@ -1,5 +1,6 @@
 package com.yulong.chatagent.agent.runtime.contract;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.application.ConfidenceStatus;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Contract construction tests across the implemented turn-contract phases.
@@ -176,7 +178,184 @@ class TurnExecutionContractBuilderTest {
     }
 
     @Test
-    void shouldCarryTypedIntentDecisionIntoTurnAnalysis() {
+    void shouldCarryIndependentOrderedMultiIntentRoutesIntoContract() throws Exception {
+        IntentUnderstandingResult understanding = multiIntentUnderstanding();
+        IntentResolution leave = kbResolution("leave", "kb-leave", ScopePolicy.STRICT);
+        IntentResolution expense = kbResolution(
+                "expense", "kb-expense", ScopePolicy.FALLBACK_ALLOWED);
+
+        TurnExecutionContract contract = builder.buildForRoutes(
+                List.of(leave, expense), "leave and expense", "leave and expense",
+                AgentExecutionMode.REACT, understanding);
+
+        assertThat(contract.analysis().intentDecision()).isEqualTo(understanding.decision());
+        assertThat(contract.analysis().primaryIntent()).isEqualTo(IntentLabel.MULTI_INTENT);
+        assertThat(contract.analysis().secondaryIntents()).contains(IntentLabel.MULTI_INTENT);
+        assertThat(contract.analysis().confidence()).isEqualTo(0.94d);
+        assertThat(contract.queryPlan().mode()).isEqualTo(QueryPlanMode.MULTI_QUERY);
+        assertThat(contract.queryPlan().queries()).extracting(QuerySpec::text)
+                .containsExactly("leave and expense", "leave and expense");
+
+        // Legacy scalar fields remain primary-only and never contain a union.
+        assertThat(contract.retrieval().scopedKbIds()).containsExactly("kb-leave");
+        assertThat(contract.retrieval().fallbackPolicy()).isEqualTo(RetrievalFallbackPolicy.NONE);
+        assertThat(contract.retrieval().routes()).hasSize(2);
+        RetrievalRoutePlan leaveRoute = contract.retrieval().routes().get(0);
+        RetrievalRoutePlan expenseRoute = contract.retrieval().routes().get(1);
+        assertThat(leaveRoute.key()).isEqualTo("q0");
+        assertThat(leaveRoute.queryIndex()).isZero();
+        assertThat(leaveRoute.intentNodeId()).isEqualTo("leave");
+        assertThat(leaveRoute.source()).isEqualTo(RetrievalSource.INTENT_KB);
+        assertThat(leaveRoute.scopedKbIds()).containsExactly("kb-leave");
+        assertThat(leaveRoute.fallbackPolicy()).isEqualTo(RetrievalFallbackPolicy.NONE);
+        assertThat(expenseRoute.key()).isEqualTo("q1");
+        assertThat(expenseRoute.queryIndex()).isEqualTo(1);
+        assertThat(expenseRoute.intentNodeId()).isEqualTo("expense");
+        assertThat(expenseRoute.source()).isEqualTo(RetrievalSource.INTENT_KB);
+        assertThat(expenseRoute.scopedKbIds()).containsExactly("kb-expense");
+        assertThat(expenseRoute.fallbackPolicy())
+                .isEqualTo(RetrievalFallbackPolicy.AGENT_DEFAULT_KB);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        RetrievalPlan restored = objectMapper.readValue(
+                objectMapper.writeValueAsString(contract.retrieval()), RetrievalPlan.class);
+        assertThat(restored).isEqualTo(contract.retrieval());
+    }
+
+    @Test
+    void shouldRejectLegacySingleResolutionBuildForMultiIntent() {
+        assertThatThrownBy(() -> builder.build(
+                kbResolution("leave", "kb-leave", ScopePolicy.STRICT),
+                "leave and expense",
+                "leave and expense",
+                AgentExecutionMode.REACT,
+                multiIntentUnderstanding()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("MULTI_INTENT resolutions");
+    }
+
+    @Test
+    void shouldDeserializeLegacyRetrievalPlanWithoutRoutes() throws Exception {
+        RetrievalPlan restored = new ObjectMapper().readValue("""
+                {
+                  "mode": "REQUIRED_BEFORE_ANSWER",
+                  "source": "INTENT_KB",
+                  "scopedKbIds": ["kb-legacy"],
+                  "fallbackPolicy": "NONE",
+                  "citationRequired": true
+                }
+                """, RetrievalPlan.class);
+
+        assertThat(restored.scopedKbIds()).containsExactly("kb-legacy");
+        assertThat(restored.routes()).isEmpty();
+    }
+
+    @Test
+    void shouldNotEscapeToDefaultKbWhenStrictScopeIsEmpty() {
+        // ATC-P03-F01: strict empty scope remains required but cannot escape to defaults.
+        IntentResolution strictEmpty = new IntentResolution(
+                IntentKind.KB,
+                List.of(IntentNodeDTO.builder().id("leaf").name("policy").build()),
+                List.of(), // empty scope
+                ScopePolicy.STRICT,
+                List.of(),
+                null
+        );
+        TurnExecutionContract contract = builder.build(strictEmpty, "policy question", "policy", AgentExecutionMode.REACT);
+        assertThat(contract.retrieval().mode()).isEqualTo(RetrievalMode.REQUIRED_BEFORE_ANSWER);
+        assertThat(contract.retrieval().source()).isEqualTo(RetrievalSource.INTENT_KB);
+        assertThat(contract.retrieval().scopedKbIds()).isEmpty();
+        assertThat(contract.retrieval().fallbackPolicy()).isEqualTo(RetrievalFallbackPolicy.NONE);
+    }
+
+    @Test
+    void shouldFallbackToDefaultKbWhenFallbackAllowedScopeIsEmpty() {
+        // ATC-P03-F01: FALLBACK_ALLOWED + empty scope still falls back legitimately.
+        IntentResolution fallbackEmpty = new IntentResolution(
+                IntentKind.KB,
+                List.of(IntentNodeDTO.builder().id("leaf").name("policy").build()),
+                List.of(),
+                ScopePolicy.FALLBACK_ALLOWED,
+                List.of(),
+                null
+        );
+        TurnExecutionContract contract = builder.build(fallbackEmpty, "policy question", "policy", AgentExecutionMode.REACT);
+        assertThat(contract.retrieval().source()).isEqualTo(RetrievalSource.AGENT_DEFAULT_KB);
+        assertThat(contract.retrieval().fallbackPolicy()).isEqualTo(RetrievalFallbackPolicy.AGENT_DEFAULT_KB);
+    }
+
+    @Test
+    void shouldRemoveBusinessKbRetrievalFromGeneralOutcome() {
+        IntentUnderstandingResult understanding = understanding(
+                IntentRouteOutcome.GENERAL_CHAT, SourceNeed.KB);
+
+        TurnExecutionContract contract = builder.build(
+                null, "What is a knowledge base?", "knowledge base",
+                AgentExecutionMode.REACT, understanding);
+
+        assertThat(contract.analysis().sourceNeed()).isEqualTo(SourceNeed.KB);
+        assertThat(contract.queryPlan().mode()).isEqualTo(QueryPlanMode.NONE);
+        assertThat(contract.retrieval().mode()).isEqualTo(RetrievalMode.DISABLED);
+        assertThat(contract.tools().retrievalVisible()).isFalse();
+    }
+
+    @Test
+    void shouldKeepOnlySessionFileRetrievalForOutOfDomainMixedOutcome() {
+        IntentUnderstandingResult understanding = understanding(
+                IntentRouteOutcome.OUT_OF_DOMAIN, SourceNeed.MIXED);
+
+        TurnExecutionContract contract = builder.build(
+                null,
+                "Compare the knowledge base with my uploaded report.pdf",
+                "uploaded report.pdf",
+                AgentExecutionMode.REACT,
+                understanding);
+
+        assertThat(contract.queryPlan().queries())
+                .extracting(QuerySpec::source)
+                .containsExactly(RetrievalSource.SESSION_FILES);
+        assertThat(contract.retrieval().source()).isEqualTo(RetrievalSource.SESSION_FILES);
+        assertThat(contract.tools().retrievalVisible()).isTrue();
+    }
+
+    private IntentUnderstandingResult understanding(IntentRouteOutcome outcome, SourceNeed sourceNeed) {
+        IntentDecision decision = new IntentDecision(
+                outcome,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                IntentDecisionSource.DETERMINISTIC,
+                0.95d,
+                ConfidenceStatus.CALIBRATED,
+                "v1",
+                List.of("test"));
+        return new IntentUnderstandingResult(
+                decision,
+                sourceNeed,
+                TimeSensitivity.STATIC,
+                ActionRisk.READ_ONLY,
+                List.of(),
+                false,
+                false);
+    }
+
+    private IntentResolution kbResolution() {
+        return kbResolution("leaf", "kb-1", ScopePolicy.STRICT);
+    }
+
+    private IntentResolution kbResolution(String nodeId, String kbId, ScopePolicy scopePolicy) {
+        return new IntentResolution(
+                IntentKind.KB,
+                List.of(IntentNodeDTO.builder().id(nodeId).name(nodeId).build()),
+                List.of(kbId),
+                scopePolicy,
+                List.of(),
+                null
+        );
+    }
+
+    private IntentUnderstandingResult multiIntentUnderstanding() {
         IntentDecision decision = new IntentDecision(
                 IntentRouteOutcome.MULTI_INTENT,
                 "leave",
@@ -192,28 +371,8 @@ class TurnExecutionContractBuilderTest {
                 ConfidenceStatus.CALIBRATED,
                 "v1",
                 List.of("classifier_schema_valid"));
-        IntentUnderstandingResult understanding = new IntentUnderstandingResult(
+        return new IntentUnderstandingResult(
                 decision, SourceNeed.KB, TimeSensitivity.STATIC, ActionRisk.READ_ONLY,
                 List.of(IntentLabel.MULTI_INTENT), true, false);
-
-        TurnExecutionContract contract = builder.build(
-                kbResolution(), "leave and expense", "leave and expense",
-                AgentExecutionMode.REACT, understanding);
-
-        assertThat(contract.analysis().intentDecision()).isEqualTo(decision);
-        assertThat(contract.analysis().primaryIntent()).isEqualTo(IntentLabel.MULTI_INTENT);
-        assertThat(contract.analysis().secondaryIntents()).contains(IntentLabel.MULTI_INTENT);
-        assertThat(contract.analysis().confidence()).isEqualTo(0.94d);
-    }
-
-    private IntentResolution kbResolution() {
-        return new IntentResolution(
-                IntentKind.KB,
-                List.of(IntentNodeDTO.builder().id("leaf").name("年假").build()),
-                List.of("kb-1"),
-                ScopePolicy.STRICT,
-                List.of(),
-                null
-        );
     }
 }

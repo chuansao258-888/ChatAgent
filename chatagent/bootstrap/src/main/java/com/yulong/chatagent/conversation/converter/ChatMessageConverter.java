@@ -109,7 +109,8 @@ public class ChatMessageConverter {
                     .internal(metadata.getInternal())
                     .deepThinkPhase(metadata.getDeepThinkPhase())
                     .planStepId(metadata.getPlanStepId())
-                    .agentTrace(metadata.getAgentTrace());
+                    .agentTrace(metadata.getAgentTrace())
+                    .retrieval(metadata.getRetrieval());
         }
         return builder.build();
     }

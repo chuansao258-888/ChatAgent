@@ -6,6 +6,7 @@ import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.agent.runtime.contract.QuerySpec;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalRoutePlan;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
@@ -153,7 +154,9 @@ public class AgentThinkingEngine {
         // 因此在组装 Prompt 前先清洗一遍，只保留格式完整的上下文片段。
         List<Message> promptMessages = sanitizePromptMessages(chatMemory.get(chatSessionId));
         String latestUserRequest = latestUserRequest(promptMessages);
-        if (shouldClarifyAmbiguousTopicFragment(latestUserRequest)) {
+        // The typed contract owns clarification in enforce mode. Keep this
+        // heuristic only for the explicit legacy/rollback path.
+        if (executionContract == null && shouldClarifyAmbiguousTopicFragment(latestUserRequest)) {
             AssistantMessage clarification = new AssistantMessage(
                     "Could you clarify what operations context you mean? For example, ask about the current project, owner, locker, readiness note, or another area."
             );
@@ -171,11 +174,15 @@ public class AgentThinkingEngine {
         String decisionPrompt = promptLoader.render(PromptConstants.AGENT_DECISION_MODULE, vars);
         Prompt prompt = buildPrompt(promptMessages, this.chatOptions);
 
+        // A required retrieval contract is executable only when its named
+        // capability is present; unrelated tools cannot satisfy that contract.
+        if (requiresRetrieval() && !hasNamedRetrievalTool()) {
+            throw new IllegalStateException(
+                    "Contract requires retrieval but SessionFileSearchTool is not available");
+        }
+
         // 没有可用工具时无需做“工具决策”，直接走最终答案流，减少一次不必要的路由判断。
         if (this.availableTools.isEmpty()) {
-            if (requiresRetrieval()) {
-                throw new IllegalStateException("Required retrieval tool is unavailable for this turn");
-            }
             log.info("No tools available for this turn. Streaming final response directly.");
             ChatResponse finalResponse = streamFinalAnswer(
                     chatSessionId, buildFinalAnswerPrompt(promptMessages, latestUserRequest));
@@ -186,7 +193,6 @@ public class AgentThinkingEngine {
                     durationMs);
             return finalResponse;
         }
-
         AssistantMessage mandatorySessionFileCall = buildMandatorySessionFileCall(promptMessages);
         if (mandatorySessionFileCall != null) {
             this.messageBridge.persistAndPublish(chatSessionId, turnId, mandatorySessionFileCall);
@@ -284,18 +290,19 @@ public class AgentThinkingEngine {
             return null;
         }
 
-        boolean sessionFileToolAvailable = this.availableTools.stream()
-                .map(ToolCallback::getToolDefinition)
-                .filter(Objects::nonNull)
-                .anyMatch(definition -> SESSION_FILE_SEARCH_TOOL.equals(definition.name()));
-        if (!sessionFileToolAvailable) {
+        if (!hasNamedRetrievalTool()) {
             return null;
         }
         if (!shouldRouteSessionFileSearch(latestUserText)) {
             return null;
         }
 
-        List<String> queries = mandatoryRetrievalQueries(latestUserText);
+        List<MandatoryRetrievalQuery> queries = mandatoryRetrievalQueries(latestUserText);
+        int toolCallBudget = Math.max(maxToolCallsPerStep, 1);
+        if (queries.size() > toolCallBudget) {
+            throw new IllegalStateException(
+                    "Contract retrieval routes exceed the per-step tool-call budget");
+        }
         List<AssistantMessage.ToolCall> toolCalls = queries.stream()
                 .map(this::sessionFileToolCall)
                 .toList();
@@ -305,25 +312,46 @@ public class AgentThinkingEngine {
                 .build();
     }
 
-    private List<String> mandatoryRetrievalQueries(String latestUserText) {
+    private List<MandatoryRetrievalQuery> mandatoryRetrievalQueries(String latestUserText) {
         if (!requiresRetrieval() || executionContract.queryPlan() == null) {
-            return List.of(latestUserText);
+            return List.of(new MandatoryRetrievalQuery(latestUserText, null));
         }
-        List<String> planned = executionContract.queryPlan().queries().stream()
+        if (executionContract.retrieval() != null
+                && !executionContract.retrieval().routes().isEmpty()) {
+            List<QuerySpec> specs = executionContract.queryPlan().queries();
+            List<MandatoryRetrievalQuery> planned = new ArrayList<>();
+            for (RetrievalRoutePlan route : executionContract.retrieval().routes()) {
+                if (route.queryIndex() < 0 || route.queryIndex() >= specs.size()) {
+                    throw new IllegalStateException("Contract retrieval route references an invalid query");
+                }
+                QuerySpec spec = specs.get(route.queryIndex());
+                if (spec == null || !isRagSource(spec.source()) || spec.source() != route.source()
+                        || !StringUtils.hasText(spec.text())) {
+                    throw new IllegalStateException("Contract retrieval route does not match its query plan");
+                }
+                planned.add(new MandatoryRetrievalQuery(spec.text().trim(), route.key()));
+            }
+            if (!planned.isEmpty()) {
+                return List.copyOf(planned);
+            }
+        }
+        List<MandatoryRetrievalQuery> planned = executionContract.queryPlan().queries().stream()
                 .filter(Objects::nonNull)
                 .filter(query -> isRagSource(query.source()))
-                .map(QuerySpec::text)
-                .filter(StringUtils::hasText)
-                .map(String::trim)
-                .distinct()
-                .limit(Math.max(maxToolCallsPerStep, 1))
+                .filter(query -> StringUtils.hasText(query.text()))
+                .map(query -> new MandatoryRetrievalQuery(query.text().trim(), null))
                 .toList();
-        return planned.isEmpty() ? List.of(latestUserText) : planned;
+        return planned.isEmpty()
+                ? List.of(new MandatoryRetrievalQuery(latestUserText, null))
+                : planned;
     }
 
-    private AssistantMessage.ToolCall sessionFileToolCall(String query) {
+    private AssistantMessage.ToolCall sessionFileToolCall(MandatoryRetrievalQuery request) {
         try {
-            String arguments = OBJECT_MAPPER.writeValueAsString(Map.of("query", query));
+            Map<String, String> argumentsMap = StringUtils.hasText(request.routeKey())
+                    ? Map.of("query", request.query(), "routeKey", request.routeKey())
+                    : Map.of("query", request.query());
+            String arguments = OBJECT_MAPPER.writeValueAsString(argumentsMap);
             return new AssistantMessage.ToolCall(
                     "session-file-" + UUID.randomUUID(),
                     "function",
@@ -333,6 +361,9 @@ public class AgentThinkingEngine {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize mandatory retrieval query", exception);
         }
+    }
+
+    private record MandatoryRetrievalQuery(String query, String routeKey) {
     }
 
     private boolean isRagSource(RetrievalSource source) {
@@ -379,6 +410,16 @@ public class AgentThinkingEngine {
         return executionContract != null
                 && executionContract.retrieval() != null
                 && executionContract.retrieval().mode() == RetrievalMode.REQUIRED_BEFORE_ANSWER;
+    }
+
+    /**
+     * Checks whether the contract-required retrieval capability is present.
+     */
+    private boolean hasNamedRetrievalTool() {
+        return this.availableTools.stream()
+                .map(ToolCallback::getToolDefinition)
+                .filter(Objects::nonNull)
+                .anyMatch(definition -> SESSION_FILE_SEARCH_TOOL.equals(definition.name()));
     }
 
     private boolean shouldClarifyAmbiguousTopicFragment(String latestUserText) {

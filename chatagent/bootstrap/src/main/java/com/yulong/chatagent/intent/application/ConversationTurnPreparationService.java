@@ -6,6 +6,7 @@ import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import com.yulong.chatagent.agent.runtime.contract.IntentLabel;
 import com.yulong.chatagent.agent.runtime.contract.SourceNeed;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnContractEnforcementException;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
 import com.yulong.chatagent.intent.model.IntentKind;
@@ -199,10 +200,6 @@ public class ConversationTurnPreparationService {
             }
             case SELECT_MANY -> {
                 pendingIntentResolutionStore.delete(context.sessionId());
-                if (!compatibleReadOnly(reply.selected())) {
-                    return TurnPreparationResult.direct(
-                            clarificationResponseBuilder.buildMultiIntentConflict(context.userInput()));
-                }
                 String original = originalOrCurrent(pending, context.userInput());
                 return applyPolicyDecision(context, snapshot,
                         explicitSelection(snapshot, reply.selected(), original, true), original);
@@ -289,16 +286,56 @@ public class ConversationTurnPreparationService {
                                                 IntentUnderstandingResult understanding,
                                                 String canonicalQuery,
                                                 boolean rewrite) {
-        IntentResolution resolution = snapshot.resolveNode(understanding.decision().primaryNodeId());
+        List<IntentResolution> resolutions = resolveOrderedRoutes(snapshot, understanding.decision());
+        IntentResolution resolution = resolutions.isEmpty() ? null : resolutions.get(0);
         if (resolution == null) {
+            if (understanding.decision().outcome() == IntentRouteOutcome.MULTI_INTENT) {
+                return TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildMultiIntentConflict(canonicalQuery));
+            }
             return dispatchWithContract(null, canonicalQuery, canonicalQuery, context, understanding);
+        }
+        if (understanding.decision().outcome() == IntentRouteOutcome.MULTI_INTENT) {
+            if (understanding.actionRisk() != ActionRisk.READ_ONLY) {
+                return TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildExecutionInfoMissing(
+                                List.of(MissingDimension.CONFIRMATION), canonicalQuery));
+            }
+            if (!compatibleReadOnly(resolutions)) {
+                return TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildMultiIntentConflict(canonicalQuery));
+            }
         }
         if (resolution.kind() == IntentKind.SYSTEM
                 && understanding.decision().outcome() == IntentRouteOutcome.KNOWN_INTENT) {
             return TurnPreparationResult.direct(systemIntentResponseRenderer.render(resolution, canonicalQuery));
         }
         String dispatched = rewrite ? queryRewriter.rewrite(canonicalQuery, resolution) : canonicalQuery;
-        return dispatchWithContract(resolution, dispatched, canonicalQuery, context, understanding);
+        return dispatchRoutesWithContract(resolutions, dispatched, canonicalQuery, context, understanding);
+    }
+
+    private List<IntentResolution> resolveOrderedRoutes(IntentTreeSnapshot snapshot,
+                                                        IntentDecision decision) {
+        List<String> routeIds = new ArrayList<>();
+        if (StringUtils.hasText(decision.primaryNodeId())) {
+            routeIds.add(decision.primaryNodeId());
+        }
+        if (decision.outcome() == IntentRouteOutcome.MULTI_INTENT) {
+            routeIds.addAll(decision.secondaryNodeIds());
+        }
+        if (routeIds.isEmpty() || new LinkedHashSet<>(routeIds).size() != routeIds.size()) {
+            return List.of();
+        }
+        List<IntentResolution> resolutions = new ArrayList<>(routeIds.size());
+        for (String routeId : routeIds) {
+            IntentResolution resolved = snapshot.resolveNode(
+                    routeId, intentPolicyProperties.isKbInheritanceEnabled());
+            if (resolved == null) {
+                return List.of();
+            }
+            resolutions.add(resolved);
+        }
+        return List.copyOf(resolutions);
     }
 
     private IntentUnderstandingResult explicitSelection(IntentTreeSnapshot snapshot,
@@ -332,11 +369,11 @@ public class ConversationTurnPreparationService {
                 signals.actionRisk(), List.copyOf(new LinkedHashSet<>(labels)), false, false);
     }
 
-    private boolean compatibleReadOnly(List<IntentNodeDTO> selected) {
-        return selected != null && selected.size() > 1 && selected.stream()
-                .allMatch(node -> node != null
-                        && (node.getIntentKind() == null || node.getIntentKind() == IntentKind.KB)
-                        && (node.getAllowedTools() == null || node.getAllowedTools().isEmpty()));
+    private boolean compatibleReadOnly(List<IntentResolution> resolutions) {
+        return resolutions != null && resolutions.size() > 1 && resolutions.stream()
+                .allMatch(resolution -> resolution != null
+                        && resolution.kind() == IntentKind.KB
+                        && resolution.allowedTools().isEmpty());
     }
 
     private boolean isClearNewTopic(IntentUnderstandingResult result, List<IntentNodeDTO> pendingCandidates) {
@@ -416,26 +453,51 @@ public class ConversationTurnPreparationService {
                                                        String originalUserInput,
                                                        TurnPreparationContext context,
                                                        IntentUnderstandingResult understanding) {
+        List<IntentResolution> resolutions = resolution == null ? List.of() : List.of(resolution);
+        return dispatchRoutesWithContract(resolutions, dispatchedInput, originalUserInput, context, understanding);
+    }
+
+    private TurnPreparationResult dispatchRoutesWithContract(List<IntentResolution> resolutions,
+                                                             String dispatchedInput,
+                                                             String originalUserInput,
+                                                             TurnPreparationContext context,
+                                                             IntentUnderstandingResult understanding) {
+        IntentResolution primaryResolution = resolutions == null || resolutions.isEmpty()
+                ? null : resolutions.get(0);
         if (!contractProperties.isEnabled()) {
-            return TurnPreparationResult.dispatch(resolution, dispatchedInput);
+            return TurnPreparationResult.dispatch(primaryResolution, dispatchedInput);
         }
+        AgentExecutionMode mode = context == null ? AgentExecutionMode.REACT : context.executionMode();
+        TurnExecutionContract contract;
         try {
-            AgentExecutionMode mode = context == null ? AgentExecutionMode.REACT : context.executionMode();
-            TurnExecutionContract contract = contractBuilder.build(
-                    resolution, originalUserInput, dispatchedInput, mode, understanding);
-            if (contractProperties.isEmitDebugMetadata()) {
-                log.info("Turn contract built: routeOutcome={}, intentKind={}, sourceNeed={}, retrievalMode={}, enforcement={}",
-                        contract.analysis().intentDecision() == null
-                                ? "LEGACY" : contract.analysis().intentDecision().outcome(),
-                        contract.intent().kind(), contract.analysis().sourceNeed(),
-                        contract.retrieval().mode(), contractProperties.getRetrievalEnforcement());
-            }
-            return TurnPreparationResult.dispatch(resolution, dispatchedInput, contract);
+            contract = contractBuilder.buildForRoutes(
+                    resolutions, originalUserInput, dispatchedInput, mode, understanding);
         } catch (RuntimeException exception) {
+            if (contractProperties.isRetrievalEnforced()) {
+                throw new TurnContractEnforcementException(
+                        "Retrieval turn contract construction failed in enforce mode",
+                        exception);
+            }
             log.warn("Turn contract build failed, dispatching without contract: reason={}",
                     exception.getClass().getSimpleName());
-            return TurnPreparationResult.dispatch(resolution, dispatchedInput);
+            return TurnPreparationResult.dispatch(primaryResolution, dispatchedInput);
         }
+        if (contract == null) {
+            if (contractProperties.isRetrievalEnforced()) {
+                throw new TurnContractEnforcementException(
+                        "Retrieval turn contract builder returned null in enforce mode");
+            }
+            log.warn("Turn contract builder returned null, dispatching without contract");
+            return TurnPreparationResult.dispatch(primaryResolution, dispatchedInput);
+        }
+        if (contractProperties.isEmitDebugMetadata()) {
+            log.info("Turn contract built: routeOutcome={}, intentKind={}, sourceNeed={}, retrievalMode={}, enforcement={}",
+                    contract.analysis().intentDecision() == null
+                            ? "LEGACY" : contract.analysis().intentDecision().outcome(),
+                    contract.intent().kind(), contract.analysis().sourceNeed(),
+                    contract.retrieval().mode(), contractProperties.getRetrievalEnforcement());
+        }
+        return TurnPreparationResult.dispatch(primaryResolution, dispatchedInput, contract);
     }
 
     private List<IntentNodeDTO> resolveCandidates(IntentTreeSnapshot snapshot, List<String> candidateNodeIds) {

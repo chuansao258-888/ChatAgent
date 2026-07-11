@@ -73,6 +73,16 @@ class AgentMessageBridgeImplTest {
     @Test
     void shouldAttachCitationsToFinalAssistantMessageAndClearHolder() {
         currentTurnCitationHolder.put("session-1", "turn-1", List.of(citation("doc-1")));
+        var contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                .build(null, "uploaded report", "uploaded report",
+                        com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT);
+        currentTurnCitationHolder.recordRetrievalResult(
+                "session-1", "turn-1",
+                com.yulong.chatagent.rag.model.RetrievalExecutionResult.noHit(
+                        com.yulong.chatagent.agent.runtime.contract.RetrievalSource.SESSION_FILES,
+                        List.of(com.yulong.chatagent.agent.runtime.contract.RetrievalSource.SESSION_FILES),
+                        false, List.of()),
+                contract);
         AssistantMessage assistantMessage = org.mockito.Mockito.mock(AssistantMessage.class);
         when(assistantMessage.getText()).thenReturn("Final answer [1]");
         when(assistantMessage.getToolCalls()).thenReturn(List.of());
@@ -83,7 +93,10 @@ class AgentMessageBridgeImplTest {
         verify(chatMessageFacadeService).createChatMessage(dtoCaptor.capture());
         assertThat(dtoCaptor.getValue().getMetadata().getCitations()).hasSize(1);
         assertThat(dtoCaptor.getValue().getMetadata().getCitations().get(0).documentId()).isEqualTo("doc-1");
+        assertThat(dtoCaptor.getValue().getMetadata().getRetrieval().retrievalOutcome())
+                .isEqualTo("MISS");
         assertThat(currentTurnCitationHolder.peek("session-1", "turn-1")).isEmpty();
+        assertThat(currentTurnCitationHolder.peekRetrievalMetadata("session-1", "turn-1")).isNull();
 
         ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
         verify(sseService).publish(org.mockito.ArgumentMatchers.eq("session-1"), sseCaptor.capture());

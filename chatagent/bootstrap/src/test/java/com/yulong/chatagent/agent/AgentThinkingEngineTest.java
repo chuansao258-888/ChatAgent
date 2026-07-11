@@ -23,6 +23,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.contains;
@@ -323,6 +324,64 @@ class AgentThinkingEngineTest {
                 any(), any(), any(Prompt.class), any(), any(), same(llmService),
                 any(), anyBoolean(), any(), any());
         verify(messageBridge, never()).streamFinalResponse(any(), any(), any(Prompt.class), same(llmService), anyBoolean());
+    }
+
+    @Test
+    void shouldNotLetLegacyShortFragmentGateVetoRequiredRetrieval() {
+        ToolCallback retrievalTool = namedTool("SessionFileSearchTool");
+        when(chatMemory.get(SESSION_ID)).thenReturn(List.of(new UserMessage("operations")));
+        var resolution = new com.yulong.chatagent.intent.application.IntentResolution(
+                com.yulong.chatagent.intent.model.IntentKind.KB,
+                List.of(),
+                List.of("kb-operations"),
+                com.yulong.chatagent.intent.model.ScopePolicy.STRICT,
+                List.of(),
+                null);
+        var contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                .build(resolution, "operations", "operations",
+                        com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT);
+
+        engineWithTools(List.of(retrievalTool), "", contract).think(chatMemory, SESSION_ID);
+
+        ArgumentCaptor<Message> persisted = ArgumentCaptor.forClass(Message.class);
+        verify(messageBridge).persistAndPublish(eq(SESSION_ID), eq(TURN_ID), persisted.capture());
+        assertThat(persisted.getValue())
+                .isInstanceOfSatisfying(AssistantMessage.class, message ->
+                        assertThat(message.getToolCalls())
+                                .singleElement()
+                                .satisfies(call -> assertThat(call.name())
+                                        .isEqualTo("SessionFileSearchTool")));
+        verify(messageBridge, never()).collectDecisionResponse(
+                any(), any(), any(Prompt.class), any(), any(), same(llmService),
+                any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void shouldFailBeforeModelWhenRequiredRetrievalCapabilityIsMissing() {
+        ToolCallback unrelatedTool = namedTool("localTool");
+        when(chatMemory.get(SESSION_ID)).thenReturn(List.of(new UserMessage("annual leave")));
+        var resolution = new com.yulong.chatagent.intent.application.IntentResolution(
+                com.yulong.chatagent.intent.model.IntentKind.KB,
+                List.of(),
+                List.of("kb-leave"),
+                com.yulong.chatagent.intent.model.ScopePolicy.STRICT,
+                List.of(),
+                null);
+        var contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                .build(resolution, "annual leave", "annual leave",
+                        com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT);
+
+        assertThatThrownBy(() -> engineWithTools(List.of(unrelatedTool), "", contract)
+                .think(chatMemory, SESSION_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SessionFileSearchTool");
+
+        verify(messageBridge, never()).collectDecisionResponse(
+                any(), any(), any(Prompt.class), any(), any(), same(llmService),
+                any(), anyBoolean(), any(), any());
+        verify(messageBridge, never()).streamFinalResponse(
+                any(), any(), any(Prompt.class), same(llmService), anyBoolean());
+        verify(messageBridge, never()).persistAndPublish(any(), any(), any());
     }
 
     @Test
@@ -970,6 +1029,92 @@ class AgentThinkingEngineTest {
                 .extracting(AssistantMessage.ToolCall::arguments)
                 .doesNotHaveDuplicates()
                 .anySatisfy(arguments -> assertThat(arguments).contains("report.xlsx"));
+    }
+
+    @Test
+    void shouldKeepSameTextMultiIntentRoutesDistinctByOpaqueKey() {
+        ToolCallback retrievalTool = namedTool("SessionFileSearchTool");
+        String request = "Compare annual leave and travel expense rules.";
+        when(chatMemory.get(SESSION_ID)).thenReturn(List.of(new UserMessage(request)));
+        List<String> routeIds = List.of("leave", "expense");
+        var contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                .buildForRoutes(
+                        routeIds.stream().map(this::kbResolution).toList(),
+                        request,
+                        request,
+                        com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT,
+                        multiUnderstanding(routeIds));
+
+        engineWithTools(List.of(retrievalTool), "", contract).think(chatMemory, SESSION_ID);
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(messageBridge).persistAndPublish(eq(SESSION_ID), eq(TURN_ID), messageCaptor.capture());
+        AssistantMessage persisted = (AssistantMessage) messageCaptor.getValue();
+        assertThat(persisted.getToolCalls()).hasSize(2);
+        assertThat(persisted.getToolCalls())
+                .extracting(AssistantMessage.ToolCall::arguments)
+                .allSatisfy(arguments -> assertThat(arguments).contains(request))
+                .anySatisfy(arguments -> assertThat(arguments).contains("\"routeKey\":\"q0\""))
+                .anySatisfy(arguments -> assertThat(arguments).contains("\"routeKey\":\"q1\""))
+                .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void shouldFailInsteadOfDroppingRoutesBeyondToolCallBudget() {
+        ToolCallback retrievalTool = namedTool("SessionFileSearchTool");
+        String request = "Compare all five policies.";
+        when(chatMemory.get(SESSION_ID)).thenReturn(List.of(new UserMessage(request)));
+        List<String> routeIds = List.of("a", "b", "c", "d", "e");
+        var contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder()
+                .buildForRoutes(
+                        routeIds.stream().map(this::kbResolution).toList(),
+                        request,
+                        request,
+                        com.yulong.chatagent.agent.runtime.AgentExecutionMode.REACT,
+                        multiUnderstanding(routeIds));
+
+        assertThatThrownBy(() -> engineWithTools(List.of(retrievalTool), "", contract)
+                .think(chatMemory, SESSION_ID))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("tool-call budget");
+        verify(messageBridge, never()).persistAndPublish(any(), any(), any());
+    }
+
+    private com.yulong.chatagent.intent.application.IntentResolution kbResolution(String id) {
+        return new com.yulong.chatagent.intent.application.IntentResolution(
+                com.yulong.chatagent.intent.model.IntentKind.KB,
+                List.of(com.yulong.chatagent.support.dto.IntentNodeDTO.builder()
+                        .id(id).name(id).build()),
+                List.of("kb-" + id),
+                com.yulong.chatagent.intent.model.ScopePolicy.STRICT,
+                List.of(),
+                null);
+    }
+
+    private com.yulong.chatagent.intent.application.IntentUnderstandingResult multiUnderstanding(
+            List<String> routeIds) {
+        List<com.yulong.chatagent.intent.application.IntentCandidateEvidence> evidence =
+                java.util.stream.IntStream.range(0, routeIds.size())
+                        .mapToObj(index -> new com.yulong.chatagent.intent.application.IntentCandidateEvidence(
+                                routeIds.get(index), routeIds.get(index), 1.0d, 0.0d,
+                                index + 1, List.of("test")))
+                        .toList();
+        var decision = new com.yulong.chatagent.intent.application.IntentDecision(
+                com.yulong.chatagent.intent.application.IntentRouteOutcome.MULTI_INTENT,
+                routeIds.get(0), routeIds.subList(1, routeIds.size()), evidence, List.of(),
+                com.yulong.chatagent.intent.application.IntentDecisionSource.CLASSIFIER,
+                0.9d,
+                com.yulong.chatagent.intent.application.ConfidenceStatus.CALIBRATED,
+                "v1",
+                List.of("test"));
+        return new com.yulong.chatagent.intent.application.IntentUnderstandingResult(
+                decision,
+                com.yulong.chatagent.agent.runtime.contract.SourceNeed.KB,
+                com.yulong.chatagent.agent.runtime.contract.TimeSensitivity.STATIC,
+                com.yulong.chatagent.agent.runtime.contract.ActionRisk.READ_ONLY,
+                List.of(com.yulong.chatagent.agent.runtime.contract.IntentLabel.MULTI_INTENT),
+                false,
+                false);
     }
 
     private AgentThinkingEngine engineWithTools(List<ToolCallback> tools) {

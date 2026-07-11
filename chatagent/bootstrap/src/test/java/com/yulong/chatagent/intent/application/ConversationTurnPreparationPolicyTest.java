@@ -7,8 +7,10 @@ import com.yulong.chatagent.agent.runtime.contract.SourceNeed;
 import com.yulong.chatagent.agent.runtime.contract.SourceReferenceClassifier;
 import com.yulong.chatagent.agent.runtime.contract.TimeSensitivity;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
 import com.yulong.chatagent.intent.model.IntentKind;
+import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +42,7 @@ class ConversationTurnPreparationPolicyTest {
     @Mock private QueryRewriter queryRewriter;
     @Mock private SystemIntentResponseRenderer systemRenderer;
     @Mock private TurnExecutionContractBuilder contractBuilder;
+    @Mock private TurnExecutionContract executionContract;
     @Mock private IntentUnderstandingEngine understandingEngine;
     @Mock private IntentPolicyMetrics metrics;
 
@@ -118,6 +122,8 @@ class ConversationTurnPreparationPolicyTest {
 
     @Test
     void shouldRecoverCompatibleSelectManyAndClearPending() {
+        contractProperties.setEnabled(true);
+        contractProperties.setRetrievalEnforcement("warn");
         ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
         PendingIntentResolution pending = pending(0);
         List<IntentNodeDTO> candidates = snapshot.getNodes();
@@ -125,14 +131,100 @@ class ConversationTurnPreparationPolicyTest {
         when(clarificationResolver.resolveTyped("both", candidates)).thenReturn(
                 ClarificationResolver.ClarificationReply.selected(
                         ClarificationResolver.ReplyOutcome.SELECT_MANY, candidates));
+        when(contractBuilder.buildForRoutes(anyList(), anyString(), anyString(), any(), any()))
+                .thenReturn(executionContract);
 
         TurnPreparationResult prepared = service.prepare(context("both"));
 
         assertThat(prepared.isDirectReply()).isFalse();
         assertThat(prepared.intentResolution().pathLabel()).isEqualTo("Annual Leave");
         assertThat(prepared.rewrittenInput()).isEqualTo("leave and expense");
+        assertThat(prepared.executionContract()).isSameAs(executionContract);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<IntentResolution>> routesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(contractBuilder).buildForRoutes(routesCaptor.capture(), anyString(), anyString(), any(), any());
+        assertThat(routesCaptor.getValue()).extracting(IntentResolution::pathLabel)
+                .containsExactly("Annual Leave", "Travel Expense");
         verify(pendingStore).delete("session");
         verify(understandingEngine, never()).understand(any());
+    }
+
+    @Test
+    void shouldPreserveAutomaticMultiIntentRouteScopeAndFallbackOrder() {
+        contractProperties.setEnabled(true);
+        contractProperties.setRetrievalEnforcement("warn");
+        IntentNodeDTO strict = leaf("leave", "Annual Leave");
+        strict.setScopePolicy(ScopePolicy.STRICT);
+        IntentNodeDTO fallback = leaf("expense", "Travel Expense");
+        fallback.setScopePolicy(ScopePolicy.FALLBACK_ALLOWED);
+        snapshot = new IntentTreeSnapshot("agent", 1, List.of(strict, fallback),
+                Map.of("leave", List.of("kb-a"), "expense", List.of("kb-b")));
+        when(treeCacheManager.loadActiveSnapshot("agent")).thenReturn(snapshot);
+        when(understandingEngine.understand(any())).thenReturn(result(IntentRouteOutcome.MULTI_INTENT));
+        when(contractBuilder.buildForRoutes(anyList(), anyString(), anyString(), any(), any()))
+                .thenReturn(executionContract);
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+
+        TurnPreparationResult prepared = service.prepare(context("leave and expense"));
+
+        assertThat(prepared.executionContract()).isSameAs(executionContract);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<IntentResolution>> routesCaptor = ArgumentCaptor.forClass(List.class);
+        verify(contractBuilder).buildForRoutes(routesCaptor.capture(), anyString(), anyString(), any(), any());
+        assertThat(routesCaptor.getValue()).hasSize(2);
+        assertThat(routesCaptor.getValue().get(0).scopedKbIds()).containsExactly("kb-a");
+        assertThat(routesCaptor.getValue().get(0).scopePolicy()).isEqualTo(ScopePolicy.STRICT);
+        assertThat(routesCaptor.getValue().get(1).scopedKbIds()).containsExactly("kb-b");
+        assertThat(routesCaptor.getValue().get(1).scopePolicy()).isEqualTo(ScopePolicy.FALLBACK_ALLOWED);
+    }
+
+    @Test
+    void shouldClarifyIncompatibleAutomaticMultiIntentBeforeDispatch() {
+        IntentNodeDTO kb = leaf("leave", "Annual Leave");
+        IntentNodeDTO tool = leaf("expense", "Expense Submission");
+        tool.setIntentKind(IntentKind.TOOL);
+        tool.setAllowedTools(List.of("submitExpense"));
+        snapshot = new IntentTreeSnapshot("agent", 1, List.of(kb, tool), Map.of());
+        when(treeCacheManager.loadActiveSnapshot("agent")).thenReturn(snapshot);
+        when(understandingEngine.understand(any())).thenReturn(result(IntentRouteOutcome.MULTI_INTENT));
+        when(responseBuilder.buildMultiIntentConflict("leave and expense")).thenReturn("conflict");
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+
+        TurnPreparationResult prepared = service.prepare(context("leave and expense"));
+
+        assertThat(prepared.directReply()).isEqualTo("conflict");
+        verify(contractBuilder, never()).buildForRoutes(anyList(), anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void shouldRequireConfirmationForSideEffectingMultiIntentBeforeDispatch() {
+        IntentUnderstandingResult base = result(IntentRouteOutcome.MULTI_INTENT);
+        IntentUnderstandingResult risky = new IntentUnderstandingResult(
+                base.decision(), base.sourceNeed(), base.timeSensitivity(), ActionRisk.WRITE_ACTION,
+                base.secondaryIntents(), base.contextUsed(), base.contextTruncated());
+        when(understandingEngine.understand(any())).thenReturn(risky);
+        when(responseBuilder.buildExecutionInfoMissing(
+                List.of(MissingDimension.CONFIRMATION), "leave and expense")).thenReturn("confirm");
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+
+        TurnPreparationResult prepared = service.prepare(context("leave and expense"));
+
+        assertThat(prepared.directReply()).isEqualTo("confirm");
+        verify(contractBuilder, never()).buildForRoutes(anyList(), anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void shouldFailClosedWhenAutomaticMultiIntentSecondaryRouteIsMissing() {
+        snapshot = new IntentTreeSnapshot("agent", 1, List.of(leaf("leave", "Annual Leave")), Map.of());
+        when(treeCacheManager.loadActiveSnapshot("agent")).thenReturn(snapshot);
+        when(understandingEngine.understand(any())).thenReturn(result(IntentRouteOutcome.MULTI_INTENT));
+        when(responseBuilder.buildMultiIntentConflict("leave and expense")).thenReturn("conflict");
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+
+        TurnPreparationResult prepared = service.prepare(context("leave and expense"));
+
+        assertThat(prepared.directReply()).isEqualTo("conflict");
+        verify(contractBuilder, never()).buildForRoutes(anyList(), anyString(), anyString(), any(), any());
     }
 
     @Test

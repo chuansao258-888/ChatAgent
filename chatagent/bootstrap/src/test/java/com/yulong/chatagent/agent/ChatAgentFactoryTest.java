@@ -8,6 +8,7 @@ import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
 import com.yulong.chatagent.agent.runtime.AgentRuntimeEngine;
 import com.yulong.chatagent.agent.runtime.ReactRuntimeEngine;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnContractEnforcementException;
 import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.LLMService;
@@ -19,8 +20,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ChatAgentFactoryTest {
@@ -81,6 +84,67 @@ class ChatAgentFactoryTest {
     }
 
     @Test
+    void shouldRejectMissingContractBeforeLoadingContextInEnforceMode() {
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), mock(LLMService.class), contextLoader,
+                mock(AgentMessageBridge.class), new AgentRunPolicyProperties(),
+                new TurnContractProperties());
+
+        assertThatThrownBy(() -> factory.create(
+                "agent-1", "session-1", "turn-1", null, null, "user-1",
+                AgentExecutionMode.REACT, "hello", null))
+                .isInstanceOf(TurnContractEnforcementException.class)
+                .hasMessageContaining("requires a turn execution contract");
+
+        verifyNoInteractions(contextLoader);
+    }
+
+    @Test
+    void shouldRejectLoaderThatDropsEnforcedContract() {
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder()
+                .build(null, "use uploaded report.pdf", null, AgentExecutionMode.REACT);
+        when(contextLoader.load(
+                "agent-1", "session-1", null, null,
+                AgentExecutionMode.REACT, "use uploaded report.pdf", contract))
+                .thenReturn(runtimeContext(null));
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), mock(LLMService.class), contextLoader,
+                mock(AgentMessageBridge.class), new AgentRunPolicyProperties(),
+                new TurnContractProperties());
+
+        assertThatThrownBy(() -> factory.create(
+                "agent-1", "session-1", "turn-1", null, null, "user-1",
+                AgentExecutionMode.REACT, "use uploaded report.pdf", contract))
+                .isInstanceOf(TurnContractEnforcementException.class)
+                .hasMessageContaining("did not preserve");
+    }
+
+    @Test
+    void shouldKeepMasterDisabledModeOnLegacyRuntimePath() {
+        AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder()
+                .build(null, "hello", null, AgentExecutionMode.REACT);
+        when(contextLoader.load(
+                "agent-1", "session-1", null, null,
+                AgentExecutionMode.REACT, "hello"))
+                .thenReturn(runtimeContext(null));
+        TurnContractProperties properties = new TurnContractProperties();
+        properties.setEnabled(false);
+        ChatAgentFactory factory = new ChatAgentFactory(
+                TestPromptLoader.create(), mock(LLMService.class), contextLoader,
+                mock(AgentMessageBridge.class), new AgentRunPolicyProperties(), properties);
+
+        ChatAgent agent = factory.create(
+                "agent-1", "session-1", "turn-1", null, null, "user-1",
+                AgentExecutionMode.REACT, "hello", contract);
+
+        AgentRunContext runContext = (AgentRunContext) ReflectionTestUtils.getField(agent, "runContext");
+        assertThat(runContext.executionContract()).isNull();
+    }
+
+    @Test
     void shouldCreateAgentUsingRuntimeContext() {
         LLMService llmService = mock(LLMService.class);
         AgentRuntimeContextLoader contextLoader = mock(AgentRuntimeContextLoader.class);
@@ -109,7 +173,7 @@ class ChatAgentFactoryTest {
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
                 new AgentRunPolicyProperties(),
-                new TurnContractProperties()
+                legacyProperties()
         );
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
@@ -156,7 +220,7 @@ class ChatAgentFactoryTest {
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
                 new AgentRunPolicyProperties(),
-                new TurnContractProperties()
+                legacyProperties()
         );
 
         ChatAgent chatAgent = factory.create(
@@ -205,7 +269,7 @@ class ChatAgentFactoryTest {
         ChatAgentFactory factory = new ChatAgentFactory(
                 TestPromptLoader.create(), llmService, contextLoader, messageBridge,
                 new AgentRunPolicyProperties(),
-                new TurnContractProperties()
+                legacyProperties()
         );
 
         ChatAgent chatAgent = factory.create("agent-1", "session-1");
@@ -219,5 +283,11 @@ class ChatAgentFactoryTest {
                 "agent-1", "Support", "support agent", "system prompt", "glm-4.6", 12,
                 List.of(), List.of(), "session file summary", "session summary", "",
                 AgentExecutionMode.REACT, contract);
+    }
+
+    private TurnContractProperties legacyProperties() {
+        TurnContractProperties properties = new TurnContractProperties();
+        properties.setRetrievalEnforcement("warn");
+        return properties;
     }
 }

@@ -3,6 +3,7 @@ package com.yulong.chatagent.support.dto;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.rag.model.CitationMetadata;
+import com.yulong.chatagent.rag.model.RetrievalOutcomeMetadata;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -53,6 +54,8 @@ public class ChatMessageDTO {
         private String planStepId;
         /** DeepThink 运行追踪摘要，仅附加在最终回答上 */
         private AgentTraceMetadata agentTrace;
+        /** Sanitized retrieval execution outcome for the final assistant message. */
+        private RetrievalOutcomeMetadata retrieval;
     }
 
     @Getter

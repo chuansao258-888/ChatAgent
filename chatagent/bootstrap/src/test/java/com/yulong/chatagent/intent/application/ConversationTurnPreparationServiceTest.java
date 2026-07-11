@@ -1,6 +1,7 @@
 package com.yulong.chatagent.intent.application;
 
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnContractEnforcementException;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -154,6 +156,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldAbandonPendingClarificationForSubstantiveContextualFollowUp() {
+        contractProperties.setRetrievalEnforcement("warn");
         ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
@@ -248,6 +251,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldBypassNewClarificationForContextualFollowUpQuestion() {
+        contractProperties.setRetrievalEnforcement("warn");
         ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
@@ -278,6 +282,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldBypassNewClarificationForPointPersonFollowUp() {
+        contractProperties.setRetrievalEnforcement("warn");
         ConversationTurnPreparationService service = newService();
         IntentNodeDTO launchNotes = IntentNodeDTO.builder()
                 .id("launch-notes")
@@ -334,7 +339,7 @@ class ConversationTurnPreparationServiceTest {
 
     @Test
     void shouldCarryExecutionContractOnDispatchedTurnWhenEnabled() {
-        // Phase 1 warn 模式：开启时每个 dispatch 结果都应带上 contract。
+        // Phase 3 rollback/warn 模式：开启时每个 dispatch 结果仍应带上 contract。
         contractProperties.setEnabled(true);
         ConversationTurnPreparationService service = newService();
         IntentResolution resolution = new IntentResolution(
@@ -352,7 +357,8 @@ class ConversationTurnPreparationServiceTest {
         when(intentRouter.route("assistant-1", "年假怎么申请")).thenReturn(IntentRoutingResult.resolved(resolution));
         when(queryRewriter.rewrite("年假怎么申请", resolution)).thenReturn("年假 申请");
         TurnExecutionContract builtContract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder().build(resolution, "年假怎么申请", "年假 申请", null);
-        when(contractBuilder.build(resolution, "年假怎么申请", "年假 申请", AgentExecutionMode.REACT, null)).thenReturn(builtContract);
+        when(contractBuilder.buildForRoutes(List.of(resolution), "年假怎么申请", "年假 申请",
+                AgentExecutionMode.REACT, null)).thenReturn(builtContract);
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "年假怎么申请");
 
@@ -360,7 +366,8 @@ class ConversationTurnPreparationServiceTest {
         assertThat(result.executionContract()).isSameAs(builtContract);
         assertThat(result.intentResolution()).isEqualTo(resolution);
         assertThat(result.rewrittenInput()).isEqualTo("年假 申请");
-        verify(contractBuilder).build(resolution, "年假怎么申请", "年假 申请", AgentExecutionMode.REACT, null);
+        verify(contractBuilder).buildForRoutes(List.of(resolution), "年假怎么申请", "年假 申请",
+                AgentExecutionMode.REACT, null);
     }
 
     @Test
@@ -389,7 +396,7 @@ class ConversationTurnPreparationServiceTest {
         assertThat(result.executionContract()).isNull();
         assertThat(result.intentResolution()).isEqualTo(resolution);
         assertThat(result.rewrittenInput()).isEqualTo("年假 申请");
-        verify(contractBuilder, never()).build(any(), anyString(), anyString(), any(), any());
+        verify(contractBuilder, never()).buildForRoutes(any(), anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -402,12 +409,59 @@ class ConversationTurnPreparationServiceTest {
                 new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of())
         );
         TurnExecutionContract passthroughContract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder().build(null, "你好", "你好", null);
-        when(contractBuilder.build(null, "你好", "你好", AgentExecutionMode.REACT, null)).thenReturn(passthroughContract);
+        when(contractBuilder.buildForRoutes(List.of(), "你好", "你好", AgentExecutionMode.REACT, null))
+                .thenReturn(passthroughContract);
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "你好");
 
         assertThat(result.isDirectReply()).isFalse();
         assertThat(result.executionContract()).isSameAs(passthroughContract);
         verify(pendingIntentResolutionStore).delete("session-1");
+    }
+
+    @Test
+    void shouldFailWhenContractBuilderThrowsInEnforceMode() {
+        contractProperties.setEnabled(true);
+        contractProperties.setRetrievalEnforcement("enforce");
+        ConversationTurnPreparationService service = newService();
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1"))
+                .thenReturn(new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of()));
+        when(contractBuilder.buildForRoutes(List.of(), "hello", "hello", AgentExecutionMode.REACT, null))
+                .thenThrow(new IllegalStateException("broken builder"));
+
+        assertThatThrownBy(() -> service.prepare("assistant-1", "session-1", "hello"))
+                .isInstanceOf(TurnContractEnforcementException.class)
+                .hasMessageContaining("enforce mode")
+                .hasRootCauseMessage("broken builder");
+    }
+
+    @Test
+    void shouldFailWhenContractBuilderReturnsNullInEnforceMode() {
+        contractProperties.setEnabled(true);
+        contractProperties.setRetrievalEnforcement("enforce");
+        ConversationTurnPreparationService service = newService();
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1"))
+                .thenReturn(new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of()));
+
+        assertThatThrownBy(() -> service.prepare("assistant-1", "session-1", "hello"))
+                .isInstanceOf(TurnContractEnforcementException.class)
+                .hasMessageContaining("returned null");
+    }
+
+    @Test
+    void shouldKeepWarnModeContractFailureOnLegacyDispatchPath() {
+        contractProperties.setEnabled(true);
+        contractProperties.setRetrievalEnforcement("warn");
+        ConversationTurnPreparationService service = newService();
+        when(intentTreeCacheManager.loadActiveSnapshot("assistant-1"))
+                .thenReturn(new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of()));
+        when(contractBuilder.buildForRoutes(List.of(), "hello", "hello", AgentExecutionMode.REACT, null))
+                .thenThrow(new IllegalStateException("broken builder"));
+
+        TurnPreparationResult result = service.prepare("assistant-1", "session-1", "hello");
+
+        assertThat(result.isDirectReply()).isFalse();
+        assertThat(result.rewrittenInput()).isEqualTo("hello");
+        assertThat(result.executionContract()).isNull();
     }
 }

@@ -48,6 +48,10 @@ public interface AgentRuntimeContextLoader {
                                      AgentExecutionMode executionMode,
                                      String currentUserInput,
                                      TurnExecutionContract executionContract) {
+        if (executionContract != null) {
+            throw new UnsupportedOperationException(
+                    "Runtime context loader must explicitly preserve an enforced turn contract");
+        }
         return load(agentId, chatSessionId, intentResolution, rewrittenInput, executionMode, currentUserInput);
     }
 }

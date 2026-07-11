@@ -1,7 +1,12 @@
 package com.yulong.chatagent.agent.runtime;
 
+import com.yulong.chatagent.agent.runtime.contract.ContractTestSupport;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.rag.model.CitationMetadata;
 import com.yulong.chatagent.rag.model.RagSourceType;
+import com.yulong.chatagent.rag.model.RetrievalExecutionOutcome;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -54,6 +59,41 @@ class CurrentTurnCitationHolderTest {
         assertThat(currentTurnCitationHolder.take("session-1", "turn-1"))
                 .extracting(CitationMetadata::documentId)
                 .containsExactly("doc-1", "doc-1", "doc-2");
+    }
+
+    @Test
+    void shouldAggregateSanitizedRetrievalMetadataPerTurnAndConsumeOnce() {
+        TurnExecutionContract contract = ContractTestSupport.contractBuilder().build(
+                null, "uploaded report", "uploaded report", AgentExecutionMode.REACT);
+        currentTurnCitationHolder.recordRetrievalResult(
+                "session-1", "turn-1",
+                RetrievalExecutionResult.noHit(
+                        RetrievalSource.SESSION_FILES,
+                        List.of(RetrievalSource.SESSION_FILES), false, List.of()),
+                contract);
+        currentTurnCitationHolder.recordRetrievalResult(
+                "session-1", "turn-1",
+                RetrievalExecutionResult.hit(
+                        RetrievalSource.SESSION_FILES,
+                        List.of(RetrievalSource.SESSION_FILES), false, false,
+                        List.of(new com.yulong.chatagent.rag.model.RetrievalHit(
+                                RagSourceType.SESSION_FILE, "file-1", "doc-1", "report.pdf",
+                                0, "chunk[0]", "content", null, 0.9d, "retrieval", false))),
+                contract);
+
+        assertThat(currentTurnCitationHolder.peekRetrievalMetadata("session-1", "turn-2"))
+                .isNull();
+        assertThat(currentTurnCitationHolder.peekRetrievalMetadata("session-1", "turn-1"))
+                .satisfies(metadata -> {
+                    assertThat(metadata.retrievalOutcome()).isEqualTo("HIT");
+                    assertThat(metadata.retrievalOutcomeDetail()).isEqualTo(RetrievalExecutionOutcome.HIT);
+                    assertThat(metadata.actualSources()).containsExactly(RetrievalSource.SESSION_FILES);
+                    assertThat(metadata.hitCount()).isEqualTo(1);
+                });
+        assertThat(currentTurnCitationHolder.takeRetrievalMetadata("session-1", "turn-1"))
+                .isNotNull();
+        assertThat(currentTurnCitationHolder.takeRetrievalMetadata("session-1", "turn-1"))
+                .isNull();
     }
 
     private CitationMetadata citation(String documentId) {

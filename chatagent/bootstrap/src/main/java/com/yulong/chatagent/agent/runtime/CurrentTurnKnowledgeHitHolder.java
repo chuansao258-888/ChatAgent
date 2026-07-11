@@ -1,5 +1,10 @@
 package com.yulong.chatagent.agent.runtime;
 
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
+import com.yulong.chatagent.rag.model.RetrievalExecutionOutcome;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
+import com.yulong.chatagent.rag.model.RetrievalOutcomeMetadata;
+
 /**
  * 当前 turn 是否命中知识检索的 ThreadLocal 状态。
  * <p>
@@ -39,6 +44,30 @@ public final class CurrentTurnKnowledgeHitHolder {
         state.anyHit = state.anyHit || hit;
     }
 
+    public static void recordRetrievalResult(RetrievalExecutionResult result,
+                                             TurnExecutionContract contract) {
+        if (result == null) {
+            return;
+        }
+        KnowledgeState state = CURRENT_STATE.get();
+        if (state == null) {
+            state = new KnowledgeState();
+            CURRENT_STATE.set(state);
+        }
+        state.retrievalAttempted = state.retrievalAttempted
+                || result.outcome() != RetrievalExecutionOutcome.DISABLED;
+        state.anyHit = state.anyHit
+                || result.outcome() == RetrievalExecutionOutcome.HIT
+                || result.outcome() == RetrievalExecutionOutcome.FALLBACK_HIT;
+        state.retrievalMetadata = RetrievalOutcomeMetadata.merge(
+                state.retrievalMetadata, result, contract);
+    }
+
+    public static RetrievalOutcomeMetadata metadataSnapshot() {
+        KnowledgeState state = CURRENT_STATE.get();
+        return state == null ? null : state.retrievalMetadata;
+    }
+
     /**
      * 返回当前 turn 的知识命中状态。
      * <p>
@@ -69,5 +98,6 @@ public final class CurrentTurnKnowledgeHitHolder {
     private static final class KnowledgeState {
         private boolean retrievalAttempted;
         private boolean anyHit;
+        private RetrievalOutcomeMetadata retrievalMetadata;
     }
 }

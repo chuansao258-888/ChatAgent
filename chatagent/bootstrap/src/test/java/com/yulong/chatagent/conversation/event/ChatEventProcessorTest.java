@@ -145,6 +145,33 @@ class ChatEventProcessorTest {
     }
 
     @Test
+    void shouldPropagateFactoryEnforcementFailureAndClearContext() {
+        ChatEventProcessor processor = newProcessor();
+        IntentResolution resolution = new IntentResolution(null, null, null, null, null, null);
+        ChatEvent event = new ChatEvent(
+                "agent-1", "session-1", "turn-1", "msg-1", "hello", 3,
+                resolution, "rewritten", null);
+        IllegalStateException enforcementFailure = new IllegalStateException(
+                "Retrieval enforce mode requires a turn execution contract");
+        when(chatModelAvailability.hasConfiguredProvider()).thenReturn(true);
+        when(chatSessionRepository.findById("session-1")).thenReturn(
+                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
+        when(chatAgentFactory.create(
+                "agent-1", "session-1", "turn-1", resolution, "rewritten",
+                "user-1", AgentExecutionMode.REACT, "hello", null))
+                .thenThrow(enforcementFailure);
+
+        assertThatThrownBy(() -> processor.process(event)).isSameAs(enforcementFailure);
+
+        assertThat(CurrentIntentResolutionHolder.get()).isNull();
+        verify(currentTurnCitationHolder).clear("session-1", "turn-1");
+        verify(currentTurnCitationHolder).clearBySession("session-1");
+        verify(chatAgent, never()).run();
+        verify(conversationTurnCompletionPublisher, never())
+                .publishCompletedTurn("session-1", "turn-1");
+    }
+
+    @Test
     void shouldTriggerRollbackAndNotifyFrontend() {
         ChatEventProcessor processor = newProcessor();
 

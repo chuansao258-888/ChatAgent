@@ -2,6 +2,7 @@ package com.yulong.chatagent.agent.runtime.contract;
 
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.intent.model.IntentKind;
+import com.yulong.chatagent.intent.model.ScopePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -61,6 +62,28 @@ public class QueryPlanBuilder {
                            SourceNeed sourceNeed,
                            String originalText,
                            String rewrittenInput) {
+        return buildForRoutes(
+                resolution == null ? List.of() : List.of(resolution),
+                sourceNeed,
+                originalText,
+                rewrittenInput
+        );
+    }
+
+    /**
+     * Builds one source-specific query per ordered intent route.
+     *
+     * <p>Route order is primary first followed by secondary routes. Query text
+     * is deliberately not deduplicated: two intent routes may need the same
+     * wording while retaining different retrieval scopes and fallback rules in
+     * {@link RetrievalPlan#routes()}.</p>
+     */
+    public QueryPlan buildForRoutes(List<IntentResolution> orderedResolutions,
+                                    SourceNeed sourceNeed,
+                                    String originalText,
+                                    String rewrittenInput) {
+        List<IntentResolution> resolutions = orderedResolutions == null
+                ? List.of() : List.copyOf(orderedResolutions);
         String mustPreserveText = StringUtils.hasText(originalText) ? originalText : "";
         List<String> mustPreserve = preservationValidator.detectConstraints(mustPreserveText);
 
@@ -74,52 +97,72 @@ public class QueryPlanBuilder {
         QueryOperation operation = deriveOperation(mustPreserveText, classification);
 
         return switch (sourceNeed) {
-            case KB -> buildKbPlan(resolution, queryText, mustPreserve, operation);
+            case KB -> buildKbPlan(resolutions, queryText, mustPreserve, operation);
             case FILE -> new QueryPlan(QueryPlanMode.SINGLE_QUERY, operation,
                     List.of(new QuerySpec(queryText, RetrievalSource.SESSION_FILES, mustPreserve)),
                     mustPreserve);
             case WEB -> new QueryPlan(QueryPlanMode.SINGLE_QUERY, operation,
                     List.of(new QuerySpec(queryText, RetrievalSource.WEB_SEARCH, mustPreserve)),
                     mustPreserve);
-            case MIXED -> buildMixedPlan(resolution, queryText, mustPreserveText, mustPreserve, operation, classification);
+            case MIXED -> buildMixedPlan(
+                    resolutions, queryText, mustPreserveText, mustPreserve, operation, classification);
             default -> QueryPlan.none();
         };
     }
 
     /**
      * Derive the KB retrieval source consistent with {@code TurnExecutionContractBuilder.buildRetrievalPlan}:
-     * non-empty scoped KB IDs yield INTENT_KB; empty yields AGENT_DEFAULT_KB.
-     * This is shared by single-KB and mixed plans so the QueryPlan and RetrievalPlan
-     * never disagree on source.
+     * non-empty scoped KB IDs yield INTENT_KB; empty + FALLBACK_ALLOWED yields
+     * AGENT_DEFAULT_KB; empty + STRICT keeps an empty INTENT_KB scope so the
+     * required retrieval produces an explicit no-evidence outcome without
+     * escaping to the Agent default pool.
      */
     private RetrievalSource deriveKbRetrievalSource(IntentResolution resolution) {
         if (resolution == null || resolution.kind() != IntentKind.KB) {
             return RetrievalSource.AGENT_DEFAULT_KB;
         }
         List<String> scopedKbIds = resolution.scopedKbIds();
-        return scopedKbIds != null && !scopedKbIds.isEmpty()
-                ? RetrievalSource.INTENT_KB : RetrievalSource.AGENT_DEFAULT_KB;
+        boolean hasScoped = scopedKbIds != null && !scopedKbIds.isEmpty();
+        if (hasScoped) {
+            return RetrievalSource.INTENT_KB;
+        }
+        return resolution.scopePolicy() == ScopePolicy.FALLBACK_ALLOWED
+                ? RetrievalSource.AGENT_DEFAULT_KB : RetrievalSource.INTENT_KB;
     }
 
-    private QueryPlan buildKbPlan(IntentResolution resolution, String queryText,
+    private QueryPlan buildKbPlan(List<IntentResolution> resolutions, String queryText,
                                   List<String> mustPreserve, QueryOperation operation) {
-        RetrievalSource source = deriveKbRetrievalSource(resolution);
-        QuerySpec spec = new QuerySpec(queryText, source, mustPreserve);
-        return new QueryPlan(QueryPlanMode.SINGLE_QUERY, operation, List.of(spec), mustPreserve);
+        List<QuerySpec> queries = buildKbQueries(resolutions, queryText, mustPreserve);
+        QueryPlanMode mode = queries.size() > 1 ? QueryPlanMode.MULTI_QUERY : QueryPlanMode.SINGLE_QUERY;
+        return new QueryPlan(mode, operation, queries, mustPreserve);
     }
 
-    private QueryPlan buildMixedPlan(IntentResolution resolution, String queryText, String originalText,
+    private List<QuerySpec> buildKbQueries(List<IntentResolution> resolutions,
+                                           String queryText,
+                                           List<String> mustPreserve) {
+        if (resolutions.isEmpty()) {
+            return List.of(new QuerySpec(
+                    queryText, deriveKbRetrievalSource(null), mustPreserve));
+        }
+        return resolutions.stream()
+                .map(resolution -> new QuerySpec(
+                        queryText, deriveKbRetrievalSource(resolution), mustPreserve))
+                .toList();
+    }
+
+    private QueryPlan buildMixedPlan(List<IntentResolution> resolutions,
+                                     String queryText,
+                                     String originalText,
                                      List<String> mustPreserve,
                                      QueryOperation operation,
                                      SourceReferenceClassifier.SourceClassification classification) {
-        // Produce genuinely distinct per-source query texts so the two specs are not
-        // identical copies. The KB query keeps the (preservation-gated) query text;
-        // the session-file query binds the real file reference (filename/upload noun)
-        // plus the object/target so it is usable for session-file retrieval.
+        // Preserve one KB spec per intent route, even when their query text is
+        // identical. The session-file query remains source-specific by binding
+        // the real file reference plus the requested object/target.
         String fileQuery = buildSessionFileQuery(originalText, queryText, classification);
-        QuerySpec kbSpec = new QuerySpec(queryText, deriveKbRetrievalSource(resolution), mustPreserve);
-        QuerySpec fileSpec = new QuerySpec(fileQuery, RetrievalSource.SESSION_FILES, mustPreserve);
-        return new QueryPlan(QueryPlanMode.MULTI_QUERY, operation, List.of(kbSpec, fileSpec), mustPreserve);
+        List<QuerySpec> queries = new ArrayList<>(buildKbQueries(resolutions, queryText, mustPreserve));
+        queries.add(new QuerySpec(fileQuery, RetrievalSource.SESSION_FILES, mustPreserve));
+        return new QueryPlan(QueryPlanMode.MULTI_QUERY, operation, queries, mustPreserve);
     }
 
     /**

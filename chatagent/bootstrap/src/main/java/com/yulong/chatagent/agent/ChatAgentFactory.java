@@ -3,11 +3,14 @@ package com.yulong.chatagent.agent;
 import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
+import com.yulong.chatagent.agent.runtime.contract.TurnContractEnforcementException;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import org.springframework.stereotype.Component;
+
+import java.util.Objects;
 
 /**
  * ChatAgent 工厂：把持久化配置和运行时上下文装配成一次性的 Agent 实例。
@@ -97,8 +100,12 @@ public class ChatAgentFactory {
                             AgentExecutionMode executionMode,
                             String currentUserInput,
                             TurnExecutionContract executionContract) {
-        TurnExecutionContract enforcedContract = contractProperties.isRetrievalEnforced()
-                ? executionContract : null;
+        boolean retrievalEnforced = contractProperties.isRetrievalEnforced();
+        if (retrievalEnforced && executionContract == null) {
+            throw new TurnContractEnforcementException(
+                    "Retrieval enforce mode requires a turn execution contract");
+        }
+        TurnExecutionContract enforcedContract = retrievalEnforced ? executionContract : null;
         // RuntimeContextLoader 负责重活：读取 Agent 定义、恢复记忆、解析摘要、筛选工具并拼系统提示词。
         AgentRuntimeContext context = enforcedContract == null
                 ? agentRuntimeContextLoader.load(
@@ -107,6 +114,10 @@ public class ChatAgentFactory {
                 : agentRuntimeContextLoader.load(
                         agentId, chatSessionId, intentResolution, rewrittenInput,
                         executionMode, currentUserInput, enforcedContract);
+        if (retrievalEnforced && !Objects.equals(enforcedContract, context.executionContract())) {
+            throw new TurnContractEnforcementException(
+                    "Retrieval runtime context loader did not preserve the enforced turn contract");
+        }
 
         // ChatAgent 是纯运行态对象，不交给 Spring 管理；这样可以把每轮执行的 mutable state 隔离开。
         return new ChatAgent(

@@ -1,6 +1,9 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.rag.model.CitationMetadata;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
+import com.yulong.chatagent.rag.model.RetrievalOutcomeMetadata;
+import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -23,6 +26,29 @@ public class CurrentTurnCitationHolder {
     // citations 的生命周期跨过“工具执行 -> 模型最终回答 -> assistant 消息落库”多个阶段。
     // 因此这里不用 ThreadLocal，而是用 sessionId::turnId 作为稳定 key，方便不同组件按同一业务轮次取回。
     private final ConcurrentMap<String, List<CitationMetadata>> citationsByTurn = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, RetrievalOutcomeMetadata> retrievalMetadataByTurn =
+            new ConcurrentHashMap<>();
+
+    public void recordRetrievalResult(String sessionId,
+                                      String turnId,
+                                      RetrievalExecutionResult result,
+                                      TurnExecutionContract contract) {
+        if (!hasValidKey(sessionId, turnId) || result == null) {
+            return;
+        }
+        retrievalMetadataByTurn.compute(key(sessionId, turnId),
+                (ignored, previous) -> RetrievalOutcomeMetadata.merge(previous, result, contract));
+    }
+
+    public RetrievalOutcomeMetadata peekRetrievalMetadata(String sessionId, String turnId) {
+        return hasValidKey(sessionId, turnId)
+                ? retrievalMetadataByTurn.get(key(sessionId, turnId)) : null;
+    }
+
+    public RetrievalOutcomeMetadata takeRetrievalMetadata(String sessionId, String turnId) {
+        return hasValidKey(sessionId, turnId)
+                ? retrievalMetadataByTurn.remove(key(sessionId, turnId)) : null;
+    }
 
     /**
      * 覆盖写入当前 turn 的 citations。
@@ -83,6 +109,7 @@ public class CurrentTurnCitationHolder {
             return;
         }
         citationsByTurn.remove(key(sessionId, turnId));
+        retrievalMetadataByTurn.remove(key(sessionId, turnId));
     }
 
     /**
@@ -97,6 +124,7 @@ public class CurrentTurnCitationHolder {
         String prefix = sessionId.trim() + "::";
         // ConcurrentHashMap 支持并发 removeIf；按 session 前缀清理可以覆盖异常中断遗留的所有 turn。
         citationsByTurn.keySet().removeIf(k -> k.startsWith(prefix));
+        retrievalMetadataByTurn.keySet().removeIf(k -> k.startsWith(prefix));
     }
 
     /**

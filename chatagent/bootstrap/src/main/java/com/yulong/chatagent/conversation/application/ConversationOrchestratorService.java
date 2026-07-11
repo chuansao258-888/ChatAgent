@@ -308,7 +308,12 @@ public class ConversationOrchestratorService {
         if (metadata != null) {
             builder.toolResponse(metadata.getToolResponse())
                     .toolCalls(metadata.getToolCalls())
-                    .citations(metadata.getCitations());
+                    .citations(metadata.getCitations())
+                    .internal(metadata.getInternal())
+                    .deepThinkPhase(metadata.getDeepThinkPhase())
+                    .planStepId(metadata.getPlanStepId())
+                    .agentTrace(metadata.getAgentTrace())
+                    .retrieval(metadata.getRetrieval());
         }
         return builder.build();
     }

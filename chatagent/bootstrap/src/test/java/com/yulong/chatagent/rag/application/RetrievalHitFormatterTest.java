@@ -1,6 +1,8 @@
 package com.yulong.chatagent.rag.application;
 
 import com.yulong.chatagent.TestPromptLoader;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
+import com.yulong.chatagent.rag.model.RetrievalExecutionResult;
 import com.yulong.chatagent.rag.model.RetrievalHit;
 import com.yulong.chatagent.rag.model.RagSourceType;
 import org.junit.jupiter.api.Test;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RetrievalHitFormatterTest {
 
@@ -120,5 +123,36 @@ class RetrievalHitFormatterTest {
                 .containsExactly("reranker");
         assertThat(rendered.citations()).extracting(citation -> citation.documentId())
                 .containsExactly("doc-2");
+    }
+
+    @Test
+    void shouldRenderTypedMissForTheRequestedSource() {
+        FormattedRetrievalPrompt kbMiss = formatter.formatExecutionResult(
+                RetrievalExecutionResult.noHit(
+                        RetrievalSource.INTENT_KB,
+                        List.of(RetrievalSource.INTENT_KB),
+                        false,
+                        List.of()));
+        FormattedRetrievalPrompt mixedMiss = formatter.formatExecutionResult(
+                RetrievalExecutionResult.noHit(
+                        RetrievalSource.MIXED_SESSION_AND_KB,
+                        List.of(RetrievalSource.SESSION_FILES, RetrievalSource.INTENT_KB),
+                        false,
+                        List.of()));
+
+        assertThat(kbMiss.promptText()).isEqualTo("No relevant knowledge-base evidence found.");
+        assertThat(mixedMiss.promptText())
+                .isEqualTo("No relevant session-file or knowledge-base evidence found.");
+    }
+
+    @Test
+    void shouldNotFormatTypedFailureAsAnEvidenceMiss() {
+        RetrievalExecutionResult failed = RetrievalExecutionResult.failed(
+                RetrievalSource.INTENT_KB,
+                RetrievalExecutionResult.ReasonCode.DEPENDENCY_FAILURE);
+
+        assertThatThrownBy(() -> formatter.formatExecutionResult(failed))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cannot be formatted");
     }
 }
