@@ -51,13 +51,15 @@ class AgentMessageBridgeImplTest {
 
     private CurrentTurnCitationHolder currentTurnCitationHolder;
     private AgentMessageBridgeImpl agentMessageBridge;
+    private io.micrometer.core.instrument.simple.SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         currentTurnCitationHolder = new CurrentTurnCitationHolder();
+        meterRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         @SuppressWarnings("unchecked")
         org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meterRegistryProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
-        when(meterRegistryProvider.getIfAvailable()).thenReturn(null);
+        when(meterRegistryProvider.getIfAvailable()).thenReturn(meterRegistry);
         agentMessageBridge = new AgentMessageBridgeImpl(
                 sseService,
                 new ChatMessageConverter(new ObjectMapper()),
@@ -853,7 +855,33 @@ class AgentMessageBridgeImplTest {
         verify(llmService, times(2)).streamChat(promptCaptor.capture(), eq(false), any(StreamCallback.class));
         assertThat(promptCaptor.getAllValues().get(1).getInstructions().get(0).getText())
                 .contains("tool-call markup")
-                .contains("Do not emit XML, JSON, function-call blocks, or internal tool names");
+                .contains("Do not emit XML, JSON, function-call blocks, or internal tool names")
+                .contains("Preserve the turn's existing tool, retrieval, citation, and scope decisions")
+                .contains("do not choose a new route, invoke a tool, or invent evidence");
+        assertThat(meterRegistry.get("chatagent.final.repair")
+                .tag("reason", "tool_markup").counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void streamFinalResponseShouldNotTreatDomainWordsAsRepairPolicy() {
+        LLMService llmService = mock(LLMService.class);
+        when(llmService.streamChat(any(Prompt.class), eq(false), any(StreamCallback.class)))
+                .thenAnswer(invocation -> {
+                    StreamCallback callback = invocation.getArgument(2);
+                    callback.onContent("Project Atlas owner Maya will review incident INC-7 in room Cedar.");
+                    callback.onComplete();
+                    return (reactor.core.Disposable) () -> { };
+                });
+        Prompt prompt = Prompt.builder()
+                .messages(List.of(new UserMessage("Summarize the project owner, room, and incident.")))
+                .build();
+
+        String finalText = agentMessageBridge.streamFinalResponse(
+                "session-1", "turn-1", prompt, llmService, false);
+
+        assertThat(finalText).contains("Project Atlas", "owner Maya", "incident INC-7", "room Cedar");
+        verify(chatMessageFacadeService, times(0)).deleteChatMessage(any());
+        verify(llmService, times(1)).streamChat(any(Prompt.class), eq(false), any(StreamCallback.class));
     }
 
 

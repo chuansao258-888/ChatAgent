@@ -66,15 +66,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             "(?is)\\b(repeat|again|same|previous|last answer|what you said|restate|continue)\\b"
                     + "|重复|再说|刚才|上一"
     );
-    private static final Pattern EXPLICIT_TOPIC_CHANGE = Pattern.compile(
-            "(?is)\\b(?:new|different|separate|unrelated)\\s+topic\\b"
-                    + "|\\b(?:change|switch)\\s+(?:the\\s+)?(?:subject|topic)\\b"
-                    + "|换(?:个|一个)?话题|换个问题|题外话|说点别的|聊点别的"
-    );
-    private static final Pattern DISTINCTIVE_CONTEXT_IDENTIFIER = Pattern.compile(
-            "(?iu)(?<![\\p{L}\\p{N}])([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)+)(?![\\p{L}\\p{N}])"
-    );
-    private static final Pattern DIGIT = Pattern.compile("\\d");
     private static final Pattern WORD = Pattern.compile("[a-z0-9][a-z0-9-]*");
     private static final Pattern LATIN_WORD = Pattern.compile("\\b[A-Za-z]{2,}\\b");
     private static final Pattern CJK = Pattern.compile("[\\u3400-\\u9fff]");
@@ -94,15 +85,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             "(?is)<\\s*/?\\s*tool_call\\s*>"
                     + "|<\\s*tool_calls?\\b"
                     + "|\\{\\s*\"name\"\\s*:\\s*\"[A-Za-z0-9_]*(?:Tool|tool)[A-Za-z0-9_]*\"\\s*,\\s*\"arguments\"\\s*:"
-    );
-    private static final Pattern CURRENT_CONTEXT_BOUNDARY_CHECK = Pattern.compile(
-            "(?is)(\\b(?:belong|included?|include|part\\s+of|anything\\s+from)\\b.{0,120}\\b(?:this|here|current|handoff|project|note|stream)\\b"
-                    + "|\\b(?:keep|kept)\\b.{0,80}\\bseparate\\b"
-                    + "|\\bleave\\b.{0,80}\\bout\\b"
-                    + "|\\bseparate\\s+(?:stream|source|workstream|workflow)\\b)"
-    );
-    private static final Pattern SEPARATE_SCOPE_ANSWER = Pattern.compile(
-            "(?is)\\b(?:separate|not\\s+part|does\\s+not\\s+belong|keep\\w*\\s+out|do\\s+not\\s+include|outside|out\\s+of\\s+scope)\\b"
     );
     private static final Set<String> GENERIC_WORDS = Set.of(
             "the", "and", "for", "with", "that", "this", "what", "when", "where", "which", "who",
@@ -135,68 +117,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     );
     private static final Pattern SYSTEM_PROMPT_LEAKAGE = Pattern.compile(
             "(?is)(system\\s+configuration\\s+summary|core\\s+identity|language\\s+matching|tool\\s+strategy|final\\s+answer\\s+module|system\\s+prompts?\\s+and\\s+configuration)"
-    );
-    private static final Pattern MISSING_CONTEXT_CLAIM = Pattern.compile(
-            "(?is)\\b(?:I\\s+)?(?:do\\s+not|don't)\\s+have\\s+enough\\s+context\\b"
-                    + "|\\bnot\\s+enough\\s+context\\b"
-                    + "|\\binsufficient\\s+context\\b"
-                    + "|\\bcould\\s+you\\s+clarify\\b"
-                    + "|没有足够(?:的)?上下文|上下文不足"
-    );
-    private static final Pattern CONTEXTUAL_OWNER_FOLLOW_UP = Pattern.compile(
-            "(?is)\\bwho(?:'s|\\s+is)\\s+(?:on\\s+point|handling\\s+(?:it|this|that)?|got\\s+it|responsible|the\\s+owner)\\b"
-                    + "|\\bwho\\s+(?:owns|has)\\s+(?:it|this|that)\\b"
-                    + "|\\b(?:point\\s+person|owner)\\b"
-                    + "|(?:谁|谁来|谁在|谁是).{0,8}(?:负责|处理|owner|负责人)"
-    );
-    private static final Pattern OWNER_TRANSFER = Pattern.compile(
-            "(?iu)([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)\\s+handed\\s+(?:it|this|that)?\\s*(?:over\\s+)?to\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)"
-    );
-    private static final Pattern OWNER_WITH_CONTEXT = Pattern.compile(
-            "(?iu)\\bwith\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)\\b"
-    );
-    private static final Pattern OWNER_EXPLICIT_CONTEXT = Pattern.compile(
-            "(?iu)(?:owned\\s+by|owner\\s+is|on\\s+point\\s+is|point\\s+person\\s+is|handled\\s+by)\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)*)"
-    );
-    private static final Pattern INCIDENT_IDENTIFIER_REQUEST = Pattern.compile(
-            "(?is)\\bincident\\s+(?:identifier|id|code)\\b|事件.{0,8}(?:编号|标识)"
-    );
-    private static final Pattern INCIDENT_IDENTIFIER_EXACT_VALUE = Pattern.compile(
-            "(?is)\\bINCIDENT-[A-Z0-9-]+\\b"
-    );
-    private static final Pattern INCIDENT_IDENTIFIER_VALUE = Pattern.compile(
-            "(?is)\\bINCIDENT-[A-Z0-9-]+\\b|事件.{0,8}(?:编号|标识)\\s*[:：]?\\s*[A-Z0-9-]+"
-    );
-    private static final Pattern EXCLUDE_MEETING_LOCATION_REQUEST = Pattern.compile(
-            "(?is)\\b(?:leave(?:s|ing)?\\s+out|omit|exclude|without|do\\s+not\\s+mention|don't\\s+mention)\\b.{0,80}\\b(?:meeting\\s+)?(?:location|room)\\b"
-                    + "|(?:不要|别|不提|省略|排除).{0,20}(?:会议室|房间|地点|位置)"
-    );
-    private static final Pattern MEETING_LOCATION_RECALL_REQUEST = Pattern.compile(
-            "(?is)\\b(?:where\\s+are\\s+we\\s+meeting|where\\s+.*\\bmeeting\\b|which\\s+(?:meeting\\s+)?room|what\\s+(?:meeting\\s+)?room|room\\s+.*\\bgo\\s+to\\b|go\\s+to\\s+.*\\broom)\\b"
-                    + "|(?:哪里|哪间|哪个).{0,20}(?:会议室|房间|地点|位置)"
-    );
-    private static final Pattern MEETING_LOCATION_CONTENT = Pattern.compile(
-            "(?is)\\b(?:meeting\\s+)?room\\b|\\bin\\s+room\\b|\\bCEDAR-[A-Z0-9-]+\\b|会议室|房间|地点|位置"
-    );
-    private static final Pattern CURRENT_OWNER_ROOM_RECAP_REQUEST = Pattern.compile(
-            "(?is)\\b(?:quick\\s+)?recap\\b.{0,80}\\b(?:owner|on\\s+point|who(?:'s|\\s+is).{0,20}(?:got|handling|owns))\\b.{0,80}\\b(?:room|meeting)\\b"
-                    + "|\\b(?:owner|on\\s+point)\\b.{0,40}\\b(?:room|meeting)\\b"
-                    + "|\\bwho(?:'s|\\s+is)\\s+got\\s+it\\s+now\\b.{0,80}\\bwhere\\s+are\\s+we\\s+meeting\\b"
-    );
-    private static final Pattern WRAP_UP_RECAP_REQUEST = Pattern.compile(
-            "(?is)\\b(?:wrap\\s+(?:this|it)\\s+up|wrap-up|recap|summari[sz]e|summary)\\b"
-                    + "|(?:总结|汇总|收尾|复盘)"
-    );
-    private static final Pattern PROJECT_CONTEXT = Pattern.compile(
-            "(?iu)\\b(?:running|project|case|dossier|incident|for)\\s+([\\p{L}][\\p{L}\\p{N}]*(?:-[\\p{L}\\p{N}]+)+)\\b"
-    );
-    private static final Pattern STALE_ROOM_CONTEXT_REQUEST = Pattern.compile(
-            "(?is)\\b(?:old|previous|prior|stale|outdated|versus|vs\\.?|compare|contrast)\\b|旧|过期|之前|对比"
-    );
-    private static final Pattern STALE_ROOM_CONTEXT_IN_ANSWER = Pattern.compile(
-            "(?is)\\b(?:old|previous|prior|stale|outdated|updated\\s+from|used\\s+to|original|card\\s+listing|card\\s+listed)\\b"
-                    + "|\\b(?:handed\\s+(?:it\\s+)?(?:off\\s+)?from|transferred\\s+from|passed\\s+from)\\b"
-                    + "|旧|过期|之前|原来|原先"
     );
     private static final Pattern ENGLISH_REQUEST = Pattern.compile(
             "(?is)\\b(in|use|answer\\s+in|respond\\s+in|write\\s+in)\\s+English\\b|英文|英语"
@@ -390,8 +310,10 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 if (StringUtils.hasText(invalidReason)) {
                     invalidFinalResponse.set(true);
                     repairReason.set(invalidReason);
-                    log.warn("Final answer failed turn relevance guard; rolling back for repair: sessionId={}, turnId={}, chatMessageId={}, reason={}",
-                            chatSessionId, turnId, chatMessageDTO.getId(), invalidReason);
+                    String reasonCode = repairReasonCode(invalidReason);
+                    recordCounter("chatagent.final.repair", "reason", reasonCode);
+                    log.warn("Final answer failed generic safety guard; rolling back for repair: sessionId={}, turnId={}, chatMessageId={}, reasonCode={}",
+                            chatSessionId, turnId, chatMessageDTO.getId(), reasonCode);
                     chatMessageFacadeService.deleteChatMessage(chatMessageDTO.getId());
                     publishTurnRollback(chatSessionId, turnId);
                     streamLatch.countDown();
@@ -537,7 +459,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         if (!allowFinalRepair) {
             return "";
         }
-        // --- Generic guards (retained in Phase 7) ---
         if (!StringUtils.hasText(finalContent)) {
             return "it produced no user-visible answer";
         }
@@ -604,45 +525,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         return StringUtils.hasText(content) && USER_VISIBLE_TOOL_CALL_MARKUP.matcher(content).find();
     }
 
-    private boolean mixesStaleRoomContextIntoCurrentRecap(Prompt prompt, String finalContent) {
-        String latestUserText = latestUserText(prompt);
-        return StringUtils.hasText(latestUserText)
-                && StringUtils.hasText(finalContent)
-                && CURRENT_OWNER_ROOM_RECAP_REQUEST.matcher(latestUserText).find()
-                && !STALE_ROOM_CONTEXT_REQUEST.matcher(latestUserText).find()
-                && STALE_ROOM_CONTEXT_IN_ANSWER.matcher(finalContent).find();
-    }
-
-    private String currentRequestConstraintViolationReason(Prompt prompt, String finalContent) {
-        if (!StringUtils.hasText(finalContent)) {
-            return "";
-        }
-        String latestUserText = latestUserText(prompt);
-        if (!StringUtils.hasText(latestUserText)) {
-            return "";
-        }
-        if (INCIDENT_IDENTIFIER_REQUEST.matcher(latestUserText).find()) {
-            String expectedIncidentIdentifier = expectedIncidentIdentifier(prompt);
-            if (StringUtils.hasText(expectedIncidentIdentifier)
-                    && !finalContent.toUpperCase(Locale.ROOT).contains(expectedIncidentIdentifier.toUpperCase(Locale.ROOT))) {
-                return "it violated the current request's include/exclude constraints by omitting the requested incident identifier";
-            }
-            if (!StringUtils.hasText(expectedIncidentIdentifier)
-                    && !INCIDENT_IDENTIFIER_VALUE.matcher(finalContent).find()) {
-                return "it violated the current request's include/exclude constraints by omitting the requested incident identifier";
-            }
-        }
-        if (EXCLUDE_MEETING_LOCATION_REQUEST.matcher(latestUserText).find()
-                && MEETING_LOCATION_CONTENT.matcher(finalContent).find()) {
-            return "it violated the current request's include/exclude constraints by including the excluded meeting location";
-        }
-        if (MEETING_LOCATION_RECALL_REQUEST.matcher(latestUserText).find()
-                && !MEETING_LOCATION_CONTENT.matcher(finalContent).find()) {
-            return "it did not answer the current meeting location question";
-        }
-        return "";
-    }
-
     private String emptyFinalAnswerFallback(Prompt prompt) {
         if (expectedLanguage(prompt) == ExpectedLanguage.CHINESE) {
             return "抱歉，模型没有返回可显示的内容。请再试一次。";
@@ -666,7 +548,9 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                         + specificRepairInstruction
                         + "\nAnswer that request directly. Do not mention missing user input, missing context, "
                         + "the invalid output, or this repair instruction. Use the same language as the current "
-                        + "user request unless it explicitly asks for another language."));
+                        + "user request unless it explicitly asks for another language. Preserve the turn's "
+                        + "existing tool, retrieval, citation, and scope decisions; do not choose a new route, "
+                        + "invoke a tool, or invent evidence during repair."));
         repairMessages.addAll(sourceMessages);
         return new Prompt(repairMessages, prompt.getOptions());
     }
@@ -679,26 +563,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             return "\nThe final answer must be entirely in English. Do not include Chinese words, "
                     + "Chinese sentences, or translated Chinese fragments.";
         }
-        if (reason.contains("incident identifier")) {
-            String expectedIncidentIdentifier = expectedIncidentIdentifier(prompt);
-            if (StringUtils.hasText(expectedIncidentIdentifier)) {
-                return "\nThe incident identifier present in the conversation context is "
-                        + expectedIncidentIdentifier
-                        + ". Return that exact value. Do not substitute project codenames, badge labels, "
-                        + "meeting rooms, or other identifiers.";
-            }
-        }
-        if (reason.contains("recent conversation context")) {
-            String owner = contextualOwnerFromPriorTurns(prompt);
-            if (StringUtils.hasText(owner)) {
-                return "\nThe recent conversation context identifies "
-                        + owner
-                        + " as the owner or point person. Answer the short follow-up using that value. "
-                        + "Do not mention missing context, internal tools, scoped knowledge bases, or backend details.";
-            }
-            return "\nUse the recent user and assistant turns to resolve the short follow-up. "
-                    + "Do not mention missing context, internal tools, scoped knowledge bases, or backend details.";
-        }
         if (reason.contains("retrieved evidence without citation markers")) {
             return "\nThe current turn has retrieved evidence in the conversation. If you use any retrieved fact, "
                     + "cite it inline with the exact [n] marker shown in the tool response. Do not answer retrieved "
@@ -709,305 +573,19 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                     + "plain user-facing text. If no tool result is available, answer from the current conversation "
                     + "context or state the limitation briefly.";
         }
-        if (reason.contains("stale owner or room context")) {
-            return "\nThe latest user is asking for the current owner and current room only. Omit old, previous, "
-                    + "stale, attached-card, handoff-source, or historical owner/room details unless the latest "
-                    + "request explicitly asks for a comparison.";
-        }
-        if (reason.contains("current project identifier")) {
-            String project = contextualProjectFromPriorTurns(prompt);
-            if (StringUtils.hasText(project)) {
-                return "\nThe recent conversation context identifies the current project/object as "
-                        + project
-                        + ". Include that exact identifier in the wrap-up together with the requested owner, "
-                        + "room, codes, risks, or other fields. Do not substitute another project identifier.";
-            }
-            return "\nInclude the current project/object identifier from recent context in the wrap-up. "
-                    + "Do not substitute another project identifier.";
-        }
-        if (reason.contains("cited out-of-scope source details")) {
-            return "\nThe latest request is a current-context boundary check. Do not cite or surface source cards "
-                    + "from the separate outside source unless the current user explicitly asks for that source's "
-                    + "details. If you need evidence, cite only sources linked to the current scope; otherwise "
-                    + "answer the separation decision without a citation.";
-        }
-        if (reason.contains("out-of-scope source details")) {
-            return "\nThe latest request is a current-context boundary check. Answer whether the named outside "
-                    + "source belongs in the current scope, and keep the separate source generic. Do not include "
-                    + "out-of-scope approval codes, markers, contacts, risks, rooms, lockers, or other fields "
-                    + "unless the current user explicitly asks for those separate-source details.";
-        }
-        if (reason.contains("explicit topic change")) {
-            return "\nTreat the latest request as standalone. Do not mention or personalize the answer with "
-                    + "names, projects, identifiers, places, or facts from earlier turns unless the latest "
-                    + "request explicitly repeats them.";
-        }
         return "";
     }
 
-    private boolean leaksOutOfScopeCitationDetailsInCurrentContextBoundaryCheck(Prompt prompt,
-                                                                                String finalContent,
-                                                                                List<CitationMetadata> pendingCitations) {
-        String latestUserText = latestUserText(prompt);
-        if (!StringUtils.hasText(latestUserText)
-                || !StringUtils.hasText(finalContent)
-                || pendingCitations == null
-                || pendingCitations.isEmpty()
-                || !CURRENT_CONTEXT_BOUNDARY_CHECK.matcher(latestUserText).find()
-                || !SEPARATE_SCOPE_ANSWER.matcher(finalContent).find()) {
-            return false;
-        }
-        String normalizedLatest = latestUserText.toLowerCase(Locale.ROOT);
-        String currentProject = contextualProjectFromPriorTurns(prompt).toLowerCase(Locale.ROOT);
-        Matcher matcher = CITATION_REFERENCE.matcher(finalContent);
-        while (matcher.find()) {
-            int citationNumber = parseCitationNumber(matcher.group(1));
-            if (citationNumber < 1 || citationNumber > pendingCitations.size()) {
-                continue;
-            }
-            CitationMetadata citation = pendingCitations.get(citationNumber - 1);
-            String searchable = citationSearchText(citation);
-            if (matchesCurrentCitationScope(searchable, currentProject)) {
-                continue;
-            }
-            if (containsOutOfScopeDistinctiveIdentifier(searchable, normalizedLatest, currentProject)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean leaksOutOfScopeDetailsInCurrentContextBoundaryCheck(Prompt prompt, String finalContent) {
-        String latestUserText = latestUserText(prompt);
-        if (!StringUtils.hasText(latestUserText)
-                || !StringUtils.hasText(finalContent)
-                || !CURRENT_CONTEXT_BOUNDARY_CHECK.matcher(latestUserText).find()
-                || !SEPARATE_SCOPE_ANSWER.matcher(finalContent).find()) {
-            return false;
-        }
-        String normalizedLatest = latestUserText.toLowerCase(Locale.ROOT);
-        String currentProject = contextualProjectFromPriorTurns(prompt).toLowerCase(Locale.ROOT);
-        return containsOutOfScopeDistinctiveIdentifier(finalContent, normalizedLatest, currentProject);
-    }
-
-    private boolean containsOutOfScopeDistinctiveIdentifier(String text,
-                                                            String normalizedLatest,
-                                                            String currentProject) {
-        if (!StringUtils.hasText(text)) {
-            return false;
-        }
-        Matcher matcher = DISTINCTIVE_CONTEXT_IDENTIFIER.matcher(text);
-        while (matcher.find()) {
-            String identifier = matcher.group(1);
-            String normalizedIdentifier = identifier.toLowerCase(Locale.ROOT);
-            if (!DIGIT.matcher(identifier).find()) {
-                continue;
-            }
-            if (normalizedLatest.contains(normalizedIdentifier)) {
-                continue;
-            }
-            if (StringUtils.hasText(currentProject)
-                    && normalizedIdentifier.equals(currentProject)) {
-                continue;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private boolean matchesCurrentCitationScope(String searchable, String currentProject) {
-        if (!StringUtils.hasText(searchable) || !StringUtils.hasText(currentProject)) {
-            return false;
-        }
-        if (searchable.contains(currentProject)) {
-            return true;
-        }
-        String root = currentProjectRoot(currentProject);
-        return root.length() >= 4 && searchable.contains(root);
-    }
-
-    private String currentProjectRoot(String currentProject) {
-        if (!StringUtils.hasText(currentProject)) {
-            return "";
-        }
-        int delimiter = currentProject.indexOf('-');
-        String root = delimiter > 0 ? currentProject.substring(0, delimiter) : currentProject;
-        return root.replaceAll("[^a-z0-9]", "");
-    }
-
-    private boolean missedCurrentProjectInWrapUp(Prompt prompt, String finalContent) {
-        String latestUserText = latestUserText(prompt);
-        if (!StringUtils.hasText(latestUserText)
-                || !StringUtils.hasText(finalContent)
-                || !WRAP_UP_RECAP_REQUEST.matcher(latestUserText).find()) {
-            return false;
-        }
-        String project = contextualProjectFromPriorTurns(prompt);
-        return StringUtils.hasText(project)
-                && !finalContent.toLowerCase(Locale.ROOT).contains(project.toLowerCase(Locale.ROOT));
-    }
-
-    private String contextualProjectFromPriorTurns(Prompt prompt) {
-        if (prompt == null || prompt.getInstructions() == null) {
-            return "";
-        }
-        List<Message> messages = prompt.getInstructions();
-        int latestUserIndex = -1;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if (messages.get(i) instanceof UserMessage userMessage
-                    && StringUtils.hasText(userMessage.getText())) {
-                latestUserIndex = i;
-                break;
-            }
-        }
-        if (latestUserIndex <= 0) {
-            return "";
-        }
-        for (int i = latestUserIndex - 1; i >= 0; i--) {
-            Message message = messages.get(i);
-            if (!(message instanceof UserMessage) && !(message instanceof AssistantMessage)) {
-                continue;
-            }
-            String project = latestMatch(PROJECT_CONTEXT, message.getText(), 1);
-            if (StringUtils.hasText(project)) {
-                return project;
-            }
-        }
-        return "";
-    }
-
-    private boolean missedAvailableContextForShortFollowUp(Prompt prompt, String finalContent) {
-        if (!StringUtils.hasText(finalContent) || !MISSING_CONTEXT_CLAIM.matcher(finalContent).find()) {
-            return false;
-        }
-        String latestUserText = latestUserText(prompt);
-        return CONTEXTUAL_OWNER_FOLLOW_UP.matcher(latestUserText).find()
-                && StringUtils.hasText(contextualOwnerFromPriorTurns(prompt));
-    }
-
-    private String contextualOwnerFromPriorTurns(Prompt prompt) {
-        if (prompt == null || prompt.getInstructions() == null) {
-            return "";
-        }
-        List<Message> messages = prompt.getInstructions();
-        int latestUserIndex = -1;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if (messages.get(i) instanceof UserMessage userMessage
-                    && StringUtils.hasText(userMessage.getText())) {
-                latestUserIndex = i;
-                break;
-            }
-        }
-        if (latestUserIndex <= 0) {
-            return "";
-        }
-        for (int i = latestUserIndex - 1; i >= 0; i--) {
-            Message message = messages.get(i);
-            if (!(message instanceof UserMessage) && !(message instanceof AssistantMessage)) {
-                continue;
-            }
-            String text = message.getText();
-            String owner = latestOwnerTransferTarget(text);
-            if (StringUtils.hasText(owner)) {
-                return owner;
-            }
-            owner = latestMatch(OWNER_EXPLICIT_CONTEXT, text, 1);
-            if (StringUtils.hasText(owner)) {
-                return owner;
-            }
-            owner = latestMatch(OWNER_WITH_CONTEXT, text, 1);
-            if (StringUtils.hasText(owner)) {
-                return owner;
-            }
-        }
-        return "";
-    }
-
-    private String latestOwnerTransferTarget(String text) {
-        if (!StringUtils.hasText(text)) {
-            return "";
-        }
-        Matcher matcher = OWNER_TRANSFER.matcher(text);
-        String latest = "";
-        while (matcher.find()) {
-            String candidate = matcher.group(2);
-            if (isPlausibleContextValue(candidate)) {
-                latest = candidate;
-            }
-        }
-        return latest;
-    }
-
-    private String latestMatch(Pattern pattern, String text, int group) {
-        if (!StringUtils.hasText(text)) {
-            return "";
-        }
-        Matcher matcher = pattern.matcher(text);
-        String latest = "";
-        while (matcher.find()) {
-            String candidate = matcher.group(group);
-            if (isPlausibleContextValue(candidate)) {
-                latest = candidate;
-            }
-        }
-        return latest;
-    }
-
-    private boolean isPlausibleContextValue(String value) {
-        if (!StringUtils.hasText(value)) {
-            return false;
-        }
-        String normalized = value.toLowerCase(Locale.ROOT);
-        return !GENERIC_WORDS.contains(normalized)
-                && !Set.of("context", "tools", "tool", "knowledge", "bases", "base",
-                "session", "assistant", "conversation", "messages", "available", "scoped").contains(normalized);
-    }
-
-    private boolean leaksPriorIdentifierAfterTopicChange(Prompt prompt, String finalContent) {
-        String latestUserText = latestUserText(prompt);
-        if (!StringUtils.hasText(latestUserText)
-                || !StringUtils.hasText(finalContent)
-                || !EXPLICIT_TOPIC_CHANGE.matcher(latestUserText).find()) {
-            return false;
-        }
-        String normalizedLatest = latestUserText.toLowerCase(Locale.ROOT);
-        String normalizedFinal = finalContent.toLowerCase(Locale.ROOT);
-        return priorDistinctiveIdentifiers(prompt).stream()
-                .anyMatch(identifier -> !normalizedLatest.contains(identifier)
-                        && normalizedFinal.contains(identifier));
-    }
-
-    private Set<String> priorDistinctiveIdentifiers(Prompt prompt) {
-        Set<String> identifiers = new HashSet<>();
-        if (prompt == null || prompt.getInstructions() == null) {
-            return identifiers;
-        }
-        List<Message> messages = prompt.getInstructions();
-        int latestUserIndex = -1;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if (messages.get(i) instanceof UserMessage userMessage
-                    && StringUtils.hasText(userMessage.getText())) {
-                latestUserIndex = i;
-                break;
-            }
-        }
-        if (latestUserIndex <= 0) {
-            return identifiers;
-        }
-        for (int i = 0; i < latestUserIndex; i++) {
-            Message message = messages.get(i);
-            if (!(message instanceof UserMessage) && !(message instanceof AssistantMessage)) {
-                continue;
-            }
-            Matcher matcher = DISTINCTIVE_CONTEXT_IDENTIFIER.matcher(message.getText());
-            while (matcher.find()) {
-                String identifier = matcher.group(1);
-                if (DIGIT.matcher(identifier).find()) {
-                    identifiers.add(identifier.toLowerCase(Locale.ROOT));
-                }
-            }
-        }
-        return identifiers;
+    private String repairReasonCode(String reason) {
+        if (reason == null) return "unknown";
+        if (reason.contains("no user-visible answer")) return "empty_answer";
+        if (reason.contains("no user question")) return "no_user_contradiction";
+        if (reason.contains("tool-call markup")) return "tool_markup";
+        if (reason.contains("citation markers")) return "citation_missing";
+        if (reason.contains("earlier assistant answer")) return "stale_answer";
+        if (reason.contains("system prompts")) return "system_leak";
+        if (reason.contains("language") || reason.contains("Chinese text")) return "language_mismatch";
+        return "unknown";
     }
 
     private boolean isSystemPromptLeakage(Prompt prompt, String finalContent) {
@@ -1183,28 +761,6 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             String anchoredRequest = currentUserRequestAnchor(message.getText());
             if (StringUtils.hasText(anchoredRequest)) {
                 return anchoredRequest;
-            }
-        }
-        return "";
-    }
-
-    private String expectedIncidentIdentifier(Prompt prompt) {
-        if (prompt == null || prompt.getInstructions() == null) {
-            return "";
-        }
-        List<Message> messages = prompt.getInstructions();
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            String text = messages.get(i).getText();
-            if (!StringUtils.hasText(text)) {
-                continue;
-            }
-            java.util.regex.Matcher matcher = INCIDENT_IDENTIFIER_EXACT_VALUE.matcher(text);
-            String latestInMessage = "";
-            while (matcher.find()) {
-                latestInMessage = matcher.group().toUpperCase(Locale.ROOT);
-            }
-            if (StringUtils.hasText(latestInMessage)) {
-                return latestInMessage;
             }
         }
         return "";
@@ -1845,6 +1401,17 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     }
 
     private record CitationSelection(String content, List<CitationMetadata> citations) {
+    }
+
+    private void recordCounter(String name, String... tags) {
+        if (meterRegistry == null) {
+            return;
+        }
+        try {
+            meterRegistry.counter(name, tags).increment();
+        } catch (Exception e) {
+            log.warn("Failed to record final-repair counter: name={}, error={}", name, e.getMessage());
+        }
     }
 
     private void recordTimer(String name, long durationMs, String... tags) {
