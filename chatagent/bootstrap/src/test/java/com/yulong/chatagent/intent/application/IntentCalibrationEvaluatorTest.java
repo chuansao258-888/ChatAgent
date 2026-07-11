@@ -234,12 +234,16 @@ class IntentCalibrationEvaluatorTest {
         return """
                 # Intent Policy Evaluation v1
 
-                Profile: `%s`  
-                Classifier: `%s`  
-                Prompt / feature: `%s` / `%s`  
+                Profile: `%s`
+                Classifier: `%s`
+                Prompt / feature: `%s` / `%s`
                 Frozen policy: accept `%.2f`, clarify `%.2f`, gap `%.2f`, classifier cap `%d`, clarification cap `%d`
 
-                ## Calibration
+                ## Calibration (deterministic fixture self-consistency)
+
+                These metrics are **structural/deterministic self-consistency (v1)**, produced by
+                `IntentPolicyEvaluationSupport.evaluate` using a `FixtureClassifier` that returns
+                the fixture-annotated outcome directly — **not a live model evaluation**.
 
                 - Cases: %d
                 - Route accuracy: %.4f
@@ -248,7 +252,12 @@ class IntentCalibrationEvaluatorTest {
                 - Ambiguity recall: %.4f
                 - High-risk wrong automatic executions: %d
 
-                ## Sealed Holdout
+                ## Sealed Holdout (deterministic fixture self-consistency)
+
+                These metrics are **structural/deterministic self-consistency (v1)**, produced by
+                the same `FixtureClassifier`. They verify that the engine, candidate generator,
+                policy evaluator, and frozen profile thresholds produce the expected typed
+                outcomes for every fixture case — **not live model accuracy**.
 
                 - Cases: %d
                 - Route accuracy: %.4f
@@ -262,6 +271,14 @@ class IntentCalibrationEvaluatorTest {
                 - Source Need Accuracy: %.4f
                 - Coverage / abstention: %.4f / %.4f
                 - High-risk wrong automatic executions: %d
+
+                ## Live-model holdout (ATC-AC-030): NOT EXECUTED
+
+                Three independent live-model holdout runs (`LiveIntentPolicyEvaluationTest`)
+                have not been executed. Per user decision (2026-07-11), `ATC-AC-030` is deferred
+                to a follow-up sub-gate. Phase 3 (`ATC-AC-028`) remains blocked until the live
+                gate truly passes. The deterministic metrics above do not substitute for live
+                model accuracy.
 
                 Reports contain aggregate metrics, enum slices, hashes, reason codes, and safe case IDs only.
                 """.formatted(
