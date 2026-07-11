@@ -15,6 +15,7 @@ public class IntentPolicyProperties {
     private int recentContextTurns = 4;
     private int recentContextMaxChars = 4000;
     private int maxClarificationAttempts = 2;
+    private boolean kbInheritanceEnabled = false;
 
     public int boundedRecentContextTurns() {
         return Math.max(recentContextTurns, 0);

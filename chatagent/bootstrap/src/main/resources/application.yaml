@@ -182,6 +182,7 @@ chatagent:
       recent-context-turns: ${CHATAGENT_INTENT_RECENT_CONTEXT_TURNS:4}
       recent-context-max-chars: ${CHATAGENT_INTENT_RECENT_CONTEXT_MAX_CHARS:4000}
       max-clarification-attempts: ${CHATAGENT_INTENT_MAX_CLARIFICATION_ATTEMPTS:2}
+      kb-inheritance-enabled: ${CHATAGENT_INTENT_KB_INHERITANCE_ENABLED:false}
   agent:
     turn-contract:
       enabled: ${CHATAGENT_AGENT_TURN_CONTRACT_ENABLED:true}

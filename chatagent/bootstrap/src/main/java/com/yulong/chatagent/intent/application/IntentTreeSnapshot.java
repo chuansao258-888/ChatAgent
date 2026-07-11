@@ -91,8 +91,33 @@ public class IntentTreeSnapshot {
         return ids == null ? List.of() : List.copyOf(ids);
     }
 
+    /**
+     * Phase 4: collect KB IDs along the full root-to-leaf path.
+     * When {@code inheritanceEnabled=true}, non-empty ancestor KB bindings
+     * are inherited by descendant leaves. Order is root-first, deduplicated.
+     * The current data model cannot distinguish "unset" from "explicit empty",
+     * so explicit-empty override is not supported (documented limitation).
+     */
+    public List<String> knowledgeBaseIdsForPath(List<IntentNodeDTO> path, boolean inheritanceEnabled) {
+        if (path == null || path.isEmpty() || !inheritanceEnabled) {
+            return path == null || path.isEmpty() ? List.of()
+                    : knowledgeBaseIdsForNode(path.get(path.size() - 1).getId());
+        }
+        java.util.LinkedHashSet<String> collected = new java.util.LinkedHashSet<>();
+        for (IntentNodeDTO node : path) {
+            List<String> ids = knowledgeBaseIdsForNode(node.getId());
+            collected.addAll(ids);
+        }
+        return List.copyOf(collected);
+    }
+
     /** Builds the authoritative runtime resolution for one snapshot node. */
     public IntentResolution resolveNode(String nodeId) {
+        return resolveNode(nodeId, false);
+    }
+
+    /** Builds the authoritative runtime resolution with optional KB inheritance. */
+    public IntentResolution resolveNode(String nodeId, boolean kbInheritanceEnabled) {
         List<IntentNodeDTO> path = pathTo(nodeId);
         if (path.isEmpty()) {
             return null;
@@ -106,7 +131,7 @@ public class IntentTreeSnapshot {
         return new IntentResolution(
                 kind,
                 path,
-                knowledgeBaseIdsForNode(leaf.getId()),
+                knowledgeBaseIdsForPath(path, kbInheritanceEnabled),
                 scopePolicy,
                 leaf.getAllowedTools(),
                 leaf.getSystemPromptOverride()
