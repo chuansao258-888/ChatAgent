@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import com.yulong.chatagent.agent.runtime.contract.SourceReferenceClassifier;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.junit.jupiter.api.Test;
@@ -59,6 +60,22 @@ class ClarificationResolverTest {
     @Test
     void shouldNotTreatQuarterAsOrdinal() {
         assertThat(resolver.resolve("第一季度的预算还要确认", candidates())).isNull();
+    }
+
+    @Test
+    void shouldRequireExplicitAffirmationOnlyForActionConfirmation() {
+        assertThat(resolver.resolveExecutionReply(
+                "confirm", candidates(), ClarificationKind.ACTION_CONFIRMATION).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.SELECT_ONE);
+        assertThat(resolver.resolveExecutionReply(
+                "first", candidates(), ClarificationKind.ACTION_CONFIRMATION).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.UNRESOLVED);
+        assertThat(resolver.resolveExecutionReply(
+                "use the uploaded contract", candidates(), ClarificationKind.SOURCE_SCOPE).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.SELECT_ONE);
+        assertThat(resolver.resolveExecutionReply(
+                "cancel", candidates(), ClarificationKind.SOURCE_SCOPE).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.CANCEL);
     }
 
     private void assertSelected(String reply, String expectedId, List<IntentNodeDTO> candidates) {

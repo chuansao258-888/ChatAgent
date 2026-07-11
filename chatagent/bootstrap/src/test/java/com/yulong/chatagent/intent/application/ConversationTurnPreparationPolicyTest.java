@@ -2,6 +2,7 @@ package com.yulong.chatagent.intent.application;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.contract.ActionRisk;
+import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import com.yulong.chatagent.agent.runtime.contract.IntentLabel;
 import com.yulong.chatagent.agent.runtime.contract.SourceNeed;
 import com.yulong.chatagent.agent.runtime.contract.SourceReferenceClassifier;
@@ -21,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -97,10 +99,13 @@ class ConversationTurnPreparationPolicyTest {
 
         ArgumentCaptor<PendingIntentResolution> pendingCaptor =
                 ArgumentCaptor.forClass(PendingIntentResolution.class);
-        verify(pendingStore).save(pendingCaptor.capture());
-        assertThat(pendingCaptor.getValue().orderedCandidateNodeIds())
+        verify(pendingStore, org.mockito.Mockito.times(2)).save(pendingCaptor.capture());
+        PendingIntentResolution routePending = pendingCaptor.getAllValues().stream()
+                .filter(value -> value.getClarificationKind() == ClarificationKind.ROUTE_CHOICE)
+                .findFirst().orElseThrow();
+        assertThat(routePending.orderedCandidateNodeIds())
                 .containsExactly("leave", "expense");
-        assertThat(pendingCaptor.getValue().getPolicyProfileVersion()).isEqualTo("v1");
+        assertThat(routePending.getPolicyProfileVersion()).isEqualTo("v1");
     }
 
     @Test
@@ -276,6 +281,113 @@ class ConversationTurnPreparationPolicyTest {
         assertThat(prepared.directReply()).isEqualTo("cancelled");
         verify(pendingStore).delete("session");
         verify(understandingEngine, never()).understand(any());
+    }
+
+    @Test
+    void shouldPersistKnownRouteAndActionIdentityForExecutionClarification() {
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+        when(understandingEngine.understand(any()))
+                .thenReturn(result(IntentRouteOutcome.EXECUTION_INFO_MISSING));
+        when(responseBuilder.buildExecutionInfoMissing(
+                List.of(MissingDimension.CONFIRMATION), "send the payroll email"))
+                .thenReturn("confirm");
+
+        TurnPreparationResult prepared = service.prepare(context("send the payroll email"));
+
+        assertThat(prepared.directReply()).isEqualTo("confirm");
+        ArgumentCaptor<PendingIntentResolution> pendingCaptor =
+                ArgumentCaptor.forClass(PendingIntentResolution.class);
+        verify(pendingStore).save(pendingCaptor.capture());
+        assertThat(pendingCaptor.getValue().getClarificationKind())
+                .isEqualTo(ClarificationKind.ACTION_CONFIRMATION);
+        assertThat(pendingCaptor.getValue().getKnownRouteNodeId()).isEqualTo("leave");
+        assertThat(pendingCaptor.getValue().getActionIdentity()).isNotBlank();
+        assertThat(pendingCaptor.getValue().getMissingDimensions())
+                .containsExactly(MissingDimension.CONFIRMATION);
+    }
+
+    @Test
+    void shouldExecuteOnlyMatchingUnexpiredActionConfirmation() {
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+        String original = "send the payroll email";
+        PendingIntentResolution pending = PendingIntentResolution.builder()
+                .sessionId("session")
+                .candidateNodeIds(List.of("leave"))
+                .knownRouteNodeId("leave")
+                .originalQuery(original)
+                .clarificationKind(ClarificationKind.ACTION_CONFIRMATION)
+                .missingDimensions(List.of(MissingDimension.CONFIRMATION))
+                .actionIdentity(Integer.toHexString(java.util.Objects.hash("leave", original)))
+                .expiresAt(Instant.now().plusSeconds(60))
+                .attemptCount(0)
+                .build();
+        when(pendingStore.get("session")).thenReturn(pending);
+        when(clarificationResolver.resolveExecutionReply(
+                "confirm", List.of(snapshot.findNode("leave")), ClarificationKind.ACTION_CONFIRMATION))
+                .thenReturn(ClarificationResolver.ClarificationReply.selected(
+                        ClarificationResolver.ReplyOutcome.SELECT_ONE,
+                        List.of(snapshot.findNode("leave"))));
+        when(understandingEngine.understand(any())).thenReturn(result(IntentRouteOutcome.KNOWN_INTENT));
+        when(queryRewriter.rewrite(original, snapshot.resolveNode("leave"))).thenReturn(original);
+
+        TurnPreparationResult prepared = service.prepare(context("confirm"));
+
+        assertThat(prepared.isDirectReply()).isFalse();
+        assertThat(prepared.intentResolution().pathLabel()).isEqualTo("Annual Leave");
+        verify(pendingStore).delete("session");
+    }
+
+    @Test
+    void shouldNotLetRouteChoiceTextConfirmPendingAction() {
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+        String original = "send the payroll email";
+        PendingIntentResolution pending = PendingIntentResolution.builder()
+                .sessionId("session")
+                .candidateNodeIds(List.of("leave"))
+                .knownRouteNodeId("leave")
+                .originalQuery(original)
+                .clarificationKind(ClarificationKind.ACTION_CONFIRMATION)
+                .missingDimensions(List.of(MissingDimension.CONFIRMATION))
+                .actionIdentity(Integer.toHexString(java.util.Objects.hash("leave", original)))
+                .expiresAt(Instant.now().plusSeconds(60))
+                .attemptCount(0)
+                .build();
+        when(pendingStore.get("session")).thenReturn(pending);
+        when(clarificationResolver.resolveExecutionReply(
+                "first", List.of(snapshot.findNode("leave")), ClarificationKind.ACTION_CONFIRMATION))
+                .thenReturn(ClarificationResolver.ClarificationReply.unresolved());
+        when(responseBuilder.buildExecutionInfoMissing(
+                List.of(MissingDimension.CONFIRMATION), original)).thenReturn("confirm again");
+
+        TurnPreparationResult prepared = service.prepare(context("first"));
+
+        assertThat(prepared.directReply()).isEqualTo("confirm again");
+        assertThat(pending.getAttemptCount()).isEqualTo(1);
+        verify(pendingStore).save(pending);
+        verify(understandingEngine, never()).understand(any());
+    }
+
+    @Test
+    void shouldNotExecuteExpiredActionConfirmation() {
+        ConversationTurnPreparationService service = service(IntentPolicyMode.ENFORCE);
+        PendingIntentResolution pending = PendingIntentResolution.builder()
+                .sessionId("session")
+                .candidateNodeIds(List.of("leave"))
+                .knownRouteNodeId("leave")
+                .originalQuery("send the payroll email")
+                .clarificationKind(ClarificationKind.ACTION_CONFIRMATION)
+                .actionIdentity("expired")
+                .expiresAt(Instant.now().minusSeconds(1))
+                .build();
+        when(pendingStore.get("session")).thenReturn(pending);
+        when(understandingEngine.understand(any())).thenReturn(result(IntentRouteOutcome.GENERAL_CHAT));
+
+        TurnPreparationResult prepared = service.prepare(context("confirm"));
+
+        assertThat(prepared.isDirectReply()).isFalse();
+        assertThat(prepared.intentResolution()).isNull();
+        verify(pendingStore).delete("session");
+        verify(clarificationResolver, never()).resolveExecutionReply(anyString(), anyList(), any());
     }
 
     private ConversationTurnPreparationService service(IntentPolicyMode mode) {

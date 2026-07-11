@@ -58,6 +58,26 @@ class IntentTreeSnapshotTest {
                 .containsExactly("new-root");
     }
 
+    @Test
+    void shouldKeepLeafOnlyByDefaultAndInheritRootToLeafWhenEnabled() {
+        IntentTreeSnapshot snapshot = new IntentTreeSnapshot(
+                "assistant-1",
+                1,
+                List.of(
+                        node("root", null, "Root", 1),
+                        node("child", "root", "Child", 1),
+                        node("leaf", "child", "Leaf", 1)),
+                Map.of(
+                        "root", List.of("kb-root", "kb-shared"),
+                        "child", List.of("kb-child", "kb-shared"),
+                        "leaf", List.of("kb-leaf")));
+
+        assertThat(snapshot.resolveNode("leaf", false).scopedKbIds())
+                .containsExactly("kb-leaf");
+        assertThat(snapshot.resolveNode("leaf", true).scopedKbIds())
+                .containsExactly("kb-root", "kb-shared", "kb-child", "kb-leaf");
+    }
+
     private IntentNodeDTO node(String id, String parentId, String name, int sortOrder) {
         return IntentNodeDTO.builder()
                 .id(id)

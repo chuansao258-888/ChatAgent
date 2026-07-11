@@ -29,6 +29,9 @@ public class TurnContractProperties {
      */
     private String retrievalEnforcement = "enforce";
 
+    /** Optional parent-to-leaf KB inheritance; disabled preserves leaf-only scope. */
+    private boolean intentKbInheritanceEnabled = false;
+
     public boolean isRetrievalEnforced() {
         return enabled && "enforce".equalsIgnoreCase(retrievalEnforcement);
     }

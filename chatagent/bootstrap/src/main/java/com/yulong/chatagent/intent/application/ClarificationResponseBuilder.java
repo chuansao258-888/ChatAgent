@@ -97,15 +97,31 @@ public class ClarificationResponseBuilder {
     }
 
     public String buildExecutionInfoMissing(List<MissingDimension> missingDimensions, String userInput) {
-        boolean confirmation = missingDimensions != null
-                && missingDimensions.contains(MissingDimension.CONFIRMATION);
-        if (shouldUseChinese(userInput)) {
-            return confirmation
+        List<MissingDimension> missing = missingDimensions == null ? List.of() : missingDimensions;
+        boolean chinese = shouldUseChinese(userInput);
+        if (missing.contains(MissingDimension.CONFIRMATION)
+                || missing.contains(MissingDimension.ACTION)) {
+            return chinese
                     ? "这个请求可能产生外部修改或操作。请明确确认是否要继续执行。"
-                    : "我已识别到请求方向，但还缺少安全执行所需的信息。请补充具体对象、来源或操作范围。";
+                    : "This request may make an external change. Please explicitly confirm whether I should proceed.";
         }
-        return confirmation
-                ? "This request may make an external change. Please explicitly confirm whether I should proceed."
+        if (missing.contains(MissingDimension.SOURCE)) {
+            return chinese
+                    ? "请说明应使用哪个来源，例如已上传文件或指定知识范围。"
+                    : "Please specify which source to use, such as an uploaded file or the relevant knowledge scope.";
+        }
+        if (missing.contains(MissingDimension.OBJECT)) {
+            return chinese
+                    ? "请说明你指的是哪个具体对象或记录。"
+                    : "Please identify the specific object or record you mean.";
+        }
+        if (missing.contains(MissingDimension.TIME_OR_VERSION)) {
+            return chinese
+                    ? "请说明需要哪个时间点或版本。"
+                    : "Please specify the relevant time or version.";
+        }
+        return chinese
+                ? "我已识别到请求方向，但还缺少安全执行所需的信息。请补充具体对象、来源或操作范围。"
                 : "I understand the request, but information required for safe execution is missing. Please provide the object, source, or action scope.";
     }
 

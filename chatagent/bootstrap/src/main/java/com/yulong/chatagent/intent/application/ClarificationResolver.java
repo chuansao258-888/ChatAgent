@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -27,6 +28,11 @@ public class ClarificationResolver {
             "cancel", "stop", "skip", "never mind", "取消", "算了", "不用了", "跳过");
     private static final Set<String> SELECT_ALL_PHRASES = Set.of(
             "both", "all", "both of them", "all of them", "两个都要", "都要", "全部", "都选");
+    private static final Set<String> CONFIRM_PHRASES = Set.of(
+            "yes", "confirm", "confirmed", "proceed", "continue", "do it",
+            "是", "确认", "继续", "执行", "同意");
+    private static final Set<String> UNCERTAIN_PHRASES = Set.of(
+            "maybe", "not sure", "unsure", "不知道", "不确定", "再想想");
 
     private final IntentSignalAnalyzer signalAnalyzer;
 
@@ -93,6 +99,34 @@ public class ClarificationResolver {
             return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, exampleMatches);
         }
         return ClarificationReply.unresolved();
+    }
+
+    /** Reuses the typed clarification outcomes for an execution-readiness pending state. */
+    public ClarificationReply resolveExecutionReply(String reply,
+                                                    List<IntentNodeDTO> candidates,
+                                                    ClarificationKind kind) {
+        if (!StringUtils.hasText(reply) || candidates == null || candidates.isEmpty()) {
+            return ClarificationReply.unresolved();
+        }
+        String normalized = normalize(reply);
+        if (CANCEL_PHRASES.contains(normalized)) {
+            return ClarificationReply.of(ReplyOutcome.CANCEL);
+        }
+        if (NONE_PHRASES.contains(normalized)) {
+            return ClarificationReply.of(ReplyOutcome.NONE_OF_THESE);
+        }
+        if (signalAnalyzer.isExplicitTopicSwitch(reply)) {
+            return ClarificationReply.newTopic(signalAnalyzer.stripTopicSwitchPrefix(reply));
+        }
+        if (UNCERTAIN_PHRASES.contains(normalized)) {
+            return ClarificationReply.unresolved();
+        }
+        if (kind == ClarificationKind.ACTION_CONFIRMATION) {
+            return CONFIRM_PHRASES.contains(normalized)
+                    ? ClarificationReply.selected(ReplyOutcome.SELECT_ONE, candidates)
+                    : ClarificationReply.unresolved();
+        }
+        return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, candidates);
     }
 
     private List<IntentNodeDTO> ordinalMatches(String normalized, List<IntentNodeDTO> candidates) {

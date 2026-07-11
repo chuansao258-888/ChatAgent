@@ -45,6 +45,19 @@ class ClarificationResponseBuilderTest {
                 .contains("cannot be handled safely together");
     }
 
+    @Test
+    void shouldRenderDimensionSpecificExecutionPrompts() {
+        assertThat(builder.buildExecutionInfoMissing(
+                List.of(MissingDimension.SOURCE), "answer it"))
+                .contains("which source");
+        assertThat(builder.buildExecutionInfoMissing(
+                List.of(MissingDimension.OBJECT), "update it"))
+                .contains("specific object");
+        assertThat(builder.buildExecutionInfoMissing(
+                List.of(MissingDimension.TIME_OR_VERSION), "show the policy"))
+                .contains("time or version");
+    }
+
     private IntentNodeDTO node(String name) {
         return IntentNodeDTO.builder().name(name).build();
     }

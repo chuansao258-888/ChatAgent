@@ -36,6 +36,10 @@ public class PendingIntentResolution {
     private String policyProfileVersion;
     private String contractVersion;
     private List<PendingCandidate> orderedCandidates;
+    private List<MissingDimension> missingDimensions;
+    private String knownRouteNodeId;
+    /** Stable server-derived identity binding an affirmative reply to one pending action. */
+    private String actionIdentity;
 
     public int attemptCountOrZero() {
         return attemptCount == null ? 0 : Math.max(attemptCount, 0);

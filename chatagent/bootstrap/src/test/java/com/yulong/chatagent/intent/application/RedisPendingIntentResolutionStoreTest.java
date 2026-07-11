@@ -46,6 +46,9 @@ class RedisPendingIntentResolutionStoreTest {
                 .attemptCount(1)
                 .policyProfileVersion("v1")
                 .contractVersion("v1")
+                .missingDimensions(List.of(MissingDimension.CONFIRMATION))
+                .knownRouteNodeId("a")
+                .actionIdentity("action-1")
                 .build();
 
         fixture.store().save(pending);
@@ -56,6 +59,9 @@ class RedisPendingIntentResolutionStoreTest {
         assertThat(restored.getPolicyProfileVersion()).isEqualTo("v1");
         assertThat(restored.getOrderedCandidates()).extracting(PendingIntentResolution.PendingCandidate::nodeId)
                 .containsExactly("a", "b");
+        assertThat(restored.getMissingDimensions()).containsExactly(MissingDimension.CONFIRMATION);
+        assertThat(restored.getKnownRouteNodeId()).isEqualTo("a");
+        assertThat(restored.getActionIdentity()).isEqualTo("action-1");
     }
 
     @Test

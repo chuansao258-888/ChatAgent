@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.time.Instant;
 
 /** Orchestrates legacy/shadow/enforce intent preparation before Agent dispatch. */
 @Component
@@ -166,6 +167,10 @@ public class ConversationTurnPreparationService {
     private TurnPreparationResult resolvePendingPolicy(TurnPreparationContext context,
                                                        IntentTreeSnapshot snapshot,
                                                        PendingIntentResolution pending) {
+        if (pending.getClarificationKind() != null
+                && pending.getClarificationKind() != ClarificationKind.ROUTE_CHOICE) {
+            return resolvePendingExecution(context, snapshot, pending);
+        }
         List<IntentNodeDTO> candidates = resolveCandidates(snapshot, pending.orderedCandidateNodeIds());
         if (candidates.isEmpty()) {
             pendingIntentResolutionStore.delete(context.sessionId());
@@ -239,14 +244,156 @@ public class ConversationTurnPreparationService {
                     null, canonicalQuery, canonicalQuery, context, understanding);
             case AMBIGUOUS_ROUTE -> startPolicyClarification(
                     context, snapshot, understanding, canonicalQuery);
-            case EXECUTION_INFO_MISSING -> TurnPreparationResult.direct(
-                    clarificationResponseBuilder.buildExecutionInfoMissing(
-                            decision.missingDimensions(), canonicalQuery));
+            case EXECUTION_INFO_MISSING -> startExecutionClarification(
+                    context, snapshot, understanding, canonicalQuery, 0);
             case KNOWN_INTENT -> dispatchKnown(
                     context, snapshot, understanding, canonicalQuery, true);
             case MULTI_INTENT -> dispatchKnown(
                     context, snapshot, understanding, canonicalQuery, false);
         };
+    }
+
+    private TurnPreparationResult startExecutionClarification(TurnPreparationContext context,
+                                                              IntentTreeSnapshot snapshot,
+                                                              IntentUnderstandingResult understanding,
+                                                              String canonicalQuery,
+                                                              int attemptCount) {
+        IntentDecision decision = understanding.decision();
+        IntentResolution resolution = snapshot.resolveNode(
+                decision.primaryNodeId(), contractProperties.isIntentKbInheritanceEnabled());
+        if (resolution == null) {
+            return TurnPreparationResult.direct(
+                    clarificationResponseBuilder.buildExecutionInfoMissing(
+                            decision.missingDimensions(), canonicalQuery));
+        }
+        ClarificationKind kind = clarificationKindFor(decision.missingDimensions());
+        String nodeId = decision.primaryNodeId();
+        pendingIntentResolutionStore.save(PendingIntentResolution.builder()
+                .sessionId(context.sessionId())
+                .candidateNodeIds(List.of(nodeId))
+                .knownRouteNodeId(nodeId)
+                .originalQuery(canonicalQuery)
+                .parentPath(resolution.pathLabel())
+                .clarificationKind(kind)
+                .missingDimensions(decision.missingDimensions())
+                .actionIdentity(kind == ClarificationKind.ACTION_CONFIRMATION
+                        ? actionIdentity(nodeId, canonicalQuery) : null)
+                .attemptCount(attemptCount)
+                .policyProfileVersion(decision.policyProfileVersion())
+                .contractVersion(TurnExecutionContract.VERSION)
+                .build());
+        metrics.recordClarification("started", null);
+        return TurnPreparationResult.direct(
+                clarificationResponseBuilder.buildExecutionInfoMissing(
+                        decision.missingDimensions(), canonicalQuery));
+    }
+
+    private TurnPreparationResult resolvePendingExecution(TurnPreparationContext context,
+                                                          IntentTreeSnapshot snapshot,
+                                                          PendingIntentResolution pending) {
+        if (pending.getExpiresAt() != null && pending.getExpiresAt().isBefore(Instant.now())) {
+            pendingIntentResolutionStore.delete(context.sessionId());
+            metrics.recordClarification("expired", ClarificationResolver.ReplyOutcome.UNRESOLVED);
+            return null;
+        }
+        String routeId = StringUtils.hasText(pending.getKnownRouteNodeId())
+                ? pending.getKnownRouteNodeId()
+                : pending.orderedCandidateNodeIds().stream().findFirst().orElse(null);
+        IntentNodeDTO route = snapshot.findNode(routeId);
+        if (route == null) {
+            pendingIntentResolutionStore.delete(context.sessionId());
+            return TurnPreparationResult.direct(
+                    clarificationResponseBuilder.buildRetryLimitReached(context.userInput()));
+        }
+        ClarificationResolver.ClarificationReply reply = clarificationResolver.resolveExecutionReply(
+                context.userInput(), List.of(route), pending.getClarificationKind());
+        metrics.recordClarification("resolved", reply.outcome());
+        return switch (reply.outcome()) {
+            case CANCEL, NONE_OF_THESE -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                yield TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildReleased(reply.outcome(), context.userInput()));
+            }
+            case NEW_TOPIC -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                String topic = StringUtils.hasText(reply.newTopicText())
+                        ? reply.newTopicText() : context.userInput();
+                IntentUnderstandingResult fresh = understandingEngine.understand(
+                        buildRequest(context, snapshot, null, topic));
+                yield applyPolicyDecision(context, snapshot, fresh, topic);
+            }
+            case SELECT_ONE -> resolveExecutionInformation(
+                    context, snapshot, pending, routeId);
+            case UNRESOLVED, SELECT_MANY -> retryExecutionClarification(
+                    context, pending, context.userInput());
+        };
+    }
+
+    private TurnPreparationResult resolveExecutionInformation(TurnPreparationContext context,
+                                                              IntentTreeSnapshot snapshot,
+                                                              PendingIntentResolution pending,
+                                                              String routeId) {
+        if (pending.getClarificationKind() == ClarificationKind.ACTION_CONFIRMATION
+                && !java.util.Objects.equals(
+                pending.getActionIdentity(), actionIdentity(routeId, pending.getOriginalQuery()))) {
+            return retryExecutionClarification(context, pending, context.userInput());
+        }
+        String combined = pending.getOriginalQuery() + "\nClarification: " + context.userInput();
+        IntentUnderstandingResult fresh = understandingEngine.understand(
+                buildRequest(context, snapshot, pending, combined));
+        if (fresh.decision().outcome() == IntentRouteOutcome.EXECUTION_INFO_MISSING) {
+            int attempt = pending.attemptCountOrZero() + 1;
+            if (attempt >= intentPolicyProperties.boundedMaxClarificationAttempts()) {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                return TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildRetryLimitReached(context.userInput()));
+            }
+            return startExecutionClarification(
+                    context, snapshot, fresh, pending.getOriginalQuery(), attempt);
+        }
+        pendingIntentResolutionStore.delete(context.sessionId());
+        return applyPolicyDecision(context, snapshot, fresh, pending.getOriginalQuery());
+    }
+
+    private TurnPreparationResult retryExecutionClarification(TurnPreparationContext context,
+                                                              PendingIntentResolution pending,
+                                                              String userInput) {
+        int attempt = pending.attemptCountOrZero() + 1;
+        if (attempt >= intentPolicyProperties.boundedMaxClarificationAttempts()) {
+            pendingIntentResolutionStore.delete(context.sessionId());
+            metrics.recordClarification("cancelled", ClarificationResolver.ReplyOutcome.UNRESOLVED);
+            return TurnPreparationResult.direct(
+                    clarificationResponseBuilder.buildRetryLimitReached(userInput));
+        }
+        pending.setAttemptCount(attempt);
+        pendingIntentResolutionStore.save(pending);
+        metrics.recordClarification("retried", ClarificationResolver.ReplyOutcome.UNRESOLVED);
+        return TurnPreparationResult.direct(
+                clarificationResponseBuilder.buildExecutionInfoMissing(
+                        pending.getMissingDimensions(), pending.getOriginalQuery()));
+    }
+
+    private ClarificationKind clarificationKindFor(List<MissingDimension> missing) {
+        List<MissingDimension> dimensions = missing == null ? List.of() : missing;
+        if (dimensions.contains(MissingDimension.CONFIRMATION)
+                || dimensions.contains(MissingDimension.ACTION)) {
+            return ClarificationKind.ACTION_CONFIRMATION;
+        }
+        if (dimensions.contains(MissingDimension.SOURCE)) {
+            return ClarificationKind.SOURCE_SCOPE;
+        }
+        if (dimensions.contains(MissingDimension.OBJECT)) {
+            return ClarificationKind.OBJECT_IDENTITY;
+        }
+        if (dimensions.contains(MissingDimension.TIME_OR_VERSION)) {
+            return ClarificationKind.TIME_OR_VERSION;
+        }
+        return ClarificationKind.NO_RETRIEVABLE_SOURCE;
+    }
+
+    private String actionIdentity(String routeId, String originalQuery) {
+        String normalized = originalQuery == null ? "" : originalQuery.trim().toLowerCase();
+        return Integer.toHexString(java.util.Objects.hash(routeId, normalized));
     }
 
     private TurnPreparationResult startPolicyClarification(TurnPreparationContext context,
@@ -329,7 +476,7 @@ public class ConversationTurnPreparationService {
         List<IntentResolution> resolutions = new ArrayList<>(routeIds.size());
         for (String routeId : routeIds) {
             IntentResolution resolved = snapshot.resolveNode(
-                    routeId, intentPolicyProperties.isKbInheritanceEnabled());
+                    routeId, contractProperties.isIntentKbInheritanceEnabled());
             if (resolved == null) {
                 return List.of();
             }
