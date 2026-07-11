@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,29 +26,28 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PendingIntentResolution {
-    /**
-     * 归属 session。
-     * clarification 状态不是全局的，而是某个对话会话的局部中间态。
-     */
     private String sessionId;
-    /**
-     * 上一轮返回给用户的候选节点 ID 列表。
-     * 下一轮用户回复时，会先根据这些 ID 恢复候选节点，再尝试匹配“第一个/选报销”之类的回答。
-     */
     private List<String> candidateNodeIds;
-    /**
-     * 触发澄清时的原始 query。
-     * 选中候选后，系统继续路由时用的是这条原始 query，而不是用户那句简短回答。
-     */
     private String originalQuery;
-    /**
-     * 当前候选所在的父级路径标签，例如“报销 > 差旅”。
-     * 主要用于生成面向用户的澄清提示文案。
-     */
     private String parentPath;
-    /**
-     * 过期时间。
-     * 超时后澄清状态会被丢弃，避免用户很久以后回复一句“第一个”却误命中旧上下文。
-     */
     private Instant expiresAt;
+    private ClarificationKind clarificationKind;
+    private Integer attemptCount;
+    private String policyProfileVersion;
+    private String contractVersion;
+    private List<PendingCandidate> orderedCandidates;
+
+    public int attemptCountOrZero() {
+        return attemptCount == null ? 0 : Math.max(attemptCount, 0);
+    }
+
+    public List<String> orderedCandidateNodeIds() {
+        if (orderedCandidates != null && !orderedCandidates.isEmpty()) {
+            return orderedCandidates.stream().map(PendingCandidate::nodeId).toList();
+        }
+        return candidateNodeIds == null ? List.of() : List.copyOf(candidateNodeIds);
+    }
+
+    public record PendingCandidate(String nodeId, double lexicalScore, int rank) {
+    }
 }

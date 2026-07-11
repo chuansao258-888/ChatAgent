@@ -1,0 +1,23 @@
+{
+  "datasetId": "intent-understanding-v1",
+  "version": "v1",
+  "reviewStatus": "CURATED_PENDING_CROSS_REVIEW",
+  "reviewerRole": "feature-implementer",
+  "calibrationResource": "calibration.jsonl",
+  "holdoutResource": "holdout.jsonl",
+  "treeFixtureResource": "tree-fixture-enterprise-v1.json",
+  "calibrationCases": 150,
+  "holdoutCases": 150,
+  "supportedLanguages": [
+    "EN",
+    "ZH"
+  ],
+  "fingerprintAlgorithm": "sha256(normalized recentVisibleTurns + currentUserText)",
+  "corpusManifestHash": "09063eb4bccbd3baabe8580eeac2caf1027bf13658d675cbaf643bb8d633482e",
+  "treeFixtureManifestHash": "56bff73ba0da25e7b669fc22c47b415574e2c072b69803ae1598da4fd7dbb80e",
+  "classifierModelId": "deepseek-v4-flash",
+  "promptVersion": "v1",
+  "featureVersion": "intent-features-v1",
+  "classifierTemperature": 0,
+  "classifierMaxTokens": 384
+}

@@ -4,188 +4,206 @@ import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * 澄清回答解析器。
- * <p>
- * 当系统上一轮已经把多个候选项列给用户时，用户下一轮的回复往往很短，
- * 例如“第一个”“选报销”“我要第二项”。
- * 这个类的职责就是把这种简短回答重新映射回一个具体的候选 {@link IntentNodeDTO}。
- * <p>
- * 当前解析策略比较轻量，优先支持两类输入：
- * <ul>
- *     <li>序号型：1 / 2 / 第一个 / 第二个 / 一 / 二；</li>
- *     <li>名称型：回答里直接包含候选名称。</li>
- * </ul>
- * 这里没有引入更重的语义模型，原因是澄清阶段的候选集合已经被 IntentRouter 缩得很小，
- * 用规则解析通常已经足够稳定，也能避免“为了回答一个第几个”再次调用模型。
- */
+/** Deterministically interprets replies to a pending route clarification. */
 @Component
 public class ClarificationResolver {
 
     private static final Pattern DIGIT_PATTERN = Pattern.compile("(\\d+)");
     private static final Map<String, Integer> CHINESE_ORDINALS = buildChineseOrdinals();
     private static final Map<String, Integer> ENGLISH_ORDINALS = buildEnglishOrdinals();
+    private static final Set<String> NONE_PHRASES = Set.of(
+            "none", "none of these", "neither", "no option", "都不是", "都不对", "没有一个");
+    private static final Set<String> CANCEL_PHRASES = Set.of(
+            "cancel", "stop", "skip", "never mind", "取消", "算了", "不用了", "跳过");
+    private static final Set<String> SELECT_ALL_PHRASES = Set.of(
+            "both", "all", "both of them", "all of them", "两个都要", "都要", "全部", "都选");
 
+    private final IntentSignalAnalyzer signalAnalyzer;
+
+    public ClarificationResolver(IntentSignalAnalyzer signalAnalyzer) {
+        this.signalAnalyzer = signalAnalyzer;
+    }
+
+    /** Legacy-compatible single-selection facade used only by legacy/shadow routing. */
     public IntentNodeDTO resolve(String reply, List<IntentNodeDTO> candidates) {
-        // 没有可解析的回答，或者当前根本没有候选项时，直接返回 null，交给上层继续澄清。
+        ClarificationReply typed = resolveTyped(reply, candidates);
+        return typed.outcome() == ReplyOutcome.SELECT_ONE ? typed.selected().get(0) : null;
+    }
+
+    public ClarificationReply resolveTyped(String reply, List<IntentNodeDTO> candidates) {
         if (!StringUtils.hasText(reply) || candidates == null || candidates.isEmpty()) {
-            return null;
+            return ClarificationReply.unresolved();
         }
-
         String normalized = normalize(reply);
-        // 第一优先级：按序号解析。
-        // 例如“2”“第二个”“我选一”都应该尽量稳定映射到候选列表里的顺序。
-        Integer ordinal = parseOrdinal(normalized);
-        if (ordinal != null && ordinal > 0 && ordinal <= candidates.size()) {
-            return candidates.get(ordinal - 1);
+        if (CANCEL_PHRASES.contains(normalized)) {
+            return ClarificationReply.of(ReplyOutcome.CANCEL);
+        }
+        if (NONE_PHRASES.contains(normalized)) {
+            return ClarificationReply.of(ReplyOutcome.NONE_OF_THESE);
+        }
+        if (signalAnalyzer.isExplicitTopicSwitch(reply)) {
+            return ClarificationReply.newTopic(signalAnalyzer.stripTopicSwitchPrefix(reply));
+        }
+        if (SELECT_ALL_PHRASES.contains(normalized)) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_MANY, candidates);
         }
 
-        // 第二优先级：按候选名称包含匹配。
-        // 例如候选叫“差旅报销”，用户回复“报销”或完整名称时可以直接命中。
-        for (IntentNodeDTO candidate : candidates) {
-            if (candidate != null
-                    && StringUtils.hasText(candidate.getName())
-                    && normalized.contains(candidate.getName().trim().toLowerCase(Locale.ROOT))) {
-                // 名称匹配不做复杂模糊检索，保持行为可预测：
-                // 用户文本里出现哪个候选名，就认为他在选哪个候选。
-                return candidate;
+        List<IntentNodeDTO> ordinalMatches = ordinalMatches(normalized, candidates);
+        if (ordinalMatches.size() == 1) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, ordinalMatches);
+        }
+        if (ordinalMatches.size() > 1) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_MANY, ordinalMatches);
+        }
+
+        List<IntentNodeDTO> exactNames = candidates.stream()
+                .filter(candidate -> StringUtils.hasText(candidate.getName()))
+                .filter(candidate -> normalized.contains(normalize(candidate.getName())))
+                .toList();
+        if (exactNames.size() == 1) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, exactNames);
+        }
+        if (exactNames.size() > 1) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_MANY, exactNames);
+        }
+
+        List<IntentNodeDTO> partialNames = candidates.stream()
+                .filter(candidate -> StringUtils.hasText(candidate.getName()))
+                .filter(candidate -> normalized.length() >= 2
+                        && normalize(candidate.getName()).contains(normalized))
+                .toList();
+        if (partialNames.size() == 1) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, partialNames);
+        }
+
+        List<IntentNodeDTO> exampleMatches = candidates.stream()
+                .filter(candidate -> matchesReviewedExample(normalized, candidate))
+                .toList();
+        if (exampleMatches.size() == 1) {
+            return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, exampleMatches);
+        }
+        return ClarificationReply.unresolved();
+    }
+
+    private List<IntentNodeDTO> ordinalMatches(String normalized, List<IntentNodeDTO> candidates) {
+        LinkedHashSet<Integer> ordinals = new LinkedHashSet<>();
+        Matcher digits = DIGIT_PATTERN.matcher(normalized);
+        while (digits.find()) {
+            ordinals.add(Integer.parseInt(digits.group(1)));
+        }
+        if (ordinals.isEmpty()) {
+            Integer ordinal = parseNamedOrdinal(normalized);
+            if (ordinal != null) {
+                ordinals.add(ordinal);
             }
         }
-        return null;
+        List<IntentNodeDTO> selected = new ArrayList<>();
+        for (Integer ordinal : ordinals) {
+            if (ordinal > 0 && ordinal <= candidates.size()) {
+                selected.add(candidates.get(ordinal - 1));
+            }
+        }
+        return List.copyOf(selected);
+    }
+
+    private boolean matchesReviewedExample(String normalized, IntentNodeDTO candidate) {
+        if (candidate.getExamples() == null) {
+            return false;
+        }
+        return candidate.getExamples().stream().filter(StringUtils::hasText)
+                .map(this::normalize)
+                .anyMatch(example -> normalized.equals(example)
+                        || (normalized.length() >= 3 && example.contains(normalized)));
     }
 
     private String normalize(String reply) {
-        // 这里不是通用 NLP 规范化，只去掉澄清场景里常见的口语前缀。
-        // 例如“我选第二个” -> “第二个”，让后续 ordinal / 名称匹配更稳定。
-        return reply.trim()
-                .toLowerCase(Locale.ROOT)
-                .replace("选择", "")
-                .replace("选", "")
-                .replace("我要", "")
-                .replace("我选", "")
+        return reply.trim().toLowerCase(Locale.ROOT)
+                .replaceFirst("^(?:i choose|choose|select|option|我选择|选择|我选|选|我要)\\s*", "")
+                .replaceAll("[。.!！?？,，;；]+$", "")
                 .trim();
     }
 
-    private Integer parseOrdinal(String normalized) {
-        // 先尝试解析数字，如“1”“2”“第3个”。
-        Matcher digitMatcher = DIGIT_PATTERN.matcher(normalized);
-        if (digitMatcher.find()) {
-            return Integer.parseInt(digitMatcher.group(1));
-        }
-
-        // 再尝试解析中文序数表达，如“一”“第二个”“第二项”“就第一个吧”。
+    private Integer parseNamedOrdinal(String normalized) {
         for (Map.Entry<String, Integer> entry : CHINESE_ORDINALS.entrySet()) {
             String token = entry.getKey();
+            String quoted = Pattern.quote(token);
             if (normalized.equals(token)
                     || normalized.equals("第" + token)
-                    || normalized.equals("第" + token + "个")
-                    || normalized.equals(token + "个")
-                    || containsChineseOrdinal(normalized, token)) {
+                    || normalized.matches(".*(?:第)?" + quoted + "(?:个|项|条|类|种|位|号)(?:比较像|更合适|吧|呢|呀|啊|嘛|哦|了)?$")) {
                 return entry.getValue();
             }
         }
         for (Map.Entry<String, Integer> entry : ENGLISH_ORDINALS.entrySet()) {
-            String token = entry.getKey();
-            if (normalized.matches(".*\\b" + Pattern.quote(token) + "\\b.*")) {
+            if (normalized.matches(".*\\b" + Pattern.quote(entry.getKey()) + "\\b.*")) {
                 return entry.getValue();
             }
         }
         return null;
     }
 
-    private boolean containsChineseOrdinal(String normalized, String token) {
-        return containsPrefixedChineseOrdinal(normalized, "第" + token)
-                || containsClassifiedChineseOrdinal(normalized, token);
-    }
-
-    private boolean containsPrefixedChineseOrdinal(String normalized, String marker) {
-        int index = normalized.indexOf(marker);
-        while (index >= 0) {
-            int next = skipWhitespace(normalized, index + marker.length());
-            if (next >= normalized.length()
-                    || isChineseOrdinalClassifier(normalized.charAt(next))
-                    || isSelectionParticleOrPunctuation(normalized.charAt(next))) {
-                return true;
-            }
-            index = normalized.indexOf(marker, index + 1);
-        }
-        return false;
-    }
-
-    private boolean containsClassifiedChineseOrdinal(String normalized, String token) {
-        int index = normalized.indexOf(token);
-        while (index >= 0) {
-            int next = skipWhitespace(normalized, index + token.length());
-            if (next < normalized.length() && isChineseOrdinalClassifier(normalized.charAt(next))) {
-                return true;
-            }
-            index = normalized.indexOf(token, index + 1);
-        }
-        return false;
-    }
-
-    private int skipWhitespace(String value, int index) {
-        int current = index;
-        while (current < value.length() && Character.isWhitespace(value.charAt(current))) {
-            current++;
-        }
-        return current;
-    }
-
-    private boolean isChineseOrdinalClassifier(char character) {
-        return "个项条类种位号".indexOf(character) >= 0;
-    }
-
-    private boolean isSelectionParticleOrPunctuation(char character) {
-        return "吧呢呀啊嘛哦了。.!！,，;；".indexOf(character) >= 0;
-    }
-
     private static Map<String, Integer> buildChineseOrdinals() {
-        // 用 LinkedHashMap 保证匹配顺序稳定，虽然这里影响不大，但可读性更强。
-        Map<String, Integer> ordinals = new LinkedHashMap<>();
-        ordinals.put("一", 1);
-        ordinals.put("二", 2);
-        ordinals.put("两", 2);
-        ordinals.put("三", 3);
-        ordinals.put("四", 4);
-        ordinals.put("五", 5);
-        ordinals.put("六", 6);
-        ordinals.put("七", 7);
-        ordinals.put("八", 8);
-        ordinals.put("九", 9);
-        ordinals.put("十", 10);
-        return ordinals;
+        Map<String, Integer> result = new LinkedHashMap<>();
+        String[] values = {"一", "二", "三", "四", "五", "六", "七", "八", "九", "十"};
+        for (int i = 0; i < values.length; i++) {
+            result.put(values[i], i + 1);
+        }
+        result.put("两", 2);
+        return result;
     }
 
     private static Map<String, Integer> buildEnglishOrdinals() {
-        Map<String, Integer> ordinals = new LinkedHashMap<>();
-        ordinals.put("first", 1);
-        ordinals.put("second", 2);
-        ordinals.put("third", 3);
-        ordinals.put("fourth", 4);
-        ordinals.put("fifth", 5);
-        ordinals.put("sixth", 6);
-        ordinals.put("seventh", 7);
-        ordinals.put("eighth", 8);
-        ordinals.put("ninth", 9);
-        ordinals.put("tenth", 10);
-        ordinals.put("one", 1);
-        ordinals.put("two", 2);
-        ordinals.put("three", 3);
-        ordinals.put("four", 4);
-        ordinals.put("five", 5);
-        ordinals.put("six", 6);
-        ordinals.put("seven", 7);
-        ordinals.put("eight", 8);
-        ordinals.put("nine", 9);
-        ordinals.put("ten", 10);
-        return ordinals;
+        Map<String, Integer> result = new LinkedHashMap<>();
+        String[] named = {"first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"};
+        String[] cardinal = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"};
+        for (int i = 0; i < named.length; i++) {
+            result.put(named[i], i + 1);
+            result.put(cardinal[i], i + 1);
+        }
+        return result;
+    }
+
+    public enum ReplyOutcome {
+        SELECT_ONE,
+        SELECT_MANY,
+        NONE_OF_THESE,
+        CANCEL,
+        NEW_TOPIC,
+        UNRESOLVED
+    }
+
+    public record ClarificationReply(
+            ReplyOutcome outcome,
+            List<IntentNodeDTO> selected,
+            String newTopicText
+    ) {
+        public ClarificationReply {
+            selected = selected == null ? List.of() : List.copyOf(selected);
+        }
+
+        static ClarificationReply selected(ReplyOutcome outcome, List<IntentNodeDTO> selected) {
+            return new ClarificationReply(outcome, selected, null);
+        }
+
+        static ClarificationReply of(ReplyOutcome outcome) {
+            return new ClarificationReply(outcome, List.of(), null);
+        }
+
+        static ClarificationReply newTopic(String text) {
+            return new ClarificationReply(ReplyOutcome.NEW_TOPIC, List.of(), text);
+        }
+
+        static ClarificationReply unresolved() {
+            return of(ReplyOutcome.UNRESOLVED);
+        }
     }
 }

@@ -1,0 +1,130 @@
+{
+  "fixtureId": "enterprise-v1",
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "id": "hr",
+      "name": "Human Resources",
+      "description": "Human resources topics",
+      "examples": [],
+      "enabled": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "leave",
+      "parentId": "hr",
+      "name": "Annual Leave",
+      "description": "Paid annual leave entitlement and request policy",
+      "examples": [
+        "leave",
+        "annual leave process",
+        "annual leave balance",
+        "年假",
+        "年假申请流程",
+        "年假额度查询"
+      ],
+      "intentKind": "KB",
+      "scopePolicy": "STRICT",
+      "enabled": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "finance",
+      "name": "Finance",
+      "description": "Finance topics",
+      "examples": [],
+      "enabled": true,
+      "sortOrder": 2
+    },
+    {
+      "id": "expense",
+      "parentId": "finance",
+      "name": "Travel Expense",
+      "description": "Travel expense reimbursement and receipt policy",
+      "examples": [
+        "expense",
+        "travel expense claim",
+        "hotel receipt reimbursement",
+        "报销",
+        "差旅报销",
+        "差旅费用申请"
+      ],
+      "intentKind": "KB",
+      "scopePolicy": "STRICT",
+      "enabled": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "it",
+      "name": "IT Operations",
+      "description": "IT operations topics",
+      "examples": [],
+      "enabled": true,
+      "sortOrder": 3
+    },
+    {
+      "id": "account-change",
+      "parentId": "it",
+      "name": "Account Change",
+      "description": "Account reset, access, and permission changes",
+      "examples": [
+        "reset account password",
+        "update account permissions",
+        "重置账户密码",
+        "修改账户权限"
+      ],
+      "intentKind": "TOOL",
+      "scopePolicy": "STRICT",
+      "allowedTools": [
+        "accountAdminTool"
+      ],
+      "enabled": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "notify",
+      "parentId": "it",
+      "name": "External Notification",
+      "description": "Email and external notification actions",
+      "examples": [
+        "send vendor email",
+        "publish external notice",
+        "发送外部邮件",
+        "发布通知"
+      ],
+      "intentKind": "TOOL",
+      "scopePolicy": "STRICT",
+      "allowedTools": [
+        "notificationTool"
+      ],
+      "enabled": true,
+      "sortOrder": 2
+    },
+    {
+      "id": "directory",
+      "name": "Company Directory",
+      "description": "Read-only company directory information",
+      "examples": [
+        "find a colleague",
+        "company contact",
+        "查询同事",
+        "公司联系人"
+      ],
+      "intentKind": "KB",
+      "scopePolicy": "FALLBACK_ALLOWED",
+      "enabled": true,
+      "sortOrder": 4
+    }
+  ],
+  "knowledgeBaseIdsByNodeId": {
+    "leave": [
+      "kb-hr"
+    ],
+    "expense": [
+      "kb-finance"
+    ],
+    "directory": [
+      "kb-company"
+    ]
+  }
+}

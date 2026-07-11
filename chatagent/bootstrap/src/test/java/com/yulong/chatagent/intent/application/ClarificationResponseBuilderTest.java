@@ -30,6 +30,21 @@ class ClarificationResponseBuilderTest {
                 .contains("当前范围：人事", "请选择：", "1. 年假");
     }
 
+    @Test
+    void shouldRenderReleaseRetryLimitMissingInfoAndMultiConflict() {
+        assertThat(builder.buildReleased(ClarificationResolver.ReplyOutcome.CANCEL, "cancel"))
+                .contains("cancelled");
+        assertThat(builder.buildReleased(ClarificationResolver.ReplyOutcome.NONE_OF_THESE, "none"))
+                .contains("None of those options");
+        assertThat(builder.buildRetryLimitReached("not sure"))
+                .contains("ended this clarification");
+        assertThat(builder.buildExecutionInfoMissing(
+                List.of(MissingDimension.CONFIRMATION), "send it"))
+                .contains("explicitly confirm");
+        assertThat(builder.buildMultiIntentConflict("both"))
+                .contains("cannot be handled safely together");
+    }
+
     private IntentNodeDTO node(String name) {
         return IntentNodeDTO.builder().name(name).build();
     }

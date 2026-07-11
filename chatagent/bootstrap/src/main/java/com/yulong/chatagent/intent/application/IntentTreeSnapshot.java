@@ -2,6 +2,8 @@ package com.yulong.chatagent.intent.application;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
+import com.yulong.chatagent.intent.model.IntentKind;
+import com.yulong.chatagent.intent.model.ScopePolicy;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -87,6 +89,28 @@ public class IntentTreeSnapshot {
         }
         List<String> ids = knowledgeBaseIdsByNodeId.get(nodeId);
         return ids == null ? List.of() : List.copyOf(ids);
+    }
+
+    /** Builds the authoritative runtime resolution for one snapshot node. */
+    public IntentResolution resolveNode(String nodeId) {
+        List<IntentNodeDTO> path = pathTo(nodeId);
+        if (path.isEmpty()) {
+            return null;
+        }
+        IntentNodeDTO leaf = path.get(path.size() - 1);
+        IntentKind kind = leaf.getIntentKind() == null ? IntentKind.KB : leaf.getIntentKind();
+        ScopePolicy scopePolicy = leaf.getScopePolicy();
+        if (scopePolicy == null) {
+            scopePolicy = kind == IntentKind.KB ? ScopePolicy.FALLBACK_ALLOWED : ScopePolicy.STRICT;
+        }
+        return new IntentResolution(
+                kind,
+                path,
+                knowledgeBaseIdsForNode(leaf.getId()),
+                scopePolicy,
+                leaf.getAllowedTools(),
+                leaf.getSystemPromptOverride()
+        );
     }
 
     public void setNodes(List<IntentNodeDTO> nodes) {

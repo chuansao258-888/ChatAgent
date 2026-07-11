@@ -176,6 +176,12 @@ chatagent:
     clarification-candidates: 2
     classifier-model: deepseek-v4-flash
     rewrite-model: deepseek-v4-flash
+    decision-policy:
+      mode: ${CHATAGENT_INTENT_DECISION_MODE:shadow}
+      profile-version: ${CHATAGENT_INTENT_POLICY_PROFILE_VERSION:v1}
+      recent-context-turns: ${CHATAGENT_INTENT_RECENT_CONTEXT_TURNS:4}
+      recent-context-max-chars: ${CHATAGENT_INTENT_RECENT_CONTEXT_MAX_CHARS:4000}
+      max-clarification-attempts: ${CHATAGENT_INTENT_MAX_CLARIFICATION_ATTEMPTS:2}
   agent:
     turn-contract:
       enabled: ${CHATAGENT_AGENT_TURN_CONTRACT_ENABLED:true}

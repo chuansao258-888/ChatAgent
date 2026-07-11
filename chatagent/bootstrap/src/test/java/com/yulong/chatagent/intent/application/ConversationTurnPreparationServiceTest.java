@@ -3,6 +3,8 @@ package com.yulong.chatagent.intent.application;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.SourceReferenceClassifier;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
@@ -48,9 +50,20 @@ class ConversationTurnPreparationServiceTest {
     @Mock
     private TurnExecutionContractBuilder contractBuilder;
 
+    @Mock
+    private IntentUnderstandingEngine understandingEngine;
+
+    private final IntentSignalAnalyzer signalAnalyzer =
+            new IntentSignalAnalyzer(new SourceReferenceClassifier());
+
+    @Mock
+    private IntentPolicyMetrics metrics;
+
     private final TurnContractProperties contractProperties = new TurnContractProperties();
+    private final IntentPolicyProperties intentPolicyProperties = new IntentPolicyProperties();
 
     private ConversationTurnPreparationService newService() {
+        intentPolicyProperties.setMode(IntentPolicyMode.LEGACY);
         return new ConversationTurnPreparationService(
                 intentTreeCacheManager,
                 pendingIntentResolutionStore,
@@ -60,7 +73,11 @@ class ConversationTurnPreparationServiceTest {
                 queryRewriter,
                 systemIntentResponseRenderer,
                 contractBuilder,
-                contractProperties
+                contractProperties,
+                understandingEngine,
+                intentPolicyProperties,
+                signalAnalyzer,
+                metrics
         );
     }
 
@@ -335,7 +352,7 @@ class ConversationTurnPreparationServiceTest {
         when(intentRouter.route("assistant-1", "年假怎么申请")).thenReturn(IntentRoutingResult.resolved(resolution));
         when(queryRewriter.rewrite("年假怎么申请", resolution)).thenReturn("年假 申请");
         TurnExecutionContract builtContract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder().build(resolution, "年假怎么申请", "年假 申请", null);
-        when(contractBuilder.build(resolution, "年假怎么申请", "年假 申请", null)).thenReturn(builtContract);
+        when(contractBuilder.build(resolution, "年假怎么申请", "年假 申请", AgentExecutionMode.REACT, null)).thenReturn(builtContract);
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "年假怎么申请");
 
@@ -343,7 +360,7 @@ class ConversationTurnPreparationServiceTest {
         assertThat(result.executionContract()).isSameAs(builtContract);
         assertThat(result.intentResolution()).isEqualTo(resolution);
         assertThat(result.rewrittenInput()).isEqualTo("年假 申请");
-        verify(contractBuilder).build(resolution, "年假怎么申请", "年假 申请", null);
+        verify(contractBuilder).build(resolution, "年假怎么申请", "年假 申请", AgentExecutionMode.REACT, null);
     }
 
     @Test
@@ -372,7 +389,7 @@ class ConversationTurnPreparationServiceTest {
         assertThat(result.executionContract()).isNull();
         assertThat(result.intentResolution()).isEqualTo(resolution);
         assertThat(result.rewrittenInput()).isEqualTo("年假 申请");
-        verify(contractBuilder, never()).build(any(), anyString(), anyString(), any());
+        verify(contractBuilder, never()).build(any(), anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -385,7 +402,7 @@ class ConversationTurnPreparationServiceTest {
                 new IntentTreeSnapshot("assistant-1", 0, List.of(), java.util.Map.of())
         );
         TurnExecutionContract passthroughContract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport.contractBuilder().build(null, "你好", "你好", null);
-        when(contractBuilder.build(null, "你好", "你好", null)).thenReturn(passthroughContract);
+        when(contractBuilder.build(null, "你好", "你好", AgentExecutionMode.REACT, null)).thenReturn(passthroughContract);
 
         TurnPreparationResult result = service.prepare("assistant-1", "session-1", "你好");
 

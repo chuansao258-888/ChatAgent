@@ -2,6 +2,12 @@ package com.yulong.chatagent.agent.runtime.contract;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.intent.application.ConfidenceStatus;
+import com.yulong.chatagent.intent.application.IntentCandidateEvidence;
+import com.yulong.chatagent.intent.application.IntentDecision;
+import com.yulong.chatagent.intent.application.IntentDecisionSource;
+import com.yulong.chatagent.intent.application.IntentRouteOutcome;
+import com.yulong.chatagent.intent.application.IntentUnderstandingResult;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
@@ -167,6 +173,37 @@ class TurnExecutionContractBuilderTest {
         TurnExecutionContract contract = builder.build(null, "How do I file a tax return?", null, AgentExecutionMode.REACT);
 
         assertThat(contract.analysis().sourceNeed()).isNotEqualTo(SourceNeed.FILE);
+    }
+
+    @Test
+    void shouldCarryTypedIntentDecisionIntoTurnAnalysis() {
+        IntentDecision decision = new IntentDecision(
+                IntentRouteOutcome.MULTI_INTENT,
+                "leave",
+                List.of("expense"),
+                List.of(
+                        new IntentCandidateEvidence("leave", "HR > Leave", 1.5d, 0.2d, 1,
+                                List.of("semantic_match")),
+                        new IntentCandidateEvidence("expense", "Finance > Expense", 1.3d, 1.3d, 2,
+                                List.of("semantic_match"))),
+                List.of(),
+                IntentDecisionSource.CLASSIFIER,
+                0.94d,
+                ConfidenceStatus.CALIBRATED,
+                "v1",
+                List.of("classifier_schema_valid"));
+        IntentUnderstandingResult understanding = new IntentUnderstandingResult(
+                decision, SourceNeed.KB, TimeSensitivity.STATIC, ActionRisk.READ_ONLY,
+                List.of(IntentLabel.MULTI_INTENT), true, false);
+
+        TurnExecutionContract contract = builder.build(
+                kbResolution(), "leave and expense", "leave and expense",
+                AgentExecutionMode.REACT, understanding);
+
+        assertThat(contract.analysis().intentDecision()).isEqualTo(decision);
+        assertThat(contract.analysis().primaryIntent()).isEqualTo(IntentLabel.MULTI_INTENT);
+        assertThat(contract.analysis().secondaryIntents()).contains(IntentLabel.MULTI_INTENT);
+        assertThat(contract.analysis().confidence()).isEqualTo(0.94d);
     }
 
     private IntentResolution kbResolution() {

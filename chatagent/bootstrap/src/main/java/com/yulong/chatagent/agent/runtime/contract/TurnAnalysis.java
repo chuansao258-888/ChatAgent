@@ -1,5 +1,7 @@
 package com.yulong.chatagent.agent.runtime.contract;
 
+import com.yulong.chatagent.intent.application.IntentDecision;
+
 import java.util.List;
 
 /**
@@ -11,6 +13,7 @@ import java.util.List;
  * LLM-assisted classification and preservation checks.</p>
  *
  * @param originalUserText  the raw user input, preserved for auditing and preservation checks
+ * @param intentDecision    typed selective-routing decision; null for legacy payloads
  * @param primaryIntent     primary intent label for compatibility with the intent tree
  * @param secondaryIntents  additional intents such as COMPARE or CURRENTNESS
  * @param sourceNeed        which retrieval source the turn needs
@@ -22,6 +25,7 @@ import java.util.List;
  */
 public record TurnAnalysis(
         String originalUserText,
+        IntentDecision intentDecision,
         IntentLabel primaryIntent,
         List<IntentLabel> secondaryIntents,
         SourceNeed sourceNeed,
@@ -39,5 +43,18 @@ public record TurnAnalysis(
         } else if (confidence > 1.0d) {
             confidence = 1.0d;
         }
+    }
+
+    public TurnAnalysis(String originalUserText,
+                        IntentLabel primaryIntent,
+                        List<IntentLabel> secondaryIntents,
+                        SourceNeed sourceNeed,
+                        ToolNeed toolNeed,
+                        TimeSensitivity timeSensitivity,
+                        ActionRisk actionRisk,
+                        AmbiguityPlan ambiguity,
+                        double confidence) {
+        this(originalUserText, null, primaryIntent, secondaryIntents, sourceNeed, toolNeed,
+                timeSensitivity, actionRisk, ambiguity, confidence);
     }
 }

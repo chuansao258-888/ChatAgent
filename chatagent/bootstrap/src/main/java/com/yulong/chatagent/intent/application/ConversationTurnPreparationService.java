@@ -1,5 +1,10 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
+import com.yulong.chatagent.agent.runtime.contract.ActionRisk;
+import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
+import com.yulong.chatagent.agent.runtime.contract.IntentLabel;
+import com.yulong.chatagent.agent.runtime.contract.SourceNeed;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
@@ -11,36 +16,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.regex.Pattern;
 
-/**
- * 单轮对话准备器。
- * <p>
- * 它负责把一条“刚进入系统的用户输入”整理成 turn 级决策结果：
- * <ul>
- *     <li>是否需要澄清；</li>
- *     <li>是否命中 SYSTEM 直答；</li>
- *     <li>是否需要 query rewrite；</li>
- *     <li>最终是 direct reply 还是 dispatch 给 Agent。</li>
- * </ul>
- * 所以这个类不是单纯的“意图分类器”，而是 conversation 编排链上的分流枢纽。
- */
+/** Orchestrates legacy/shadow/enforce intent preparation before Agent dispatch. */
 @Component
 public class ConversationTurnPreparationService {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationTurnPreparationService.class);
-
-    private static final Pattern CONTEXTUAL_FOLLOW_UP = Pattern.compile(
-            "\\b(current|now|it|that|this|these|those|same|previous|earlier|latest|owner|room|invite|handoff|values)\\b"
-                    + "|\\b(?:who(?:'s|\\s+is)\\s+on\\s+point|on\\s+point|point\\s+person|who\\s+(?:owns|handles|has|is\\s+handling)\\s+(?:it|this|that))\\b"
-                    + "|(?:谁负责|负责人|谁来处理|谁跟进)"
-    );
-    private static final Pattern SUBSTANTIVE_FOLLOW_UP = Pattern.compile(
-            "\\b(how|what|who|where|when|why|continue|remind|tell|give|show|draft|summarize|explain|help)\\b"
-                    + "|[?？]|怎么|怎样|什么|谁|哪里|哪|为何|为什么|继续|告诉|提醒|总结|解释|帮"
-    );
 
     private final IntentTreeCacheManager intentTreeCacheManager;
     private final PendingIntentResolutionStore pendingIntentResolutionStore;
@@ -51,6 +34,10 @@ public class ConversationTurnPreparationService {
     private final SystemIntentResponseRenderer systemIntentResponseRenderer;
     private final TurnExecutionContractBuilder contractBuilder;
     private final TurnContractProperties contractProperties;
+    private final IntentUnderstandingEngine understandingEngine;
+    private final IntentPolicyProperties intentPolicyProperties;
+    private final IntentSignalAnalyzer signalAnalyzer;
+    private final IntentPolicyMetrics metrics;
 
     public ConversationTurnPreparationService(IntentTreeCacheManager intentTreeCacheManager,
                                               PendingIntentResolutionStore pendingIntentResolutionStore,
@@ -60,7 +47,11 @@ public class ConversationTurnPreparationService {
                                               QueryRewriter queryRewriter,
                                               SystemIntentResponseRenderer systemIntentResponseRenderer,
                                               TurnExecutionContractBuilder contractBuilder,
-                                              TurnContractProperties contractProperties) {
+                                              TurnContractProperties contractProperties,
+                                              IntentUnderstandingEngine understandingEngine,
+                                              IntentPolicyProperties intentPolicyProperties,
+                                              IntentSignalAnalyzer signalAnalyzer,
+                                              IntentPolicyMetrics metrics) {
         this.intentTreeCacheManager = intentTreeCacheManager;
         this.pendingIntentResolutionStore = pendingIntentResolutionStore;
         this.clarificationResolver = clarificationResolver;
@@ -70,183 +61,412 @@ public class ConversationTurnPreparationService {
         this.systemIntentResponseRenderer = systemIntentResponseRenderer;
         this.contractBuilder = contractBuilder;
         this.contractProperties = contractProperties;
+        this.understandingEngine = understandingEngine;
+        this.intentPolicyProperties = intentPolicyProperties;
+        this.signalAnalyzer = signalAnalyzer;
+        this.metrics = metrics;
     }
 
-    /**
-     * 把一条用户输入整理成“本轮该怎么走”的编排结果。
-     * <p>
-     * 可以把它看成 conversation 主链进入 Agent 之前的最后一道分流关口：
-     * <ul>
-     *     <li>如果命中澄清，直接回复用户，不进 Agent；</li>
-     *     <li>如果命中 SYSTEM，直接在编排层返回答案；</li>
-     *     <li>否则带着 resolution / rewrite 后的 query 继续 dispatch。</li>
-     * </ul>
-     */
+    /** Compatibility entry for callers without a preassembled visible-history view. */
     public TurnPreparationResult prepare(String agentId, String sessionId, String userInput) {
-        // 基础入参不完整时，按普通聊天透传给 Agent。
-        // 这里不抛错，是因为某些场景下“没有可用路由结果”本身就是允许的默认路径。
-        // 注意：passthrough 仍会进入异步 Agent runtime（orchestrator 对所有非 direct 结果都会 dispatch），
-        // 因此 enabled=true 时也要为本路 turn 构建 contract，避免 warn 模式覆盖出现空缺。
-        if (!StringUtils.hasText(agentId) || !StringUtils.hasText(sessionId) || !StringUtils.hasText(userInput)) {
-            return dispatchWithContract(null, userInput, userInput);
-        }
+        return prepare(new TurnPreparationContext(
+                agentId, sessionId, userInput, List.of(), false, false,
+                null, AgentExecutionMode.REACT));
+    }
 
-        IntentTreeSnapshot snapshot = intentTreeCacheManager.loadActiveSnapshot(agentId);
-        if (snapshot.isEmpty()) {
-            // 当前 agent 没有可用 intent tree，说明这一轮不做意图边界控制。
-            // 同时清掉历史 pending clarification，避免用户卡在过期澄清状态里。
-            // 这里仍然是 dispatch 到 Agent runtime，所以也要带 contract。
-            pendingIntentResolutionStore.delete(sessionId);
-            return dispatchWithContract(null, userInput, userInput);
+    public TurnPreparationResult prepare(TurnPreparationContext context) {
+        if (context == null || !StringUtils.hasText(context.agentId())
+                || !StringUtils.hasText(context.sessionId()) || !StringUtils.hasText(context.userInput())) {
+            String input = context == null ? "" : context.userInput();
+            return dispatchWithContract(null, input, input, context, null);
         }
+        IntentTreeSnapshot snapshot = intentTreeCacheManager.loadActiveSnapshot(context.agentId());
+        if (snapshot == null || snapshot.isEmpty()) {
+            pendingIntentResolutionStore.delete(context.sessionId());
+            return dispatchWithContract(null, context.userInput(), context.userInput(), context, null);
+        }
+        PendingIntentResolution pending = pendingIntentResolutionStore.get(context.sessionId());
+        IntentPolicyMode mode = intentPolicyProperties.getMode();
+        if (mode == IntentPolicyMode.LEGACY) {
+            return prepareLegacy(context, snapshot, pending, null);
+        }
+        if (mode == IntentPolicyMode.SHADOW) {
+            IntentUnderstandingResult shadow = safeUnderstand(context, snapshot, pending);
+            TurnPreparationResult legacy = prepareLegacy(context, snapshot, pending, shadow);
+            return legacy;
+        }
+        return preparePolicy(context, snapshot, pending);
+    }
 
-        PendingIntentResolution pending = pendingIntentResolutionStore.get(sessionId);
+    private TurnPreparationResult prepareLegacy(TurnPreparationContext context,
+                                                IntentTreeSnapshot snapshot,
+                                                PendingIntentResolution pending,
+                                                IntentUnderstandingResult shadow) {
         IntentRoutingResult routingResult;
-        String canonicalQuery = userInput.trim();
-
+        String canonicalQuery = context.userInput().trim();
         if (pending != null) {
-            // clarification continuation 主链：
-            // 上一轮已经问过用户“你是 A 还是 B”，这轮就先把这句话当作“澄清回答”来解释，
-            // 而不是把它当成一条全新的完整问题重新首轮路由。
-            // 当前 session 处在“等用户澄清”的中间态。
-            // 这时不是重新做首轮路由，而是先尝试把用户回答映射回上次给出的候选节点。
-            List<IntentNodeDTO> candidates = resolveCandidates(snapshot, pending.getCandidateNodeIds());
+            List<IntentNodeDTO> candidates = resolveCandidates(snapshot, pending.orderedCandidateNodeIds());
             if (candidates.isEmpty()) {
-                // 候选节点在最新快照里已经找不到，说明澄清上下文失效。
-                // 这里直接返回一个“重新澄清”的 direct reply，并清掉旧 pending。
-                pendingIntentResolutionStore.delete(sessionId);
-                return TurnPreparationResult.direct(
-                        clarificationResponseBuilder.build(
-                                List.of(),
-                                pending.getParentPath(),
-                                true,
-                                StringUtils.hasText(pending.getOriginalQuery()) ? pending.getOriginalQuery() : userInput
-                        )
-                );
+                pendingIntentResolutionStore.delete(context.sessionId());
+                return TurnPreparationResult.direct(clarificationResponseBuilder.build(
+                        List.of(), pending.getParentPath(), true, originalOrCurrent(pending, context.userInput())));
             }
-            IntentNodeDTO selected = clarificationResolver.resolve(userInput, candidates);
+            IntentNodeDTO selected = clarificationResolver.resolve(context.userInput(), candidates);
             if (selected == null) {
-                if (isSubstantiveContextualFollowUp(userInput)) {
-                    // A substantive follow-up is a new conversational turn, not a failed option reply.
-                    // Let users leave a nested clarification without having to explicitly cancel it.
-                    pendingIntentResolutionStore.delete(sessionId);
-                    return dispatchWithContract(null, canonicalQuery, userInput);
+                if (signalAnalyzer.isSubstantiveContextualTurn(context.userInput())
+                        || signalAnalyzer.isExplicitTopicSwitch(context.userInput())) {
+                    pendingIntentResolutionStore.delete(context.sessionId());
+                    return dispatchWithContract(null, canonicalQuery, context.userInput(), context, shadow);
                 }
-                // 用户回复仍然不足以确定唯一候选时，继续 direct reply 做二次澄清。
-                // 注意这里不会进入 Agent，也不会清掉 pending。
-                // 用户回答仍然不足以选中具体节点，继续给出澄清回复，不进入 Agent。
-                return TurnPreparationResult.direct(
-                        clarificationResponseBuilder.build(candidates, pending.getParentPath(), true, userInput)
-                );
+                return TurnPreparationResult.direct(clarificationResponseBuilder.build(
+                        candidates, pending.getParentPath(), true, context.userInput()));
             }
-            pendingIntentResolutionStore.delete(sessionId);
-            // 命中澄清候选后，真正要继续路由的 query 不是“这句回答”，
-            // 而是上一次被保存在 pending 里的原始问题。
-            canonicalQuery = StringUtils.hasText(pending.getOriginalQuery()) ? pending.getOriginalQuery() : userInput.trim();
-            // 这里把 selectedNodeId 传给 IntentRouter，表示“从这个已选中的节点继续往下路由”。
-            routingResult = intentRouter.route(agentId, canonicalQuery, selected.getId());
+            pendingIntentResolutionStore.delete(context.sessionId());
+            canonicalQuery = originalOrCurrent(pending, context.userInput());
+            routingResult = intentRouter.route(context.agentId(), canonicalQuery, selected.getId());
         } else {
-            // 普通首轮请求走标准路由流程。
-            routingResult = intentRouter.route(agentId, canonicalQuery);
+            routingResult = intentRouter.route(context.agentId(), canonicalQuery);
         }
-
+        recordShadowMismatch(shadow, routingResult);
         if (routingResult.requiresClarification()) {
-            if (isContextualFollowUp(canonicalQuery)) {
-                // Context-followup turns should be answered from conversation memory by the Agent.
-                // Forcing an intent-tree child selection here interrupts ordinary multi-turn chat,
-                // e.g. "who owns it now and which room should be on the invite?"
-                pendingIntentResolutionStore.delete(sessionId);
-                return dispatchWithContract(null, canonicalQuery, userInput);
+            if (signalAnalyzer.isSubstantiveContextualTurn(canonicalQuery)) {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                return dispatchWithContract(null, canonicalQuery, context.userInput(), context, shadow);
             }
-            // 这里把本轮澄清候选和原始 query 记录下来，
-            // 下一次用户回复时才能走“澄清 continuation”分支。
-            // 这一步是整个两轮澄清状态机真正“落盘”的地方。
-            pendingIntentResolutionStore.save(PendingIntentResolution.builder()
-                    .sessionId(sessionId)
-                    .candidateNodeIds(routingResult.clarificationCandidates().stream().map(IntentNodeDTO::getId).toList())
-                    .originalQuery(canonicalQuery)
-                    .parentPath(routingResult.parentPath())
-                    .build());
-            return TurnPreparationResult.direct(
-                    clarificationResponseBuilder.build(
-                            routingResult.clarificationCandidates(),
-                            routingResult.parentPath(),
-                            false,
-                            userInput
-                    )
-            );
+            saveLegacyPending(context.sessionId(), canonicalQuery, routingResult);
+            return TurnPreparationResult.direct(clarificationResponseBuilder.build(
+                    routingResult.clarificationCandidates(), routingResult.parentPath(), false, context.userInput()));
         }
-
         if (!routingResult.hasResolution()) {
-            // 没有 resolution 不代表失败，只是这一轮没有可用意图边界。
-            // 这种情况下仍然可以把原始 query dispatch 给 Agent。
-            return dispatchWithContract(null, canonicalQuery, userInput);
+            return dispatchWithContract(null, canonicalQuery, context.userInput(), context, shadow);
         }
-
         IntentResolution resolution = routingResult.resolution();
         if (resolution.kind() == IntentKind.SYSTEM) {
-            // SYSTEM 是编排层可直接终结的结果，不需要进入 Agent runtime。
             return TurnPreparationResult.direct(systemIntentResponseRenderer.render(resolution, canonicalQuery));
         }
-
-        // 非 SYSTEM 的正常意图会携带 resolution 和 rewrite 后的 query 进入 Agent，
-        // 这样后续工具筛选、RAG scope 和 prompt 都能利用这个边界。
         String rewritten = queryRewriter.rewrite(canonicalQuery, resolution);
-        return dispatchWithContract(resolution, rewritten, canonicalQuery);
+        return dispatchWithContract(resolution, rewritten, canonicalQuery, context, shadow);
     }
 
-    /**
-     * 把 dispatch 结果带上 Phase 1 的 warn 模式 contract。
-     *
-     * <p>当 {@code chatagent.agent.turn-contract.enabled=false} 时不构建 contract，
-     * 保持与 legacy 行为完全一致；这是紧急回滚开关。</p>
-     */
-    private TurnPreparationResult dispatchWithContract(IntentResolution resolution, String dispatchedInput, String originalUserInput) {
+    private TurnPreparationResult preparePolicy(TurnPreparationContext context,
+                                                IntentTreeSnapshot snapshot,
+                                                PendingIntentResolution pending) {
+        if (pending != null) {
+            TurnPreparationResult pendingResult = resolvePendingPolicy(context, snapshot, pending);
+            if (pendingResult != null) {
+                return pendingResult;
+            }
+        }
+        IntentUnderstandingResult understanding = understandingEngine.understand(
+                buildRequest(context, snapshot, null, context.userInput()));
+        return applyPolicyDecision(context, snapshot, understanding, context.userInput());
+    }
+
+    private TurnPreparationResult resolvePendingPolicy(TurnPreparationContext context,
+                                                       IntentTreeSnapshot snapshot,
+                                                       PendingIntentResolution pending) {
+        List<IntentNodeDTO> candidates = resolveCandidates(snapshot, pending.orderedCandidateNodeIds());
+        if (candidates.isEmpty()) {
+            pendingIntentResolutionStore.delete(context.sessionId());
+            metrics.recordClarification("cancelled", ClarificationResolver.ReplyOutcome.UNRESOLVED);
+            return TurnPreparationResult.direct(clarificationResponseBuilder.build(
+                    List.of(), pending.getParentPath(), true, originalOrCurrent(pending, context.userInput())));
+        }
+        ClarificationResolver.ClarificationReply reply = clarificationResolver.resolveTyped(
+                context.userInput(), candidates);
+        metrics.recordClarification("resolved", reply.outcome());
+        switch (reply.outcome()) {
+            case CANCEL, NONE_OF_THESE -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                metrics.recordClarification("cancelled", reply.outcome());
+                return TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildReleased(reply.outcome(), context.userInput()));
+            }
+            case NEW_TOPIC -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                metrics.recordClarification("topic_switch", reply.outcome());
+                String topic = StringUtils.hasText(reply.newTopicText())
+                        ? reply.newTopicText() : context.userInput();
+                IntentUnderstandingResult fresh = understandingEngine.understand(
+                        buildRequest(context, snapshot, null, topic));
+                return applyPolicyDecision(context, snapshot, fresh, topic);
+            }
+            case SELECT_ONE -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                String original = originalOrCurrent(pending, context.userInput());
+                return applyPolicyDecision(context, snapshot,
+                        explicitSelection(snapshot, reply.selected(), original, false), original);
+            }
+            case SELECT_MANY -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                if (!compatibleReadOnly(reply.selected())) {
+                    return TurnPreparationResult.direct(
+                            clarificationResponseBuilder.buildMultiIntentConflict(context.userInput()));
+                }
+                String original = originalOrCurrent(pending, context.userInput());
+                return applyPolicyDecision(context, snapshot,
+                        explicitSelection(snapshot, reply.selected(), original, true), original);
+            }
+            case UNRESOLVED -> {
+                IntentUnderstandingResult fresh = understandingEngine.understand(
+                        buildRequest(context, snapshot, null, context.userInput()));
+                if (isClearNewTopic(fresh, candidates)) {
+                    pendingIntentResolutionStore.delete(context.sessionId());
+                    metrics.recordClarification("topic_switch", ClarificationResolver.ReplyOutcome.NEW_TOPIC);
+                    return applyPolicyDecision(context, snapshot, fresh, context.userInput());
+                }
+                int attempt = pending.attemptCountOrZero() + 1;
+                if (attempt >= intentPolicyProperties.boundedMaxClarificationAttempts()) {
+                    pendingIntentResolutionStore.delete(context.sessionId());
+                    metrics.recordClarification("cancelled", reply.outcome());
+                    return TurnPreparationResult.direct(
+                            clarificationResponseBuilder.buildRetryLimitReached(context.userInput()));
+                }
+                pending.setAttemptCount(attempt);
+                pendingIntentResolutionStore.save(pending);
+                metrics.recordClarification("retried", reply.outcome());
+                return TurnPreparationResult.direct(clarificationResponseBuilder.build(
+                        candidates, pending.getParentPath(), true, context.userInput()));
+            }
+            default -> throw new IllegalStateException("Unsupported clarification reply outcome");
+        }
+    }
+
+    private TurnPreparationResult applyPolicyDecision(TurnPreparationContext context,
+                                                      IntentTreeSnapshot snapshot,
+                                                      IntentUnderstandingResult understanding,
+                                                      String canonicalQuery) {
+        IntentDecision decision = understanding.decision();
+        return switch (decision.outcome()) {
+            case GENERAL_CHAT, OUT_OF_DOMAIN -> dispatchWithContract(
+                    null, canonicalQuery, canonicalQuery, context, understanding);
+            case AMBIGUOUS_ROUTE -> startPolicyClarification(
+                    context, snapshot, understanding, canonicalQuery);
+            case EXECUTION_INFO_MISSING -> TurnPreparationResult.direct(
+                    clarificationResponseBuilder.buildExecutionInfoMissing(
+                            decision.missingDimensions(), canonicalQuery));
+            case KNOWN_INTENT -> dispatchKnown(
+                    context, snapshot, understanding, canonicalQuery, true);
+            case MULTI_INTENT -> dispatchKnown(
+                    context, snapshot, understanding, canonicalQuery, false);
+        };
+    }
+
+    private TurnPreparationResult startPolicyClarification(TurnPreparationContext context,
+                                                           IntentTreeSnapshot snapshot,
+                                                           IntentUnderstandingResult understanding,
+                                                           String canonicalQuery) {
+        List<IntentNodeDTO> candidates = resolveCandidates(snapshot,
+                understanding.decision().rankedCandidates().stream()
+                        .map(IntentCandidateEvidence::nodeId).toList());
+        if (candidates.isEmpty()) {
+            return dispatchWithContract(null, canonicalQuery, canonicalQuery, context, understanding);
+        }
+        List<PendingIntentResolution.PendingCandidate> ordered = new ArrayList<>();
+        for (int i = 0; i < understanding.decision().rankedCandidates().size(); i++) {
+            IntentCandidateEvidence evidence = understanding.decision().rankedCandidates().get(i);
+            ordered.add(new PendingIntentResolution.PendingCandidate(
+                    evidence.nodeId(), evidence.lexicalScore(), i + 1));
+        }
+        pendingIntentResolutionStore.save(PendingIntentResolution.builder()
+                .sessionId(context.sessionId())
+                .candidateNodeIds(candidates.stream().map(IntentNodeDTO::getId).toList())
+                .orderedCandidates(ordered)
+                .originalQuery(canonicalQuery)
+                .parentPath(commonParentPath(snapshot, candidates))
+                .clarificationKind(ClarificationKind.ROUTE_CHOICE)
+                .attemptCount(0)
+                .policyProfileVersion(understanding.decision().policyProfileVersion())
+                .contractVersion(TurnExecutionContract.VERSION)
+                .build());
+        metrics.recordClarification("started", null);
+        return TurnPreparationResult.direct(clarificationResponseBuilder.build(
+                candidates, commonParentPath(snapshot, candidates), false, canonicalQuery));
+    }
+
+    private TurnPreparationResult dispatchKnown(TurnPreparationContext context,
+                                                IntentTreeSnapshot snapshot,
+                                                IntentUnderstandingResult understanding,
+                                                String canonicalQuery,
+                                                boolean rewrite) {
+        IntentResolution resolution = snapshot.resolveNode(understanding.decision().primaryNodeId());
+        if (resolution == null) {
+            return dispatchWithContract(null, canonicalQuery, canonicalQuery, context, understanding);
+        }
+        if (resolution.kind() == IntentKind.SYSTEM
+                && understanding.decision().outcome() == IntentRouteOutcome.KNOWN_INTENT) {
+            return TurnPreparationResult.direct(systemIntentResponseRenderer.render(resolution, canonicalQuery));
+        }
+        String dispatched = rewrite ? queryRewriter.rewrite(canonicalQuery, resolution) : canonicalQuery;
+        return dispatchWithContract(resolution, dispatched, canonicalQuery, context, understanding);
+    }
+
+    private IntentUnderstandingResult explicitSelection(IntentTreeSnapshot snapshot,
+                                                        List<IntentNodeDTO> selected,
+                                                        String originalQuery,
+                                                        boolean multi) {
+        IntentNodeDTO primary = selected.get(0);
+        List<String> secondaryIds = multi
+                ? selected.subList(1, selected.size()).stream().map(IntentNodeDTO::getId).toList()
+                : List.of();
+        List<IntentCandidateEvidence> evidence = new ArrayList<>();
+        for (int i = 0; i < selected.size(); i++) {
+            IntentNodeDTO node = selected.get(i);
+            String path = snapshot.pathTo(node.getId()).stream().map(IntentNodeDTO::getName)
+                    .filter(StringUtils::hasText).reduce((left, right) -> left + " > " + right).orElse("");
+            evidence.add(new IntentCandidateEvidence(node.getId(), path, 0.0d, 0.0d,
+                    i + 1, List.of("explicit_clarification_selection")));
+        }
+        IntentDecision decision = new IntentDecision(
+                multi ? IntentRouteOutcome.MULTI_INTENT : IntentRouteOutcome.KNOWN_INTENT,
+                primary.getId(), secondaryIds, evidence, List.of(),
+                IntentDecisionSource.DETERMINISTIC, 0.0d, ConfidenceStatus.UNCALIBRATED,
+                intentPolicyProperties.getProfileVersion(), List.of("clarification_recovered"));
+        IntentSignalAnalyzer.IntentTurnSignals signals = signalAnalyzer.analyze(originalQuery);
+        SourceNeed sourceNeed = signalAnalyzer.deriveSourceNeed(signals, primary.getIntentKind());
+        List<IntentLabel> labels = new ArrayList<>(signals.secondaryIntents());
+        if (multi) {
+            labels.add(IntentLabel.MULTI_INTENT);
+        }
+        return new IntentUnderstandingResult(decision, sourceNeed, signals.timeSensitivity(),
+                signals.actionRisk(), List.copyOf(new LinkedHashSet<>(labels)), false, false);
+    }
+
+    private boolean compatibleReadOnly(List<IntentNodeDTO> selected) {
+        return selected != null && selected.size() > 1 && selected.stream()
+                .allMatch(node -> node != null
+                        && (node.getIntentKind() == null || node.getIntentKind() == IntentKind.KB)
+                        && (node.getAllowedTools() == null || node.getAllowedTools().isEmpty()));
+    }
+
+    private boolean isClearNewTopic(IntentUnderstandingResult result, List<IntentNodeDTO> pendingCandidates) {
+        if (result == null) {
+            return false;
+        }
+        if (result.decision().outcome() == IntentRouteOutcome.GENERAL_CHAT
+                || result.decision().outcome() == IntentRouteOutcome.OUT_OF_DOMAIN) {
+            return true;
+        }
+        if (!result.decision().hasPrimaryNode()) {
+            return false;
+        }
+        return pendingCandidates.stream().noneMatch(
+                candidate -> candidate.getId().equals(result.decision().primaryNodeId()));
+    }
+
+    private IntentUnderstandingResult safeUnderstand(TurnPreparationContext context,
+                                                     IntentTreeSnapshot snapshot,
+                                                     PendingIntentResolution pending) {
+        try {
+            return understandingEngine.understand(
+                    buildRequest(context, snapshot, pending, context.userInput()));
+        } catch (RuntimeException exception) {
+            log.warn("Shadow intent understanding failed: reason={}", exception.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    private IntentUnderstandingRequest buildRequest(TurnPreparationContext context,
+                                                    IntentTreeSnapshot snapshot,
+                                                    PendingIntentResolution pending,
+                                                    String userInput) {
+        return new IntentUnderstandingRequest(
+                context.agentId(), context.sessionId(), userInput,
+                context.recentVisibleTurns(), context.contextAvailable(), context.contextTruncated(),
+                pending, snapshot, context.sessionAssetSummary(), context.executionMode());
+    }
+
+    private void saveLegacyPending(String sessionId,
+                                   String canonicalQuery,
+                                   IntentRoutingResult routingResult) {
+        pendingIntentResolutionStore.save(PendingIntentResolution.builder()
+                .sessionId(sessionId)
+                .candidateNodeIds(routingResult.clarificationCandidates().stream()
+                        .map(IntentNodeDTO::getId).toList())
+                .originalQuery(canonicalQuery)
+                .parentPath(routingResult.parentPath())
+                .clarificationKind(ClarificationKind.ROUTE_CHOICE)
+                .attemptCount(0)
+                .policyProfileVersion("legacy")
+                .contractVersion(TurnExecutionContract.VERSION)
+                .build());
+    }
+
+    private void recordShadowMismatch(IntentUnderstandingResult shadow,
+                                      IntentRoutingResult legacy) {
+        if (shadow == null) {
+            return;
+        }
+        boolean mismatch;
+        if (legacy.requiresClarification()) {
+            mismatch = shadow.decision().outcome() != IntentRouteOutcome.AMBIGUOUS_ROUTE;
+        } else if (legacy.hasResolution()) {
+            String legacyNodeId = legacy.resolution().path().isEmpty() ? null
+                    : legacy.resolution().path().get(legacy.resolution().path().size() - 1).getId();
+            mismatch = shadow.decision().outcome() != IntentRouteOutcome.KNOWN_INTENT
+                    || !java.util.Objects.equals(legacyNodeId, shadow.decision().primaryNodeId());
+        } else {
+            mismatch = !shadow.decision().isPassThrough();
+        }
+        metrics.recordShadowMismatch(mismatch);
+    }
+
+    private TurnPreparationResult dispatchWithContract(IntentResolution resolution,
+                                                       String dispatchedInput,
+                                                       String originalUserInput,
+                                                       TurnPreparationContext context,
+                                                       IntentUnderstandingResult understanding) {
         if (!contractProperties.isEnabled()) {
             return TurnPreparationResult.dispatch(resolution, dispatchedInput);
         }
         try {
-            TurnExecutionContract contract = contractBuilder.build(resolution, originalUserInput, dispatchedInput, null);
+            AgentExecutionMode mode = context == null ? AgentExecutionMode.REACT : context.executionMode();
+            TurnExecutionContract contract = contractBuilder.build(
+                    resolution, originalUserInput, dispatchedInput, mode, understanding);
             if (contractProperties.isEmitDebugMetadata()) {
-                // 只记录枚举值和模式，不记录用户原文/查询内容。
-                log.info("Turn contract built (warn mode): intentKind={}, label={}, sourceNeed={}, retrievalMode={}, retrievalSource={}, enforcement={}",
-                        contract.intent().kind(), contract.analysis().primaryIntent(), contract.analysis().sourceNeed(),
-                        contract.retrieval().mode(), contract.retrieval().source(), contractProperties.getRetrievalEnforcement());
+                log.info("Turn contract built: routeOutcome={}, intentKind={}, sourceNeed={}, retrievalMode={}, enforcement={}",
+                        contract.analysis().intentDecision() == null
+                                ? "LEGACY" : contract.analysis().intentDecision().outcome(),
+                        contract.intent().kind(), contract.analysis().sourceNeed(),
+                        contract.retrieval().mode(), contractProperties.getRetrievalEnforcement());
             }
             return TurnPreparationResult.dispatch(resolution, dispatchedInput, contract);
-        } catch (RuntimeException ex) {
-            // contract 构建失败不能影响 dispatch 主链路；降级为无 contract 的 dispatch。
-            log.warn("Turn contract build failed, dispatching without contract: {}", ex.getMessage());
+        } catch (RuntimeException exception) {
+            log.warn("Turn contract build failed, dispatching without contract: reason={}",
+                    exception.getClass().getSimpleName());
             return TurnPreparationResult.dispatch(resolution, dispatchedInput);
         }
     }
 
-    private boolean isContextualFollowUp(String userInput) {
-        if (!StringUtils.hasText(userInput)) {
-            return false;
-        }
-        String normalized = userInput.trim().toLowerCase(Locale.ROOT);
-        return CONTEXTUAL_FOLLOW_UP.matcher(normalized).find();
-    }
-
-    private boolean isSubstantiveContextualFollowUp(String userInput) {
-        return isContextualFollowUp(userInput)
-                && SUBSTANTIVE_FOLLOW_UP.matcher(userInput.trim().toLowerCase(Locale.ROOT)).find();
-    }
-
     private List<IntentNodeDTO> resolveCandidates(IntentTreeSnapshot snapshot, List<String> candidateNodeIds) {
-        // pending 里只保存 nodeId，真正恢复候选节点时要回到最新 snapshot 中查。
-        // 这样可以兼容缓存刷新和树结构变更，但也意味着某些旧 pending 可能失效。
-        if (snapshot == null || snapshot.isEmpty() || candidateNodeIds == null || candidateNodeIds.isEmpty()) {
+        if (snapshot == null || snapshot.isEmpty() || candidateNodeIds == null) {
             return List.of();
         }
         List<IntentNodeDTO> result = new ArrayList<>();
-        for (String candidateNodeId : candidateNodeIds) {
-            IntentNodeDTO node = snapshot.findNode(candidateNodeId);
-            if (node != null) {
+        for (String nodeId : candidateNodeIds) {
+            IntentNodeDTO node = snapshot.findNode(nodeId);
+            if (node != null && result.stream().noneMatch(existing -> existing.getId().equals(node.getId()))) {
                 result.add(node);
             }
         }
-        return result;
+        return List.copyOf(result);
+    }
+
+    private String originalOrCurrent(PendingIntentResolution pending, String current) {
+        return StringUtils.hasText(pending.getOriginalQuery()) ? pending.getOriginalQuery() : current.trim();
+    }
+
+    private String commonParentPath(IntentTreeSnapshot snapshot, List<IntentNodeDTO> candidates) {
+        if (candidates.isEmpty()) {
+            return "";
+        }
+        String parentId = candidates.get(0).getParentId();
+        boolean sameParent = candidates.stream().allMatch(
+                candidate -> java.util.Objects.equals(parentId, candidate.getParentId()));
+        if (!sameParent || parentId == null) {
+            return "";
+        }
+        return snapshot.pathTo(parentId).stream().map(IntentNodeDTO::getName)
+                .filter(StringUtils::hasText).reduce((left, right) -> left + " > " + right).orElse("");
     }
 }

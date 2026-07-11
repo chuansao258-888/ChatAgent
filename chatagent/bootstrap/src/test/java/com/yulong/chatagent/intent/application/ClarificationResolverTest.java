@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.yulong.chatagent.agent.runtime.contract.SourceReferenceClassifier;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.junit.jupiter.api.Test;
 
@@ -9,108 +10,71 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ClarificationResolverTest {
 
-    private final ClarificationResolver clarificationResolver = new ClarificationResolver();
+    private final ClarificationResolver resolver = new ClarificationResolver(
+            new IntentSignalAnalyzer(new SourceReferenceClassifier()));
 
     @Test
-    void shouldResolveHigherOrdinalBeyondTopThree() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "请假制度"),
-                node("2", "考勤制度"),
-                node("3", "报销制度"),
-                node("4", "加班制度")
-        );
+    void shouldResolveOrdinalExactUniquePartialAndReviewedExample() {
+        List<IntentNodeDTO> candidates = candidates();
 
-        IntentNodeDTO resolved = clarificationResolver.resolve("第4个", candidates);
-
-        assertThat(resolved).isNotNull();
-        assertThat(resolved.getId()).isEqualTo("4");
+        assertSelected("second", "expense", candidates);
+        assertSelected("Travel Expense", "expense", candidates);
+        assertSelected("Annual", "leave", candidates);
+        assertSelected("claim my hotel receipt", "expense", candidates);
     }
 
     @Test
-    void shouldResolveByCandidateName() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "请假制度"),
-                node("2", "报销制度")
-        );
-
-        IntentNodeDTO resolved = clarificationResolver.resolve("我选报销制度", candidates);
-
-        assertThat(resolved).isNotNull();
-        assertThat(resolved.getId()).isEqualTo("2");
+    void shouldResolveSelectManyFromBothOrMultipleOrdinals() {
+        assertThat(resolver.resolveTyped("both", candidates()))
+                .satisfies(reply -> {
+                    assertThat(reply.outcome()).isEqualTo(ClarificationResolver.ReplyOutcome.SELECT_MANY);
+                    assertThat(reply.selected()).hasSize(2);
+                });
+        assertThat(resolver.resolveTyped("1 and 2", candidates()).selected())
+                .extracting(IntentNodeDTO::getId).containsExactly("leave", "expense");
     }
 
     @Test
-    void shouldResolveNaturalEnglishOrdinalSelection() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "Operations Alpha"),
-                node("2", "Operations Beta")
-        );
-
-        IntentNodeDTO resolved = clarificationResolver.resolve("Let's go with the second option.", candidates);
-
-        assertThat(resolved).isNotNull();
-        assertThat(resolved.getId()).isEqualTo("2");
+    void shouldDistinguishNoneCancelNewTopicAndUnresolved() {
+        assertThat(resolver.resolveTyped("none of these", candidates()).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.NONE_OF_THESE);
+        assertThat(resolver.resolveTyped("cancel", candidates()).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.CANCEL);
+        assertThat(resolver.resolveTyped("Actually, what is the weather?", candidates()))
+                .satisfies(reply -> {
+                    assertThat(reply.outcome()).isEqualTo(ClarificationResolver.ReplyOutcome.NEW_TOPIC);
+                    assertThat(reply.newTopicText()).isEqualTo("what is the weather?");
+                });
+        assertThat(resolver.resolveTyped("not sure", candidates()).outcome())
+                .isEqualTo(ClarificationResolver.ReplyOutcome.UNRESOLVED);
     }
 
     @Test
-    void shouldResolveNaturalChineseOrdinalSelection() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "运营 Alpha"),
-                node("2", "运营 Beta"),
-                node("3", "运营 Gamma")
-        );
-
-        assertThat(clarificationResolver.resolve("就第一个吧", candidates))
-                .extracting(IntentNodeDTO::getId)
-                .isEqualTo("1");
-        assertThat(clarificationResolver.resolve("第二项比较像", candidates))
-                .extracting(IntentNodeDTO::getId)
-                .isEqualTo("2");
-        assertThat(clarificationResolver.resolve("我选三号", candidates))
-                .extracting(IntentNodeDTO::getId)
-                .isEqualTo("3");
+    void shouldPreserveLegacySingleSelectionFacade() {
+        assertThat(resolver.resolve("第二项比较像", candidates()))
+                .extracting(IntentNodeDTO::getId).isEqualTo("expense");
+        assertThat(resolver.resolve("both", candidates())).isNull();
     }
 
     @Test
-    void shouldReturnNullForOutOfRangeOrdinal() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "Operations Alpha"),
-                node("2", "Operations Beta")
-        );
-
-        IntentNodeDTO resolved = clarificationResolver.resolve("maybe the third one", candidates);
-
-        assertThat(resolved).isNull();
+    void shouldNotTreatQuarterAsOrdinal() {
+        assertThat(resolver.resolve("第一季度的预算还要确认", candidates())).isNull();
     }
 
-    @Test
-    void shouldNotTreatQuarterReferenceAsOrdinalSelection() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "预算审批"),
-                node("2", "采购申请")
-        );
-
-        IntentNodeDTO resolved = clarificationResolver.resolve("第一季度的预算还要确认", candidates);
-
-        assertThat(resolved).isNull();
+    private void assertSelected(String reply, String expectedId, List<IntentNodeDTO> candidates) {
+        assertThat(resolver.resolveTyped(reply, candidates))
+                .satisfies(result -> {
+                    assertThat(result.outcome()).isEqualTo(ClarificationResolver.ReplyOutcome.SELECT_ONE);
+                    assertThat(result.selected()).extracting(IntentNodeDTO::getId).containsExactly(expectedId);
+                });
     }
 
-    @Test
-    void shouldReturnNullForUnclearClarificationReply() {
-        List<IntentNodeDTO> candidates = List.of(
-                node("1", "Operations Alpha"),
-                node("2", "Operations Beta")
+    private List<IntentNodeDTO> candidates() {
+        return List.of(
+                IntentNodeDTO.builder().id("leave").name("Annual Leave")
+                        .examples(List.of("request paid vacation", "annual allowance")).build(),
+                IntentNodeDTO.builder().id("expense").name("Travel Expense")
+                        .examples(List.of("claim my hotel receipt", "travel reimbursement")).build()
         );
-
-        IntentNodeDTO resolved = clarificationResolver.resolve("I'm not sure yet.", candidates);
-
-        assertThat(resolved).isNull();
-    }
-
-    private IntentNodeDTO node(String id, String name) {
-        return IntentNodeDTO.builder()
-                .id(id)
-                .name(name)
-                .build();
     }
 }

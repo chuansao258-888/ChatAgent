@@ -153,7 +153,7 @@ public class IntentRouter {
                     // 当前层没有更多候选了：
                     // - 如果 current 为 null，说明整棵树都没找到合适节点；
                     // - 否则说明当前 path 已经是最终结果。
-                    result = current == null ? IntentRoutingResult.none() : IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                    result = current == null ? IntentRoutingResult.none() : IntentRoutingResult.resolved(snapshot.resolveNode(current.getId()));
                     return result;
                 }
 
@@ -175,7 +175,7 @@ public class IntentRouter {
                     // 则允许停在当前节点；如果当前节点还有子层，则继续向用户澄清下一层候选。
                     // 只有根层没有合适候选时才返回 none。
                     if (current != null && current.getIntentKind() != null) {
-                        result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                        result = IntentRoutingResult.resolved(snapshot.resolveNode(current.getId()));
                         return result;
                     }
                     if (current != null) {
@@ -189,7 +189,7 @@ public class IntentRouter {
                 if (selection.best() == null) {
                     // best 为空但不是 noneMatched，说明“目前不够确定，值得问用户一句”。
                     if (current != null && current.getIntentKind() != null) {
-                        result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                        result = IntentRoutingResult.resolved(snapshot.resolveNode(current.getId()));
                         return result;
                     }
                     // 这里用当前层 candidates，而不是 path 上所有节点。
@@ -211,7 +211,7 @@ public class IntentRouter {
                 if (current.getIntentKind() != null || snapshot.childrenOf(current.getId()).isEmpty()) {
                     // 当前节点已经是叶子意图，或者虽然没显式标 kind 但已经没有子节点了，
                     // 都可以把当前 path 组装成最终 resolution。
-                    result = IntentRoutingResult.resolved(buildResolution(snapshot, path));
+                    result = IntentRoutingResult.resolved(snapshot.resolveNode(current.getId()));
                     return result;
                 }
             }
@@ -219,29 +219,6 @@ public class IntentRouter {
             long durationMs = System.currentTimeMillis() - startMs;
             recordTimer("chatagent.intent.routing.latency", durationMs, "agent", agentId);
         }
-    }
-
-    private IntentResolution buildResolution(IntentTreeSnapshot snapshot, List<IntentNodeDTO> path) {
-        // path 的最后一个节点视为最终落点。
-        // 上层后续拿到的不只是一个意图 kind，
-        // 还包括该叶子节点约束出来的 KB 范围、工具范围和 prompt override。
-        IntentNodeDTO leaf = path.get(path.size() - 1);
-        IntentKind kind = leaf.getIntentKind() == null ? IntentKind.KB : leaf.getIntentKind();
-        ScopePolicy scopePolicy = leaf.getScopePolicy();
-        if (scopePolicy == null && kind == IntentKind.KB) {
-            scopePolicy = ScopePolicy.FALLBACK_ALLOWED;
-        }
-        if (scopePolicy == null) {
-            scopePolicy = ScopePolicy.STRICT;
-        }
-        return new IntentResolution(
-                kind,
-                path,
-                snapshot.knowledgeBaseIdsForNode(leaf.getId()),
-                scopePolicy,
-                leaf.getAllowedTools(),
-                leaf.getSystemPromptOverride()
-        );
     }
 
     private RankedSelection select(String query, List<IntentNodeDTO> candidates, String pathLabel) {

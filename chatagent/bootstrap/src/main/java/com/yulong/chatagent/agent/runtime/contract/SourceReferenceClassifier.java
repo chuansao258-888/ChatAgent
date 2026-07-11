@@ -40,7 +40,8 @@ public class SourceReferenceClassifier {
                     + "|\\b(?:the|this|that|same|my|our|these|those)\\s+(?:uploaded|attached|session)?\\s*(?:attachment|file|document|pdf|image|photo|picture|spreadsheet|csv|docx|xlsx|note|briefing|brief|source|sources?)\\b"
                     + "|\\b(?:uploaded|attached|session|local)\\s+(?:file|files|document|note|notes?|source|sources?)\\b"
                     // English: filename with a supported extension (FileTypeDetector set, image-aware)
-                    + "|\\b[\\w.\\-]+\\." + SupportedFileExtensions.EXTENSION_GROUP + "\\b"
+                    + "|(?i)(?<![A-Za-z0-9_])[A-Za-z0-9_.\\-]+\\."
+                    + SupportedFileExtensions.EXTENSION_GROUP + "(?![A-Za-z0-9_])"
                     // Chinese upload expressions
                     + "|(?:我|我们)(?:刚才)?上传(?:了|的)?|刚才上传(?:了|的)?"
                     + "|上传的?(?:文件|表格|文档|图片|附件|照片)"
@@ -69,7 +70,7 @@ public class SourceReferenceClassifier {
      * uploaded-file reference should win (see deriveSourceNeed precedence).
      */
     private static final Pattern CURRENTNESS = Pattern.compile(
-            "(?i)\\b(?:latest|current|newest|up\\s*to\\s*date|recent|news|today)\\b"
+            "(?i)\\b(?:latest|current|currently|newest|up\\s*to\\s*date|recent|news|today)\\b"
                     + "|最新|当前|实时|新闻|今天"
     );
 

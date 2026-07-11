@@ -2,6 +2,9 @@ package com.yulong.chatagent.agent.runtime.contract;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.intent.application.ConfidenceStatus;
+import com.yulong.chatagent.intent.application.IntentRouteOutcome;
+import com.yulong.chatagent.intent.application.IntentUnderstandingResult;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
 import org.slf4j.Logger;
@@ -50,22 +53,38 @@ public class TurnExecutionContractBuilder {
                                        String userInput,
                                        String rewrittenInput,
                                        AgentExecutionMode executionMode) {
+        return build(resolution, userInput, rewrittenInput, executionMode, null);
+    }
+
+    public TurnExecutionContract build(IntentResolution resolution,
+                                       String userInput,
+                                       String rewrittenInput,
+                                       AgentExecutionMode executionMode,
+                                       IntentUnderstandingResult understandingResult) {
         String originalText = StringUtils.hasText(userInput) ? userInput : "";
         IntentKind kind = resolution == null ? null : resolution.kind();
-        IntentLabel primaryLabel = derivePrimaryIntentLabel(kind);
+        IntentLabel primaryLabel = derivePrimaryIntentLabel(kind, understandingResult);
         SourceReferenceClassifier.SourceClassification classification = classifier.classify(originalText);
-        SourceNeed sourceNeed = classifier.deriveSourceNeed(classification, kind);
-        TimeSensitivity timeSensitivity = classifier.deriveTimeSensitivity(classification);
+        SourceNeed sourceNeed = understandingResult == null
+                ? classifier.deriveSourceNeed(classification, kind) : understandingResult.sourceNeed();
+        TimeSensitivity timeSensitivity = understandingResult == null
+                ? classifier.deriveTimeSensitivity(classification) : understandingResult.timeSensitivity();
+        ActionRisk actionRisk = understandingResult == null
+                ? ActionRisk.READ_ONLY : understandingResult.actionRisk();
+        AmbiguityPlan ambiguity = deriveAmbiguityPlan(understandingResult);
+        double confidence = understandingResult == null
+                ? deriveConfidence(resolution) : calibratedConfidence(understandingResult);
         TurnAnalysis analysis = new TurnAnalysis(
                 originalText,
+                understandingResult == null ? null : understandingResult.decision(),
                 primaryLabel,
-                List.of(),
+                understandingResult == null ? List.of() : understandingResult.secondaryIntents(),
                 sourceNeed,
                 deriveToolNeed(kind, sourceNeed),
                 timeSensitivity,
-                ActionRisk.READ_ONLY,
-                AmbiguityPlan.none(),
-                deriveConfidence(resolution)
+                actionRisk,
+                ambiguity,
+                confidence
         );
 
         QueryPlan queryPlan = queryPlanBuilder.build(resolution, sourceNeed, originalText, rewrittenInput);
@@ -81,8 +100,10 @@ public class TurnExecutionContractBuilder {
                 isRetrievalVisible(kind, sourceNeed)
         );
 
-        log.debug("Built turn contract: intentKind={}, label={}, sourceNeed={}, retrievalMode={}, retrievalSource={}",
-                kind, primaryLabel, sourceNeed, retrieval.mode(), retrieval.source());
+        log.debug("Built turn contract: intentKind={}, label={}, routeOutcome={}, sourceNeed={}, retrievalMode={}, retrievalSource={}",
+                kind, primaryLabel,
+                understandingResult == null ? "LEGACY" : understandingResult.decision().outcome(),
+                sourceNeed, retrieval.mode(), retrieval.source());
 
         return new TurnExecutionContract(
                 TurnExecutionContract.VERSION,
@@ -99,7 +120,23 @@ public class TurnExecutionContractBuilder {
         );
     }
 
-    private IntentLabel derivePrimaryIntentLabel(IntentKind kind) {
+    private IntentLabel derivePrimaryIntentLabel(IntentKind kind, IntentUnderstandingResult result) {
+        if (result != null) {
+            IntentRouteOutcome outcome = result.decision().outcome();
+            if (outcome == IntentRouteOutcome.MULTI_INTENT) {
+                return IntentLabel.MULTI_INTENT;
+            }
+            if (outcome == IntentRouteOutcome.AMBIGUOUS_ROUTE) {
+                return IntentLabel.AMBIGUOUS_FOLLOW_UP;
+            }
+            if (outcome == IntentRouteOutcome.GENERAL_CHAT || outcome == IntentRouteOutcome.OUT_OF_DOMAIN) {
+                return IntentLabel.GENERAL_CHAT;
+            }
+            if (outcome == IntentRouteOutcome.EXECUTION_INFO_MISSING
+                    && result.actionRisk() != ActionRisk.READ_ONLY) {
+                return IntentLabel.ACTION_REQUEST;
+            }
+        }
         if (kind == null) {
             return IntentLabel.GENERAL_CHAT;
         }
@@ -109,6 +146,22 @@ public class TurnExecutionContractBuilder {
             case SYSTEM -> IntentLabel.GENERAL_CHAT;
             case CLARIFY -> IntentLabel.AMBIGUOUS_FOLLOW_UP;
         };
+    }
+
+    private AmbiguityPlan deriveAmbiguityPlan(IntentUnderstandingResult result) {
+        if (result == null || result.decision().outcome() != IntentRouteOutcome.AMBIGUOUS_ROUTE) {
+            return AmbiguityPlan.none();
+        }
+        List<String> candidatePaths = result.decision().rankedCandidates().stream()
+                .map(candidate -> candidate.path() == null || candidate.path().isBlank()
+                        ? candidate.nodeId() : candidate.path())
+                .toList();
+        return new AmbiguityPlan(true, ClarificationKind.ROUTE_CHOICE, null, candidatePaths);
+    }
+
+    private double calibratedConfidence(IntentUnderstandingResult result) {
+        return result.decision().confidenceStatus() == ConfidenceStatus.CALIBRATED
+                ? result.decision().calibratedConfidence() : 0.0d;
     }
 
     private ToolNeed deriveToolNeed(IntentKind kind, SourceNeed sourceNeed) {

@@ -41,15 +41,21 @@ public class AgentSessionFileSummaryResolver {
     /**
      * 为一次 Agent 运行生成 prompt 友好的资源列表。
      *
-     * @param agentConfig Agent 配置
+     * @param agentConfig ignored — retained for backward compatibility; the summary
+     *                    is resolved from the session via {@link #resolveForSession}
      * @param chatSessionId 当前会话 ID
      * @return 附件和知识库摘要
      */
     public String resolve(AgentDTO agentConfig, String chatSessionId) {
+        return resolveForSession(chatSessionId);
+    }
+
+    /** Builds the same content-only summary before the full Agent config is loaded. */
+    public String resolveForSession(String chatSessionId) {
         List<String> sections = new ArrayList<>();
 
         // 会话附件是用户当前上传的资料。
-        String sessionFileSummary = resolveAttachedSessionFiles(agentConfig, chatSessionId);
+        String sessionFileSummary = resolveAttachedSessionFiles(chatSessionId);
         if (StringUtils.hasText(sessionFileSummary)) {
             sections.add("Attached session files: " + sessionFileSummary);
         }
@@ -66,7 +72,7 @@ public class AgentSessionFileSummaryResolver {
         return String.join("; ", sections);
     }
 
-    private String resolveAttachedSessionFiles(AgentDTO agentConfig, String chatSessionId) {
+    private String resolveAttachedSessionFiles(String chatSessionId) {
         // 只列出文件名，不把正文塞进系统提示词；正文内容通过 SessionFileSearchTool 检索。
         if (!StringUtils.hasText(chatSessionId)) {
             return "";

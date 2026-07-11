@@ -18,6 +18,7 @@ public record ConversationTurnContext(
         ChatSessionVO session,
         CreateChatMessageResponse createdUserMessage,
         List<ChatMessageDTO> recentHistory,
+        String sessionAssetSummary,
         AgentExecutionMode executionMode
 ) {
 

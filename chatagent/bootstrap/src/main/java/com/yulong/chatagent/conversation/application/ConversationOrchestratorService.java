@@ -2,6 +2,7 @@ package com.yulong.chatagent.conversation.application;
 
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.AgentExecutionModeResolver;
+import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.conversation.application.model.ConversationTurnContext;
 import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.conversation.event.ChatEventDispatcher;
@@ -16,6 +17,8 @@ import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPubli
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.intent.application.ConversationTurnPreparationService;
 import com.yulong.chatagent.intent.application.TurnPreparationResult;
+import com.yulong.chatagent.intent.application.TurnPreparationContext;
+import com.yulong.chatagent.intent.application.TurnPreparationContextAssembler;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +59,8 @@ public class ConversationOrchestratorService {
     private final ConversationTurnCompletionPublisher conversationTurnCompletionPublisher;
     private final SseService sseService;
     private final AgentExecutionModeResolver executionModeResolver;
+    private final AgentSessionFileSummaryResolver sessionAssetSummaryResolver;
+    private final TurnPreparationContextAssembler turnPreparationContextAssembler;
 
     public ConversationOrchestratorService(ChatSessionFacadeService chatSessionFacadeService,
                                            ChatSessionRepository chatSessionRepository,
@@ -64,7 +69,9 @@ public class ConversationOrchestratorService {
                                            ChatEventDispatcher chatEventDispatcher,
                                            ConversationTurnCompletionPublisher conversationTurnCompletionPublisher,
                                            SseService sseService,
-                                           AgentExecutionModeResolver executionModeResolver) {
+                                           AgentExecutionModeResolver executionModeResolver,
+                                           AgentSessionFileSummaryResolver sessionAssetSummaryResolver,
+                                           TurnPreparationContextAssembler turnPreparationContextAssembler) {
         this.chatSessionFacadeService = chatSessionFacadeService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageFacadeService = chatMessageFacadeService;
@@ -73,6 +80,8 @@ public class ConversationOrchestratorService {
         this.conversationTurnCompletionPublisher = conversationTurnCompletionPublisher;
         this.sseService = sseService;
         this.executionModeResolver = executionModeResolver;
+        this.sessionAssetSummaryResolver = sessionAssetSummaryResolver;
+        this.turnPreparationContextAssembler = turnPreparationContextAssembler;
     }
 
     /**
@@ -125,6 +134,7 @@ public class ConversationOrchestratorService {
         // 先保存用户消息，再读取最近历史，确保当前输入也进入 Agent 的 L1 记忆候选。
         CreateChatMessageResponse createdMessage = chatMessageFacadeService.createChatMessage(sequencedRequest);
         List<ChatMessageDTO> recentHistory = loadRecentHistory(sequencedRequest.getSessionId());
+        String sessionAssetSummary = sessionAssetSummaryResolver.resolveForSession(sequencedRequest.getSessionId());
 
         log.info("Conversation turn context built: sessionId={}, agentId={}, userMessageId={}, turnSeq={}, recentHistorySize={}",
                 sequencedRequest.getSessionId(),
@@ -138,6 +148,7 @@ public class ConversationOrchestratorService {
                 chatSession,
                 createdMessage,
                 recentHistory,
+                sessionAssetSummary,
                 resolvedExecutionMode
         );
     }
@@ -154,11 +165,16 @@ public class ConversationOrchestratorService {
     private void prepareAndDispatchTurn(ConversationTurnContext turnContext) {
         String resolvedAgentId = requireAgentId(turnContext.session(), turnContext.request().getSessionId());
         // 意图准备会做分类、查询改写和澄清判断。澄清类结果会直接回复，不进入 Agent runtime。
-        TurnPreparationResult preparationResult = conversationTurnPreparationService.prepare(
+        TurnPreparationContext preparationContext = turnPreparationContextAssembler.assemble(
                 resolvedAgentId,
                 turnContext.request().getSessionId(),
-                turnContext.request().getContent()
+                turnContext.request().getContent(),
+                turnContext.createdUserMessage().getChatMessageId(),
+                turnContext.recentHistory(),
+                turnContext.sessionAssetSummary(),
+                turnContext.executionMode()
         );
+        TurnPreparationResult preparationResult = conversationTurnPreparationService.prepare(preparationContext);
         if (preparationResult.isDirectReply()) {
             // 直接回复通常来自系统澄清或路由层决策，仍然要落库并推 SSE，前端体验保持一致。
             persistAndPushDirectReply(

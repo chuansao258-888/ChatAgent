@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.AgentExecutionModeResolver;
 import com.yulong.chatagent.agent.runtime.AgentRunPolicyProperties;
+import com.yulong.chatagent.agent.runtime.AgentSessionFileSummaryResolver;
 import com.yulong.chatagent.conversation.application.ChatMessageFacadeService;
 import com.yulong.chatagent.conversation.application.ChatSessionFacadeService;
 import com.yulong.chatagent.conversation.application.ConversationOrchestratorService;
@@ -15,6 +16,8 @@ import com.yulong.chatagent.conversation.model.vo.ChatSessionVO;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.ConversationTurnCompletionPublisher;
 import com.yulong.chatagent.intent.application.ConversationTurnPreparationService;
+import com.yulong.chatagent.intent.application.TurnPreparationContext;
+import com.yulong.chatagent.intent.application.TurnPreparationContextAssembler;
 import com.yulong.chatagent.intent.application.TurnPreparationResult;
 import com.yulong.chatagent.sse.SseService;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
@@ -95,6 +98,8 @@ class ConversationExecutionModeTest {
         ChatMessageFacadeService chatMessageFacadeService = mock(ChatMessageFacadeService.class);
         ConversationTurnPreparationService preparationService = mock(ConversationTurnPreparationService.class);
         ChatEventDispatcher chatEventDispatcher = mock(ChatEventDispatcher.class);
+        AgentSessionFileSummaryResolver assetSummaryResolver = mock(AgentSessionFileSummaryResolver.class);
+        TurnPreparationContextAssembler contextAssembler = mock(TurnPreparationContextAssembler.class);
 
         ConversationOrchestratorService subject = new ConversationOrchestratorService(
                 chatSessionFacadeService,
@@ -104,7 +109,9 @@ class ConversationExecutionModeTest {
                 chatEventDispatcher,
                 mock(ConversationTurnCompletionPublisher.class),
                 mock(SseService.class),
-                new AgentExecutionModeResolver(new AgentRunPolicyProperties())
+                new AgentExecutionModeResolver(new AgentRunPolicyProperties()),
+                assetSummaryResolver,
+                contextAssembler
         );
 
         String turnId = "11111111-1111-1111-1111-111111111111";
@@ -127,7 +134,15 @@ class ConversationExecutionModeTest {
                         .role(ChatMessageDTO.RoleType.USER)
                         .content("hello")
                         .build()));
-        when(preparationService.prepare("agent-1", "session-1", "hello"))
+        TurnPreparationContext preparationContext = new TurnPreparationContext(
+                "agent-1", "session-1", "hello", List.of(), true, false,
+                null, AgentExecutionMode.DEEPTHINK);
+        when(assetSummaryResolver.resolveForSession("session-1")).thenReturn(null);
+        when(contextAssembler.assemble(
+                eq("agent-1"), eq("session-1"), eq("hello"), eq("msg-1"),
+                any(), eq(null), eq(AgentExecutionMode.DEEPTHINK)))
+                .thenReturn(preparationContext);
+        when(preparationService.prepare(preparationContext))
                 .thenReturn(TurnPreparationResult.passthrough());
         when(chatSessionRepository.findById("session-1"))
                 .thenReturn(ChatSessionDTO.builder().id("session-1").userId("user-1").build());
@@ -149,6 +164,6 @@ class ConversationExecutionModeTest {
         verify(chatEventDispatcher).dispatch(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getExecutionMode()).isEqualTo(AgentExecutionMode.DEEPTHINK);
         assertThat(eventCaptor.getValue().getUserId()).isEqualTo("user-1");
-        verify(preparationService).prepare(eq("agent-1"), eq("session-1"), eq("hello"));
+        verify(preparationService).prepare(preparationContext);
     }
 }

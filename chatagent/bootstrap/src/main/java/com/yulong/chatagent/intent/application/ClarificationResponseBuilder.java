@@ -78,6 +78,43 @@ public class ClarificationResponseBuilder {
         return builder.toString();
     }
 
+    public String buildReleased(ClarificationResolver.ReplyOutcome outcome, String userInput) {
+        boolean chinese = shouldUseChinese(userInput);
+        if (outcome == ClarificationResolver.ReplyOutcome.CANCEL) {
+            return chinese
+                    ? "好的，已取消刚才的选择。你可以直接提出新的问题。"
+                    : "Okay, I cancelled that selection. You can ask a new question.";
+        }
+        return chinese
+                ? "这些选项都不合适。请换一种方式描述你的问题。"
+                : "None of those options fit. Please describe your question another way.";
+    }
+
+    public String buildRetryLimitReached(String userInput) {
+        return shouldUseChinese(userInput)
+                ? "我仍无法确定你的选择，已结束本次澄清。请重新完整描述你的问题。"
+                : "I still could not determine your selection, so I ended this clarification. Please restate your full question.";
+    }
+
+    public String buildExecutionInfoMissing(List<MissingDimension> missingDimensions, String userInput) {
+        boolean confirmation = missingDimensions != null
+                && missingDimensions.contains(MissingDimension.CONFIRMATION);
+        if (shouldUseChinese(userInput)) {
+            return confirmation
+                    ? "这个请求可能产生外部修改或操作。请明确确认是否要继续执行。"
+                    : "我已识别到请求方向，但还缺少安全执行所需的信息。请补充具体对象、来源或操作范围。";
+        }
+        return confirmation
+                ? "This request may make an external change. Please explicitly confirm whether I should proceed."
+                : "I understand the request, but information required for safe execution is missing. Please provide the object, source, or action scope.";
+    }
+
+    public String buildMultiIntentConflict(String userInput) {
+        return shouldUseChinese(userInput)
+                ? "这些事项无法安全地同时处理。请说明先处理哪一项，或分别发送。"
+                : "These requests cannot be handled safely together. Please say which one comes first or send them separately.";
+    }
+
     private boolean shouldUseChinese(String userInput) {
         if (!StringUtils.hasText(userInput)) {
             return false;

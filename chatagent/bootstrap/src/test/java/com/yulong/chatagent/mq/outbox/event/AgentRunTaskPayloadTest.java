@@ -10,6 +10,12 @@ import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
 import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.intent.application.IntentResolution;
+import com.yulong.chatagent.intent.application.ConfidenceStatus;
+import com.yulong.chatagent.intent.application.IntentCandidateEvidence;
+import com.yulong.chatagent.intent.application.IntentDecision;
+import com.yulong.chatagent.intent.application.IntentDecisionSource;
+import com.yulong.chatagent.intent.application.IntentRouteOutcome;
+import com.yulong.chatagent.intent.application.IntentUnderstandingResult;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.intent.model.ScopePolicy;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
@@ -124,5 +130,42 @@ class AgentRunTaskPayloadTest {
         assertThat(restoredEvent.getExecutionContract()).isNotNull();
         assertThat(restoredEvent.getExecutionContract().analysis().sourceNeed()).isEqualTo(SourceNeed.KB);
         assertThat(restoredEvent.getExecutionContract().retrieval().mode()).isEqualTo(RetrievalMode.REQUIRED_BEFORE_ANSWER);
+    }
+
+    @Test
+    void shouldPreserveTypedIntentDecisionAcrossMqPayloadRoundTrip() throws Exception {
+        IntentResolution resolution = new IntentResolution(
+                IntentKind.KB,
+                List.of(IntentNodeDTO.builder().id("leave").name("Annual Leave").build()),
+                List.of("kb-1"), ScopePolicy.STRICT, List.of(), null);
+        IntentDecision decision = new IntentDecision(
+                IntentRouteOutcome.KNOWN_INTENT, "leave", List.of(),
+                List.of(new IntentCandidateEvidence(
+                        "leave", "HR > Annual Leave", 1.7d, 1.1d, 1,
+                        List.of("semantic_match"))),
+                List.of(), IntentDecisionSource.CLASSIFIER, 0.94d,
+                ConfidenceStatus.CALIBRATED, "v1", List.of("classifier_schema_valid"));
+        IntentUnderstandingResult understanding = new IntentUnderstandingResult(
+                decision, SourceNeed.KB,
+                com.yulong.chatagent.agent.runtime.contract.TimeSensitivity.STATIC,
+                com.yulong.chatagent.agent.runtime.contract.ActionRisk.READ_ONLY,
+                List.of(), false, false);
+        TurnExecutionContract contract = com.yulong.chatagent.agent.runtime.contract.ContractTestSupport
+                .contractBuilder().build(resolution, "annual leave process", "annual leave process",
+                        AgentExecutionMode.REACT, understanding);
+        ChatEvent event = new ChatEvent(
+                "agent-1", "session-1", "turn-1", 8L, "msg-1",
+                "annual leave process", 3, resolution, "annual leave process", "user-1",
+                AgentExecutionMode.REACT, contract);
+
+        AgentRunTaskPayload restored = objectMapper.readValue(
+                objectMapper.writeValueAsString(AgentRunTaskPayload.fromChatEvent(event)),
+                AgentRunTaskPayload.class);
+
+        assertThat(restored.executionContract().analysis().intentDecision()).isEqualTo(decision);
+        assertThat(restored.toChatEvent().getExecutionContract().analysis().intentDecision().primaryNodeId())
+                .isEqualTo("leave");
+        assertThat(restored.toChatEvent().getExecutionContract().analysis().confidence())
+                .isEqualTo(0.94d);
     }
 }

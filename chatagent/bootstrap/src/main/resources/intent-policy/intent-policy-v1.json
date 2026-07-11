@@ -1,0 +1,19 @@
+{
+  "version": "v1",
+  "corpusManifestHash": "09063eb4bccbd3baabe8580eeac2caf1027bf13658d675cbaf643bb8d633482e",
+  "classifierModelId": "deepseek-v4-flash",
+  "promptVersion": "v1",
+  "featureVersion": "intent-features-v1",
+  "classifierTemperature": 0.0,
+  "classifierMaxTokens": 384,
+  "treeFixtureManifestHash": "56bff73ba0da25e7b669fc22c47b415574e2c072b69803ae1598da4fd7dbb80e",
+  "acceptScore": 1.6,
+  "clarifyScore": 0.8,
+  "ambiguityGap": 0.5,
+  "maxClassifierCandidates": 6,
+  "maxClarificationCandidates": 3,
+  "minimumReviewedExamples": 2,
+  "deterministicExactConfidence": 0.98,
+  "classifierAgreementConfidence": 0.94,
+  "heuristicAcceptConfidence": 0.91
+}

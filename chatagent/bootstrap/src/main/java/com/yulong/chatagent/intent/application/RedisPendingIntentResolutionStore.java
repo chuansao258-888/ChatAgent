@@ -2,6 +2,7 @@ package com.yulong.chatagent.intent.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -52,6 +53,7 @@ public class RedisPendingIntentResolutionStore implements PendingIntentResolutio
         }
         try {
             PendingIntentResolution pending = objectMapper.readValue(payload, PendingIntentResolution.class);
+            normalizeLegacyPayload(pending);
             if (pending.getExpiresAt() != null && pending.getExpiresAt().isBefore(Instant.now())) {
                 // 过期后立即清理，避免用户很久之后回复一句“第一个”仍然命中旧澄清。
                 delete(sessionId);
@@ -60,7 +62,7 @@ public class RedisPendingIntentResolutionStore implements PendingIntentResolutio
             return pending;
         } catch (JsonProcessingException e) {
             // 反序列化失败时宁可丢弃旧状态，也不要把损坏的 clarification 上下文继续传下去。
-            log.warn("Failed to deserialize pending intent resolution: sessionId={}, error={}", sessionId, e.getMessage());
+            log.warn("Failed to deserialize pending intent resolution: sessionId={}, reason=malformed_payload", sessionId);
             delete(sessionId);
             return null;
         }
@@ -73,6 +75,7 @@ public class RedisPendingIntentResolutionStore implements PendingIntentResolutio
         }
         Instant now = Instant.now();
         Instant expiresAt = now.plus(ttl);
+        normalizeLegacyPayload(pendingIntentResolution);
         // expiresAt 同时保存在对象里，便于调试和显式判断，不完全依赖 Redis TTL 黑盒。
         pendingIntentResolution.setExpiresAt(expiresAt);
         try {
@@ -103,5 +106,23 @@ public class RedisPendingIntentResolutionStore implements PendingIntentResolutio
         // key 只按 session 维度区分，因为 clarification 是会话局部中间态，不是用户全局状态。
         // 即使同一个用户同时开多个会话，也不应该共享同一份待澄清候选。
         return KEY_PREFIX + sessionId;
+    }
+
+    private void normalizeLegacyPayload(PendingIntentResolution pending) {
+        if (pending == null) {
+            return;
+        }
+        if (pending.getClarificationKind() == null) {
+            pending.setClarificationKind(ClarificationKind.ROUTE_CHOICE);
+        }
+        if (pending.getAttemptCount() == null || pending.getAttemptCount() < 0) {
+            pending.setAttemptCount(0);
+        }
+        if ((pending.getCandidateNodeIds() == null || pending.getCandidateNodeIds().isEmpty())
+                && pending.getOrderedCandidates() != null) {
+            pending.setCandidateNodeIds(pending.getOrderedCandidates().stream()
+                    .map(PendingIntentResolution.PendingCandidate::nodeId)
+                    .toList());
+        }
     }
 }

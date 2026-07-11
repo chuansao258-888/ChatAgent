@@ -32,6 +32,7 @@ public final class PromptConstants {
 
     // ── 意图路由 ───────────────────────────────────────────────────────
     public static final String INTENT_CLASSIFIER = "intent/classifier.md";
+    public static final String INTENT_STRUCTURED_CLASSIFIER = "intent/structured-classifier-v1.md";
     public static final String INTENT_QUERY_REWRITE = "intent/query-rewrite.md";
 
     // ── RAG 入库/切分 ──────────────────────────────────────────────────
