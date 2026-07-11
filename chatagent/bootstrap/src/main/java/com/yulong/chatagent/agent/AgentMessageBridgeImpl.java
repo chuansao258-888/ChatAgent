@@ -531,6 +531,7 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         if (!allowFinalRepair) {
             return "";
         }
+        // --- Generic guards (retained in Phase 7) ---
         if (!StringUtils.hasText(finalContent)) {
             return "it produced no user-visible answer";
         }
@@ -540,33 +541,11 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         if (containsUserVisibleToolCallMarkup(finalContent)) {
             return "it exposed tool-call markup instead of a final user answer";
         }
-        if (missedAvailableContextForShortFollowUp(prompt, finalContent)) {
-            return "it missed the recent conversation context needed to answer the short follow-up";
-        }
         int pendingCitationCount = pendingCitations == null ? 0 : pendingCitations.size();
-        if (leaksOutOfScopeCitationDetailsInCurrentContextBoundaryCheck(prompt, finalContent, pendingCitations)) {
-            return "it cited out-of-scope source details in a current-context boundary answer";
-        }
         if (pendingCitationCount > 0
                 && !hasSupportedCitationReference(finalContent, pendingCitationCount)
                 && usesPendingCitationEvidenceWithoutReference(finalContent, pendingCitations)) {
             return "it answered from retrieved evidence without citation markers";
-        }
-        if (mixesStaleRoomContextIntoCurrentRecap(prompt, finalContent)) {
-            return "it mixed stale owner or room context into a current owner and room recap";
-        }
-        if (missedCurrentProjectInWrapUp(prompt, finalContent)) {
-            return "it omitted the current project identifier from a wrap-up";
-        }
-        if (leaksOutOfScopeDetailsInCurrentContextBoundaryCheck(prompt, finalContent)) {
-            return "it included out-of-scope source details in a current-context boundary answer";
-        }
-        String constraintViolation = currentRequestConstraintViolationReason(prompt, finalContent);
-        if (StringUtils.hasText(constraintViolation)) {
-            return constraintViolation;
-        }
-        if (leaksPriorIdentifierAfterTopicChange(prompt, finalContent)) {
-            return "it reused prior conversation identifiers after an explicit topic change";
         }
         if (isLikelyStalePreviousAnswer(prompt, finalContent)) {
             return "it repeated an earlier assistant answer instead of the current request";
