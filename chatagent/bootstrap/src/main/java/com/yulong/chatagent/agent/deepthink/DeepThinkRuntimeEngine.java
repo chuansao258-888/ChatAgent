@@ -98,9 +98,14 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                     truncate(plan.getGoal(), 50), plan.getSteps().size());
 
             agentState = AgentState.EXECUTING;
+            // Phase 5: share the same AgentToolExecutionEngine that ReAct uses,
+            // so tool/RAG semantics are identical across execution modes.
+            com.yulong.chatagent.agent.AgentToolExecutionEngine sharedToolEngine =
+                    new com.yulong.chatagent.agent.AgentToolExecutionEngine(
+                            availableTools, chatOptions, turnId, messageBridge);
             DeepThinkStepExecutor stepExecutor = new DeepThinkStepExecutor(
                     messageBridge, llmService, availableTools,
-                    policy.isExecutionModelDeepThinking(), promptLoader);
+                    policy.isExecutionModelDeepThinking(), promptLoader, sharedToolEngine);
 
             executePlannedSteps(plan, notebook, stepExecutor);
 

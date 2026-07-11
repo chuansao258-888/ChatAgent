@@ -39,17 +39,28 @@ public class DeepThinkStepExecutor {
     private final List<ToolCallback> availableTools;
     private final boolean deepThinking;
     private final PromptLoader promptLoader;
+    private final com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine;
 
     public DeepThinkStepExecutor(AgentMessageBridge messageBridge,
                                   LLMService llmService,
                                   List<ToolCallback> availableTools,
                                   boolean deepThinking,
                                   PromptLoader promptLoader) {
+        this(messageBridge, llmService, availableTools, deepThinking, promptLoader, null);
+    }
+
+    public DeepThinkStepExecutor(AgentMessageBridge messageBridge,
+                                  LLMService llmService,
+                                  List<ToolCallback> availableTools,
+                                  boolean deepThinking,
+                                  PromptLoader promptLoader,
+                                  com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine) {
         this.messageBridge = messageBridge;
         this.llmService = llmService;
         this.availableTools = availableTools;
         this.deepThinking = deepThinking;
         this.promptLoader = promptLoader;
+        this.toolExecutionEngine = toolExecutionEngine;
     }
 
     /**
@@ -200,12 +211,18 @@ public class DeepThinkStepExecutor {
 
     /**
      * 执行工具调用并返回 ToolResponseMessage。
+     * Phase 5: uses the shared AgentToolExecutionEngine when available;
+     * falls back to direct matching only when no shared engine is provided
+     * (backward compatibility for tests that construct the executor directly).
      */
     private ToolResponseMessage executeToolCalls(AssistantMessage assistantMessage) {
+        if (toolExecutionEngine != null) {
+            return toolExecutionEngine.executeToolCallsDirect(assistantMessage);
+        }
+        // Legacy fallback for tests that don't inject the shared engine.
         try {
             List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
             for (var toolCall : assistantMessage.getToolCalls()) {
-                // 查找匹配的工具
                 ToolCallback matchedTool = availableTools.stream()
                         .filter(tc -> tc.getToolDefinition().name().equals(toolCall.name()))
                         .findFirst()

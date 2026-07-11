@@ -101,6 +101,42 @@ public class AgentToolExecutionEngine {
                 .anyMatch(resp -> resp.name().equals("terminate"));
     }
 
+    /**
+     * Execute tool calls without touching ChatMemory. Used by DeepThink which
+     * manages its own local conversation history. This is the shared execution
+     * path — DeepThink must NOT call {@code ToolCallback.call()} directly.
+     *
+     * @param assistantMessage the model output containing tool calls
+     * @return the tool response message, or null if execution failed
+     */
+    public ToolResponseMessage executeToolCallsDirect(org.springframework.ai.chat.messages.AssistantMessage assistantMessage) {
+        if (assistantMessage == null || assistantMessage.getToolCalls() == null
+                || assistantMessage.getToolCalls().isEmpty()) {
+            return null;
+        }
+        try {
+            // Build a minimal ChatResponse so ToolCallingManager can process it.
+            ChatResponse chatResponse = new ChatResponse(List.of(
+                    new org.springframework.ai.chat.model.Generation(assistantMessage)));
+            Prompt prompt = Prompt.builder()
+                    .messages(List.of(assistantMessage))
+                    .chatOptions(this.chatOptions)
+                    .build();
+            ToolExecutionResult result = this.toolCallingManager.executeToolCalls(prompt, chatResponse);
+            var history = result.conversationHistory();
+            if (history != null && !history.isEmpty()) {
+                var last = history.get(history.size() - 1);
+                if (last instanceof ToolResponseMessage trm) {
+                    return trm;
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("Direct tool execution failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private List<ToolCallback> sanitizeToolCallbacks(List<ToolCallback> availableTools) {
         // 过滤掉没有工具定义或没有名称的 callback，避免 ToolCallingManager 初始化时报错。
         if (availableTools == null || availableTools.isEmpty()) {
