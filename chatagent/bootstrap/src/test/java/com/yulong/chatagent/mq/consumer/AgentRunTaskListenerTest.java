@@ -3,6 +3,8 @@ package com.yulong.chatagent.mq.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.yulong.chatagent.conversation.event.ChatEventProcessor;
+import com.yulong.chatagent.conversation.application.SessionRunCoordinator;
+import com.yulong.chatagent.conversation.application.SessionRunProperties;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.exception.BizException;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
@@ -330,6 +332,60 @@ class AgentRunTaskListenerTest {
         verify(chatEventProcessor, never()).process(any());
     }
 
+    @Test
+    void shouldUseLocalSessionFallbackWhenSessionRedisLockFails() throws Exception {
+        AgentRunTaskListener listener = newListenerWithSessionPolicy(SessionRunProperties.RedisFailurePolicy.LOCAL_FALLBACK);
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString()))
+                .thenThrow(new RuntimeException("Redis down"));
+        when(lockWatchdog.watch(any(), org.mockito.ArgumentMatchers.isNull())).thenReturn(() -> { });
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(chatEventProcessor).process(any());
+        verify(channel).basicAck(7L, false);
+    }
+
+    @Test
+    void shouldDelayRequeueWhenSessionRedisPolicyIsWait() throws Exception {
+        AgentRunTaskListener listener = newListenerWithSessionPolicy(SessionRunProperties.RedisFailurePolicy.WAIT);
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString()))
+                .thenThrow(new RuntimeException("Redis down"));
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(rabbitMqMessagePublisher).publish(anyString(), anyString(), any(), anyString());
+        verify(channel).basicAck(7L, false);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldRejectWhenSessionRedisPolicyIsReject() throws Exception {
+        AgentRunTaskListener listener = newListenerWithSessionPolicy(SessionRunProperties.RedisFailurePolicy.REJECT);
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString()))
+                .thenThrow(new RuntimeException("Redis down"));
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(channel).basicReject(7L, false);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
+    @Test
+    void shouldNackWhenSessionRedisPolicyIsFailFast() throws Exception {
+        AgentRunTaskListener listener = newListenerWithSessionPolicy(SessionRunProperties.RedisFailurePolicy.FAIL_FAST);
+        when(distributedLockManager.tryAcquire(any(), anyString())).thenReturn(acquiredLock());
+        when(distributedLockManager.acquireSessionExecLock(eq("session-1"), anyString()))
+                .thenThrow(new RuntimeException("Redis down"));
+
+        listener.handle(buildMessage(0, false), channel);
+
+        verify(channel).basicNack(7L, false, true);
+        verify(chatEventProcessor, never()).process(any());
+    }
+
     private AgentRunTaskListener newListener() {
         ChatAgentMqProperties properties = new ChatAgentMqProperties();
         properties.getDispatchers().setAgentRunEnabled(true);
@@ -347,6 +403,20 @@ class AgentRunTaskListenerTest {
                 chatSessionRepository,
                 capacityLimiter,
                 rateLimitProperties
+        );
+    }
+
+    private AgentRunTaskListener newListenerWithSessionPolicy(SessionRunProperties.RedisFailurePolicy policy) {
+        ChatAgentMqProperties properties = new ChatAgentMqProperties();
+        properties.getDispatchers().setAgentRunEnabled(true);
+        SessionRunProperties sessionProperties = new SessionRunProperties();
+        sessionProperties.setRedisFailurePolicy(policy);
+        lenient().when(capacityLimiter.tryAcquire(any()))
+                .thenReturn(CapacityGateResult.proceed(NoopPermit.instance()));
+        return new AgentRunTaskListener(
+                objectMapper, properties, rabbitMqMessagePublisher, distributedLockManager,
+                lockWatchdog, chatEventProcessor, chatSessionRepository, capacityLimiter,
+                rateLimitProperties, new SessionRunCoordinator(sessionProperties)
         );
     }
 

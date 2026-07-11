@@ -96,7 +96,6 @@ public class ChatAgentMqProperties {
         private int failedTtlMs = 3_600_000;
         private RedisFailurePolicy agentRunPolicy = RedisFailurePolicy.FAIL_OPEN;
         private RedisFailurePolicy ingestTaskPolicy = RedisFailurePolicy.FAIL_FAST;
-        private RedisFailurePolicy sessionExecPolicy = RedisFailurePolicy.FAIL_OPEN;
 
         public RedisFailurePolicy getPolicyForTask(String taskType) {
             if ("knowledge.ingest".equals(taskType)) {
@@ -108,12 +107,6 @@ public class ChatAgentMqProperties {
             return RedisFailurePolicy.FAIL_FAST;
         }
 
-        public RedisFailurePolicy getSessionExecPolicyForTask(String taskType) {
-            if ("agent.run".equals(taskType)) {
-                return sessionExecPolicy;
-            }
-            return RedisFailurePolicy.FAIL_FAST;
-        }
     }
 
     @Data

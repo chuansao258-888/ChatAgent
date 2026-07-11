@@ -1,6 +1,8 @@
 package com.yulong.chatagent.mq.consumer;
 
 import com.rabbitmq.client.Channel;
+import com.yulong.chatagent.conversation.application.SessionRunCoordinator;
+import com.yulong.chatagent.conversation.application.SessionRunProperties;
 import com.yulong.chatagent.mq.config.ChatAgentMqProperties;
 import com.yulong.chatagent.mq.lock.DistributedLockManager;
 import com.yulong.chatagent.mq.lock.LockWatchdog;
@@ -53,12 +55,13 @@ public abstract class AbstractRetryingMqConsumer<T> {
     private final LockWatchdog lockWatchdog;
     private final String ownerId;
     private final Clock clock;
+    private final SessionRunCoordinator sessionRunCoordinator;
 
     protected AbstractRetryingMqConsumer(ChatAgentMqProperties properties,
                                          RabbitMqMessagePublisher rabbitMqMessagePublisher,
                                          DistributedLockManager distributedLockManager,
                                          LockWatchdog lockWatchdog) {
-        this(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog, Clock.systemUTC());
+        this(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog, null, Clock.systemUTC());
     }
 
     AbstractRetryingMqConsumer(ChatAgentMqProperties properties,
@@ -66,11 +69,21 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                DistributedLockManager distributedLockManager,
                                LockWatchdog lockWatchdog,
                                Clock clock) {
+        this(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog, null, clock);
+    }
+
+    AbstractRetryingMqConsumer(ChatAgentMqProperties properties,
+                               RabbitMqMessagePublisher rabbitMqMessagePublisher,
+                               DistributedLockManager distributedLockManager,
+                               LockWatchdog lockWatchdog,
+                               SessionRunCoordinator sessionRunCoordinator,
+                               Clock clock) {
         this.properties = properties;
         this.rabbitMqMessagePublisher = rabbitMqMessagePublisher;
         this.distributedLockManager = distributedLockManager;
         this.lockWatchdog = lockWatchdog;
         this.clock = clock;
+        this.sessionRunCoordinator = sessionRunCoordinator;
         this.ownerId = consumerName() + ":" + UUID.randomUUID();
     }
 
@@ -88,9 +101,14 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 ChatAgentMqProperties.RedisFailurePolicy policy =
                         properties.getLocks().getPolicyForTask(identity.taskType());
                 if (policy == ChatAgentMqProperties.RedisFailurePolicy.FAIL_OPEN) {
-                    log.warn("Redis failure during tryAcquire, continuing without idempotency: taskType={}, eventId={}, error={}",
+                    log.warn("Redis failure during tryAcquire, continuing without idempotency and applying session-run policy: taskType={}, eventId={}, error={}",
                             identity.taskType(), identity.eventId(), acquisitionException.getMessage());
-                    handleOwnedMessage(message, channel, deliveryTag, identity, null, null);
+                    SessionAcquireResult sessionResult = acquireSessionExecLockOrHandle(
+                            message, channel, deliveryTag, identity, null);
+                    if (!sessionResult.handled()) {
+                        handleOwnedMessage(message, channel, deliveryTag, identity, null,
+                                sessionResult.redisLease(), sessionResult.localLease());
+                    }
                     return;
                 }
                 log.warn("Redis failure during tryAcquire, requeueing because policy is FAIL_FAST: taskType={}, eventId={}, error={}",
@@ -122,8 +140,8 @@ public abstract class AbstractRetryingMqConsumer<T> {
             if (sessionAcquireResult.handled()) {
                 return;
             }
-            MqSessionExecLockLease sessionLease = sessionAcquireResult.lease();
-            handleOwnedMessage(message, channel, deliveryTag, identity, taskLease, sessionLease);
+            handleOwnedMessage(message, channel, deliveryTag, identity, taskLease,
+                    sessionAcquireResult.redisLease(), sessionAcquireResult.localLease());
         } finally {
             TraceContext.clear();
         }
@@ -134,7 +152,8 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                     long deliveryTag,
                                     MqMessageIdentity identity,
                                     MqTaskLockLease lease,
-                                    MqSessionExecLockLease sessionLease) throws IOException {
+                                    MqSessionExecLockLease sessionLease,
+                                    SessionRunCoordinator.RunLease localSessionLease) throws IOException {
         T payload = null;
         // try-with-resources 确保无论成功/异常/return，最后都会 close watchdog registration，
         // close 内部会 future.cancel(false)，停止后续续租任务。
@@ -214,6 +233,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
             }
         } finally {
             safeReleaseSessionExecLock(sessionLease);
+            safeReleaseLocalSessionLease(localSessionLease);
         }
     }
 
@@ -477,7 +497,7 @@ public abstract class AbstractRetryingMqConsumer<T> {
                                                                 MqMessageIdentity identity,
                                                                 MqTaskLockLease taskLease) throws IOException {
         if (!requiresSessionExecutionLock(identity)) {
-            return new SessionAcquireResult(false, null);
+            return new SessionAcquireResult(false, null, null);
         }
         try {
             MqSessionExecLockAcquisition acquisition =
@@ -486,22 +506,39 @@ public abstract class AbstractRetryingMqConsumer<T> {
                 // 同一个 session 已有 Agent 正在跑。这里不能并发执行，否则消息落库/上下文读取会乱序。
                 safeReleaseTaskLockForWait(identity, taskLease);
                 requeueWithDelay(originalMessage, channel, deliveryTag, identity, "session execution lock is busy");
-                return new SessionAcquireResult(true, null);
+                return new SessionAcquireResult(true, null, null);
             }
-            return new SessionAcquireResult(false, acquisition.lease());
+            return new SessionAcquireResult(false, acquisition.lease(), null);
         } catch (Exception acquisitionException) {
-            ChatAgentMqProperties.RedisFailurePolicy policy =
-                    properties.getLocks().getSessionExecPolicyForTask(identity.taskType());
-            if (policy == ChatAgentMqProperties.RedisFailurePolicy.FAIL_OPEN) {
-                log.warn("Redis failure during session-exec acquire, continuing without session serialization: taskType={}, eventId={}, sessionId={}, error={}",
-                        identity.taskType(), identity.eventId(), identity.sessionId(), acquisitionException.getMessage());
-                return new SessionAcquireResult(false, null);
+            if (sessionRunCoordinator == null) {
+                safeReleaseTaskLockForWait(identity, taskLease);
+                channel.basicNack(deliveryTag, false, true);
+                return new SessionAcquireResult(true, null, null);
+            }
+            SessionRunProperties.RedisFailurePolicy policy = sessionRunCoordinator.redisFailurePolicy();
+            sessionRunCoordinator.recordRedisFailurePolicy(policy);
+            log.warn("Redis failure during session-exec acquire; applying {}: taskType={}, eventId={}, sessionId={}, error={}",
+                    policy, identity.taskType(), identity.eventId(), identity.sessionId(), acquisitionException.getMessage());
+            if (policy == SessionRunProperties.RedisFailurePolicy.LOCAL_FALLBACK) {
+                SessionRunCoordinator.RunLease localLease = sessionRunCoordinator.acquire(identity.sessionId());
+                if (localLease != null) {
+                    return new SessionAcquireResult(false, null, localLease);
+                }
+                safeReleaseTaskLockForWait(identity, taskLease);
+                requeueWithDelay(originalMessage, channel, deliveryTag, identity,
+                        "local session fallback is busy");
+                return new SessionAcquireResult(true, null, null);
             }
             safeReleaseTaskLockForWait(identity, taskLease);
-            log.warn("Redis failure during session-exec acquire, requeueing because policy is FAIL_FAST: taskType={}, eventId={}, sessionId={}, error={}",
-                    identity.taskType(), identity.eventId(), identity.sessionId(), acquisitionException.getMessage());
-            channel.basicNack(deliveryTag, false, true);
-            return new SessionAcquireResult(true, null);
+            if (policy == SessionRunProperties.RedisFailurePolicy.WAIT) {
+                requeueWithDelay(originalMessage, channel, deliveryTag, identity,
+                        "session execution lock unavailable");
+            } else if (policy == SessionRunProperties.RedisFailurePolicy.REJECT) {
+                channel.basicReject(deliveryTag, false);
+            } else {
+                channel.basicNack(deliveryTag, false, true);
+            }
+            return new SessionAcquireResult(true, null, null);
         }
     }
 
@@ -584,6 +621,12 @@ public abstract class AbstractRetryingMqConsumer<T> {
         }
     }
 
+    private void safeReleaseLocalSessionLease(SessionRunCoordinator.RunLease lease) {
+        if (lease != null) {
+            lease.close();
+        }
+    }
+
     @FunctionalInterface
     private interface FailureHook {
         void run() throws Exception;
@@ -624,6 +667,8 @@ public abstract class AbstractRetryingMqConsumer<T> {
         }
     }
 
-    private record SessionAcquireResult(boolean handled, MqSessionExecLockLease lease) {
+    private record SessionAcquireResult(boolean handled,
+                                        MqSessionExecLockLease redisLease,
+                                        SessionRunCoordinator.RunLease localLease) {
     }
 }

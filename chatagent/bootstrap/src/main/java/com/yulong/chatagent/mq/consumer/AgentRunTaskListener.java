@@ -3,6 +3,7 @@ package com.yulong.chatagent.mq.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.yulong.chatagent.conversation.event.ChatEvent;
+import com.yulong.chatagent.conversation.application.SessionRunCoordinator;
 import com.yulong.chatagent.conversation.event.ChatEventProcessor;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.exception.ClientException;
@@ -50,10 +51,25 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                                 ChatEventProcessor chatEventProcessor,
                                 ChatSessionRepository chatSessionRepository,
                                 AgentRunCapacityLimiter capacityLimiter,
-                                RateLimitProperties rateLimitProperties) {
+                                RateLimitProperties rateLimitProperties,
+                                SessionRunCoordinator sessionRunCoordinator) {
         this(objectMapper, properties, rabbitMqMessagePublisher, distributedLockManager,
                 lockWatchdog, chatEventProcessor, chatSessionRepository, capacityLimiter,
-                rateLimitProperties, java.time.Clock.systemUTC());
+                rateLimitProperties, sessionRunCoordinator, java.time.Clock.systemUTC());
+    }
+
+    AgentRunTaskListener(ObjectMapper objectMapper,
+                         ChatAgentMqProperties properties,
+                         RabbitMqMessagePublisher rabbitMqMessagePublisher,
+                         DistributedLockManager distributedLockManager,
+                         LockWatchdog lockWatchdog,
+                         ChatEventProcessor chatEventProcessor,
+                         ChatSessionRepository chatSessionRepository,
+                         AgentRunCapacityLimiter capacityLimiter,
+                         RateLimitProperties rateLimitProperties) {
+        this(objectMapper, properties, rabbitMqMessagePublisher, distributedLockManager,
+                lockWatchdog, chatEventProcessor, chatSessionRepository, capacityLimiter,
+                rateLimitProperties, defaultSessionRunCoordinator(), java.time.Clock.systemUTC());
     }
 
     AgentRunTaskListener(ObjectMapper objectMapper,
@@ -66,13 +82,34 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
                          AgentRunCapacityLimiter capacityLimiter,
                          RateLimitProperties rateLimitProperties,
                          java.time.Clock clock) {
-        super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog, clock);
+        this(objectMapper, properties, rabbitMqMessagePublisher, distributedLockManager,
+                lockWatchdog, chatEventProcessor, chatSessionRepository, capacityLimiter,
+                rateLimitProperties, defaultSessionRunCoordinator(), clock);
+    }
+
+    AgentRunTaskListener(ObjectMapper objectMapper,
+                         ChatAgentMqProperties properties,
+                         RabbitMqMessagePublisher rabbitMqMessagePublisher,
+                         DistributedLockManager distributedLockManager,
+                         LockWatchdog lockWatchdog,
+                         ChatEventProcessor chatEventProcessor,
+                         ChatSessionRepository chatSessionRepository,
+                         AgentRunCapacityLimiter capacityLimiter,
+                         RateLimitProperties rateLimitProperties,
+                         SessionRunCoordinator sessionRunCoordinator,
+                         java.time.Clock clock) {
+        super(properties, rabbitMqMessagePublisher, distributedLockManager, lockWatchdog,
+                sessionRunCoordinator, clock);
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.chatEventProcessor = chatEventProcessor;
         this.chatSessionRepository = chatSessionRepository;
         this.capacityLimiter = capacityLimiter;
         this.rateLimitProperties = rateLimitProperties;
+    }
+
+    private static SessionRunCoordinator defaultSessionRunCoordinator() {
+        return new SessionRunCoordinator(new com.yulong.chatagent.conversation.application.SessionRunProperties());
     }
 
     @RabbitListener(

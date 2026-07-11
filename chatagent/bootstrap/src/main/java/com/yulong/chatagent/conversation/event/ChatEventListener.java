@@ -45,24 +45,22 @@ public class ChatEventListener {
         }
         CapacityGateResult.Proceed proceed = (CapacityGateResult.Proceed) capacityResult;
         try (Permit ignored = proceed.permit()) {
-            // Phase 6: serialize same-session turns on the local path.
-            // The MQ path already has Redis-based session-exec-lock.
-            boolean lockAcquired = sessionRunCoordinator.acquire(event.getSessionId());
-            if (!lockAcquired) {
+            // Phase 6: the shared coordinator serializes local turns and also
+            // supplies the MQ path's configured Redis-down local fallback.
+            SessionRunCoordinator.RunLease sessionLease = sessionRunCoordinator.acquire(event.getSessionId());
+            if (sessionLease == null) {
                 log.warn("Session run lock not acquired, rejecting: sessionId={}, turnId={}",
                         event.getSessionId(), event.getTurnId());
                 chatEventProcessor.publishFailure(event,
                         new IllegalStateException("Session is busy, please wait"));
                 return;
             }
-            try {
+            try (sessionLease) {
                 chatEventProcessor.process(event);
             } catch (Exception ex) {
                 log.error("Failed to process chat event: agentId={}, sessionId={}, userMessageId={}",
                         event.getAgentId(), event.getSessionId(), event.getChatMessageId(), ex);
                 chatEventProcessor.publishFailure(event, ex);
-            } finally {
-                sessionRunCoordinator.release(event.getSessionId());
             }
         }
     }

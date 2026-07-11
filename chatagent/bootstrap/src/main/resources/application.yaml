@@ -183,6 +183,10 @@ chatagent:
       recent-context-max-chars: ${CHATAGENT_INTENT_RECENT_CONTEXT_MAX_CHARS:4000}
       max-clarification-attempts: ${CHATAGENT_INTENT_MAX_CLARIFICATION_ATTEMPTS:2}
   agent:
+    session-run:
+      local-serialization-enabled: ${CHATAGENT_AGENT_LOCAL_SESSION_SERIALIZATION_ENABLED:true}
+      local-acquire-timeout-ms: ${CHATAGENT_AGENT_LOCAL_SESSION_ACQUIRE_TIMEOUT_MS:120000}
+      redis-failure-policy: ${CHATAGENT_AGENT_SESSION_RUN_REDIS_FAILURE_POLICY:local-fallback}
     turn-contract:
       enabled: ${CHATAGENT_AGENT_TURN_CONTRACT_ENABLED:true}
       retrieval-enforcement: ${CHATAGENT_AGENT_RETRIEVAL_ENFORCEMENT:enforce}
@@ -329,7 +333,6 @@ chatagent:
       failed-ttl-ms: 3600000
       agent-run-policy: FAIL_OPEN
       ingest-task-policy: FAIL_FAST
-      session-exec-policy: FAIL_OPEN
     dispatchers:
       agent-run-enabled: true
   session-guard:
