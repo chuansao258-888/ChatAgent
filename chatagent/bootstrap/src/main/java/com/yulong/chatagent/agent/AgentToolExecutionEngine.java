@@ -7,12 +7,9 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.resolution.StaticToolCallbackResolver;
 import org.springframework.util.Assert;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -26,7 +23,7 @@ import java.util.stream.Collectors;
  */
 public class AgentToolExecutionEngine {
 
-    private final ToolCallingManager toolCallingManager;
+    private final AgentToolExecutionCoordinator coordinator;
     private final ChatOptions chatOptions;
     private final String turnId;
     private final AgentMessageBridge messageBridge;
@@ -35,11 +32,7 @@ public class AgentToolExecutionEngine {
                              ChatOptions chatOptions,
                              String turnId,
                              AgentMessageBridge messageBridge) {
-        this.toolCallingManager = ToolCallingManager.builder()
-                .toolCallbackResolver(new StaticToolCallbackResolver(
-                        sanitizeToolCallbacks(availableTools)
-                ))
-                .build();
+        this.coordinator = new AgentToolExecutionCoordinator(availableTools);
         this.chatOptions = chatOptions;
         this.turnId = turnId;
         this.messageBridge = messageBridge;
@@ -69,7 +62,7 @@ public class AgentToolExecutionEngine {
                 .chatOptions(this.chatOptions)
                 .build();
 
-        ToolExecutionResult toolExecutionResult = this.toolCallingManager.executeToolCalls(prompt, chatResponse);
+        ToolExecutionResult toolExecutionResult = this.coordinator.execute(prompt, chatResponse);
 
         // 采用“全量替换”而不是手动 append：Spring AI 返回的 history 已经保证
         // assistant tool_call 与 tool_response 的顺序和配对关系正确。
@@ -110,42 +103,6 @@ public class AgentToolExecutionEngine {
      * @return the tool response message, or null if execution failed
      */
     public ToolResponseMessage executeToolCallsDirect(org.springframework.ai.chat.messages.AssistantMessage assistantMessage) {
-        if (assistantMessage == null || assistantMessage.getToolCalls() == null
-                || assistantMessage.getToolCalls().isEmpty()) {
-            return null;
-        }
-        try {
-            // Build a minimal ChatResponse so ToolCallingManager can process it.
-            ChatResponse chatResponse = new ChatResponse(List.of(
-                    new org.springframework.ai.chat.model.Generation(assistantMessage)));
-            Prompt prompt = Prompt.builder()
-                    .messages(List.of(assistantMessage))
-                    .chatOptions(this.chatOptions)
-                    .build();
-            ToolExecutionResult result = this.toolCallingManager.executeToolCalls(prompt, chatResponse);
-            var history = result.conversationHistory();
-            if (history != null && !history.isEmpty()) {
-                var last = history.get(history.size() - 1);
-                if (last instanceof ToolResponseMessage trm) {
-                    return trm;
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            log.warn("Direct tool execution failed: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private List<ToolCallback> sanitizeToolCallbacks(List<ToolCallback> availableTools) {
-        // 过滤掉没有工具定义或没有名称的 callback，避免 ToolCallingManager 初始化时报错。
-        if (availableTools == null || availableTools.isEmpty()) {
-            return List.of();
-        }
-        return availableTools.stream()
-                .filter(callback -> callback != null
-                        && callback.getToolDefinition() != null
-                        && StringUtils.hasText(callback.getToolDefinition().name()))
-                .toList();
+        return coordinator.executeDirect(assistantMessage, chatOptions);
     }
 }

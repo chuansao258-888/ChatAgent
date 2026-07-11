@@ -1,13 +1,8 @@
 package com.yulong.chatagent.agent;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
-import com.yulong.chatagent.agent.runtime.contract.QuerySpec;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
-import com.yulong.chatagent.agent.runtime.contract.RetrievalRoutePlan;
-import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
 import com.yulong.chatagent.chat.routing.LLMService;
@@ -35,7 +30,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -93,7 +87,8 @@ public class AgentThinkingEngine {
             "(?i)^(?:operations?|ops|status|note|project|vendor|owner|locker|room|meeting|schedule|file|document|knowledge|memory|tool|database|mcp|rag|evidence|citation|report|summary)"
                     + "(?:\\s+(?:operations?|ops|status|note|project|vendor|owner|locker|room|meeting|schedule|file|document|knowledge|memory|tool|database|mcp|rag|evidence|citation|report|summary)){0,2}$"
     );
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final RetrievalToolCallPlanner RETRIEVAL_CALL_PLANNER =
+            new RetrievalToolCallPlanner();
 
     private final PromptLoader promptLoader;
     private final LLMService llmService;
@@ -297,80 +292,14 @@ public class AgentThinkingEngine {
             return null;
         }
 
-        List<MandatoryRetrievalQuery> queries = mandatoryRetrievalQueries(latestUserText);
-        int toolCallBudget = Math.max(maxToolCallsPerStep, 1);
-        if (queries.size() > toolCallBudget) {
-            throw new IllegalStateException(
-                    "Contract retrieval routes exceed the per-step tool-call budget");
-        }
-        List<AssistantMessage.ToolCall> toolCalls = queries.stream()
-                .map(this::sessionFileToolCall)
-                .toList();
+        List<AssistantMessage.ToolCall> toolCalls = RETRIEVAL_CALL_PLANNER.plan(
+                requiresRetrieval() ? executionContract : null,
+                latestUserText,
+                maxToolCallsPerStep);
         return AssistantMessage.builder()
                 .content("")
                 .toolCalls(toolCalls)
                 .build();
-    }
-
-    private List<MandatoryRetrievalQuery> mandatoryRetrievalQueries(String latestUserText) {
-        if (!requiresRetrieval() || executionContract.queryPlan() == null) {
-            return List.of(new MandatoryRetrievalQuery(latestUserText, null));
-        }
-        if (executionContract.retrieval() != null
-                && !executionContract.retrieval().routes().isEmpty()) {
-            List<QuerySpec> specs = executionContract.queryPlan().queries();
-            List<MandatoryRetrievalQuery> planned = new ArrayList<>();
-            for (RetrievalRoutePlan route : executionContract.retrieval().routes()) {
-                if (route.queryIndex() < 0 || route.queryIndex() >= specs.size()) {
-                    throw new IllegalStateException("Contract retrieval route references an invalid query");
-                }
-                QuerySpec spec = specs.get(route.queryIndex());
-                if (spec == null || !isRagSource(spec.source()) || spec.source() != route.source()
-                        || !StringUtils.hasText(spec.text())) {
-                    throw new IllegalStateException("Contract retrieval route does not match its query plan");
-                }
-                planned.add(new MandatoryRetrievalQuery(spec.text().trim(), route.key()));
-            }
-            if (!planned.isEmpty()) {
-                return List.copyOf(planned);
-            }
-        }
-        List<MandatoryRetrievalQuery> planned = executionContract.queryPlan().queries().stream()
-                .filter(Objects::nonNull)
-                .filter(query -> isRagSource(query.source()))
-                .filter(query -> StringUtils.hasText(query.text()))
-                .map(query -> new MandatoryRetrievalQuery(query.text().trim(), null))
-                .toList();
-        return planned.isEmpty()
-                ? List.of(new MandatoryRetrievalQuery(latestUserText, null))
-                : planned;
-    }
-
-    private AssistantMessage.ToolCall sessionFileToolCall(MandatoryRetrievalQuery request) {
-        try {
-            Map<String, String> argumentsMap = StringUtils.hasText(request.routeKey())
-                    ? Map.of("query", request.query(), "routeKey", request.routeKey())
-                    : Map.of("query", request.query());
-            String arguments = OBJECT_MAPPER.writeValueAsString(argumentsMap);
-            return new AssistantMessage.ToolCall(
-                    "session-file-" + UUID.randomUUID(),
-                    "function",
-                    SESSION_FILE_SEARCH_TOOL,
-                    arguments
-            );
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to serialize mandatory retrieval query", exception);
-        }
-    }
-
-    private record MandatoryRetrievalQuery(String query, String routeKey) {
-    }
-
-    private boolean isRagSource(RetrievalSource source) {
-        return source == RetrievalSource.SESSION_FILES
-                || source == RetrievalSource.INTENT_KB
-                || source == RetrievalSource.AGENT_DEFAULT_KB
-                || source == RetrievalSource.MIXED_SESSION_AND_KB;
     }
 
     private List<AssistantMessage.ToolCall> suppressUnsupportedSessionFileSearchCalls(

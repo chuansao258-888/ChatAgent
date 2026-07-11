@@ -45,14 +45,6 @@ public class DeepThinkStepExecutor {
                                   LLMService llmService,
                                   List<ToolCallback> availableTools,
                                   boolean deepThinking,
-                                  PromptLoader promptLoader) {
-        this(messageBridge, llmService, availableTools, deepThinking, promptLoader, null);
-    }
-
-    public DeepThinkStepExecutor(AgentMessageBridge messageBridge,
-                                  LLMService llmService,
-                                  List<ToolCallback> availableTools,
-                                  boolean deepThinking,
                                   PromptLoader promptLoader,
                                   com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine) {
         this.messageBridge = messageBridge;
@@ -60,7 +52,8 @@ public class DeepThinkStepExecutor {
         this.availableTools = availableTools;
         this.deepThinking = deepThinking;
         this.promptLoader = promptLoader;
-        this.toolExecutionEngine = toolExecutionEngine;
+        this.toolExecutionEngine = java.util.Objects.requireNonNull(
+                toolExecutionEngine, "shared tool execution engine is required");
     }
 
     /**
@@ -211,41 +204,11 @@ public class DeepThinkStepExecutor {
 
     /**
      * 执行工具调用并返回 ToolResponseMessage。
-     * Phase 5: uses the shared AgentToolExecutionEngine when available;
-     * falls back to direct matching only when no shared engine is provided
-     * (backward compatibility for tests that construct the executor directly).
+     * Phase 5: uses the shared Spring-AI execution coordinator through
+     * AgentToolExecutionEngine; no direct ToolCallback.call path remains.
      */
     private ToolResponseMessage executeToolCalls(AssistantMessage assistantMessage) {
-        if (toolExecutionEngine != null) {
-            return toolExecutionEngine.executeToolCallsDirect(assistantMessage);
-        }
-        // Legacy fallback for tests that don't inject the shared engine.
-        try {
-            List<ToolResponseMessage.ToolResponse> responses = new ArrayList<>();
-            for (var toolCall : assistantMessage.getToolCalls()) {
-                ToolCallback matchedTool = availableTools.stream()
-                        .filter(tc -> tc.getToolDefinition().name().equals(toolCall.name()))
-                        .findFirst()
-                        .orElse(null);
-
-                if (matchedTool != null) {
-                    String result = matchedTool.call(toolCall.arguments());
-                    responses.add(new ToolResponseMessage.ToolResponse(
-                            toolCall.id(), toolCall.name(), result));
-                } else {
-                    log.warn("No matching tool found for: {}", toolCall.name());
-                    responses.add(new ToolResponseMessage.ToolResponse(
-                            toolCall.id(), toolCall.name(),
-                            "Error: tool '" + toolCall.name() + "' not found"));
-                }
-            }
-            return ToolResponseMessage.builder()
-                    .responses(responses)
-                    .build();
-        } catch (Exception e) {
-            log.warn("Tool execution failed for step: {}", e.getMessage());
-            return null;
-        }
+        return toolExecutionEngine.executeToolCallsDirect(assistantMessage);
     }
 
     /**

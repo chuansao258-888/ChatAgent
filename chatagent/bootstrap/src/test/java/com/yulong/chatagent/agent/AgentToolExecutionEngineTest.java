@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -120,6 +121,61 @@ class AgentToolExecutionEngineTest {
                 .containsEntry("turnId", "turn-1");
     }
 
+    @Test
+    void shouldPropagateTheSameToolContextThroughDirectDeepThinkExecution() {
+        AtomicReference<ToolContext> seenContext = new AtomicReference<>();
+        ToolCallback callback = new CapturingToolCallback(seenContext);
+        AgentToolExecutionEngine executionEngine = new AgentToolExecutionEngine(
+                List.of(callback),
+                DefaultToolCallingChatOptions.builder()
+                        .internalToolExecutionEnabled(false)
+                        .toolContext(Map.of(
+                                "userId", "user-1",
+                                "sessionId", "session-1",
+                                "turnId", "turn-1"))
+                        .build(),
+                "turn-1",
+                mock(AgentMessageBridge.class));
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "call-1", "function", "mcp_google_search", "{\"query\":\"status\"}")))
+                .build();
+
+        ToolResponseMessage response = executionEngine.executeToolCallsDirect(assistant);
+
+        assertThat(response.getResponses()).singleElement()
+                .satisfies(item -> assertThat(item.name()).isEqualTo("mcp_google_search"));
+        assertThat(seenContext.get().getContext())
+                .containsEntry("userId", "user-1")
+                .containsEntry("sessionId", "session-1")
+                .containsEntry("turnId", "turn-1");
+    }
+
+    @Test
+    void shouldMapDirectToolFailureToStableSharedException() {
+        ToolCallback failing = new CapturingToolCallback(new AtomicReference<>()) {
+            @Override
+            public String call(String toolInput, ToolContext toolContext) {
+                throw new IllegalStateException("provider detail");
+            }
+        };
+        AgentToolExecutionEngine executionEngine = new AgentToolExecutionEngine(
+                List.of(failing),
+                DefaultToolCallingChatOptions.builder().internalToolExecutionEnabled(false).build(),
+                "turn-1",
+                mock(AgentMessageBridge.class));
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "call-1", "function", "mcp_google_search", "{\"query\":\"status\"}")))
+                .build();
+
+        assertThatThrownBy(() -> executionEngine.executeToolCallsDirect(assistant))
+                .isInstanceOf(ToolExecutionException.class)
+                .hasMessage("Tool execution failed");
+    }
+
     static final class TestDateTool {
 
         @org.springframework.ai.tool.annotation.Tool(name = "getDate", description = "Return the current date.")
@@ -128,7 +184,7 @@ class AgentToolExecutionEngineTest {
         }
     }
 
-    private static final class CapturingToolCallback implements ToolCallback {
+    private static class CapturingToolCallback implements ToolCallback {
 
         private final AtomicReference<ToolContext> seenContext;
         private final ToolDefinition toolDefinition = ToolDefinition.builder()

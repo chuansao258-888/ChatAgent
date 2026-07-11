@@ -1,6 +1,7 @@
 package com.yulong.chatagent.agent.deepthink;
 
 import com.yulong.chatagent.agent.AgentMessageBridge;
+import com.yulong.chatagent.agent.AgentToolExecutionEngine;
 import com.yulong.chatagent.agent.DecisionVisibility;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
@@ -16,6 +17,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -46,7 +48,8 @@ class DeepThinkStepExecutorTest {
     void setUp() {
         tools = List.of(mockToolCallback("knowledgeQuery"));
         when(promptLoader.render(anyString(), any())).thenReturn("rendered step prompt");
-        executor = new DeepThinkStepExecutor(messageBridge, llmService, tools, false, promptLoader);
+        executor = new DeepThinkStepExecutor(
+                messageBridge, llmService, tools, false, promptLoader, toolEngine(tools));
     }
 
     @Test
@@ -159,7 +162,7 @@ class DeepThinkStepExecutorTest {
                 mockToolCallback("toolB"),
                 mockToolCallback("toolC"));
         DeepThinkStepExecutor multiExecutor = new DeepThinkStepExecutor(
-                messageBridge, llmService, multiTools, false, promptLoader);
+                messageBridge, llmService, multiTools, false, promptLoader, toolEngine(multiTools));
 
         DeepThinkPlanStep step = DeepThinkPlanStep.builder()
                 .id("S1").title("多工具").objective("调用多个工具")
@@ -275,5 +278,15 @@ class DeepThinkStepExecutorTest {
         );
         lenient().when(callback.call(any())).thenReturn("tool result");
         return callback;
+    }
+
+    private AgentToolExecutionEngine toolEngine(List<ToolCallback> callbacks) {
+        return new AgentToolExecutionEngine(
+                callbacks,
+                DefaultToolCallingChatOptions.builder()
+                        .internalToolExecutionEnabled(false)
+                        .build(),
+                "turn-1",
+                messageBridge);
     }
 }

@@ -4,17 +4,22 @@ import com.yulong.chatagent.agent.AgentMessageBridge;
 import com.yulong.chatagent.agent.AgentRunException;
 import com.yulong.chatagent.agent.AgentRunResult;
 import com.yulong.chatagent.agent.AgentState;
+import com.yulong.chatagent.agent.RetrievalToolCallPlanner;
+import com.yulong.chatagent.agent.ToolExecutionException;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.agent.runtime.AgentRunContext;
 import com.yulong.chatagent.agent.runtime.AgentRunPolicy;
 import com.yulong.chatagent.agent.runtime.AgentRuntimeEngine;
 import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.ReactRuntimeEngine;
+import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -103,6 +108,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
             com.yulong.chatagent.agent.AgentToolExecutionEngine sharedToolEngine =
                     new com.yulong.chatagent.agent.AgentToolExecutionEngine(
                             availableTools, chatOptions, turnId, messageBridge);
+            executeMandatoryRetrieval(context, notebook, sharedToolEngine, userQuestion);
             DeepThinkStepExecutor stepExecutor = new DeepThinkStepExecutor(
                     messageBridge, llmService, availableTools,
                     policy.isExecutionModelDeepThinking(), promptLoader, sharedToolEngine);
@@ -158,6 +164,52 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                     AgentRunResult.failure(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), e)
             );
         }
+    }
+
+    private void executeMandatoryRetrieval(
+            AgentRunContext context,
+            DeepThinkNotebook notebook,
+            com.yulong.chatagent.agent.AgentToolExecutionEngine sharedToolEngine,
+            String userQuestion) {
+        if (context.executionContract() == null
+                || context.executionContract().retrieval() == null
+                || context.executionContract().retrieval().mode()
+                != RetrievalMode.REQUIRED_BEFORE_ANSWER) {
+            return;
+        }
+        boolean retrievalToolAvailable = availableTools.stream()
+                .map(ToolCallback::getToolDefinition)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(definition -> RetrievalToolCallPlanner.TOOL_NAME.equals(definition.name()));
+        if (!retrievalToolAvailable) {
+            throw new ToolExecutionException(
+                    "Contract requires retrieval but SessionFileSearchTool is not available");
+        }
+        int remainingBudget = policy.getMaxTotalToolCalls() > 0
+                ? policy.getMaxTotalToolCalls() - notebook.getTotalToolCalls()
+                : Integer.MAX_VALUE;
+        List<AssistantMessage.ToolCall> calls = new RetrievalToolCallPlanner().plan(
+                context.executionContract(), userQuestion, remainingBudget);
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(calls)
+                .build();
+        ToolResponseMessage response = sharedToolEngine.executeToolCallsDirect(assistant);
+        messageBridge.persistInternalToolResponses(
+                chatSessionId, turnId, response, "EXECUTE", "R0");
+        for (AssistantMessage.ToolCall call : calls) {
+            notebook.recordToolUsage(call.name(), 1);
+        }
+        String observation = response.getResponses().stream()
+                .map(ToolResponseMessage.ToolResponse::responseData)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        notebook.recordStepCompletion(
+                DeepThinkPlanStep.builder()
+                        .id("R0")
+                        .title("Contract retrieval")
+                        .objective("Collect required contract evidence")
+                        .build(),
+                truncate(observation, 200));
     }
 
     private void executePlannedSteps(DeepThinkPlan plan,
