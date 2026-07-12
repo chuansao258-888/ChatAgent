@@ -1,6 +1,7 @@
 package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
+import com.yulong.chatagent.conversation.model.ChatMessageVisibility;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -51,6 +52,14 @@ public class TurnBasedContextExtractor {
         return groupIntoTurns(pendingMessages);
     }
 
+    /** Reloads a committed range for durable L3 processing. */
+    public List<AtomicConversationTurn> extractTurnsInRange(String sessionId,
+                                                             long startExclusiveSeqNo,
+                                                             long endInclusiveSeqNo) {
+        return groupIntoTurns(chatMessageRepository.findBySessionIdAndSeqRange(
+                sessionId, startExclusiveSeqNo, endInclusiveSeqNo));
+    }
+
     private List<AtomicConversationTurn> groupIntoTurns(List<ChatMessageDTO> messages) {
         if (messages.isEmpty()) {
             return List.of();
@@ -58,6 +67,9 @@ public class TurnBasedContextExtractor {
 
         Map<String, List<ChatMessageDTO>> grouped = new LinkedHashMap<>();
         for (ChatMessageDTO message : messages) {
+            if (ChatMessageVisibility.isInternal(message)) {
+                continue;
+            }
             if (!StringUtils.hasText(message.getTurnId())) {
                 continue;
             }

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.MemoryPromotionJobMapper">
+
+    <resultMap id="BaseResultMap" type="com.yulong.chatagent.support.dto.MemoryPromotionJobDTO">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="userId" column="user_id" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="seqStartNo" column="seq_start_no" jdbcType="BIGINT"/>
+        <result property="seqEndNo" column="seq_end_no" jdbcType="BIGINT"/>
+        <result property="status" column="status" jdbcType="VARCHAR"/>
+        <result property="attempts" column="attempts" jdbcType="INTEGER"/>
+        <result property="nextAttemptAt" column="next_attempt_at" jdbcType="TIMESTAMP"/>
+        <result property="processingStartedAt" column="processing_started_at" jdbcType="TIMESTAMP"/>
+        <result property="lastError" column="last_error" jdbcType="VARCHAR"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <insert id="insertPendingForSession">
+        INSERT INTO memory_promotion_job (
+            user_id, session_id, seq_start_no, seq_end_no, status,
+            attempts, next_attempt_at, created_at, updated_at
+        )
+        SELECT user_id, id, #{seqStartNo}, #{seqEndNo}, 'pending',
+               0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        FROM chat_session
+        WHERE id = #{sessionId}
+        ON CONFLICT ON CONSTRAINT uk_memory_promotion_job_range DO NOTHING
+    </insert>
+
+    <select id="claimNextDue" resultMap="BaseResultMap">
+        WITH candidate AS (
+            SELECT id
+            FROM memory_promotion_job
+            WHERE status = 'pending'
+              AND next_attempt_at &lt;= #{now}
+            ORDER BY next_attempt_at, created_at
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE memory_promotion_job job
+        SET status = 'processing',
+            attempts = attempts + 1,
+            processing_started_at = #{now},
+            updated_at = #{now}
+        FROM candidate
+        WHERE job.id = candidate.id
+        RETURNING job.id::text, job.user_id::text, job.session_id,
+                  job.seq_start_no, job.seq_end_no, job.status, job.attempts,
+                  job.next_attempt_at, job.processing_started_at, job.last_error,
+                  job.created_at, job.updated_at
+    </select>
+
+    <update id="markCompleted">
+        UPDATE memory_promotion_job
+        SET status = 'completed', processing_started_at = NULL,
+            last_error = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid) AND status = 'processing'
+    </update>
+
+    <update id="markRetry">
+        UPDATE memory_promotion_job
+        SET status = 'pending', next_attempt_at = #{nextAttemptAt},
+            processing_started_at = NULL, last_error = #{lastError},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid) AND status = 'processing'
+    </update>
+
+    <update id="markFailed">
+        UPDATE memory_promotion_job
+        SET status = 'failed', processing_started_at = NULL,
+            last_error = #{lastError}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid) AND status = 'processing'
+    </update>
+
+    <update id="reclaimStale">
+        UPDATE memory_promotion_job
+        SET status = 'pending', processing_started_at = NULL,
+            next_attempt_at = CURRENT_TIMESTAMP,
+            last_error = 'stale processing claim reclaimed',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE status = 'processing'
+          AND processing_started_at &lt; #{processingStartedBefore}
+    </update>
+
+    <select id="countBacklog" resultType="long">
+        SELECT COUNT(*)
+        FROM memory_promotion_job
+        WHERE status IN ('pending', 'processing', 'failed')
+    </select>
+</mapper>

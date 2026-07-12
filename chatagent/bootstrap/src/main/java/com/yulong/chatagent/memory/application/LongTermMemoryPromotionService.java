@@ -1,19 +1,14 @@
 package com.yulong.chatagent.memory.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
-import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
-import com.yulong.chatagent.memory.port.MemoryExtractionLogRepository;
 import com.yulong.chatagent.memory.port.MemoryItemRepository;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
-import com.yulong.chatagent.support.dto.ChatSessionDTO;
-import com.yulong.chatagent.support.dto.MemoryExtractionLogDTO;
+import com.yulong.chatagent.support.dto.MemoryPromotionJobDTO;
 import com.yulong.chatagent.support.dto.MemoryItemDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,42 +17,33 @@ import java.util.Map;
 /**
  * Handles L3 long-term memory promotion after L2 summarization.
  *
- * <p>For each completed L2 batch, this service:
+ * <p>For each claimed durable promotion job, this service:
  * <ol>
- *     <li>Resolves the user from the session (skips if no user).</li>
- *     <li>Checks extraction log idempotency — duplicate ranges are skipped.</li>
- *     <li>Inserts an extraction log with status "processing".</li>
- *     <li>Calls the LLM extractor to get memory candidates.</li>
+ *     <li>Uses the trusted user/session/range stored with the job.</li>
+ *     <li>Calls the LLM extractor with the reloaded visible raw turns.</li>
  *     <li>For each valid extracted memory: normalizes content, computes hash, upserts into {@code memory_item}.</li>
  *     <li>Embeds each memory and indexes it into Milvus.</li>
  *     <li>Updates {@code index_status} based on Milvus upsert result.</li>
- *     <li>Updates the extraction log to "completed" or "failed".</li>
  * </ol>
  *
- * <p>L3 failures are fully isolated from L2: any exception is caught and logged
- * without rethrowing, so L2 summary success is never affected.
+ * <p>Failures propagate to {@link MemoryPromotionJobWorker}, which owns bounded
+ * durable retry. L2 is already committed and is therefore unaffected.
  */
 @Service
 @Slf4j
 public class LongTermMemoryPromotionService {
 
-    private final ChatSessionRepository chatSessionRepository;
-    private final MemoryExtractionLogRepository extractionLogRepository;
     private final MemoryItemRepository memoryItemRepository;
     private final LongTermMemoryExtractor extractor;
     private final OllamaEmbeddingClient embeddingClient;
     private final UserMemoryIndexService indexService;
     private final ObjectMapper objectMapper;
 
-    public LongTermMemoryPromotionService(ChatSessionRepository chatSessionRepository,
-                                          MemoryExtractionLogRepository extractionLogRepository,
-                                          MemoryItemRepository memoryItemRepository,
+    public LongTermMemoryPromotionService(MemoryItemRepository memoryItemRepository,
                                           LongTermMemoryExtractor extractor,
                                           OllamaEmbeddingClient embeddingClient,
                                           UserMemoryIndexService indexService,
                                           ObjectMapper objectMapper) {
-        this.chatSessionRepository = chatSessionRepository;
-        this.extractionLogRepository = extractionLogRepository;
         this.memoryItemRepository = memoryItemRepository;
         this.extractor = extractor;
         this.embeddingClient = embeddingClient;
@@ -67,74 +53,24 @@ public class LongTermMemoryPromotionService {
 
     /**
      * Promotes long-term memories from the raw turns of a completed L2 batch.
-     * Exceptions are caught internally so L2 summarization is never affected.
+     * Exceptions propagate so the durable worker can retry the claimed job.
      *
-     * @param sessionId the session that triggered L2 compression
-     * @param range     the seq_no range that was summarized
+     * @param job durable user/session/range authority
      * @param turns     the raw turns that L2 compressed
+     * @return number of candidate rows upserted and indexed
      */
-    public void promote(String sessionId, SummaryWatermarkRange range, List<AtomicConversationTurn> turns) {
-        try {
-            doPromote(sessionId, range, turns);
-        } catch (Exception e) {
-            log.warn("L3 memory promotion failed, L2 summary is unaffected: sessionId={}, range={}:{}, errorClass={}",
-                    sessionId, range.startExclusiveSeqNo(), range.endInclusiveSeqNo(), e.getClass().getSimpleName());
+    public int promote(MemoryPromotionJobDTO job, List<AtomicConversationTurn> turns) {
+        ExtractionResult extractionResult = extractor.extract(turns);
+        if (!extractionResult.success()) {
+            throw new IllegalStateException("memory extractor returned failure");
         }
-    }
-
-    private void doPromote(String sessionId, SummaryWatermarkRange range, List<AtomicConversationTurn> turns) {
-        ChatSessionDTO session = chatSessionRepository.findById(sessionId);
-        if (session == null || session.getUserId() == null) {
-            log.debug("L3 promotion skipped: session has no user: sessionId={}", sessionId);
-            return;
-        }
-        String userId = session.getUserId();
-
-        long seqStart = range.startExclusiveSeqNo() + 1;
-        long seqEnd = range.endInclusiveSeqNo();
-
-        // Idempotency: skip if this range was already processed (any status, including failed).
-        // v1 treats failed logs as terminal. Future iterations may retry failed ranges.
-        MemoryExtractionLogDTO existingLog = extractionLogRepository.findByRange(sessionId, seqStart, seqEnd);
-        if (existingLog != null) {
-            log.debug("L3 promotion skipped: range already processed: sessionId={}, logStatus={}",
-                    sessionId, existingLog.getStatus());
-            return;
-        }
-
-        // Insert extraction log as "processing".
-        MemoryExtractionLogDTO extractionLog = MemoryExtractionLogDTO.builder()
-                .userId(userId)
-                .sessionId(sessionId)
-                .seqStartNo(seqStart)
-                .seqEndNo(seqEnd)
-                .status("processing")
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
-        MemoryExtractionLogDTO savedLog = extractionLogRepository.insert(extractionLog);
-
-        try {
-            ExtractionResult extractionResult = extractor.extract(turns);
-            if (!extractionResult.success()) {
-                extractionLogRepository.updateStatus(savedLog.getId(), "failed", "extractor returned failure");
-                log.info("L3 extraction returned failure: sessionId={}, userId={}", sessionId, userId);
-                return;
-            }
-
-            List<ExtractedMemory> memories = extractionResult.memories();
-            Map<String, Object> source = buildSource(sessionId, seqStart, seqEnd, turns);
-            int upserted = upsertAndIndexMemories(userId, memories, source);
-
-            extractionLogRepository.updateStatus(savedLog.getId(), "completed", null);
-            log.info("L3 extraction completed: sessionId={}, userId={}, candidates={}, upserted={}",
-                    sessionId, userId, memories.size(), upserted);
-        } catch (Exception e) {
-            extractionLogRepository.updateStatus(savedLog.getId(), "failed",
-                    truncate(e.getMessage(), 500));
-            log.warn("L3 extraction error: sessionId={}, userId={}, errorClass={}",
-                    sessionId, userId, e.getClass().getSimpleName());
-        }
+        List<ExtractedMemory> memories = extractionResult.memories();
+        Map<String, Object> source = buildSource(
+                job.getSessionId(), job.getSeqStartNo(), job.getSeqEndNo(), turns);
+        int upserted = upsertAndIndexMemories(job.getUserId(), memories, source);
+        log.info("L3 extraction completed: sessionId={}, candidates={}, upserted={}",
+                job.getSessionId(), memories.size(), upserted);
+        return upserted;
     }
 
     private int upsertAndIndexMemories(String userId, List<ExtractedMemory> memories,
@@ -171,11 +107,10 @@ public class LongTermMemoryPromotionService {
             boolean indexed = indexService.upsertMemory(
                     item.getId(), userId, type, item.getStatus(),
                     item.getContent(), tagsJson, embedding);
-            String indexStatus = indexed ? "indexed" : "failed";
-            memoryItemRepository.updateIndexStatus(item.getId(), indexStatus);
             if (!indexed) {
-                log.debug("L3 memory Milvus indexing unavailable: memoryId={}", item.getId());
+                throw new IllegalStateException("memory index unavailable");
             }
+            memoryItemRepository.updateIndexStatus(item.getId(), "indexed");
         } catch (Exception e) {
             log.warn("L3 memory Milvus indexing failed: memoryId={}, errorClass={}", item.getId(), e.getClass().getSimpleName());
             try {
@@ -183,6 +118,8 @@ public class LongTermMemoryPromotionService {
             } catch (Exception ex) {
                 log.warn("L3 memory index_status update failed: memoryId={}, errorClass={}", item.getId(), ex.getClass().getSimpleName());
             }
+            throw e instanceof RuntimeException runtimeException
+                    ? runtimeException : new IllegalStateException("memory indexing failed", e);
         }
     }
 
@@ -210,10 +147,4 @@ public class LongTermMemoryPromotionService {
         }
     }
 
-    private static String truncate(String s, int maxLen) {
-        if (s == null) {
-            return null;
-        }
-        return s.length() <= maxLen ? s : s.substring(0, maxLen);
-    }
 }

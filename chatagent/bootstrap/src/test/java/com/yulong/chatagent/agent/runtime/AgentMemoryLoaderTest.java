@@ -388,6 +388,23 @@ class AgentMemoryLoaderTest {
         assertThat(memory).isEmpty();
     }
 
+    @Test
+    void shouldExcludeMessagesMarkedInternal() {
+        AgentDTO agent = agentWithBudget(1000);
+        ChatMessageDTO internal = message("m2", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, "hidden decision");
+        internal.setMetadata(ChatMessageDTO.MetaData.builder().internal(true).build());
+        when(chatMessageRepository.findRecentBySessionId("session-1", 100)).thenReturn(List.of(
+                message("m1", "turn-1", ChatMessageDTO.RoleType.USER, "visible question"),
+                internal,
+                message("m3", "turn-1", ChatMessageDTO.RoleType.ASSISTANT, "visible answer")
+        ));
+
+        List<Message> memory = agentMemoryLoader.load("session-1", agent);
+
+        assertThat(memory).extracting(Message::getText)
+                .containsExactly("visible question", "visible answer");
+    }
+
     private AgentDTO agentWithBudget(int tokenBudget) {
         return AgentDTO.builder()
                 .chatOptions(AgentDTO.ChatOptions.builder()

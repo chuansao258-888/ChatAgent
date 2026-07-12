@@ -1,15 +1,11 @@
 package com.yulong.chatagent.memory.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.conversation.summary.AtomicConversationTurn;
-import com.yulong.chatagent.conversation.summary.SummaryWatermarkRange;
-import com.yulong.chatagent.memory.port.MemoryExtractionLogRepository;
 import com.yulong.chatagent.memory.port.MemoryItemRepository;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
-import com.yulong.chatagent.support.dto.ChatSessionDTO;
-import com.yulong.chatagent.support.dto.MemoryExtractionLogDTO;
 import com.yulong.chatagent.support.dto.MemoryItemDTO;
+import com.yulong.chatagent.support.dto.MemoryPromotionJobDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,287 +16,89 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class LongTermMemoryPromotionServiceTest {
-
-    @Mock
-    private ChatSessionRepository chatSessionRepository;
-
-    @Mock
-    private MemoryExtractionLogRepository extractionLogRepository;
-
-    @Mock
-    private MemoryItemRepository memoryItemRepository;
-
-    @Mock
-    private LongTermMemoryExtractor extractor;
-
-    @Mock
-    private OllamaEmbeddingClient embeddingClient;
-
-    @Mock
-    private UserMemoryIndexService indexService;
-
-    private ObjectMapper objectMapper;
+    @Mock private MemoryItemRepository memoryItemRepository;
+    @Mock private LongTermMemoryExtractor extractor;
+    @Mock private OllamaEmbeddingClient embeddingClient;
+    @Mock private UserMemoryIndexService indexService;
 
     private LongTermMemoryPromotionService service;
 
-    private static final SummaryWatermarkRange RANGE = new SummaryWatermarkRange("session-1", 4L, 12L);
+    private static final MemoryPromotionJobDTO JOB = MemoryPromotionJobDTO.builder()
+            .id("job-1").userId("user-1").sessionId("session-1")
+            .seqStartNo(5L).seqEndNo(8L).attempts(1).build();
     private static final List<AtomicConversationTurn> TURNS = List.of(
-            new AtomicConversationTurn("turn-1", 5L, 8L, List.of("hello"), "hi"),
-            new AtomicConversationTurn("turn-2", 9L, 12L, List.of("goodbye"), "bye")
-    );
+            new AtomicConversationTurn("turn-1", 5L, 8L,
+                    List.of("raw user message"), "visible assistant conclusion"));
 
     @BeforeEach
     void setUp() {
-        objectMapper = new ObjectMapper();
         service = new LongTermMemoryPromotionService(
-                chatSessionRepository, extractionLogRepository, memoryItemRepository,
-                extractor, embeddingClient, indexService, objectMapper);
+                memoryItemRepository, extractor, embeddingClient, indexService, new ObjectMapper());
     }
 
     @Test
-    void shouldSkipWhenSessionHasNoUser() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId(null).build());
-
-        service.promote("session-1", RANGE, TURNS);
-
-        verify(extractionLogRepository, never()).findByRange(anyString(), anyLong(), anyLong());
-        verify(extractionLogRepository, never()).insert(any());
-    }
-
-    @Test
-    void shouldSkipWhenSessionNotFound() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(null);
-
-        service.promote("session-1", RANGE, TURNS);
-
-        verify(extractionLogRepository, never()).findByRange(anyString(), anyLong(), anyLong());
-    }
-
-    @Test
-    void shouldSkipDuplicateExtractionRange() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L))
-                .thenReturn(MemoryExtractionLogDTO.builder().id("log-1").status("completed").build());
-
-        service.promote("session-1", RANGE, TURNS);
-
-        verify(extractionLogRepository, never()).insert(any());
-    }
-
-    @Test
-    void shouldInsertProcessingLogAndCallExtractor() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of()));
-
-        service.promote("session-1", RANGE, TURNS);
-
-        ArgumentCaptor<MemoryExtractionLogDTO> logCaptor = ArgumentCaptor.forClass(MemoryExtractionLogDTO.class);
-        verify(extractionLogRepository).insert(logCaptor.capture());
-        assertThat(logCaptor.getValue().getStatus()).isEqualTo("processing");
-        assertThat(logCaptor.getValue().getUserId()).isEqualTo("user-1");
-
-        verify(extractor).extract(TURNS);
-        verify(extractionLogRepository).updateStatus("log-1", "completed", null);
-    }
-
-    @Test
-    void shouldUpsertExtractedMemoriesAndIndex() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-
-        ExtractedMemory memory = new ExtractedMemory("preference", "User prefers short answers", List.of("style"));
-        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(memory)));
-
-        MemoryItemDTO upsertedItem = MemoryItemDTO.builder()
-                .id("mem-1").userId("user-1").type("preference").status("active")
-                .content("User prefers short answers").contentHash("abc").build();
-        when(memoryItemRepository.upsert(any())).thenReturn(upsertedItem);
-        when(embeddingClient.embed("User prefers short answers")).thenReturn(new float[]{0.1f, 0.2f});
+    void shouldPromoteRawTurnsAndIndexMemory() {
+        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(
+                new ExtractedMemory("preference", "User prefers concise answers", List.of("style")))));
+        MemoryItemDTO saved = MemoryItemDTO.builder().id("memory-1").userId("user-1")
+                .type("preference").status("active").content("User prefers concise answers").build();
+        when(memoryItemRepository.upsert(any())).thenReturn(saved);
+        when(embeddingClient.embed(saved.getContent())).thenReturn(new float[]{0.1f});
         when(indexService.upsertMemory(anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), any(float[].class))).thenReturn(true);
 
-        service.promote("session-1", RANGE, TURNS);
+        int count = service.promote(JOB, TURNS);
 
-        verify(memoryItemRepository).upsert(any());
-        verify(embeddingClient).embed("User prefers short answers");
-        verify(indexService).upsertMemory(eq("mem-1"), eq("user-1"), eq("preference"),
-                eq("active"), eq("User prefers short answers"), anyString(), any(float[].class));
-        verify(memoryItemRepository).updateIndexStatus("mem-1", "indexed");
-        verify(extractionLogRepository).updateStatus("log-1", "completed", null);
+        assertThat(count).isEqualTo(1);
+        ArgumentCaptor<List<AtomicConversationTurn>> turnsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(extractor).extract(turnsCaptor.capture());
+        assertThat(turnsCaptor.getValue()).isEqualTo(TURNS);
+        verify(indexService).upsertMemory(eq("memory-1"), eq("user-1"), eq("preference"),
+                eq("active"), eq(saved.getContent()), anyString(), any(float[].class));
+        verify(memoryItemRepository).updateIndexStatus("memory-1", "indexed");
     }
 
     @Test
-    void shouldMarkLogFailedOnExtractorFailure() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.failure());
-
-        service.promote("session-1", RANGE, TURNS);
-
-        verify(extractionLogRepository).updateStatus("log-1", "failed", "extractor returned failure");
-        verify(memoryItemRepository, never()).upsert(any());
-    }
-
-    @Test
-    void shouldMarkLogFailedOnExtractionError() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-        when(extractor.extract(TURNS)).thenThrow(new RuntimeException("LLM timeout"));
-
-        service.promote("session-1", RANGE, TURNS);
-
-        verify(extractionLogRepository).updateStatus(eq("log-1"), eq("failed"), anyString());
-        verify(memoryItemRepository, never()).upsert(any());
-    }
-
-    @Test
-    void shouldNotThrowWhenPromotionFails() {
-        when(chatSessionRepository.findById("session-1")).thenThrow(new RuntimeException("DB down"));
-
-        assertThatCode(() -> service.promote("session-1", RANGE, TURNS))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
-    void shouldNotUpsertWhenExtractorReturnsEmptyMemories() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
+    void shouldReturnZeroForSuccessfulEmptyExtraction() {
         when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of()));
 
-        service.promote("session-1", RANGE, TURNS);
+        assertThat(service.promote(JOB, TURNS)).isZero();
 
         verify(memoryItemRepository, never()).upsert(any());
-        verify(extractionLogRepository).updateStatus("log-1", "completed", null);
     }
 
     @Test
-    void shouldMarkIndexFailedWhenMilvusUpsertFails() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
+    void shouldPropagateExtractorFailureForDurableRetry() {
+        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.failure());
 
-        ExtractedMemory memory = new ExtractedMemory("fact", "A fact", List.of());
-        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(memory)));
-        MemoryItemDTO upsertedItem = MemoryItemDTO.builder()
-                .id("mem-1").userId("user-1").type("fact").status("active").content("A fact").build();
-        when(memoryItemRepository.upsert(any())).thenReturn(upsertedItem);
+        assertThatThrownBy(() -> service.promote(JOB, TURNS))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void shouldMarkIndexFailedAndPropagateForRetry() {
+        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(
+                new ExtractedMemory("fact", "A fact", List.of()))));
+        MemoryItemDTO saved = MemoryItemDTO.builder().id("memory-1").userId("user-1")
+                .type("fact").status("active").content("A fact").build();
+        when(memoryItemRepository.upsert(any())).thenReturn(saved);
         when(embeddingClient.embed("A fact")).thenReturn(new float[]{0.1f});
         when(indexService.upsertMemory(anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), any(float[].class))).thenReturn(false);
 
-        service.promote("session-1", RANGE, TURNS);
+        assertThatThrownBy(() -> service.promote(JOB, TURNS))
+                .isInstanceOf(IllegalStateException.class);
 
-        verify(indexService).upsertMemory(eq("mem-1"), eq("user-1"), eq("fact"),
-                eq("active"), eq("A fact"), anyString(), any(float[].class));
-        verify(memoryItemRepository).updateIndexStatus("mem-1", "failed");
-    }
-
-    @Test
-    void shouldReceiveRawTurnsNotSummaryText() {
-        // Verify L3 promotion receives raw turn content, not summary text.
-        // The extractor is called with AtomicConversationTurn objects containing
-        // the original user/assistant messages, never the L2 synopsis.
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 8L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-
-        // The extractor must receive the raw turns, not any summary text
-        AtomicConversationTurn rawTurn = new AtomicConversationTurn(
-                "turn-1", 5L, 8L, List.of("raw user message content"), "raw assistant reply");
-        List<AtomicConversationTurn> rawTurns = List.of(rawTurn);
-        SummaryWatermarkRange stableRange = new SummaryWatermarkRange("session-1", 4L, 8L);
-
-        when(extractor.extract(rawTurns)).thenReturn(ExtractionResult.success(List.of()));
-
-        service.promote("session-1", stableRange, rawTurns);
-
-        // Extractor receives the raw AtomicConversationTurn, not a synopsis string
-        ArgumentCaptor<List<AtomicConversationTurn>> turnsCaptor = ArgumentCaptor.forClass(List.class);
-        verify(extractor).extract(turnsCaptor.capture());
-        assertThat(turnsCaptor.getValue()).hasSize(1);
-        assertThat(turnsCaptor.getValue().get(0).userMessages()).containsExactly("raw user message content");
-        assertThat(turnsCaptor.getValue().get(0).assistantConclusion()).isEqualTo("raw assistant reply");
-    }
-
-    @Test
-    void shouldUseStableRangeNotL1Tail() {
-        // Verify that the extraction log records the stable L2 range,
-        // not the L1 tail range. The range comes from the event published
-        // by AsyncSummaryListener which filters turns per segment.
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 8L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-        when(extractor.extract(any())).thenReturn(ExtractionResult.success(List.of()));
-
-        // Stable range: turns 5..8 (outside L1 window which might be e.g. turns 13..20)
-        SummaryWatermarkRange stableRange = new SummaryWatermarkRange("session-1", 4L, 8L);
-        List<AtomicConversationTurn> stableTurns = List.of(
-                new AtomicConversationTurn("t-1", 5L, 8L, List.of("stable turn"), "reply"));
-
-        service.promote("session-1", stableRange, stableTurns);
-
-        // Extraction log records the stable range (5..8), not L1 tail range
-        ArgumentCaptor<MemoryExtractionLogDTO> logCaptor = ArgumentCaptor.forClass(MemoryExtractionLogDTO.class);
-        verify(extractionLogRepository).insert(logCaptor.capture());
-        assertThat(logCaptor.getValue().getSeqStartNo()).isEqualTo(5L);
-        assertThat(logCaptor.getValue().getSeqEndNo()).isEqualTo(8L);
-    }
-
-    @Test
-    void shouldMarkIndexFailedWhenEmbeddingThrows() {
-        when(chatSessionRepository.findById("session-1")).thenReturn(
-                ChatSessionDTO.builder().id("session-1").userId("user-1").build());
-        when(extractionLogRepository.findByRange("session-1", 5L, 12L)).thenReturn(null);
-        when(extractionLogRepository.insert(any())).thenReturn(
-                MemoryExtractionLogDTO.builder().id("log-1").status("processing").build());
-
-        ExtractedMemory memory = new ExtractedMemory("fact", "A fact", List.of());
-        when(extractor.extract(TURNS)).thenReturn(ExtractionResult.success(List.of(memory)));
-        MemoryItemDTO upsertedItem = MemoryItemDTO.builder()
-                .id("mem-1").userId("user-1").type("fact").content("A fact").build();
-        when(memoryItemRepository.upsert(any())).thenReturn(upsertedItem);
-        when(embeddingClient.embed("A fact")).thenThrow(new RuntimeException("Ollama down"));
-
-        service.promote("session-1", RANGE, TURNS);
-
-        verify(memoryItemRepository).updateIndexStatus("mem-1", "failed");
-        verify(indexService, never()).upsertMemory(anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(float[].class));
+        verify(memoryItemRepository).updateIndexStatus("memory-1", "failed");
     }
 }

@@ -1,20 +1,14 @@
 package com.yulong.chatagent.conversation.summary;
 
 import com.yulong.chatagent.conversation.event.ConversationTurnCompletedEvent;
-import com.yulong.chatagent.support.dto.ChatSessionSummarySegmentDTO;
-import com.yulong.chatagent.conversation.event.LongTermMemoryPromotionRequestedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * 后台异步摘要监听器。
@@ -27,7 +21,7 @@ import java.util.List;
  *     <li>V2 token-aware policy 是否允许执行压缩。</li>
  * </ul>
  * 只有这些条件都满足时，才真正调用 IncrementalSummarizer。
- * L2 完成后，如果产生了实际待压缩的 turns，同时发出 L3 promotion 事件。
+ * L3 promotion job is committed atomically by {@link MemoryCompactionCommitService}.
  */
 @Component
 @Slf4j
@@ -40,10 +34,8 @@ public class AsyncSummaryListener {
     private final SummaryWatermarkService summaryWatermarkService;
     private final IncrementalSummarizer incrementalSummarizer;
     private final RedisLockManager redisLockManager;
-    private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
     private final int l1WindowTurns;
-    private final boolean l3Enabled;
 
     @Autowired
     public AsyncSummaryListener(CompactionBoundaryResolver compactionBoundaryResolver,
@@ -51,19 +43,15 @@ public class AsyncSummaryListener {
                                 SummaryWatermarkService summaryWatermarkService,
                                 IncrementalSummarizer incrementalSummarizer,
                                 RedisLockManager redisLockManager,
-                                ApplicationEventPublisher eventPublisher,
                                 ObjectProvider<MeterRegistry> meterRegistryProvider,
-                                @Value("${chatagent.memory.l1-window-turns:8}") int l1WindowTurns,
-                                @Value("${chatagent.memory.l3.enabled:true}") boolean l3Enabled) {
+                                @org.springframework.beans.factory.annotation.Value("${chatagent.memory.l1-window-turns:8}") int l1WindowTurns) {
         this.compactionBoundaryResolver = compactionBoundaryResolver;
         this.memoryCompactionPolicy = memoryCompactionPolicy;
         this.summaryWatermarkService = summaryWatermarkService;
         this.incrementalSummarizer = incrementalSummarizer;
         this.redisLockManager = redisLockManager;
-        this.eventPublisher = eventPublisher;
         this.meterRegistry = meterRegistryProvider.getIfAvailable();
         this.l1WindowTurns = Math.max(l1WindowTurns, 1);
-        this.l3Enabled = l3Enabled;
     }
 
     @Async("summaryExecutor")
@@ -92,49 +80,10 @@ public class AsyncSummaryListener {
             if (summaryWatermarkService.isAnchorCovered(event.sessionId(), boundary.stableAnchorSeqNo())) {
                 return;
             }
-            SummaryResult result = incrementalSummarizer.summarizeWithDetails(
-                    event.sessionId(), boundary.stableAnchorSeqNo());
-
-            if (l3Enabled && result.updated() && result.turns() != null && !result.turns().isEmpty()) {
-                publishL3Events(event.sessionId(), result);
-            }
+            incrementalSummarizer.summarizeWithDetails(event.sessionId(), boundary.stableAnchorSeqNo());
         } finally {
             redisLockManager.unlock(event.sessionId(), lockToken);
         }
-    }
-
-    /**
-     * Publishes L3 promotion events. When the result contains segments (from split-and-retry),
-     * publishes one event per segment with matching range and turns.
-     * Falls back to a single merged event when no segments are present.
-     */
-    private void publishL3Events(String sessionId, SummaryResult result) {
-        if (result.segments() != null && !result.segments().isEmpty()) {
-            for (ChatSessionSummarySegmentDTO segment : result.segments()) {
-                SummaryWatermarkRange segmentRange = new SummaryWatermarkRange(
-                        sessionId, segment.getSeqStartNo() - 1, segment.getSeqEndNo());
-                List<AtomicConversationTurn> segmentTurns = filterTurnsByRange(
-                        result.turns(), segment.getSeqStartNo(), segment.getSeqEndNo());
-                if (!segmentTurns.isEmpty()) {
-                    eventPublisher.publishEvent(new LongTermMemoryPromotionRequestedEvent(
-                            sessionId, segmentRange, segmentTurns));
-                }
-            }
-        } else {
-            eventPublisher.publishEvent(new LongTermMemoryPromotionRequestedEvent(
-                    sessionId, result.range(), result.turns()));
-        }
-    }
-
-    private static List<AtomicConversationTurn> filterTurnsByRange(
-            List<AtomicConversationTurn> turns, long startSeqNo, long endSeqNo) {
-        List<AtomicConversationTurn> filtered = new ArrayList<>();
-        for (AtomicConversationTurn turn : turns) {
-            if (turn.endSeqNo() >= startSeqNo && turn.endSeqNo() <= endSeqNo) {
-                filtered.add(turn);
-            }
-        }
-        return filtered;
     }
 
     private void recordDecision(CompactionDecision decision) {

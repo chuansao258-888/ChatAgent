@@ -5,7 +5,6 @@ import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
-import com.yulong.chatagent.conversation.port.ChatSessionSummarySegmentRepository;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
 import com.yulong.chatagent.support.dto.ChatSessionSummarySegmentDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -62,7 +61,7 @@ public class IncrementalSummarizer {
     private final TurnBasedContextExtractor turnBasedContextExtractor;
     private final SummaryWatermarkService summaryWatermarkService;
     private final ChatSessionSummaryRepository chatSessionSummaryRepository;
-    private final ChatSessionSummarySegmentRepository segmentRepository;
+    private final MemoryCompactionCommitService commitService;
     private final ChatModelRouter chatModelRouter;
     private final String summaryModel;
     private final int segmentMaxChars;
@@ -75,7 +74,7 @@ public class IncrementalSummarizer {
                                  TurnBasedContextExtractor turnBasedContextExtractor,
                                  SummaryWatermarkService summaryWatermarkService,
                                  ChatSessionSummaryRepository chatSessionSummaryRepository,
-                                 ChatSessionSummarySegmentRepository segmentRepository,
+                                 MemoryCompactionCommitService commitService,
                                  ChatModelRouter chatModelRouter,
                                  @Value("${chatagent.memory.summary-model:deepseek-v4-flash}") String summaryModel,
                                  @Value("${chatagent.memory.compaction.v2.segment-max-chars:1200}") int segmentMaxChars,
@@ -87,7 +86,7 @@ public class IncrementalSummarizer {
         this.turnBasedContextExtractor = turnBasedContextExtractor;
         this.summaryWatermarkService = summaryWatermarkService;
         this.chatSessionSummaryRepository = chatSessionSummaryRepository;
-        this.segmentRepository = segmentRepository;
+        this.commitService = commitService;
         this.chatModelRouter = chatModelRouter;
         this.summaryModel = summaryModel;
         this.segmentMaxChars = Math.max(segmentMaxChars, 120);
@@ -179,7 +178,7 @@ public class IncrementalSummarizer {
         );
         warnIfAnchorsMissing(sessionId, structured.summary(), mergedAnchors);
 
-        // 3. Create segment row (idempotent — ON CONFLICT DO NOTHING)
+        // 3. Prepare the segment. Persistence happens later in one short transaction.
         int tokenEstimate = TokenEstimator.estimateTurns(turns);
         ChatSessionSummarySegmentDTO segment = ChatSessionSummarySegmentDTO.builder()
                 .sessionId(sessionId)
@@ -191,8 +190,6 @@ public class IncrementalSummarizer {
                 .structuredSummaryJson(toStructuredJson(structured))
                 .anchoredEntities(mergedAnchors)
                 .build();
-        boolean segmentInserted = segmentRepository.insert(segment);
-
         // 4. Merge synopsis deterministically
         String existingSynopsis = existing == null || existing.getSynopsis() == null ? "" : existing.getSynopsis().trim();
         String nextSynopsis = mergeSynopsis(existingSynopsis, structured.summary());
@@ -203,8 +200,9 @@ public class IncrementalSummarizer {
                 .sessionId(sessionId)
                 .summarizedUntilSeqNo(range.endInclusiveSeqNo())
                 .synopsis(nextSynopsis)
+                .structuredSummaryJson(existing == null ? null : existing.getStructuredSummaryJson())
                 .anchoredEntities(mergedAnchors)
-                .segmentCount(existingSegmentCount + (segmentInserted ? 1 : 0))
+                .segmentCount(existingSegmentCount + 1)
                 .consecutiveFailures(0)
                 .failedStartSeqNo(null)
                 .failedEndSeqNo(null)
@@ -212,14 +210,21 @@ public class IncrementalSummarizer {
                 .nextRetryAt(null)
                 .build();
 
-        boolean saved = saveWithRetry(updated, sessionId);
-        if (!saved) {
+        MemoryCompactionCommitService.CommitOutcome commitOutcome;
+        try {
+            commitOutcome = commitService.commit(range.startExclusiveSeqNo(), segment, updated);
+        } catch (RuntimeException e) {
             throw new SummarizationFailedException(
-                    "Failed to save summary after optimistic lock retry: sessionId=" + sessionId);
+                    "Failed to commit summary atomically: sessionId=" + sessionId, e);
+        }
+        if (commitOutcome == MemoryCompactionCommitService.CommitOutcome.STALE_WATERMARK) {
+            log.info("Discarding stale compaction result: sessionId={}, expectedWatermark={}",
+                    sessionId, range.startExclusiveSeqNo());
+            return new SummaryResult(false, range, List.of());
         }
 
         return new SummaryResult(true, range, turns,
-                segmentInserted ? List.of(segment) : List.of(),
+                List.of(segment),
                 nextSynopsis);
     }
 
@@ -567,6 +572,10 @@ public class IncrementalSummarizer {
     static class SummarizationFailedException extends RuntimeException {
         SummarizationFailedException(String message) {
             super(message);
+        }
+
+        SummarizationFailedException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }

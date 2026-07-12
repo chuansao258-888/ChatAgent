@@ -59,16 +59,6 @@ public class AsyncConfig {
     }
 
     /**
-     * Single-concurrency executor for L3 memory promotion work.
-     *
-     * @return L3 promotion executor
-     */
-    @Bean("l3Executor")
-    public Executor l3Executor() {
-        return buildExecutor(1, 2, 8, "l3-promote-", new ThreadPoolExecutor.DiscardOldestPolicy());
-    }
-
-    /**
      * Builds a task decorator that snapshots the current trace ID and restores it
      * (or clears it) on the worker thread, preserving any prior async trace state
      * for nested execution.

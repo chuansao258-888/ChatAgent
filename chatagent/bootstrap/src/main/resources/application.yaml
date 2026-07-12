@@ -219,9 +219,12 @@ chatagent:
     summary-model: deepseek-v4-flash
     summary-max-chars: 500
     l3:
-      enabled: true
+      enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
       extractor-model: deepseek-v4-flash
       recall-top-k: 3
+      job-poll-ms: ${CHATAGENT_MEMORY_L3_JOB_POLL_MS:5000}
+      job-max-attempts: ${CHATAGENT_MEMORY_L3_JOB_MAX_ATTEMPTS:5}
+      job-stale-seconds: ${CHATAGENT_MEMORY_L3_JOB_STALE_SECONDS:300}
     compaction:
       v2:
         enabled: true

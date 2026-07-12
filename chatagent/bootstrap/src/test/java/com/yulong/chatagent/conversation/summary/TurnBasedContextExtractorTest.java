@@ -106,4 +106,23 @@ class TurnBasedContextExtractorTest {
         assertThat(turns.get(1).assistantConclusion()).isEqualTo("You are welcome.");
         verify(summaryWatermarkService).loadPendingMessages("session-1", 6L);
     }
+
+    @Test
+    void shouldExcludeInternalMessagesFromCommittedRangeProjection() {
+        when(chatMessageRepository.findBySessionIdAndSeqRange("session-1", 0L, 4L)).thenReturn(List.of(
+                ChatMessageDTO.builder().turnId("turn-1").role(ChatMessageDTO.RoleType.USER)
+                        .content("visible user correction").seqNo(1L).build(),
+                ChatMessageDTO.builder().turnId("turn-1").role(ChatMessageDTO.RoleType.ASSISTANT)
+                        .content("internal decision").seqNo(2L)
+                        .metadata(ChatMessageDTO.MetaData.builder().internal(true).build()).build(),
+                ChatMessageDTO.builder().turnId("turn-1").role(ChatMessageDTO.RoleType.ASSISTANT)
+                        .content("visible conclusion").seqNo(4L).build()));
+
+        List<AtomicConversationTurn> turns = turnBasedContextExtractor.extractTurnsInRange("session-1", 0L, 4L);
+
+        assertThat(turns).singleElement().satisfies(turn -> {
+            assertThat(turn.userMessages()).containsExactly("visible user correction");
+            assertThat(turn.assistantConclusion()).isEqualTo("visible conclusion");
+        });
+    }
 }

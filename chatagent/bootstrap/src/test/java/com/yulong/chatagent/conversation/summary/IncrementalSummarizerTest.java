@@ -4,6 +4,7 @@ import com.yulong.chatagent.TestPromptLoader;
 import com.yulong.chatagent.chat.ChatModelRouter;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
 import com.yulong.chatagent.conversation.port.ChatSessionSummarySegmentRepository;
+import com.yulong.chatagent.memory.port.MemoryPromotionJobRepository;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
 import com.yulong.chatagent.support.dto.ChatSessionSummarySegmentDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,9 @@ class IncrementalSummarizerTest {
     private ChatSessionSummarySegmentRepository segmentRepository;
 
     @Mock
+    private MemoryPromotionJobRepository promotionJobRepository;
+
+    @Mock
     private ChatModelRouter chatModelRouter;
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
@@ -52,12 +56,14 @@ class IncrementalSummarizerTest {
 
     @BeforeEach
     void setUp() {
+        MemoryCompactionCommitService commitService = new MemoryCompactionCommitService(
+                chatSessionSummaryRepository, segmentRepository, promotionJobRepository, false);
         incrementalSummarizer = new IncrementalSummarizer(
                 TestPromptLoader.create(),
                 turnBasedContextExtractor,
                 summaryWatermarkService,
                 chatSessionSummaryRepository,
-                segmentRepository,
+                commitService,
                 chatModelRouter,
                 "summary-model",
                 1200,
@@ -338,9 +344,9 @@ class IncrementalSummarizerTest {
 
         SummaryResult result = incrementalSummarizer.summarizeWithDetails("session-1", 8L);
 
-        // Segment insert failed (duplicate), so no segments in result
+        // Segment already exists, but the committed range is still represented in the result.
         assertThat(result.updated()).isTrue();
-        assertThat(result.segments()).isEmpty();
+        assertThat(result.segments()).hasSize(1);
 
         // Segment count should NOT increment
         ArgumentCaptor<ChatSessionSummaryDTO> summaryCaptor = ArgumentCaptor.forClass(ChatSessionSummaryDTO.class);
@@ -481,7 +487,14 @@ class IncrementalSummarizerTest {
                 .thenReturn(allTurns);
         when(chatSessionSummaryRepository.findBySessionId("session-1"))
                 .thenReturn(null)                                   // initial read
+                .thenReturn(null)                                   // first-half commit validation
                 .thenReturn(ChatSessionSummaryDTO.builder()         // after first half
+                        .sessionId("session-1")
+                        .summarizedUntilSeqNo(4L)
+                        .synopsis("First half summary.")
+                        .segmentCount(1)
+                        .build())
+                .thenReturn(ChatSessionSummaryDTO.builder()         // second-half commit validation
                         .sessionId("session-1")
                         .summarizedUntilSeqNo(4L)
                         .synopsis("First half summary.")
@@ -521,7 +534,15 @@ class IncrementalSummarizerTest {
                 .thenReturn(allTurns);
         when(chatSessionSummaryRepository.findBySessionId("session-1"))
                 .thenReturn(null)                                   // initial read
+                .thenReturn(null)                                   // first-half commit validation
                 .thenReturn(ChatSessionSummaryDTO.builder()         // after first half
+                        .sessionId("session-1")
+                        .summarizedUntilSeqNo(4L)
+                        .synopsis("First half.")
+                        .segmentCount(1)
+                        .consecutiveFailures(0)
+                        .build())
+                .thenReturn(ChatSessionSummaryDTO.builder()         // second-half commit validation
                         .sessionId("session-1")
                         .summarizedUntilSeqNo(4L)
                         .synopsis("First half.")
@@ -582,7 +603,7 @@ class IncrementalSummarizerTest {
     }
 
     @Test
-    void shouldRetryOptimisticLockConflictAndSucceed() {
+    void shouldDiscardGeneratedResultWhenAtomicCommitConflicts() {
         AtomicConversationTurn turn = new AtomicConversationTurn(
                 "turn-1", 1L, 4L, List.of("Hello"), "Hi"
         );
@@ -595,15 +616,11 @@ class IncrementalSummarizerTest {
         when(chatClient.prompt(anyString()).call().content())
                 .thenReturn("{\"summary\":\"Hello.\",\"facts\":[],\"decisions\":[],\"open_tasks\":[],\"entities\":{}}");
         when(segmentRepository.insert(any())).thenReturn(true);
-        // First two saves fail (version conflict), third succeeds (maxRetries=2 → 3 attempts)
-        when(chatSessionSummaryRepository.saveOrUpdate(any()))
-                .thenReturn(false)
-                .thenReturn(false)
-                .thenReturn(true);
+        when(chatSessionSummaryRepository.saveOrUpdate(any())).thenReturn(false);
 
         SummaryResult result = incrementalSummarizer.summarizeWithDetails("session-1", 4L);
 
-        assertThat(result.updated()).isTrue();
+        assertThat(result.updated()).isFalse();
     }
 
     @Test

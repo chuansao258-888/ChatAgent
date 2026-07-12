@@ -2,6 +2,7 @@ package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.conversation.port.ChatMessageRepository;
 import com.yulong.chatagent.conversation.port.ChatSessionSummaryRepository;
+import com.yulong.chatagent.conversation.model.ChatMessageVisibility;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.support.dto.ChatMessageDTO;
 import com.yulong.chatagent.support.dto.ChatSessionSummaryDTO;
@@ -80,6 +81,7 @@ public class AgentMemoryLoader {
         long summarizedUntilSeqNo = summarizedUntilSeqNo(chatSessionId);
         List<ChatMessageDTO> chatMessages = chatMessageRepository.findRecentBySessionId(chatSessionId, 100)
                 .stream()
+                .filter(message -> !ChatMessageVisibility.isInternal(message))
                 .filter(message -> message.getSeqNo() == null || message.getSeqNo() > summarizedUntilSeqNo)
                 .toList();
         if (chatMessages.isEmpty()) {
