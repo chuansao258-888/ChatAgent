@@ -130,6 +130,14 @@ const DeepThinkTracePanel: React.FC<DeepThinkTracePanelProps> = ({ trace }) => {
                     {execution.totalToolCalls ?? 0} 次工具调用
                   </span>
                 )}
+                {(execution.evidenceCount ?? 0) > 0 ? (
+                  <div className="mt-1 text-slate-500">
+                    保留 {execution.evidenceCount} 条有来源证据
+                    {(execution.truncatedEvidenceCount ?? 0) > 0
+                      ? `（${execution.truncatedEvidenceCount} 条已截断）`
+                      : ""}
+                  </div>
+                ) : null}
               </div>
               {execution.stepSummaries && execution.stepSummaries.length > 0 ? (
                 <div className="mt-1.5 space-y-1 pl-2">
@@ -199,6 +207,11 @@ const DeepThinkTracePanel: React.FC<DeepThinkTracePanelProps> = ({ trace }) => {
                 ) : (
                   <ExclamationCircleOutlined className="text-amber-400" />
                 )}
+                {(verification.rounds ?? 0) > 0 ? (
+                  <span className="ml-1 text-slate-500">
+                    · {verification.rounds} 轮
+                  </span>
+                ) : null}
                 <span>验证</span>
               </div>
               <div className="pl-2 text-xs text-slate-300">

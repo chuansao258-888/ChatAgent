@@ -42,6 +42,8 @@ export interface AgentTraceMetadata {
   execution?: {
     toolsUsed?: string[];
     totalToolCalls?: number;
+    evidenceCount?: number;
+    truncatedEvidenceCount?: number;
     stepSummaries?: Array<{
       stepId?: string;
       conclusion?: string;
@@ -56,6 +58,7 @@ export interface AgentTraceMetadata {
   };
   verification?: {
     passed?: boolean;
+    rounds?: number;
     issueCount?: number;
     issues?: Array<{
       /** UNSUPPORTED_CLAIM | STALE_DATA | CONTRADICTION | MISSING_SOURCE | TOOL_FAILURE */

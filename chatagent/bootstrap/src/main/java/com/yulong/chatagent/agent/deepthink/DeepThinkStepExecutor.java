@@ -88,6 +88,15 @@ public class DeepThinkStepExecutor {
                               DeepThinkNotebook notebook,
                               String planGoal, String observations,
                               int maxTotalToolCalls, int maxTotalLlmCalls) {
+        return executeStepResult(chatSessionId, turnId, step, maxReactSteps, notebook,
+                planGoal, observations, maxTotalToolCalls, maxTotalLlmCalls).conclusion();
+    }
+
+    public DeepThinkStepResult executeStepResult(String chatSessionId, String turnId,
+                              DeepThinkPlanStep step, int maxReactSteps,
+                              DeepThinkNotebook notebook,
+                              String planGoal, String observations,
+                              int maxTotalToolCalls, int maxTotalLlmCalls) {
         String languageSource = DeepThinkLanguageSupport.stepLanguageSource(step, planGoal);
         boolean preferChinese = DeepThinkLanguageSupport.prefersChinese(languageSource);
 
@@ -189,7 +198,8 @@ public class DeepThinkStepExecutor {
                 conversationHistory.add(output);
 
                 // 执行工具调用
-                ToolResponseMessage toolResponse = executeToolCalls(output, chatSessionId, step.getId());
+                ToolResponseMessage toolResponse = executeToolCalls(
+                        output, chatSessionId, step.getId(), notebook);
                 if (toolResponse != null) {
                     // 只记录实际执行的截断后 tool calls
                     for (var tc : toolCalls) {
@@ -208,14 +218,15 @@ public class DeepThinkStepExecutor {
                 // 无工具调用 → 步骤完成，提取结论
                 String text = output.getText();
                 if (text != null && !text.isBlank()) {
-                    return truncate(text, 200);
+                    return DeepThinkStepResult.completed(truncate(text, 2_000));
                 }
                 break;
             }
         }
 
-        // 如果循环结束还没有明确结论，返回 PARTIAL
-        return preferChinese ? "部分完成" : "Partially completed";
+        return DeepThinkStepResult.partial(
+                preferChinese ? "部分完成" : "Partially completed",
+                "STEP_BUDGET_OR_NO_CONCLUSION");
     }
 
     /**
@@ -225,7 +236,8 @@ public class DeepThinkStepExecutor {
      */
     private ToolResponseMessage executeToolCalls(AssistantMessage assistantMessage,
                                                  String chatSessionId,
-                                                 String stepId) {
+                                                 String stepId,
+                                                 DeepThinkNotebook notebook) {
         com.yulong.chatagent.agent.AgentToolExecutionEngine.ExecutionOutcome outcome =
                 toolExecutionEngine.executeToolCallsDirectWithOutcome(
                         assistantMessage, chatSessionId, "EXECUTE", stepId);
@@ -236,6 +248,21 @@ public class DeepThinkStepExecutor {
         if (outcome.partial()) {
             throw new com.yulong.chatagent.agent.ToolExecutionStopException(
                     com.yulong.chatagent.agent.AgentRunResult.Status.PARTIAL, outcome.stopReason());
+        }
+        if (outcome.response() != null) {
+            for (ToolResponseMessage.ToolResponse response : outcome.response().getResponses()) {
+                // Source identity is retained; payload is bounded again by the notebook.
+                // The shared tool engine already applied its stricter response bound.
+                // stepId is the stable plan-step source.
+                //noinspection DataFlowIssue
+                // response name/call id are provider-independent Spring AI fields.
+                // No raw arguments are stored here.
+                //
+                // This evidence is consumed by reflection, verification, and final synthesis.
+                //
+                // Keep the call local so the notebook remains the single cap owner.
+                notebook.recordEvidence(stepId, response.name(), response.id(), response.responseData());
+            }
         }
         return outcome.response();
     }

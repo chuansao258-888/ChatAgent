@@ -49,6 +49,8 @@ public class AgentTraceMetadata {
         private List<String> toolsUsed;
         private int totalToolCalls;
         private List<StepSummary> stepSummaries;
+        private int evidenceCount;
+        private int truncatedEvidenceCount;
     }
 
     @Data
@@ -74,6 +76,7 @@ public class AgentTraceMetadata {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class VerificationTrace {
         private boolean passed;
+        private int rounds;
         private int issueCount;
         private List<IssueSummary> issues;
     }

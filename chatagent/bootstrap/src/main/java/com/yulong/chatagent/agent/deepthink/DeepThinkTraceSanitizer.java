@@ -75,6 +75,9 @@ public class DeepThinkTraceSanitizer {
                 .toolsUsed(notebook.getToolsUsed())
                 .totalToolCalls(notebook.getTotalToolCalls())
                 .stepSummaries(stepSummaries)
+                .evidenceCount(notebook.getEvidence().size())
+                .truncatedEvidenceCount((int) notebook.getEvidence().stream()
+                        .filter(DeepThinkEvidenceEntry::truncated).count())
                 .build();
     }
 
@@ -119,6 +122,7 @@ public class DeepThinkTraceSanitizer {
 
         return AgentTraceMetadata.VerificationTrace.builder()
                 .passed(result.isPassed())
+                .rounds(result.getRounds())
                 .issueCount(issues.size())
                 .issues(issues)
                 .build();

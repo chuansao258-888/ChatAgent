@@ -17,6 +17,7 @@ public class DeepThinkVerificationResult {
     private List<DeepThinkPlanStep> requiredFollowUpActions;
     private boolean skipped;
     private String caveat;
+    private int rounds;
 
     public static DeepThinkVerificationResult passed() {
         return DeepThinkVerificationResult.builder()

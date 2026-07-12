@@ -93,7 +93,7 @@ public class AgentRunPolicyProperties {
         /**
          * 最大验证轮次。
          */
-        private int maxVerificationRounds = 1;
+        private int maxVerificationRounds = 2;
 
         /**
          * DeepThink 全局工具调用上限。

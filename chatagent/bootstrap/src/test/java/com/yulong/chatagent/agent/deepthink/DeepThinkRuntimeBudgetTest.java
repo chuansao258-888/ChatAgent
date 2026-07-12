@@ -213,7 +213,7 @@ class DeepThinkRuntimeBudgetTest {
         DeepThinkRuntimeEngine engine = new DeepThinkRuntimeEngine(context);
         AgentRunResult result = engine.run(context);
 
-        assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
+        assertThat(result.status()).isEqualTo(AgentRunResult.Status.PARTIAL);
 
         // Verify status events published
         verify(messageBridge).publishStatusEvent(eq("session-1"), eq("turn-1"),
@@ -288,7 +288,9 @@ class DeepThinkRuntimeBudgetTest {
                 anyList(), eq(llmService),
                 eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(true),
                 eq("VERIFY"), isNull()
-        )).thenReturn(buffered(verificationJson));
+        )).thenReturn(buffered(verificationJson)).thenReturn(buffered("""
+                {"passed":true,"issues":[],"requiredFollowUpActions":[]}
+                """));
 
         when(messageBridge.collectDecisionResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
@@ -301,13 +303,18 @@ class DeepThinkRuntimeBudgetTest {
                 eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), eq(false)
         )).thenReturn("综合回答");
 
-        AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 10, 1, 1);
+        AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 10, 1, 2);
         AgentRunContext context = buildContext(policy);
 
         DeepThinkRuntimeEngine engine = new DeepThinkRuntimeEngine(context);
         AgentRunResult result = engine.run(context);
 
         assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
+        verify(messageBridge, times(2)).collectDecisionResponse(
+                eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
+                anyList(), eq(llmService),
+                eq(DecisionVisibility.INTERNAL_TRACE_ONLY), eq(true),
+                eq("VERIFY"), isNull());
         verify(messageBridge).collectDecisionResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
                 anyList(), eq(llmService),
@@ -451,7 +458,7 @@ class DeepThinkRuntimeBudgetTest {
 
         AgentRunResult result = new DeepThinkRuntimeEngine(context).run(context);
 
-        assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
+        assertThat(result.status()).isEqualTo(AgentRunResult.Status.PARTIAL);
         verify(messageBridge, never()).collectDecisionResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), anyString(),
                 anyList(), eq(llmService),
@@ -538,7 +545,7 @@ class DeepThinkRuntimeBudgetTest {
 
         AgentRunResult result = new DeepThinkRuntimeEngine(context).run(context);
 
-        assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
+        assertThat(result.status()).isEqualTo(AgentRunResult.Status.PARTIAL);
 
         // Verification should NOT be called when clarification is needed
         verify(messageBridge, never()).collectDecisionResponse(

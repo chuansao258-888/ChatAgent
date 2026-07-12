@@ -161,9 +161,15 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                         "等待用户澄清，未执行验证"));
             } else {
                 verificationResult = verify(plan, notebook, reflectionResult);
-                if (verificationResult.hasFollowUpActions()) {
+                verificationResult.setRounds(1);
+                if (verificationResult.hasFollowUpActions()
+                        && policy.getMaxVerificationRounds() >= 2) {
                     executeFollowUpStep("verification", plan, notebook, stepExecutor,
                             verificationResult.getRequiredFollowUpActions().get(0), "V1");
+                    // A follow-up invalidates the prior verdict. Final synthesis may consume
+                    // only a fresh verification result over the updated notebook.
+                    verificationResult = verify(plan, notebook, reflectionResult);
+                    verificationResult.setRounds(2);
                 }
             }
 
@@ -185,6 +191,13 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                     notebook.getCompletedSteps().size(),
                     notebook.getTotalToolCalls(), notebook.getTotalLlmCalls(), durationMs);
 
+            if (notebook.hasIncompleteSteps() || verificationResult == null
+                    || !verificationResult.isPassed()) {
+                return AgentRunResult.partial(durationMs,
+                        CurrentTurnKnowledgeHitHolder.isKnowledgeHit(),
+                        verificationResult != null && verificationResult.isSkipped()
+                                ? "VERIFICATION_SKIPPED" : "DEEPTHINK_INCOMPLETE");
+            }
             return AgentRunResult.success(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit());
 
         } catch (com.yulong.chatagent.agent.ToolExecutionStopException stop) {
@@ -243,13 +256,17 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         String observation = response.getResponses().stream()
                 .map(ToolResponseMessage.ToolResponse::responseData)
                 .collect(java.util.stream.Collectors.joining("\n"));
+        for (ToolResponseMessage.ToolResponse toolResponse : response.getResponses()) {
+            notebook.recordEvidence("R0", toolResponse.name(), toolResponse.id(),
+                    toolResponse.responseData());
+        }
         notebook.recordStepCompletion(
                 DeepThinkPlanStep.builder()
                         .id("R0")
                         .title("Contract retrieval")
                         .objective("Collect required contract evidence")
                         .build(),
-                truncate(observation, 200));
+                truncate(observation, 2_000));
     }
 
     private void executePlannedSteps(DeepThinkPlan plan,
@@ -364,16 +381,16 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                                 DeepThinkPlanStep step) {
         try {
             String observations = notebook.buildObservationsSummary();
-            String conclusion = stepExecutor.executeStep(
+            DeepThinkStepResult result = stepExecutor.executeStepResult(
                     chatSessionId, turnId, step,
                     policy.getMaxReactStepsPerPlanItem(),
                     notebook, plan.getGoal(), observations,
                     policy.getMaxTotalToolCalls(), policy.getMaxTotalLlmCalls());
 
-            notebook.recordStepCompletion(step, conclusion);
-            step.setStatus("COMPLETED");
-            step.setConclusion(conclusion);
-            return true;
+            notebook.recordStepResult(step, result);
+            step.setStatus(result.status().name());
+            step.setConclusion(result.conclusion());
+            return result.status() == DeepThinkStepStatus.COMPLETED;
         } catch (com.yulong.chatagent.agent.ToolExecutionStopException stop) {
             throw stop;
         } catch (Exception e) {

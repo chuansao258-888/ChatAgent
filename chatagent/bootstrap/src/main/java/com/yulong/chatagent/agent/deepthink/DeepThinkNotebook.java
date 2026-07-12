@@ -13,18 +13,26 @@ import java.util.Set;
  */
 public class DeepThinkNotebook {
 
+    static final int MAX_EVIDENCE_ENTRIES = 40;
+    static final int MAX_EVIDENCE_CHARS = 2_000;
+
     private final List<DeepThinkPlanStep> completedSteps = new ArrayList<>();
     private final Set<String> toolsUsed = new HashSet<>();
+    private final List<DeepThinkEvidenceEntry> evidence = new ArrayList<>();
     private int totalToolCalls;
     private int totalLlmCalls;
 
     public void recordStepCompletion(DeepThinkPlanStep step, String conclusion) {
+        recordStepResult(step, DeepThinkStepResult.completed(conclusion));
+    }
+
+    public void recordStepResult(DeepThinkPlanStep step, DeepThinkStepResult result) {
         DeepThinkPlanStep completed = DeepThinkPlanStep.builder()
                 .id(step.getId())
                 .title(step.getTitle())
                 .objective(step.getObjective())
-                .status("COMPLETED")
-                .conclusion(truncate(conclusion, 200))
+                .status(result.status().name())
+                .conclusion(truncate(result.conclusion(), MAX_EVIDENCE_CHARS))
                 .build();
         completedSteps.add(completed);
     }
@@ -42,6 +50,20 @@ public class DeepThinkNotebook {
     public void recordToolUsage(String toolName, int callCount) {
         toolsUsed.add(toolName);
         totalToolCalls += callCount;
+    }
+
+    public void recordEvidence(String stepId, String toolName, String toolCallId, String content) {
+        if (evidence.size() >= MAX_EVIDENCE_ENTRIES) {
+            return;
+        }
+        String safe = content == null ? "" : content;
+        boolean truncated = safe.length() > MAX_EVIDENCE_CHARS;
+        evidence.add(new DeepThinkEvidenceEntry(
+                stepId, toolName, toolCallId, truncate(safe, MAX_EVIDENCE_CHARS), truncated));
+    }
+
+    public List<DeepThinkEvidenceEntry> getEvidence() {
+        return List.copyOf(evidence);
     }
 
     public void incrementLlmCalls() {
@@ -64,6 +86,11 @@ public class DeepThinkNotebook {
         return totalLlmCalls;
     }
 
+    public boolean hasIncompleteSteps() {
+        return completedSteps.stream().anyMatch(step ->
+                !DeepThinkStepStatus.COMPLETED.name().equals(step.getStatus()));
+    }
+
     /**
      * 构建已收集观察的文本摘要，供最终综合 prompt 使用。
      */
@@ -76,6 +103,12 @@ public class DeepThinkNotebook {
                 sb.append(" → ").append(step.getConclusion());
             }
             sb.append("\n");
+        }
+        for (DeepThinkEvidenceEntry entry : evidence) {
+            sb.append("[evidence step=").append(entry.stepId())
+                    .append(" tool=").append(entry.toolName())
+                    .append(" call=").append(entry.toolCallId()).append("] ")
+                    .append(entry.content()).append("\n");
         }
         return sb.toString();
     }
