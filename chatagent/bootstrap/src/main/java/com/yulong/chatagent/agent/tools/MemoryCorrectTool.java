@@ -28,6 +28,7 @@ public class MemoryCorrectTool implements Tool, DirectToolCallbackSource {
     @Override public ToolType getType() { return ToolType.FIXED; }
     @Override public ToolEffectClass effectClass() { return ToolEffectClass.IDEMPOTENT; }
     @Override public DeadlineMode deadlineMode() { return DeadlineMode.ENFORCED; }
+    @Override public boolean requiresConfirmation() { return false; }
     @Override public List<ToolCallback> getToolCallbacks() { return List.of(new Callback()); }
     private final class Callback implements ToolCallback {
         @Override public ToolDefinition getToolDefinition() { return DEFINITION; }

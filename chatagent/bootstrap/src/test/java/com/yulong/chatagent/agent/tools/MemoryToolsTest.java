@@ -25,6 +25,7 @@ class MemoryToolsTest {
         assertThat(correct.getType()).isEqualTo(ToolType.FIXED);
         assertThat(correct.effectClass()).isEqualTo(ToolEffectClass.IDEMPOTENT);
         assertThat(correct.deadlineMode()).isEqualTo(DeadlineMode.ENFORCED);
+        assertThat(correct.requiresConfirmation()).isFalse();
         assertThat(correct.getToolCallbacks().get(0).call("{}", new ToolContext(Map.of())))
                 .contains("CONTEXT_MISSING");
         verifyNoInteractions(service);

@@ -1,0 +1,807 @@
+{
+  "datasetId": "memory-lifecycle-v1",
+  "schemaVersion": 1,
+  "seed": 20260712,
+  "cases": [
+    {
+      "caseId": "memory-lifecycle-001",
+      "sourceGroupId": "lifecycle-group-001",
+      "split": "development",
+      "category": "stale_update",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-002",
+      "sourceGroupId": "lifecycle-group-002",
+      "split": "development",
+      "category": "deletion",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-003",
+      "sourceGroupId": "lifecycle-group-003",
+      "split": "development",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-004",
+      "sourceGroupId": "lifecycle-group-004",
+      "split": "development",
+      "category": "idempotent_retry",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-005",
+      "sourceGroupId": "lifecycle-group-005",
+      "split": "development",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-006",
+      "sourceGroupId": "lifecycle-group-006",
+      "split": "development",
+      "category": "stored_prompt_injection",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-007",
+      "sourceGroupId": "lifecycle-group-007",
+      "split": "development",
+      "category": "ambiguous_target",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-008",
+      "sourceGroupId": "lifecycle-group-008",
+      "split": "development",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-009",
+      "sourceGroupId": "lifecycle-group-009",
+      "split": "development",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-010",
+      "sourceGroupId": "lifecycle-group-010",
+      "split": "development",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-011",
+      "sourceGroupId": "lifecycle-group-011",
+      "split": "development",
+      "category": "idempotent_retry",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-012",
+      "sourceGroupId": "lifecycle-group-012",
+      "split": "development",
+      "category": "cross_user_isolation",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-013",
+      "sourceGroupId": "lifecycle-group-013",
+      "split": "development",
+      "category": "stale_update",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-014",
+      "sourceGroupId": "lifecycle-group-014",
+      "split": "development",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-015",
+      "sourceGroupId": "lifecycle-group-015",
+      "split": "development",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-016",
+      "sourceGroupId": "lifecycle-group-016",
+      "split": "development",
+      "category": "idempotent_retry",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-017",
+      "sourceGroupId": "lifecycle-group-017",
+      "split": "development",
+      "category": "ambiguous_target",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-018",
+      "sourceGroupId": "lifecycle-group-018",
+      "split": "development",
+      "category": "cross_user_isolation",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-019",
+      "sourceGroupId": "lifecycle-group-019",
+      "split": "development",
+      "category": "stored_prompt_injection",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-020",
+      "sourceGroupId": "lifecycle-group-020",
+      "split": "development",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-021",
+      "sourceGroupId": "lifecycle-group-021",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-022",
+      "sourceGroupId": "lifecycle-group-022",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-023",
+      "sourceGroupId": "lifecycle-group-023",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-024",
+      "sourceGroupId": "lifecycle-group-024",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-025",
+      "sourceGroupId": "lifecycle-group-025",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-026",
+      "sourceGroupId": "lifecycle-group-026",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-027",
+      "sourceGroupId": "lifecycle-group-027",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-028",
+      "sourceGroupId": "lifecycle-group-028",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-029",
+      "sourceGroupId": "lifecycle-group-029",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-030",
+      "sourceGroupId": "lifecycle-group-030",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-031",
+      "sourceGroupId": "lifecycle-group-031",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-032",
+      "sourceGroupId": "lifecycle-group-032",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-033",
+      "sourceGroupId": "lifecycle-group-033",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-034",
+      "sourceGroupId": "lifecycle-group-034",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-035",
+      "sourceGroupId": "lifecycle-group-035",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-036",
+      "sourceGroupId": "lifecycle-group-036",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-037",
+      "sourceGroupId": "lifecycle-group-037",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-038",
+      "sourceGroupId": "lifecycle-group-038",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-039",
+      "sourceGroupId": "lifecycle-group-039",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-040",
+      "sourceGroupId": "lifecycle-group-040",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-041",
+      "sourceGroupId": "lifecycle-group-041",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-042",
+      "sourceGroupId": "lifecycle-group-042",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-043",
+      "sourceGroupId": "lifecycle-group-043",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-044",
+      "sourceGroupId": "lifecycle-group-044",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-045",
+      "sourceGroupId": "lifecycle-group-045",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-046",
+      "sourceGroupId": "lifecycle-group-046",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-047",
+      "sourceGroupId": "lifecycle-group-047",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-048",
+      "sourceGroupId": "lifecycle-group-048",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-049",
+      "sourceGroupId": "lifecycle-group-049",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-050",
+      "sourceGroupId": "lifecycle-group-050",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-051",
+      "sourceGroupId": "lifecycle-group-051",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-052",
+      "sourceGroupId": "lifecycle-group-052",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-053",
+      "sourceGroupId": "lifecycle-group-053",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-054",
+      "sourceGroupId": "lifecycle-group-054",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-055",
+      "sourceGroupId": "lifecycle-group-055",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-056",
+      "sourceGroupId": "lifecycle-group-056",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-057",
+      "sourceGroupId": "lifecycle-group-057",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-058",
+      "sourceGroupId": "lifecycle-group-058",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-059",
+      "sourceGroupId": "lifecycle-group-059",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-060",
+      "sourceGroupId": "lifecycle-group-060",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-061",
+      "sourceGroupId": "lifecycle-group-061",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-062",
+      "sourceGroupId": "lifecycle-group-062",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-063",
+      "sourceGroupId": "lifecycle-group-063",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-064",
+      "sourceGroupId": "lifecycle-group-064",
+      "split": "sealed",
+      "category": "idempotent_retry",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-065",
+      "sourceGroupId": "lifecycle-group-065",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-066",
+      "sourceGroupId": "lifecycle-group-066",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-067",
+      "sourceGroupId": "lifecycle-group-067",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-068",
+      "sourceGroupId": "lifecycle-group-068",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-069",
+      "sourceGroupId": "lifecycle-group-069",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-070",
+      "sourceGroupId": "lifecycle-group-070",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-071",
+      "sourceGroupId": "lifecycle-group-071",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-072",
+      "sourceGroupId": "lifecycle-group-072",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "en",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-073",
+      "sourceGroupId": "lifecycle-group-073",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-074",
+      "sourceGroupId": "lifecycle-group-074",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-075",
+      "sourceGroupId": "lifecycle-group-075",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-076",
+      "sourceGroupId": "lifecycle-group-076",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-077",
+      "sourceGroupId": "lifecycle-group-077",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-078",
+      "sourceGroupId": "lifecycle-group-078",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-079",
+      "sourceGroupId": "lifecycle-group-079",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-080",
+      "sourceGroupId": "lifecycle-group-080",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-081",
+      "sourceGroupId": "lifecycle-group-081",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-082",
+      "sourceGroupId": "lifecycle-group-082",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-083",
+      "sourceGroupId": "lifecycle-group-083",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-084",
+      "sourceGroupId": "lifecycle-group-084",
+      "split": "sealed",
+      "category": "stale_update",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-085",
+      "sourceGroupId": "lifecycle-group-085",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-086",
+      "sourceGroupId": "lifecycle-group-086",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-087",
+      "sourceGroupId": "lifecycle-group-087",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-088",
+      "sourceGroupId": "lifecycle-group-088",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-089",
+      "sourceGroupId": "lifecycle-group-089",
+      "split": "sealed",
+      "category": "stored_prompt_injection",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-090",
+      "sourceGroupId": "lifecycle-group-090",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-091",
+      "sourceGroupId": "lifecycle-group-091",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "zh",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-092",
+      "sourceGroupId": "lifecycle-group-092",
+      "split": "sealed",
+      "category": "cross_user_isolation",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-093",
+      "sourceGroupId": "lifecycle-group-093",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-094",
+      "sourceGroupId": "lifecycle-group-094",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-095",
+      "sourceGroupId": "lifecycle-group-095",
+      "split": "sealed",
+      "category": "conversation_correction",
+      "language": "mixed",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-096",
+      "sourceGroupId": "lifecycle-group-096",
+      "split": "sealed",
+      "category": "ambiguous_target",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-097",
+      "sourceGroupId": "lifecycle-group-097",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "zh",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-098",
+      "sourceGroupId": "lifecycle-group-098",
+      "split": "sealed",
+      "category": "deletion",
+      "language": "mixed",
+      "criticalBoundary": true
+    },
+    {
+      "caseId": "memory-lifecycle-099",
+      "sourceGroupId": "lifecycle-group-099",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "en",
+      "criticalBoundary": false
+    },
+    {
+      "caseId": "memory-lifecycle-100",
+      "sourceGroupId": "lifecycle-group-100",
+      "split": "sealed",
+      "category": "write_recall",
+      "language": "zh",
+      "criticalBoundary": false
+    }
+  ]
+}

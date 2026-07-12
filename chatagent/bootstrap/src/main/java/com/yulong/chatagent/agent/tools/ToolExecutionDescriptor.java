@@ -19,13 +19,22 @@ package com.yulong.chatagent.agent.tools;
  * @param deadlineMode       截止时间执行模式
  * @param returnDirect       是否直接返回工具结果（Spring returnDirect 语义）
  * @param perRunDispatchCap  该工具单 run 派发上限；{@code <=0} 表示沿用 run-wide 上限
+ * @param requiresConfirmation 是否要求 coordinator 在派发前进行额外确认
  */
 public record ToolExecutionDescriptor(
         String callbackName,
         ToolEffectClass effectClass,
         DeadlineMode deadlineMode,
         boolean returnDirect,
-        int perRunDispatchCap) {
+        int perRunDispatchCap,
+        boolean requiresConfirmation) {
+
+    public ToolExecutionDescriptor(String callbackName, ToolEffectClass effectClass,
+                                   DeadlineMode deadlineMode, boolean returnDirect,
+                                   int perRunDispatchCap) {
+        this(callbackName, effectClass, deadlineMode, returnDirect, perRunDispatchCap,
+                effectClass != ToolEffectClass.READ_ONLY);
+    }
 
     /**
      * 默认描述符：副作用 UNKNOWN、截止时间 UNSUPPORTED、returnDirect=false。
@@ -34,7 +43,7 @@ public record ToolExecutionDescriptor(
      */
     public static ToolExecutionDescriptor unknown(String callbackName) {
         return new ToolExecutionDescriptor(callbackName, ToolEffectClass.UNKNOWN,
-                DeadlineMode.UNSUPPORTED, false, 0);
+                DeadlineMode.UNSUPPORTED, false, 0, true);
     }
 
     /**
@@ -42,7 +51,7 @@ public record ToolExecutionDescriptor(
      */
     public static ToolExecutionDescriptor readOnlyEnforced(String callbackName, boolean returnDirect) {
         return new ToolExecutionDescriptor(callbackName, ToolEffectClass.READ_ONLY,
-                DeadlineMode.ENFORCED, returnDirect, 0);
+                DeadlineMode.ENFORCED, returnDirect, 0, false);
     }
 
     public boolean hasPerRunDispatchCap() {
@@ -50,11 +59,11 @@ public record ToolExecutionDescriptor(
     }
 
     /**
-     * 该描述符是否允许 coordinator 在不先精确确认的情况下派发。
-     * 非 READ_ONLY 的副作用一律需要先确认；UNKNOWN 按 NON_IDEMPOTENT 处理。
+     * 是否要求 coordinator 在派发前进行额外确认。默认由副作用类型保守推导；
+     * owned、当前轮证据门控的工具可以显式声明无需重复确认。
      */
     public boolean requiresConfirmation() {
-        return effectClass != ToolEffectClass.READ_ONLY;
+        return requiresConfirmation;
     }
 
     /**
@@ -66,7 +75,7 @@ public record ToolExecutionDescriptor(
 
     public String stableHash() {
         String value = callbackName + "|" + effectClass + "|" + deadlineMode
-                + "|" + returnDirect + "|" + perRunDispatchCap;
+                + "|" + returnDirect + "|" + perRunDispatchCap + "|" + requiresConfirmation;
         try {
             var digest = java.security.MessageDigest.getInstance("SHA-256");
             return java.util.HexFormat.of().formatHex(

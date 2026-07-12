@@ -28,7 +28,7 @@ export interface MemorySummaryEvidence {
   segments: MemorySummarySegmentEvidence[];
 }
 
-export interface MemoryExtractionEvidence {
+export interface MemoryPromotionJobEvidence {
   id: string;
   seqStartNo: number;
   seqEndNo: number;
@@ -47,7 +47,7 @@ export interface MemoryItemEvidence {
 export interface MemoryEvidence {
   sessionId: string;
   summary: MemorySummaryEvidence | null;
-  extractions: MemoryExtractionEvidence[];
+  promotionJobs: MemoryPromotionJobEvidence[];
   items: MemoryItemEvidence[];
 }
 
@@ -807,13 +807,13 @@ export async function readMemoryEvidence(
             ORDER BY seq_start_no, seq_end_no`,
           [sessionId],
         );
-    const extractionResult = await client.query<ExtractionRow>(
+    const promotionJobResult = await client.query<ExtractionRow>(
           `SELECT log.id::text,
                   log.seq_start_no::text,
                   log.seq_end_no::text,
                   log.status,
-                  (log.error_message IS NOT NULL) AS has_error
-             FROM memory_extraction_log log
+                  (log.last_error IS NOT NULL) AS has_error
+             FROM memory_promotion_job log
              JOIN t_user usr ON usr.id = log.user_id
             WHERE usr.username = $1
               AND log.session_id = $2
@@ -864,7 +864,7 @@ export async function readMemoryEvidence(
     return {
       sessionId,
       summary,
-      extractions: extractionResult.rows.map((row) => ({
+      promotionJobs: promotionJobResult.rows.map((row) => ({
         id: row.id,
         seqStartNo: toNumber(row.seq_start_no),
         seqEndNo: toNumber(row.seq_end_no),
@@ -905,6 +905,33 @@ export async function waitForMemoryEvidence(
   throw new Error(
     `Timed out waiting for redacted memory evidence: ${JSON.stringify(lastEvidence)}`,
   );
+}
+
+export async function readUserMemoryItems(
+  username: string,
+  markers: string[],
+): Promise<MemoryItemEvidence[]> {
+  return withDbClient("read user memory items", async (client) => {
+    const result = await client.query<MemoryItemRow>(
+      `SELECT item.id::text,
+              item.type,
+              item.status,
+              item.index_status,
+              item.content
+         FROM memory_item item
+         JOIN t_user usr ON usr.id = item.user_id
+        WHERE usr.username = $1
+        ORDER BY item.created_at, item.id`,
+      [username],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      status: row.status,
+      indexStatus: row.index_status,
+      markers: markerEvidence(markers, [row.content]),
+    }));
+  });
 }
 
 export async function readTurnCompletion(

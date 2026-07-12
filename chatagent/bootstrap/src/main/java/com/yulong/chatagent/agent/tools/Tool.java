@@ -47,4 +47,13 @@ public interface Tool {
     default DeadlineMode deadlineMode() {
         return DeadlineMode.UNSUPPORTED;
     }
+
+    /**
+     * Whether the coordinator must stage a second explicit approval before dispatch.
+     * Evidence-gated owned tools may override this when the current user turn already
+     * supplies the mutation authorization.
+     */
+    default boolean requiresConfirmation() {
+        return effectClass() != ToolEffectClass.READ_ONLY;
+    }
 }

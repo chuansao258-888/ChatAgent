@@ -1,0 +1,30 @@
+{
+  "suite": "memory-lifecycle-v1",
+  "scope": "application/tool-contract lifecycle benchmark; conversational E2E is separate evidence",
+  "developmentCases": 20,
+  "sealedCases": 80,
+  "baselineRevision": "87f254d6f8e40c41db10e2eba7e4011948d8825f",
+  "candidateRevision": "a78fba9+phase-04-evaluator",
+  "baselineSuccessRate": 0.2375,
+  "candidateSuccessRate": 1.0,
+  "differencePercentagePoints": 76.25,
+  "pairedBootstrap95Pct": [66.25, 85.0],
+  "bootstrapSamples": 2000,
+  "seed": 20260712,
+  "criticalBoundaryViolations": 0,
+  "p50LatencyMs": 0.948,
+  "p95LatencyMs": 2.396,
+  "datasetSha256": "b9ff322361d01893f3abea8b377a066b03efced6bb937b5eb23221a7d6cf33e5",
+  "baselineManifestSha256": "2025cc2e6d3fd25c1ee3e44199b99a4b8ed3eb122c613d6611ef6102617c0337",
+  "candidateObservationsSha256": "eaf882e120215dfdeccb87e027344459ae3d11b306219e9a6800b5434ea3f964",
+  "breakdown": {
+    "write_recall": {"cases": 11, "baselinePassed": 11, "candidatePassed": 11},
+    "conversation_correction": {"cases": 18, "baselinePassed": 0, "candidatePassed": 18},
+    "ambiguous_target": {"cases": 8, "baselinePassed": 0, "candidatePassed": 8},
+    "stale_update": {"cases": 8, "baselinePassed": 0, "candidatePassed": 8},
+    "deletion": {"cases": 12, "baselinePassed": 0, "candidatePassed": 12},
+    "cross_user_isolation": {"cases": 8, "baselinePassed": 8, "candidatePassed": 8},
+    "stored_prompt_injection": {"cases": 8, "baselinePassed": 0, "candidatePassed": 8},
+    "idempotent_retry": {"cases": 7, "baselinePassed": 0, "candidatePassed": 7}
+  }
+}

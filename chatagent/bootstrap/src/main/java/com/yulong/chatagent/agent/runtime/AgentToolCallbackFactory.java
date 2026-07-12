@@ -118,7 +118,8 @@ public class AgentToolCallbackFactory {
                 tool == null ? com.yulong.chatagent.agent.tools.ToolEffectClass.UNKNOWN : tool.effectClass(),
                 tool == null ? com.yulong.chatagent.agent.tools.DeadlineMode.UNSUPPORTED : tool.deadlineMode(),
                 returnDirect,
-                0));
+                0,
+                tool == null || tool.requiresConfirmation()));
     }
 
     /**

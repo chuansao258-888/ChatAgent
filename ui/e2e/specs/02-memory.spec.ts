@@ -10,6 +10,7 @@ import {
 } from "../helpers/chat";
 import {
   readMemoryEvidence,
+  readUserMemoryItems,
   waitForMemoryEvidence,
   waitForTurnCompletion,
   type MemoryEvidence,
@@ -135,6 +136,71 @@ function markerHasIndexedItem(
 
 test.describe("@memory three-layer memory and multi-turn relevance", () => {
   test.use({ storageState: normalStorageStatePath });
+
+  test("manages an authoritative memory through the fallback panel", async ({
+    page,
+  }) => {
+    const users = await readE2eUsers();
+    await loginThroughUi(page, users.normal, normalStorageStatePath);
+    const suffix = e2eRunId.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase();
+    const original = `Panel fact ${suffix}`;
+    const corrected = `Corrected panel fact ${suffix}`;
+
+    await page.getByRole("button", { name: "Memories" }).click();
+    const drawer = page.getByRole("dialog", { name: "Your memories" });
+    await expect(drawer).toBeVisible();
+    await drawer.getByPlaceholder("Add a memory").fill(original);
+    await drawer.getByRole("button", { name: "Add" }).click();
+    await expect(drawer.getByText(original)).toBeVisible();
+
+    page.once("dialog", async (dialog) => dialog.accept(corrected));
+    await drawer.getByRole("button", { name: "Edit" }).last().click();
+    await expect(drawer.getByText(corrected)).toBeVisible();
+    await drawer.getByRole("button", { name: "Delete" }).last().click();
+    await expect(drawer.getByText(corrected)).toHaveCount(0);
+  });
+
+  test("corrects the same durable memory through normal conversation", async ({
+    page,
+  }) => {
+    test.setTimeout(MEMORY_EVIDENCE_TIMEOUT_MS);
+    const users = await readE2eUsers();
+    await loginThroughUi(page, users.normal, normalStorageStatePath);
+    const suffix = e2eRunId.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase();
+    const oldMarker = `OLDROOM-${suffix}`;
+    const newMarker = `NEWROOM-${suffix}`;
+
+    await page.getByRole("button", { name: "Memories" }).click();
+    const drawer = page.getByRole("dialog", { name: "Your memories" });
+    await drawer.getByPlaceholder("Add a memory").fill(`Project room is ${oldMarker}`);
+    await drawer.getByRole("button", { name: "Add" }).click();
+    await expect(drawer.getByText(`Project room is ${oldMarker}`)).toBeVisible();
+    await drawer.getByLabel("Close").click();
+
+    const initial = await startChatAndWaitForAssistant(page, "Say hello briefly.", {
+      mode: "REACT",
+      timeoutMs: TURN_TIMEOUT_MS,
+    });
+    const before = await readUserMemoryItems(users.normal.username, [oldMarker, newMarker]);
+    const original = before.find((item) => item.markers[oldMarker]);
+    expect(original).toBeDefined();
+
+    const correction =
+      `Correct my saved long-term memory containing ${oldMarker}. ` +
+      `Change it to exactly "Project room is ${newMarker}". ` +
+      `This is an explicit correction: Project room is ${newMarker}.`;
+    const evidence = await continueConversation(page, initial.sessionId, correction);
+    expect(evidence.assistant.content).toContain(newMarker);
+
+    await expect.poll(async () => {
+      const items = await readUserMemoryItems(users.normal.username, [oldMarker, newMarker]);
+      return items.some((item) => item.id === original?.id && item.markers[newMarker]);
+    }, { timeout: MEMORY_EVIDENCE_TIMEOUT_MS }).toBe(true);
+    const after = await readUserMemoryItems(users.normal.username, [oldMarker, newMarker]);
+    const corrected = after.find((item) => item.id === original?.id);
+    expect(corrected?.markers[newMarker]).toBe(true);
+    expect(corrected?.markers[oldMarker]).toBe(false);
+  });
 
   test("proves repeated L1, L2, and L3 recall without stale-turn answers", async ({
     page,
@@ -286,8 +352,8 @@ test.describe("@memory three-layer memory and multi-turn relevance", () => {
         sessionId,
         allMemoryFacts,
         (current) =>
-          current.extractions.length > 0 &&
-          current.extractions.every((entry) => entry.status === "completed") &&
+          current.promotionJobs.length > 0 &&
+          current.promotionJobs.every((entry) => entry.status === "completed") &&
           markerHasIndexedItem(current, l3Badge) &&
           markerHasIndexedItem(current, l3Project),
         { timeoutMs: MEMORY_EVIDENCE_TIMEOUT_MS },
