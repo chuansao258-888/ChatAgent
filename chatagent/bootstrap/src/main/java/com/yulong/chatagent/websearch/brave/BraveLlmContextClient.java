@@ -84,14 +84,23 @@ public class BraveLlmContextClient implements WebSearchClient {
     private WebSearchResponse mapResponse(JsonNode root, WebSearchRequest request) {
         List<WebSearchResult> results = new ArrayList<>();
         Set<String> seen = new HashSet<>();
+        JsonNode grounding = root.path("grounding").path("generic");
         JsonNode sources = root.path("sources");
-        if (sources.isArray()) {
-            for (JsonNode source : sources) {
+        if (grounding.isArray()) {
+            for (JsonNode source : grounding) {
                 String url = source.path("url").asText(null);
                 if (!isAllowedPublicUrl(url, request.domains()) || !seen.add(normalizeUrl(url))) continue;
-                String title = source.path("title").asText("Source");
-                String snippet = source.path("snippet").asText(source.path("description").asText(""));
-                results.add(new WebSearchResult(title, url, snippet, null, "Brave", 0d));
+                JsonNode metadata = sources.path(url == null ? "" : url);
+                String title = source.path("title").asText(metadata.path("title").asText("Source"));
+                StringBuilder snippet = new StringBuilder();
+                JsonNode snippets = source.path("snippets");
+                if (snippets.isArray()) {
+                    snippets.forEach(value -> {
+                        if (!snippet.isEmpty()) snippet.append("\n");
+                        snippet.append(value.isTextual() ? value.asText() : value.toString());
+                    });
+                }
+                results.add(new WebSearchResult(title, url, snippet.toString(), null, "Brave", 0d));
                 if (results.size() >= request.maxResults()) break;
             }
         }
