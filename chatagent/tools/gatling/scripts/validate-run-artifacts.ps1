@@ -19,6 +19,7 @@ $matrix = @{
     ChatTurnCapacitySimulation = @{ profile = 'capacity-test'; entry = $false; agent = $false; max = $null }
     EntryRateLimitSimulation = @{ profile = 'capacity-test'; entry = $true; agent = $false; max = $null }
     AgentCapacitySimulation = @{ profile = 'capacity-test'; entry = $false; agent = $true; max = 3 }
+    AgentRedisFailureAudit = @{ profile = 'capacity-test'; entry = $false; agent = $true; max = 3 }
     RoutingResilienceSimulation = @{ profile = 'resilience-test'; entry = $null; agent = $null; max = $null }
 }
 $expected = $matrix[$manifest.scenario]
@@ -70,6 +71,9 @@ $hashManifest = Get-Content -Raw -LiteralPath (Join-Path $RunDirectory 'hashes.j
 $expectedHashFiles = Get-ChildItem -LiteralPath $RunDirectory -File |
     Where-Object Name -ne 'hashes.json' |
     Sort-Object Name
+if ((Compare-Object @($manifest.artifacts | Sort-Object) @($expectedHashFiles.Name)).Count -ne 0) {
+    throw 'Manifest artifact inventory does not match the run directory.'
+}
 if (@($hashManifest.files).Count -ne @($expectedHashFiles).Count) {
     throw 'Artifact hash inventory is incomplete.'
 }

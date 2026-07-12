@@ -131,6 +131,31 @@ class AgentRunCapacityLimiterTest {
     }
 
     @Test
+    void recoveryShouldUseRedisWithoutMigratingExistingLocalPermit() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        when(redis.execute(eq(AgentRunCapacityLimiter.ACQUIRE_SCRIPT), anyList(),
+                anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("redis down"))
+                .thenReturn(1L);
+        when(redis.execute(eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), anyString()))
+                .thenReturn(1L);
+        Semaphore semaphore = new Semaphore(1);
+        AgentRunCapacityLimiter limiter = newLimiter(redis, semaphore);
+
+        Permit localPermit = ((CapacityGateResult.Proceed) limiter.tryAcquire(context)).permit();
+        assertThat(semaphore.availablePermits()).isZero();
+
+        Permit recoveredRedisPermit = ((CapacityGateResult.Proceed) limiter.tryAcquire(
+                AgentRunCapacityLimiter.PermitContext.forTask("owner-2", "event-2", "turn-2"))).permit();
+        assertThat(semaphore.availablePermits()).isZero();
+
+        recoveredRedisPermit.close();
+        assertThat(semaphore.availablePermits()).isZero();
+        localPermit.close();
+        assertThat(semaphore.availablePermits()).isEqualTo(1);
+    }
+
+    @Test
     void localCapOnlyShouldNotTouchRedis() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         Semaphore semaphore = new Semaphore(1);

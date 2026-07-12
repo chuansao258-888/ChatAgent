@@ -22,52 +22,23 @@ allowed to start:
 & .\tools\gatling\scripts\run-capacity-matrix.ps1 -DryRun -Protocol formal-v1
 & .\tools\gatling\scripts\run-entry-rate-limit.ps1 -DryRun
 & .\tools\gatling\scripts\run-agent-capacity.ps1 -DryRun
+& .\tools\gatling\scripts\run-agent-redis-failure.ps1 -DryRun
 & .\tools\gatling\scripts\run-routing-resilience.ps1 -DryRun
 & .\tools\gatling\scripts\test-harness-contract.ps1
 ```
 
 Dry-run artifacts are written beneath `tools/gatling/artifacts/` and contain no
 prompt, token, credential, or provider payload. The routing runner rejects any
-fixture URL that does not resolve exclusively to loopback addresses. The
-entry, Agent-capacity, and routing classes are intentionally non-executable
-shells until their owning PHASE-04/05 implementation is accepted. The chat-turn
-workload and `TurnOutcomeRecorder` are present, but the formal matrix runner
-remains dry-run-only until PHASE-06 accepts its execution and reporting gates.
+fixture URL that does not resolve exclusively to loopback addresses. The entry
+and Agent-capacity runners execute local-stub limiter audits in PHASE-04.
+Routing remains owned by PHASE-05, while the formal chat-turn matrix remains
+owned by PHASE-06.
 
 ## Prerequisites
 
 - Start ChatAgent and its required infrastructure first.
 - Use JDK 17+.
 - Run commands from the repository root: `chatagent/`.
-
-## Chat API Load
-
-Targets:
-
-- `POST /api/auth/register`
-- `POST /api/chat-sessions`
-- `POST /api/chat-messages`
-
-Default shape:
-
-- 200 concurrent virtual users
-- 60 second ramp-up
-- 300 second hold
-- one chat message per user every 400 ms, roughly 500 requests/s at steady state
-- `Create chat message` P95 target: 5000 ms
-- failed request target: < 1%
-
-Run:
-
-```powershell
-.\mvnw.cmd -f tools\gatling\pom.xml gatling:test `
-  -Dgatling.simulationClass=com.yulong.chatagent.load.ChatApiLoadSimulation `
-  -DbaseUrl=http://localhost:8080 `
-  -DconcurrentUsers=200 `
-  -DrampSeconds=60 `
-  -DholdSeconds=300 `
-  -DpaceMillis=400
-```
 
 ## SSE Capacity
 

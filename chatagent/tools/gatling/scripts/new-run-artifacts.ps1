@@ -13,10 +13,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $DryRun) {
-    throw 'PHASE-03 runners support -DryRun only; held execution is enabled by the owning later phase.'
-}
-
 if ($FixtureBaseUrl) {
     $uri = [Uri]$FixtureBaseUrl
     $addresses = [System.Net.Dns]::GetHostAddresses($uri.DnsSafeHost)
@@ -37,7 +33,7 @@ $manifest = [ordered]@{
     scenario = $Scenario
     profile = $Profile
     protocol = $Protocol
-    dryRun = $true
+    dryRun = [bool]$DryRun
     startedAt = $startedAt
     completedAt = $startedAt
     git = [ordered]@{ commit = $commit; dirty = $dirty }
@@ -68,7 +64,7 @@ $result = [ordered]@{
     gatlingKoPercent = 0.0
     invalidSuccessAfterFailedCheck = 0
     reportable = $false
-    reason = 'dry-run'
+    reason = if ($DryRun) { 'dry-run' } else { 'initialized' }
 }
 
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $runDir 'manifest.json')
@@ -83,17 +79,16 @@ $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $runDir 
     ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDir 'observations.json')
 @{ schemaVersion = 1; ownedPids = @(); cleanupVerified = $true } |
     ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDir 'processes.json')
-'dry-run: no backend, fixture, sampler, or Gatling process started' |
+$logMessage = if ($DryRun) {
+    'dry-run: no backend, fixture, sampler, or Gatling process started'
+} else {
+    'initialized: owning runner will append sanitized execution events'
+}
+$logMessage |
     Set-Content -LiteralPath (Join-Path $runDir 'run.log')
 
-$hashes = Get-ChildItem -LiteralPath $runDir.FullName -File |
-    Where-Object Name -ne 'hashes.json' |
-    Sort-Object Name |
-    ForEach-Object { [ordered]@{ file = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } }
-@{ schemaVersion = 1; files = @($hashes) } |
-    ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runDir 'hashes.json')
-
-& (Join-Path $PSScriptRoot 'validate-run-artifacts.ps1') -RunDirectory $runDir.FullName
+& (Join-Path $PSScriptRoot 'settle-run-artifacts.ps1') -RunDirectory $runDir.FullName | Out-Null
+& (Join-Path $PSScriptRoot 'validate-run-artifacts.ps1') -RunDirectory $runDir.FullName | Out-Null
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Output $runDir.FullName
