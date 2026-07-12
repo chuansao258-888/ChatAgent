@@ -15,6 +15,7 @@ import {
 import {
   apiBaseUrl,
   e2eRunId,
+  liveWebSearchEnabled,
   normalStorageStatePath,
 } from "../helpers/env";
 import { readE2eUsers } from "../helpers/testUsers";
@@ -474,9 +475,10 @@ test.describe("@tools @web-search native Brave web search", () => {
 
       await loginThroughUi(page, users.normal, normalStorageStatePath);
 
-      const prompt =
-        "What exact latest public status marker is reported for the Beacon Orchard release from Example Labs? " +
-        "Please quote the marker exactly and include the source URL.";
+      const prompt = liveWebSearchEnabled
+        ? "Use web search to find the official OpenAI API platform documentation. Answer in English and include the exact public source URL."
+        : "What exact latest public status marker is reported for the Beacon Orchard release from Example Labs? " +
+          "Please quote the marker exactly and include the source URL.";
       const answer = await startChatAndWaitForAssistant(page, prompt, {
         mode: "REACT",
         timeoutMs: TURN_TIMEOUT_MS,
@@ -492,8 +494,15 @@ test.describe("@tools @web-search native Brave web search", () => {
         body: JSON.stringify(evidence, null, 2),
         contentType: "application/json",
       });
-      expect(answer.assistant.content).toContain(WEB_SEARCH_MARKER);
-      expect(answer.assistant.content).toContain(WEB_SEARCH_SOURCE_URL);
+      if (liveWebSearchEnabled) {
+        expect(answer.assistant.content).toMatch(
+          /https:\/\/(?:[^/\s]+\.)?(?:openai\.com|developers\.openai\.com)\//i,
+        );
+        expect(answer.assistant.content).not.toContain(WEB_SEARCH_MARKER);
+      } else {
+        expect(answer.assistant.content).toContain(WEB_SEARCH_MARKER);
+        expect(answer.assistant.content).toContain(WEB_SEARCH_SOURCE_URL);
+      }
       assertEnglishAnswer(answer.assistant.content);
     } finally {
       if (originalAllowedTools) {

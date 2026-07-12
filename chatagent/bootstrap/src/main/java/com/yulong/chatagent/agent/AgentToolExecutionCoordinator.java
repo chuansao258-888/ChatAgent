@@ -502,9 +502,13 @@ public final class AgentToolExecutionCoordinator {
                 prompt.getInstructions() != null
                         ? new java.util.ArrayList<>(prompt.getInstructions())
                         : new java.util.ArrayList<>();
-        // 用规范化后的 assistant 消息替换历史里最后一条（即原始未规范化的版本），
-        // 保证后续模型看到的是 preflight 后的稳定 id / 有界参数。
-        if (!base.isEmpty()) {
+        // Some Spring tool-manager paths append the raw assistant call to the supplied prompt,
+        // while the coordinated runtime passes a prompt ending at the current user request.
+        // Replace only an actual assistant tool-call message; never delete the user's request.
+        if (!base.isEmpty()
+                && base.get(base.size() - 1) instanceof AssistantMessage trailingAssistant
+                && trailingAssistant.getToolCalls() != null
+                && !trailingAssistant.getToolCalls().isEmpty()) {
             base.remove(base.size() - 1);
         }
         base.add(normalizedAssistant);

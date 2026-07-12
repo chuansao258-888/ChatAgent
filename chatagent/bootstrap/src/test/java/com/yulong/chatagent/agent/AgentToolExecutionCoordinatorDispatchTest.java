@@ -16,6 +16,7 @@ import com.yulong.chatagent.agent.tools.DeadlineMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.ToolContext;
@@ -119,6 +120,38 @@ class AgentToolExecutionCoordinatorDispatchTest {
         assertThat(ledger.commitTerminalCount).isZero();
         assertThat(coordinated.terminalCommits()).singleElement()
                 .satisfies(commit -> assertThat(commit.terminalState()).isEqualTo("SUCCEEDED"));
+    }
+
+    @Test
+    void coordinatedExecutionPreservesTrailingUserRequestBeforePairedToolMessages() {
+        AtomicInteger dispatchCount = new AtomicInteger();
+        ToolCallback readOnly = describedCallback("webSearch", "search-result", dispatchCount,
+                ToolEffectClass.READ_ONLY);
+        RecordingLedgerPort ledger = new RecordingLedgerPort();
+        AgentToolExecutionCoordinator coordinator = new AgentToolExecutionCoordinator(List.of(readOnly), 4);
+        ToolExecutionDescriptorResolver descriptors = new ToolExecutionDescriptorResolver(List.of(readOnly));
+        ToolDispatchContext ctx = new ToolDispatchContext(
+                "session-1", "turn-1", null, ledger, null, descriptors);
+        UserMessage user = new UserMessage("Find the current Singapore time");
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "c1", "function", "webSearch", "{\"q\":\"Singapore time\"}")))
+                .build();
+        Prompt prompt = Prompt.builder()
+                .messages(List.of(user))
+                .chatOptions(DefaultToolCallingChatOptions.builder()
+                        .internalToolExecutionEnabled(false).build())
+                .build();
+
+        List<org.springframework.ai.chat.messages.Message> history = coordinator
+                .executeCoordinated(prompt, new ChatResponse(List.of(new Generation(assistant))), ctx)
+                .executionResult().conversationHistory();
+
+        assertThat(history).hasSize(3);
+        assertThat(history.get(0)).isSameAs(user);
+        assertThat(history.get(1)).isInstanceOf(AssistantMessage.class);
+        assertThat(history.get(2)).isInstanceOf(ToolResponseMessage.class);
     }
 
     @Test

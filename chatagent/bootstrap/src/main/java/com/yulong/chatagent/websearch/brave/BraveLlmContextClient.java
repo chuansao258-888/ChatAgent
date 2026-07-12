@@ -65,13 +65,16 @@ public class BraveLlmContextClient implements WebSearchClient {
 
     Map<String, Object> buildRequest(WebSearchRequest request) {
         String q = request.providerQuery();
+        int contextTokens = Math.max(1024, properties.getMaxContextTokens());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("q", q);
         body.put("count", request.maxResults());
         body.put("maximum_number_of_urls", request.maxResults());
-        body.put("maximum_number_of_tokens", properties.getMaxContextTokens());
+        body.put("maximum_number_of_tokens", contextTokens);
         body.put("maximum_number_of_snippets", Math.min(request.maxResults() * 3, 20));
-        body.put("maximum_number_of_tokens_per_url", Math.max(128, properties.getMaxContextTokens() / request.maxResults()));
+        // Brave validates this field with a provider-side minimum of 512.
+        body.put("maximum_number_of_tokens_per_url",
+                Math.max(512, contextTokens / request.maxResults()));
         body.put("maximum_number_of_snippets_per_url", 3);
         body.put("context_threshold_mode", "balanced");
         body.put("enable_local", false);

@@ -44,6 +44,7 @@ class BraveLlmContextClientTest {
         server.start();
 
         WebSearchProperties properties = properties();
+        properties.setMaxContextTokens(512);
         BraveLlmContextClient client = new BraveLlmContextClient(properties, new ObjectMapper());
         var response = client.search(WebSearchRequest.validate(
                 "release notes", 2, "WEEK", null, 3, 300, 3));
@@ -53,6 +54,8 @@ class BraveLlmContextClientTest {
         assertThat(sent.path("freshness").asText()).isEqualTo("pw");
         assertThat(sent.path("context_threshold_mode").asText()).isEqualTo("balanced");
         assertThat(sent.path("enable_local").asBoolean()).isFalse();
+        assertThat(sent.path("maximum_number_of_tokens").asInt()).isEqualTo(1024);
+        assertThat(sent.path("maximum_number_of_tokens_per_url").asInt()).isEqualTo(512);
         assertThat(sent.has("safe_search")).isFalse();
         assertThat(response.success()).isTrue();
         assertThat(response.results()).hasSize(1);
