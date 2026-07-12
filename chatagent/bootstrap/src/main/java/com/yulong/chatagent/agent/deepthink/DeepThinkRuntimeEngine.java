@@ -181,7 +181,8 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
             DeepThinkFinalSynthesizer finalSynthesizer = new DeepThinkFinalSynthesizer(
                     messageBridge, llmService, promptLoader, chatMemory, chatOptions,
                     chatSessionId, turnId, sessionFileSummary, relevantLongTermMemories);
-            finalSynthesizer.synthesize(plan, notebook, reflectionResult, verificationResult);
+            AgentMessageBridge.FinalStreamResult finalResult = finalSynthesizer.synthesize(
+                    plan, notebook, reflectionResult, verificationResult);
 
             agentState = AgentState.FINISHED;
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
@@ -191,11 +192,12 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                     notebook.getCompletedSteps().size(),
                     notebook.getTotalToolCalls(), notebook.getTotalLlmCalls(), durationMs);
 
-            if (notebook.hasIncompleteSteps() || verificationResult == null
+            if (!finalResult.complete() || notebook.hasIncompleteSteps() || verificationResult == null
                     || !verificationResult.isPassed()) {
                 return AgentRunResult.partial(durationMs,
                         CurrentTurnKnowledgeHitHolder.isKnowledgeHit(),
-                        verificationResult != null && verificationResult.isSkipped()
+                        !finalResult.complete() ? "FINAL_STREAM_" + finalResult.status().name()
+                                : verificationResult != null && verificationResult.isSkipped()
                                 ? "VERIFICATION_SKIPPED" : "DEEPTHINK_INCOMPLETE");
             }
             return AgentRunResult.success(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit());

@@ -59,6 +59,7 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
     private final com.yulong.chatagent.agent.tools.ToolExecutionDescriptorResolver descriptorResolver;
 
     private AgentState agentState;
+    private AgentMessageBridge.FinalStreamResult finalStreamResult;
     private ChatResponse lastChatResponse;
     private AgentRunResult.Status stopStatus;
     private String stopReason;
@@ -159,6 +160,11 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
             if (stopStatus == AgentRunResult.Status.PARTIAL) {
                 return AgentRunResult.partial(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stopReason);
             }
+            if (finalStreamResult != null && !finalStreamResult.complete()) {
+                return AgentRunResult.partial(durationMs,
+                        CurrentTurnKnowledgeHitHolder.isKnowledgeHit(),
+                        "FINAL_STREAM_" + finalStreamResult.status().name());
+            }
             return AgentRunResult.success(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit());
         } catch (Exception e) {
             agentState = AgentState.ERROR;
@@ -196,6 +202,12 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
         org.springframework.util.Assert.notNull(this.lastChatResponse, "Last chat client response cannot be null");
 
         if (!this.lastChatResponse.hasToolCalls()) {
+            AgentMessageBridge.FinalStreamResult streamResult =
+                    this.thinkingEngine.getLastFinalStreamResult();
+            if (streamResult != null && !streamResult.complete()) {
+                stopStatus = AgentRunResult.Status.PARTIAL;
+                stopReason = "FINAL_STREAM_" + streamResult.status().name();
+            }
             agentState = AgentState.FINISHED;
             return;
         }
@@ -261,7 +273,14 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
                     .messages(finalPromptMessages)
                     .build();
 
-            this.messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, this.llmService, false);
+            this.finalStreamResult = this.messageBridge.streamFinalResponseWithOutcome(
+                    chatSessionId, turnId, prompt, this.llmService, false);
+            if (this.finalStreamResult == null) {
+                this.finalStreamResult = new AgentMessageBridge.FinalStreamResult(
+                        AgentMessageBridge.FinalStreamStatus.COMPLETE,
+                        this.messageBridge.streamFinalResponse(
+                                chatSessionId, turnId, prompt, this.llmService, false));
+            }
         } catch (Exception e) {
             log.error("Failed to force final synthesis after max steps reached", e);
             throw new AgentRunException(

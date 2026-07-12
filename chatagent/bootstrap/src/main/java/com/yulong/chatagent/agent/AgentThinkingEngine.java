@@ -44,6 +44,12 @@ import java.util.stream.Collectors;
  */
 public class AgentThinkingEngine {
 
+    private AgentMessageBridge.FinalStreamResult lastFinalStreamResult;
+
+    public AgentMessageBridge.FinalStreamResult getLastFinalStreamResult() {
+        return lastFinalStreamResult;
+    }
+
     private static final String SESSION_FILE_SEARCH_TOOL = "SessionFileSearchTool";
     private static final String ATTACHED_SESSION_FILES_PREFIX = "Attached session files:";
     private static final String BOUND_KNOWLEDGE_BASES_PREFIX = "Bound knowledge bases:";
@@ -386,7 +392,15 @@ public class AgentThinkingEngine {
     private ChatResponse streamFinalAnswer(String chatSessionId, Prompt prompt) {
         // ChatAgent.step() 只看返回的 ChatResponse 是否包含 tool_call。
         // 因此最终答案的流式输出也放在 think() 内完成，再包装成一个普通 ChatResponse 返回。
-        String finalContent = this.messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, this.llmService, false);
+        this.lastFinalStreamResult = this.messageBridge.streamFinalResponseWithOutcome(
+                chatSessionId, turnId, prompt, this.llmService, false);
+        if (this.lastFinalStreamResult == null) {
+            this.lastFinalStreamResult = new AgentMessageBridge.FinalStreamResult(
+                    AgentMessageBridge.FinalStreamStatus.COMPLETE,
+                    this.messageBridge.streamFinalResponse(
+                            chatSessionId, turnId, prompt, this.llmService, false));
+        }
+        String finalContent = this.lastFinalStreamResult.content();
         return new ChatResponse(List.of(new Generation(new AssistantMessage(finalContent))));
     }
 

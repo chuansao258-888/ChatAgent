@@ -53,6 +53,20 @@ public interface AgentMessageBridge {
      */
     String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService llmService, boolean deepThinking);
 
+    default FinalStreamResult streamFinalResponseWithOutcome(
+            String chatSessionId, String turnId, Prompt prompt,
+            LLMService llmService, boolean deepThinking) {
+        return new FinalStreamResult(
+                FinalStreamStatus.COMPLETE,
+                streamFinalResponse(chatSessionId, turnId, prompt, llmService, deepThinking));
+    }
+
+    enum FinalStreamStatus { COMPLETE, INTERRUPTED, TIMEOUT, PROVIDER_ERROR, INVALID_FINAL }
+
+    record FinalStreamResult(FinalStreamStatus status, String content) {
+        public boolean complete() { return status == FinalStreamStatus.COMPLETE; }
+    }
+
     /**
      * 执行带工具的决策流，并把内容先作为临时 assistant 消息推给前端。
      * <p>
@@ -73,11 +87,6 @@ public interface AgentMessageBridge {
                                                     String systemPrompt,
                                                     List<ToolCallback> tools,
                                                     LLMService llmService);
-
-    // 当前生产流程不会调用缓冲响应回放：
-    // streamDecisionResponse 已经在”无 tool calls”时直接落库并推送最终消息；
-    // “有 tool calls”时会回滚临时消息并进入工具执行，后续由 streamFinalResponse 重新生成最终回答。
-    // void publishBufferedFinalResponse(String chatSessionId, String turnId, BufferedStreamingResponse bufferedResponse);
 
     /**
      * 内部决策收集：根据 visibility 决定持久化和 SSE 行为。

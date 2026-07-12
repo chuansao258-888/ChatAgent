@@ -57,7 +57,7 @@ public class DeepThinkFinalSynthesizer {
         this.relevantLongTermMemories = relevantLongTermMemories;
     }
 
-    public void synthesize(DeepThinkPlan plan,
+    public AgentMessageBridge.FinalStreamResult synthesize(DeepThinkPlan plan,
                            DeepThinkNotebook notebook,
                            DeepThinkReflectionResult reflectionResult,
                            DeepThinkVerificationResult verificationResult) {
@@ -69,8 +69,16 @@ public class DeepThinkFinalSynthesizer {
             AgentTraceMetadata trace = DeepThinkTraceSanitizer.buildTrace(
                     "DEEPTHINK", plan, notebook, reflectionResult, verificationResult);
             Prompt prompt = buildPrompt(plan, notebook, reflectionResult, verificationResult);
-            messageBridge.streamFinalResponse(chatSessionId, turnId, prompt, llmService, false);
+            AgentMessageBridge.FinalStreamResult result = messageBridge.streamFinalResponseWithOutcome(
+                    chatSessionId, turnId, prompt, llmService, false);
+            if (result == null) {
+                result = new AgentMessageBridge.FinalStreamResult(
+                        AgentMessageBridge.FinalStreamStatus.COMPLETE,
+                        messageBridge.streamFinalResponse(
+                                chatSessionId, turnId, prompt, llmService, false));
+            }
             messageBridge.attachTraceMetadata(chatSessionId, turnId, trace);
+            return result;
         } catch (Exception e) {
             log.error("Failed to produce DeepThink final synthesis", e);
             throw new AgentRunException(

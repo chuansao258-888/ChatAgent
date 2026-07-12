@@ -238,10 +238,17 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
 
     @Override
     public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService llmService, boolean deepThinking) {
-        return streamFinalResponse(chatSessionId, turnId, prompt, llmService, deepThinking, 0);
+        return streamFinalResponseWithOutcome(chatSessionId, turnId, prompt, llmService, deepThinking).content();
     }
 
-    private String streamFinalResponse(String chatSessionId,
+    @Override
+    public FinalStreamResult streamFinalResponseWithOutcome(
+            String chatSessionId, String turnId, Prompt prompt,
+            LLMService llmService, boolean deepThinking) {
+        return streamFinalResponseOutcome(chatSessionId, turnId, prompt, llmService, deepThinking, 0);
+    }
+
+    private FinalStreamResult streamFinalResponseOutcome(String chatSessionId,
                                        String turnId,
                                        Prompt prompt,
                                        LLMService llmService,
@@ -280,6 +287,8 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         AtomicBoolean firstContentRecorded = new AtomicBoolean(false);
         AtomicBoolean invalidFinalResponse = new AtomicBoolean(false);
         AtomicReference<String> repairReason = new AtomicReference<>();
+        AtomicReference<FinalStreamStatus> streamStatus =
+                new AtomicReference<>(FinalStreamStatus.COMPLETE);
 
         StreamCallback sseAdapter = new StreamCallback() {
             @Override
@@ -381,7 +390,12 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
             public void onError(Throwable t) {
                 // 错误终止同样只处理一次；否则可能重复追加错误提示或重复 DONE。
                 if (!terminal.compareAndSet(false, true)) return;
-                log.error("Streaming response error", t);
+                streamStatus.compareAndSet(FinalStreamStatus.COMPLETE,
+                        t instanceof InterruptedException
+                                ? FinalStreamStatus.INTERRUPTED : FinalStreamStatus.PROVIDER_ERROR);
+                log.warn("Final response stream failed: outcome={}, exception={}",
+                        streamStatus.get(), t == null ? "unknown" : t.getClass().getSimpleName());
+                log.debug("Final response stream failure details", t);
 
                 // 即使流中断，也保留已经收到的正文，并追加用户可读的中断提示。
                 UpdateChatMessageRequest updateReq = new UpdateChatMessageRequest();
@@ -440,11 +454,13 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 if (disposable != null) {
                     disposable.dispose();
                 }
+                streamStatus.set(FinalStreamStatus.TIMEOUT);
                 sseAdapter.onError(new IllegalStateException("Streaming response timed out after " + timeoutSeconds + "s"));
             }
         } catch (InterruptedException e) {
             // 恢复中断标记，并取消上游流，避免后台请求继续占资源。
             Thread.currentThread().interrupt();
+            streamStatus.set(FinalStreamStatus.INTERRUPTED);
             Disposable disposable = streamHandle.get();
             if (disposable != null) {
                 disposable.dispose();
@@ -459,17 +475,19 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         }
 
         if (invalidFinalResponse.get()) {
-            return streamFinalResponse(
+            FinalStreamResult repaired = streamFinalResponseOutcome(
                     chatSessionId,
                     turnId,
                     buildFinalRepairPrompt(prompt, repairReason.get()),
                     llmService,
                     deepThinking,
                     repairAttempt + 1);
+            return repaired.complete() ? repaired
+                    : new FinalStreamResult(FinalStreamStatus.INVALID_FINAL, repaired.content());
         }
 
         synchronized (contentLock) {
-            return fullContent.toString();
+            return new FinalStreamResult(streamStatus.get(), fullContent.toString());
         }
     }
 
