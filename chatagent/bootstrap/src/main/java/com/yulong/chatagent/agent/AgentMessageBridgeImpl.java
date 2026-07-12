@@ -84,6 +84,8 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     private static final Pattern USER_VISIBLE_TOOL_CALL_MARKUP = Pattern.compile(
             "(?is)<\\s*/?\\s*tool_call\\s*>"
                     + "|<\\s*tool_calls?\\b"
+                    + "|<[^>]{0,80}\\btool_calls?\\b"
+                    + "|<[^>]{0,80}\\binvoke\\s+name\\s*="
                     + "|\\{\\s*\"name\"\\s*:\\s*\"[A-Za-z0-9_]*(?:Tool|tool)[A-Za-z0-9_]*\"\\s*,\\s*\"arguments\"\\s*:"
     );
     private static final Set<String> GENERIC_WORDS = Set.of(
@@ -298,20 +300,12 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 if (firstContentRecorded.compareAndSet(false, true)) {
                     firstContentTimeMs.set(System.currentTimeMillis());
                 }
-                ChatMessageVO snapshot;
                 synchronized (contentLock) {
                     fullContent.append(content);
-                    // 每次都生成完整内容快照，而不是只推增量，方便前端直接覆盖渲染。
-                    snapshot = snapshotMessage(baseVo, fullContent.toString());
                 }
-
-                // AI_GENERATED_CONTENT 表示助手正文更新。
-                SseMessage msg = new SseMessage(
-                    SseMessage.Type.AI_GENERATED_CONTENT,
-                    SseMessage.Payload.builder().message(snapshot).build(),
-                    SseMessage.Metadata.builder().chatMessageId(chatMessageDTO.getId()).build()
-                );
-                sseService.publish(chatSessionId, msg);
+                // Final-answer guards inspect the complete response (tool markup, citations,
+                // language, stale answers). Publishing chunks before those guards complete would
+                // leak content that a later rollback cannot retract from the browser.
             }
 
             @Override
@@ -402,7 +396,10 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
                 String errorSuffix = "\n\n[系统提示：网络连接不稳定，回复已中断]";
                 ChatMessageVO snapshot;
                 synchronized (contentLock) {
-                    String interruptedContent = fullContent + errorSuffix;
+                    String partialContent = fullContent.toString();
+                    String interruptedContent = containsUserVisibleToolCallMarkup(partialContent)
+                            ? emptyFinalAnswerFallback(prompt) + errorSuffix
+                            : partialContent + errorSuffix;
                     updateReq.setContent(interruptedContent);
                     snapshot = snapshotMessage(baseVo, interruptedContent);
                 }

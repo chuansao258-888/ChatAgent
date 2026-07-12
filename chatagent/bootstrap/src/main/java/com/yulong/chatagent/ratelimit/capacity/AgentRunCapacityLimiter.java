@@ -6,6 +6,7 @@ import com.yulong.chatagent.ratelimit.RateLimitProperties;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
@@ -79,6 +80,7 @@ public class AgentRunCapacityLimiter {
     private final ScheduledExecutorService scheduler;
     private final Semaphore localCapSemaphore;
 
+    @Autowired
     public AgentRunCapacityLimiter(RateLimitProperties properties,
                                    RateLimitMetricsRecorder metricsRecorder,
                                    ObjectProvider<StringRedisTemplate> redisTemplateProvider) {

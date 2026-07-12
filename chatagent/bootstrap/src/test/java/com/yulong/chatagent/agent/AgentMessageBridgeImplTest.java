@@ -863,6 +863,44 @@ class AgentMessageBridgeImplTest {
     }
 
     @Test
+    void streamFinalResponseShouldRepairProviderDsmlToolCallMarkup() {
+        when(chatMessageFacadeService.createChatMessage(any(ChatMessageDTO.class)))
+                .thenReturn(
+                        CreateChatMessageResponse.builder().chatMessageId("msg-1").build(),
+                        CreateChatMessageResponse.builder().chatMessageId("msg-2").build());
+        LLMService llmService = mock(LLMService.class);
+        when(llmService.streamChat(any(Prompt.class), eq(false), any(StreamCallback.class)))
+                .thenAnswer(invocation -> {
+                    StreamCallback callback = invocation.getArgument(2);
+                    callback.onContent("<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"hallucinated_tool\"></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>");
+                    callback.onComplete();
+                    return (reactor.core.Disposable) () -> { };
+                })
+                .thenAnswer(invocation -> {
+                    StreamCallback callback = invocation.getArgument(2);
+                    callback.onContent("Asia/Singapore local time is available from the completed tool result.");
+                    callback.onComplete();
+                    return (reactor.core.Disposable) () -> { };
+                });
+        Prompt prompt = Prompt.builder()
+                .messages(List.of(new UserMessage("What time is it in Singapore?")))
+                .build();
+
+        String finalText = agentMessageBridge.streamFinalResponse(
+                "session-1", "turn-1", prompt, llmService, false);
+
+        assertThat(finalText).contains("Asia/Singapore").doesNotContain("DSML", "hallucinated_tool");
+        verify(chatMessageFacadeService).deleteChatMessage("msg-1");
+        verify(llmService, times(2)).streamChat(any(Prompt.class), eq(false), any(StreamCallback.class));
+        ArgumentCaptor<SseMessage> sseCaptor = ArgumentCaptor.forClass(SseMessage.class);
+        verify(sseService, atLeastOnce()).publish(eq("session-1"), sseCaptor.capture());
+        assertThat(sseCaptor.getAllValues()).noneMatch(message ->
+                message.getType() == SseMessage.Type.AI_GENERATED_CONTENT
+                        && message.getPayload().getMessage() != null
+                        && message.getPayload().getMessage().getContent().contains("DSML"));
+    }
+
+    @Test
     void streamFinalResponseShouldNotTreatDomainWordsAsRepairPolicy() {
         LLMService llmService = mock(LLMService.class);
         when(llmService.streamChat(any(Prompt.class), eq(false), any(StreamCallback.class)))

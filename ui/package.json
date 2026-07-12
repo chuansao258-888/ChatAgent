@@ -14,6 +14,7 @@
     "e2e:debug": "playwright test --debug",
     "e2e:driver": "node e2e/driver/server.mjs",
     "e2e:routing-fixture": "node e2e/fixtures/routing-provider-fixture.mjs",
+    "e2e:mcp-fixture": "node e2e/fixtures/mcp-protocol-fixture.mjs",
     "e2e:install": "playwright install chromium",
     "lint": "eslint .",
     "preview": "vite preview"

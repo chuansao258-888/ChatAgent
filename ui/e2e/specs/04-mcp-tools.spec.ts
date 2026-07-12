@@ -1,6 +1,6 @@
 import { request as playwrightRequest } from "@playwright/test";
 import { expect, test } from "../fixtures";
-import { deleteApi, getApi, postApi } from "../helpers/api";
+import { deleteApi, getApi, patchApi, postApi } from "../helpers/api";
 import { loginThroughUi, loginUser, type E2eUser } from "../helpers/auth";
 import {
   startChatAndWaitForAssistant,
@@ -60,6 +60,17 @@ interface SyncMcpToolCatalogResponse {
   activeToolCount: number;
   activeTools: McpDiscoveredToolVO[];
   server: McpServerVO;
+}
+
+interface McpToolCatalogVO extends McpDiscoveredToolVO {
+  id: string;
+  effectPolicy: string;
+  policyVersion: number;
+}
+
+interface GetMcpServerResponse {
+  server: McpServerVO;
+  catalogTools: McpToolCatalogVO[];
 }
 
 interface ToolVO {
@@ -210,6 +221,23 @@ async function createAndSyncLocalWeatherMcp(adminUser: E2eUser) {
           (tool) => tool.remoteOriginalName === requiredRemoteName,
         ),
       ).toBe(true);
+    }
+
+    const serverDetail = await getApi<GetMcpServerResponse>(
+      context,
+      `/api/admin/mcp-servers/${serverId}`,
+      auth.accessToken,
+    );
+    for (const tool of serverDetail.catalogTools) {
+      await patchApi<void>(
+        context,
+        `/api/admin/mcp-servers/tools/${tool.id}/effect-policy`,
+        {
+          effectPolicy: "READ_ONLY",
+          expectedPolicyVersion: tool.policyVersion,
+        },
+        auth.accessToken,
+      );
     }
 
     const optionalTools = await getApi<ToolVO[]>(

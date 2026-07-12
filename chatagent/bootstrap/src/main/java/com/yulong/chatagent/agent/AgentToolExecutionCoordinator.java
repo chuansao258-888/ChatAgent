@@ -420,9 +420,15 @@ public final class AgentToolExecutionCoordinator {
         }
         String canonical = ToolArgumentCanonicalizer.canonicalize(call.arguments());
         if (context.approvedProposal() != null) {
-            return context.approvedProposal().approvalId();
+            return "approval:v1:" + ToolArgumentCanonicalizer.sha256(
+                    String.valueOf(context.approvedProposal().approvalId()));
         }
-        return context.turnId() + ":" + call.name() + ":" + ToolArgumentCanonicalizer.sha256(canonical);
+        // The journal schema deliberately caps execution_key at 128 characters. Hash the complete
+        // identity tuple instead of concatenating an unbounded MCP tool name with UUID/hash fields.
+        // NUL separators preserve tuple boundaries and the version prefix permits future migration.
+        String identity = context.turnId() + "\0" + call.name() + "\0"
+                + ToolArgumentCanonicalizer.sha256(canonical);
+        return "dispatch:v1:" + ToolArgumentCanonicalizer.sha256(identity);
     }
 
     private static boolean matchesApprovedProposal(ToolCallPreflight.NormalizedToolCall call,

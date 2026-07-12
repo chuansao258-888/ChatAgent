@@ -1,6 +1,7 @@
 package com.yulong.chatagent.mq.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.rabbitmq.client.Channel;
 import com.yulong.chatagent.conversation.event.ChatEvent;
 import com.yulong.chatagent.conversation.application.SessionRunCoordinator;
@@ -43,6 +44,7 @@ public class AgentRunTaskListener extends AbstractRetryingMqConsumer<AgentRunTas
     private final AgentRunCapacityLimiter capacityLimiter;
     private final RateLimitProperties rateLimitProperties;
 
+    @Autowired
     public AgentRunTaskListener(ObjectMapper objectMapper,
                                 ChatAgentMqProperties properties,
                                 RabbitMqMessagePublisher rabbitMqMessagePublisher,

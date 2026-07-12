@@ -129,7 +129,8 @@ class AgentToolExecutionCoordinatorDispatchTest {
                 ToolEffectClass.READ_ONLY);
         RecordingLedgerPort ledger = new RecordingLedgerPort();
         // 预置一条 SUCCEEDED 行，模拟上一轮已成功派发。
-        ledger.preloadSucceeded("turn-1:webSearch:" + sha256("{\"q\":\"cats\"}"));
+        ledger.preloadSucceeded("dispatch:v1:" + sha256(
+                "turn-1\0webSearch\0" + sha256("{\"q\":\"cats\"}")));
 
         AgentToolExecutionCoordinator coordinator = new AgentToolExecutionCoordinator(List.of(readOnly), 4);
         ToolExecutionDescriptorResolver descriptors = new ToolExecutionDescriptorResolver(List.of(readOnly));
@@ -150,6 +151,33 @@ class AgentToolExecutionCoordinatorDispatchTest {
 
         // 回调从未被再次派发（ALREADY_COMPLETED）。
         assertThat(dispatchCount.get()).isZero();
+    }
+
+    @Test
+    void longMcpToolNameProducesBoundedStableExecutionKey() {
+        AtomicInteger dispatchCount = new AtomicInteger();
+        String longName = "mcp_" + "weather_timezone_converter_".repeat(8);
+        ToolCallback readOnly = describedCallback(longName, "result", dispatchCount,
+                ToolEffectClass.READ_ONLY);
+        RecordingLedgerPort ledger = new RecordingLedgerPort();
+        AgentToolExecutionCoordinator coordinator = new AgentToolExecutionCoordinator(List.of(readOnly), 4);
+        ToolExecutionDescriptorResolver descriptors = new ToolExecutionDescriptorResolver(List.of(readOnly));
+        ToolDispatchContext ctx = new ToolDispatchContext(
+                "session-1", "2658f4e4-97cc-4bcd-aebf-8c4a2284ea82", null, ledger, null, descriptors);
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall("c1", "function", longName, "{}")))
+                .build();
+        Prompt prompt = Prompt.builder().messages(List.of(assistant))
+                .chatOptions(DefaultToolCallingChatOptions.builder()
+                        .internalToolExecutionEnabled(false).build())
+                .build();
+
+        coordinator.executeCoordinated(prompt,
+                new ChatResponse(List.of(new Generation(assistant))), ctx);
+
+        assertThat(ledger.lastPreparedKey).startsWith("dispatch:v1:").hasSize(76);
+        assertThat(ledger.lastPreparedKey.length()).isLessThanOrEqualTo(128);
     }
 
     @Test
@@ -249,11 +277,13 @@ class AgentToolExecutionCoordinatorDispatchTest {
         int tryDispatchCount;
         int commitTerminalCount;
         String lastTerminalState;
+        String lastPreparedKey;
         private final Map<String, JournalEntry> rows = new HashMap<>();
 
         @Override
         public Optional<JournalEntry> prepare(JournalEntry entry) {
             prepareCount++;
+            lastPreparedKey = entry.executionKey();
             if (rows.containsKey(entry.executionKey())) {
                 return Optional.empty();
             }
