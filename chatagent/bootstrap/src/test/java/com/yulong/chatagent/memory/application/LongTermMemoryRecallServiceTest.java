@@ -3,6 +3,8 @@ package com.yulong.chatagent.memory.application;
 import com.yulong.chatagent.conversation.port.ChatSessionRepository;
 import com.yulong.chatagent.rag.embedding.OllamaEmbeddingClient;
 import com.yulong.chatagent.support.dto.ChatSessionDTO;
+import com.yulong.chatagent.support.dto.MemoryItemDTO;
+import com.yulong.chatagent.memory.port.MemoryItemRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,18 +34,20 @@ class LongTermMemoryRecallServiceTest {
 
     @Mock
     private OllamaEmbeddingClient embeddingClient;
+    @Mock
+    private MemoryItemRepository memoryItemRepository;
 
     private LongTermMemoryRecallService service;
 
     @BeforeEach
     void setUp() {
-        service = new LongTermMemoryRecallService(chatSessionRepository, indexService, embeddingClient, true, 3);
+        service = new LongTermMemoryRecallService(chatSessionRepository, indexService, embeddingClient, memoryItemRepository, true, 3);
     }
 
     @Test
     void shouldReturnEmptyWithoutExternalCallsWhenL3Disabled() {
         LongTermMemoryRecallService disabledService = new LongTermMemoryRecallService(
-                chatSessionRepository, indexService, embeddingClient, false, 3);
+                chatSessionRepository, indexService, embeddingClient, memoryItemRepository, false, 3);
 
         String result = disabledService.recall("session-1", "hello");
 
@@ -100,6 +104,8 @@ class LongTermMemoryRecallServiceTest {
 
     @Test
     void shouldReturnFormattedMemories() {
+        when(memoryItemRepository.findOwnedById("user-1", "mem-1")).thenReturn(memory("mem-1", "preference", "User prefers short answers"));
+        when(memoryItemRepository.findOwnedById("user-1", "mem-2")).thenReturn(memory("mem-2", "fact", "User works at NTU"));
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());
         when(embeddingClient.embed("hello")).thenReturn(new float[]{0.1f});
@@ -121,6 +127,8 @@ class LongTermMemoryRecallServiceTest {
 
     @Test
     void shouldRankEntityMatchingMemoryBeforeHigherVectorScoreNeighbor() {
+        when(memoryItemRepository.findOwnedById("user-1", "mem-1")).thenReturn(memory("mem-1", "preference", "User prefers the badge label CRIMSON-LANTERN."));
+        when(memoryItemRepository.findOwnedById("user-1", "mem-2")).thenReturn(memory("mem-2", "fact", "The project's codename is NORTHSTAR."));
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());
         when(embeddingClient.embed("What codename did I give my project?")).thenReturn(new float[]{0.1f});
@@ -140,6 +148,7 @@ class LongTermMemoryRecallServiceTest {
 
     @Test
     void shouldNotDuplicateUserQueryInFormattedMemoryGuardrail() {
+        when(memoryItemRepository.findOwnedById("user-1", "mem-1")).thenReturn(memory("mem-1", "fact", "Project codename is DURABLE-PROJECT."));
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());
         when(embeddingClient.embed("what is\nmy project")).thenReturn(new float[]{0.1f});
@@ -182,7 +191,7 @@ class LongTermMemoryRecallServiceTest {
     @Test
     void shouldUseConfiguredTopK() {
         LongTermMemoryRecallService customService = new LongTermMemoryRecallService(
-                chatSessionRepository, indexService, embeddingClient, true, 5);
+                chatSessionRepository, indexService, embeddingClient, memoryItemRepository, true, 5);
 
         when(chatSessionRepository.findById("session-1")).thenReturn(
                 ChatSessionDTO.builder().id("session-1").userId("user-1").build());
@@ -192,5 +201,9 @@ class LongTermMemoryRecallServiceTest {
         customService.recall("session-1", "hello");
 
         verify(indexService).search(eq("user-1"), any(float[].class), eq(5));
+    }
+
+    private MemoryItemDTO memory(String id, String type, String content) {
+        return MemoryItemDTO.builder().id(id).userId("user-1").type(type).content(content).status("active").build();
     }
 }

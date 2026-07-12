@@ -165,7 +165,8 @@ public class ChatAgentFactory {
                 context.executionMode(),
                 context.executionContract(),
                 approvalPort,
-                ledgerPort
+                ledgerPort,
+                currentUserInput
         );
     }
 }

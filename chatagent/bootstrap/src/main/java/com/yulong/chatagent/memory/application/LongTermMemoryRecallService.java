@@ -37,6 +37,7 @@ public class LongTermMemoryRecallService {
     private final ChatSessionRepository chatSessionRepository;
     private final UserMemoryIndexService indexService;
     private final OllamaEmbeddingClient embeddingClient;
+    private final com.yulong.chatagent.memory.port.MemoryItemRepository memoryItemRepository;
     private final boolean l3Enabled;
     private final int recallTopK;
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{Alnum}]+");
@@ -50,11 +51,13 @@ public class LongTermMemoryRecallService {
     public LongTermMemoryRecallService(ChatSessionRepository chatSessionRepository,
                                        UserMemoryIndexService indexService,
                                        OllamaEmbeddingClient embeddingClient,
+                                       com.yulong.chatagent.memory.port.MemoryItemRepository memoryItemRepository,
                                        @Value("${chatagent.memory.l3.enabled:true}") boolean l3Enabled,
                                        @Value("${chatagent.memory.l3.recall-top-k:3}") int recallTopK) {
         this.chatSessionRepository = chatSessionRepository;
         this.indexService = indexService;
         this.embeddingClient = embeddingClient;
+        this.memoryItemRepository = memoryItemRepository;
         this.l3Enabled = l3Enabled;
         this.recallTopK = recallTopK;
     }
@@ -83,7 +86,8 @@ public class LongTermMemoryRecallService {
 
         try {
             float[] embedding = embeddingClient.embed(query);
-            List<UserMemorySearchHit> hits = indexService.search(userId, embedding, recallTopK);
+            List<UserMemorySearchHit> hits = indexService.search(userId, embedding, recallTopK).stream()
+                    .map(hit -> authoritativeHit(userId, hit)).filter(java.util.Objects::nonNull).toList();
             if (hits.isEmpty()) {
                 return "";
             }
@@ -94,6 +98,12 @@ public class LongTermMemoryRecallService {
                     sessionId, e.getClass().getSimpleName());
             return "";
         }
+    }
+
+    private UserMemorySearchHit authoritativeHit(String userId, UserMemorySearchHit hit) {
+        com.yulong.chatagent.support.dto.MemoryItemDTO item = memoryItemRepository.findOwnedById(userId, hit.memoryId());
+        if (item == null || !"active".equals(item.getStatus())) return null;
+        return new UserMemorySearchHit(item.getId(), item.getType(), item.getContent(), hit.score());
     }
 
     private String formatMemories(String query, List<UserMemorySearchHit> hits) {

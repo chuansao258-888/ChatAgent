@@ -30,6 +30,9 @@ public class NoOpUserMemoryIndexService implements UserMemoryIndexService {
     }
 
     @Override
+    public boolean deleteMemory(String memoryId) { return false; }
+
+    @Override
     public List<UserMemorySearchHit> search(String userId, float[] queryEmbedding, int topK) {
         return List.of();
     }

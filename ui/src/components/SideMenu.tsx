@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ControlOutlined,
+  BulbOutlined,
   EditOutlined,
   LockOutlined,
   LogoutOutlined,
@@ -13,6 +14,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { isAdminRole } from "../auth/roles.ts";
 import { useAuth } from "../hooks/useAuth.ts";
 import ChatTabContent from "./tabs/ChatTabContent.tsx";
+import MemoryDrawer from "./MemoryDrawer.tsx";
 
 const CHAT_TAB_KEY = "chat";
 
@@ -92,6 +94,7 @@ function AuthenticatedSideMenu() {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, logout } = useAuth();
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   const handleTabChange = (key: string) => {
     if (key === CHAT_TAB_KEY && !location.pathname.startsWith("/chat")) {
@@ -139,6 +142,11 @@ function AuthenticatedSideMenu() {
           <span className="font-medium">Admin Console</span>
         </button>
       ) : null}
+
+      <button type="button" onClick={() => setMemoryOpen(true)} className="mt-3 flex items-center justify-center gap-3 rounded-input border border-white/12 bg-transparent px-4 py-3 text-center text-white/65 transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white/90">
+        <BulbOutlined /><span className="font-medium">Memories</span>
+      </button>
+      <MemoryDrawer open={memoryOpen} onClose={() => setMemoryOpen(false)} />
 
       <div className="mt-4 rounded-section border border-white/8 bg-white/[0.045] px-4 py-4 shadow-chat-panel">
         <div className="flex items-center gap-3">

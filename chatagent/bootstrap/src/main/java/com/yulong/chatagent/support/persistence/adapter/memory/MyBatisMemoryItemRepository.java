@@ -64,8 +64,27 @@ public class MyBatisMemoryItemRepository implements MemoryItemRepository {
     }
 
     @Override
+    public MemoryItemDTO findOwnedById(String userId, String id) {
+        MemoryItemDTO dto = memoryItemMapper.selectOwnedById(userId, id);
+        if (dto != null) deserializeJsonFields(dto);
+        return dto;
+    }
+
+    @Override
+    public MemoryItemDTO findByUserTypeAndHash(String userId, String type, String contentHash) {
+        return findByUserIdTypeAndHash(userId, type, contentHash);
+    }
+
+    @Override
     public List<MemoryItemDTO> findByUserIdAndStatus(String userId, String status) {
         List<MemoryItemDTO> items = memoryItemMapper.selectByUserIdAndStatus(userId, status);
+        items.forEach(this::deserializeJsonFields);
+        return items;
+    }
+
+    @Override
+    public List<MemoryItemDTO> findIndexCandidates(int limit) {
+        List<MemoryItemDTO> items = memoryItemMapper.selectIndexCandidates(limit);
         items.forEach(this::deserializeJsonFields);
         return items;
     }
@@ -76,8 +95,19 @@ public class MyBatisMemoryItemRepository implements MemoryItemRepository {
     }
 
     @Override
-    public boolean updateStatus(String id, String status) {
-        return memoryItemMapper.updateStatus(id, status) > 0;
+    public boolean correct(String userId, String id, LocalDateTime expectedUpdatedAt,
+                           String type, String content, String contentHash) {
+        return memoryItemMapper.correct(userId, id, expectedUpdatedAt, type, content, contentHash) > 0;
+    }
+
+    @Override
+    public boolean reactivate(String userId, String id) {
+        return memoryItemMapper.reactivate(userId, id) > 0;
+    }
+
+    @Override
+    public boolean archive(String userId, String id) {
+        return memoryItemMapper.archive(userId, id) > 0;
     }
 
     private MemoryItemDTO findByUserIdTypeAndHash(String userId, String type, String contentHash) {

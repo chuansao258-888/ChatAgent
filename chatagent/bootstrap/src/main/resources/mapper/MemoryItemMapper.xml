@@ -25,6 +25,22 @@
         WHERE id = CAST(#{id} AS uuid)
     </select>
 
+    <select id="selectIndexCandidates" resultMap="BaseResultMap">
+        SELECT id::text, user_id::text, type, content, tags::text AS tags, source::text AS source,
+               content_hash, status, index_status, created_at, updated_at
+        FROM memory_item
+        WHERE (status = 'active' AND index_status IN ('pending','failed'))
+           OR (status = 'archived' AND index_status != 'removed')
+        ORDER BY updated_at ASC LIMIT #{limit}
+    </select>
+
+    <select id="selectOwnedById" resultMap="BaseResultMap">
+        SELECT id::text, user_id::text, type, content, tags::text AS tags, source::text AS source,
+               content_hash, status, index_status, created_at, updated_at
+        FROM memory_item
+        WHERE id = CAST(#{id} AS uuid) AND user_id = CAST(#{userId} AS uuid)
+    </select>
+
     <select id="selectByUserIdAndStatus" resultMap="BaseResultMap">
         SELECT id::text, user_id::text, type, content, tags::text AS tags, source::text AS source,
                content_hash, status, index_status, created_at, updated_at
@@ -68,11 +84,22 @@
         WHERE id = CAST(#{id} AS uuid)
     </update>
 
-    <update id="updateStatus">
+    <update id="correct">
         UPDATE memory_item
-        SET status = #{status},
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = CAST(#{id} AS uuid)
+        SET type = #{type}, content = #{content}, content_hash = #{contentHash},
+            index_status = 'pending', updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid) AND user_id = CAST(#{userId} AS uuid)
+          AND status = 'active' AND updated_at = #{expectedUpdatedAt}
+    </update>
+
+    <update id="reactivate">
+        UPDATE memory_item SET status = 'active', index_status = 'pending', updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid) AND user_id = CAST(#{userId} AS uuid) AND status = 'archived'
+    </update>
+
+    <update id="archive">
+        UPDATE memory_item SET status = 'archived', index_status = 'pending', updated_at = CURRENT_TIMESTAMP
+        WHERE id = CAST(#{id} AS uuid) AND user_id = CAST(#{userId} AS uuid) AND status = 'active'
     </update>
 
 </mapper>

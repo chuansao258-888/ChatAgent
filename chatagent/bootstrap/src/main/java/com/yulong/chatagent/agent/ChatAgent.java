@@ -144,6 +144,22 @@ public class ChatAgent {
                      com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract executionContract,
                      com.yulong.chatagent.agent.tools.ToolApprovalPort approvalPort,
                      com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort ledgerPort) {
+        this(agentId, name, description, systemPrompt, promptLoader, llmService, maxMessages, memory,
+                availableTools, sessionFileSummary, sessionSummary, relevantLongTermMemories, userId, turnId,
+                chatSessionId, messageBridge, policyProperties, executionMode, executionContract, approvalPort,
+                ledgerPort, null);
+    }
+
+    public ChatAgent(String agentId, String name, String description, String systemPrompt,
+                     PromptLoader promptLoader, LLMService llmService, Integer maxMessages,
+                     List<Message> memory, List<ToolCallback> availableTools, String sessionFileSummary,
+                     String sessionSummary, String relevantLongTermMemories, String userId, String turnId,
+                     String chatSessionId, AgentMessageBridge messageBridge, AgentRunPolicyProperties policyProperties,
+                     AgentExecutionMode executionMode,
+                     com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract executionContract,
+                     com.yulong.chatagent.agent.tools.ToolApprovalPort approvalPort,
+                     com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort ledgerPort,
+                     String currentUserInput) {
         this.agentId = agentId;
         this.name = name;
         this.chatSessionId = chatSessionId;
@@ -181,7 +197,7 @@ public class ChatAgent {
         // Disable Spring AI auto tool execution
         ToolCallingChatOptions chatOptions = DefaultToolCallingChatOptions.builder()
                 .internalToolExecutionEnabled(false)
-                .toolContext(buildToolContext(userId, chatSessionId, turnId, this.executionMode))
+                .toolContext(buildToolContext(userId, chatSessionId, turnId, this.executionMode, currentUserInput))
                 .build();
 
         // Build run policy
@@ -253,7 +269,8 @@ public class ChatAgent {
     private Map<String, Object> buildToolContext(String userId,
                                                  String chatSessionId,
                                                  String turnId,
-                                                 AgentExecutionMode executionMode) {
+                                                 AgentExecutionMode executionMode,
+                                                 String currentUserInput) {
         Map<String, Object> context = new LinkedHashMap<>();
         if (StringUtils.hasText(userId)) {
             context.put("userId", userId);
@@ -265,6 +282,7 @@ public class ChatAgent {
             context.put("turnId", turnId);
         }
         context.put("executionMode", executionMode == null ? AgentExecutionMode.REACT.name() : executionMode.name());
+        if (StringUtils.hasText(currentUserInput)) context.put("currentUserInput", currentUserInput);
         return context;
     }
 

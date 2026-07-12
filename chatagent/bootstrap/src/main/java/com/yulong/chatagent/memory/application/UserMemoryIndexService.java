@@ -35,6 +35,8 @@ public interface UserMemoryIndexService {
     boolean upsertMemory(String memoryId, String userId, String type, String status,
                          String content, String tagsJson, float[] embedding);
 
+    boolean deleteMemory(String memoryId);
+
     /**
      * Searches for the most relevant memories for a given user.
      *

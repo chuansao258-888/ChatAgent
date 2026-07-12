@@ -116,15 +116,6 @@ class MyBatisMemoryItemRepositoryTest {
     }
 
     @Test
-    void shouldUpdateStatus() {
-        when(memoryItemMapper.updateStatus("id-1", "archived")).thenReturn(1);
-
-        boolean updated = repository.updateStatus("id-1", "archived");
-
-        assertThat(updated).isTrue();
-    }
-
-    @Test
     void shouldReturnEmptyWhenNoItemsFound() {
         when(memoryItemMapper.selectByUserIdAndStatus("user-1", "active"))
                 .thenReturn(List.of());

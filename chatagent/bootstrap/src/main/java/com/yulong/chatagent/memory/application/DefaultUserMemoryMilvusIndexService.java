@@ -13,6 +13,7 @@ import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.SearchReq;
+import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.SearchResp;
@@ -153,6 +154,19 @@ public class DefaultUserMemoryMilvusIndexService implements UserMemoryIndexServi
             return true;
         } catch (Exception e) {
             log.warn("User-memory Milvus upsert failed: memoryId={}, errorClass={}", memoryId, e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean deleteMemory(String memoryId) {
+        try {
+            ensureCollection();
+            milvusClient.delete(DeleteReq.builder().databaseName(properties.getDatabase())
+                    .collectionName(userMemoryProperties.getCollection()).ids(List.of(memoryId)).build());
+            return true;
+        } catch (Exception e) {
+            log.warn("User-memory Milvus delete failed: memoryId={}, errorClass={}", memoryId, e.getClass().getSimpleName());
             return false;
         }
     }

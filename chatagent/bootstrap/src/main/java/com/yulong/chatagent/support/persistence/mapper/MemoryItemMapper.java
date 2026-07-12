@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 /**
  * MyBatis mapper for long-term memory items.
@@ -14,8 +15,12 @@ public interface MemoryItemMapper {
 
     MemoryItemDTO selectById(@Param("id") String id);
 
+    MemoryItemDTO selectOwnedById(@Param("userId") String userId, @Param("id") String id);
+
     List<MemoryItemDTO> selectByUserIdAndStatus(@Param("userId") String userId,
                                                  @Param("status") String status);
+
+    List<MemoryItemDTO> selectIndexCandidates(@Param("limit") int limit);
 
     MemoryItemDTO selectByUserAndTypeAndHash(@Param("userId") String userId,
                                               @Param("type") String type,
@@ -30,6 +35,12 @@ public interface MemoryItemMapper {
     int updateIndexStatus(@Param("id") String id,
                           @Param("indexStatus") String indexStatus);
 
-    int updateStatus(@Param("id") String id,
-                     @Param("status") String status);
+    int correct(@Param("userId") String userId, @Param("id") String id,
+                @Param("expectedUpdatedAt") LocalDateTime expectedUpdatedAt,
+                @Param("type") String type, @Param("content") String content,
+                @Param("contentHash") String contentHash);
+
+    int reactivate(@Param("userId") String userId, @Param("id") String id);
+
+    int archive(@Param("userId") String userId, @Param("id") String id);
 }

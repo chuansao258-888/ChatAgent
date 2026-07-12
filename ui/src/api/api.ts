@@ -160,3 +160,15 @@ export async function detachChatSessionFile(
 ): Promise<void> {
   return del<void>(`/chat-sessions/${sessionId}/files/${sessionFileId}`);
 }
+
+export interface MemoryItem {
+  id: string;
+  type: "fact" | "preference";
+  content: string;
+  updatedAt: string;
+}
+
+export const getMemories = () => get<MemoryItem[]>("/memories");
+export const createMemory = (type: MemoryItem["type"], content: string) => post<MemoryItem>("/memories", { type, content });
+export const updateMemory = (memory: MemoryItem, content: string) => patch<{ status: string; memory?: MemoryItem }>(`/memories/${memory.id}`, { type: memory.type, content, expectedUpdatedAt: memory.updatedAt });
+export const deleteMemory = (id: string) => del<boolean>(`/memories/${id}`);
