@@ -50,6 +50,7 @@ artifacts/headed-e2e/
 chatagent/artifacts/
 /chatagent/data/
 /chatagent/bootstrap/artifacts/
+/chatagent/tools/gatling/artifacts/
 /chatagent/bootstrap/data/
 
 ui/.chrome-profile/

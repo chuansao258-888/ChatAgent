@@ -9,12 +9,12 @@ import org.springframework.stereotype.Component;
 
 /**
  * In-process stub {@link ChatModelRouter} active only under the
- * {@code load-test} profile.
+ * {@code capacity-test} profile.
  *
  * <p>Auxiliary callers (intent, memory extractor, summarizer, reranker,
  * ingestion) resolve a {@link ChatClient} by name through {@code ChatModelRouter}
  * and call it directly, bypassing {@code RoutingLLMService}. This stub returns a
- * cached {@link ChatClient} wrapping {@link StubChatModel} so none of those
+ * cached {@link ChatClient} wrapping {@link CapacityStubChatModel} so none of those
  * auxiliary calls hit a blackholed provider under the profile.</p>
  *
  * <p>Note: a plain-chat turn against an agent with no intent tree short-circuits
@@ -22,18 +22,18 @@ import org.springframework.stereotype.Component;
  * any auxiliary model call is made, so this stub may be unused. It is harmless
  * insurance for any auxiliary call that does slip through.</p>
  */
-@Profile("load-test")
+@Profile("capacity-test")
 @Primary
 @Component
-public class StubChatModelRouter extends ChatModelRouter {
+public class CapacityStubChatModelRouter extends ChatModelRouter {
 
     private final ChatClient stubChatClient;
 
-    public StubChatModelRouter(ChatClientRegistry chatClientRegistry, LoadTestProperties properties) {
+    public CapacityStubChatModelRouter(ChatClientRegistry chatClientRegistry, CapacityTestProperties properties) {
         // The registry + default model satisfy the parent constructor; the stub
         // overrides route(...) regardless of the requested model id.
         super(chatClientRegistry, "glm-5.2");
-        this.stubChatClient = ChatClient.create(new StubChatModel(
+        this.stubChatClient = ChatClient.create(new CapacityStubChatModel(
                 properties.getMockTtftMs(), properties.getMockStreamTotalMs()));
     }
 

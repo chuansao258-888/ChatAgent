@@ -13,13 +13,13 @@ import java.util.List;
 /**
  * Minimal {@link ChatModel} stub returning canned content after a fixed latency.
  *
- * <p>Used by {@link StubChatModelRouter} to serve auxiliary callers (intent,
+ * <p>Used by {@link CapacityStubChatModelRouter} to serve auxiliary callers (intent,
  * memory, summarizer, reranker, ingestion) that resolve a {@code ChatClient} by
  * name and call it directly, bypassing {@code RoutingLLMService}. Only the two
  * abstract methods ({@link #call(Prompt)} and {@link #stream(Prompt)}) are
  * implemented; the default overloads resolve automatically.</p>
  */
-public class StubChatModel implements ChatModel {
+public class CapacityStubChatModel implements ChatModel {
 
     private static final String CANNED_ANSWER = "这是压测环境的模拟回答。";
     private static final String STRUCTURED_SUMMARY_JSON = """
@@ -29,7 +29,7 @@ public class StubChatModel implements ChatModel {
     private final long ttftMs;
     private final long streamTotalMs;
 
-    public StubChatModel(long ttftMs, long streamTotalMs) {
+    public CapacityStubChatModel(long ttftMs, long streamTotalMs) {
         this.ttftMs = ttftMs;
         this.streamTotalMs = streamTotalMs;
     }
@@ -44,7 +44,7 @@ public class StubChatModel implements ChatModel {
     public Flux<ChatResponse> stream(Prompt prompt) {
         // Emit a canned chunk after TTFT, then complete after the streaming
         // window so the total latency is TTFT + streamTotal (matching the
-        // StubLLMService round-trip semantics).
+        // CapacityStubLlmService round-trip semantics).
         long totalDelay = Math.max(1L, ttftMs + streamTotalMs);
         return Flux.just(buildChunk(prompt))
                 .delayElements(java.time.Duration.ofMillis(totalDelay));

@@ -13,14 +13,14 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class StubLlmServiceTest {
+class CapacityStubLlmServiceTest {
 
     @Test
     void streamChatShouldEmitContentThenCompleteAfterLatency() {
-        LoadTestProperties props = new LoadTestProperties();
+        CapacityTestProperties props = new CapacityTestProperties();
         props.setMockTtftMs(40L);
         props.setMockStreamTotalMs(40L);
-        StubLLMService stub = new StubLLMService(props);
+        CapacityStubLlmService stub = new CapacityStubLlmService(props);
 
         RecordingCallback callback = new RecordingCallback();
         long start = System.nanoTime();
@@ -39,10 +39,10 @@ class StubLlmServiceTest {
 
     @Test
     void streamDecisionShouldReturnCannedResponseWithoutToolCall() {
-        LoadTestProperties props = new LoadTestProperties();
+        CapacityTestProperties props = new CapacityTestProperties();
         props.setMockTtftMs(10L);
         props.setMockStreamTotalMs(20L);
-        StubLLMService stub = new StubLLMService(props);
+        CapacityStubLlmService stub = new CapacityStubLlmService(props);
 
         long start = System.nanoTime();
         var response = stub.streamDecisionWithRouting(
@@ -66,10 +66,10 @@ class StubLlmServiceTest {
 
     @Test
     void cannedResponseShouldBeChineseDominantForChineseLoadPrompts() {
-        LoadTestProperties props = new LoadTestProperties();
+        CapacityTestProperties props = new CapacityTestProperties();
         props.setMockTtftMs(1L);
         props.setMockStreamTotalMs(1L);
-        StubLLMService stub = new StubLLMService(props);
+        CapacityStubLlmService stub = new CapacityStubLlmService(props);
 
         RecordingCallback callback = new RecordingCallback();
         stub.streamChat(new Prompt("年假可以结转到下一年吗"), false, callback);
@@ -84,10 +84,10 @@ class StubLlmServiceTest {
 
     @Test
     void shouldNotThrowOnEmptyPrompt() {
-        LoadTestProperties props = new LoadTestProperties();
+        CapacityTestProperties props = new CapacityTestProperties();
         props.setMockTtftMs(1L);
         props.setMockStreamTotalMs(1L);
-        StubLLMService stub = new StubLLMService(props);
+        CapacityStubLlmService stub = new CapacityStubLlmService(props);
 
         RecordingCallback callback = new RecordingCallback();
         // Empty / null-content prompt must not throw.
@@ -98,7 +98,7 @@ class StubLlmServiceTest {
 
     @Test
     void shouldImplementLlmService() {
-        assertThat(new StubLLMService(new LoadTestProperties())).isInstanceOf(LLMService.class);
+        assertThat(new CapacityStubLlmService(new CapacityTestProperties())).isInstanceOf(LLMService.class);
     }
 
     private static final class RecordingCallback implements StreamCallback {

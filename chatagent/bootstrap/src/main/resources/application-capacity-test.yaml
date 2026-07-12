@@ -1,5 +1,8 @@
 spring:
   ai:
+    anthropic:
+      api-key: REDACTED_API_KEY
+      base-url: http://127.0.0.1:1
     deepseek:
       api-key: REDACTED_API_KEY
       base-url: http://127.0.0.1:1
@@ -15,9 +18,14 @@ chatagent:
   mq:
     dispatchers:
       agent-run-enabled: true
-  loadtest:
+  capacity-test:
     mock-ttft-ms: 100
     mock-stream-total-ms: 200
+  rate-limit:
+    entry:
+      enabled: false
+    agent-run:
+      enabled: false
   memory:
     l3:
       enabled: false

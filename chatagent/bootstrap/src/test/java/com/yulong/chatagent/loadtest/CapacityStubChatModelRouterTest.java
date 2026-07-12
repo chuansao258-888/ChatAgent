@@ -12,17 +12,17 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class StubChatModelRouterTest {
+class CapacityStubChatModelRouterTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void routeShouldReturnNonStubChatClientRegardlessOfRequestedModel() {
-        LoadTestProperties props = new LoadTestProperties();
+        CapacityTestProperties props = new CapacityTestProperties();
         props.setMockTtftMs(1L);
         // Empty registry is fine: the stub overrides route(...) and never reads it.
         ChatClientRegistry registry = new ChatClientRegistry(Map.of());
-        StubChatModelRouter router = new StubChatModelRouter(registry, props);
+        CapacityStubChatModelRouter router = new CapacityStubChatModelRouter(registry, props);
 
         ChatClient client = router.route("any-model-id");
 
@@ -34,13 +34,13 @@ class StubChatModelRouterTest {
 
     @Test
     void shouldExtendChatModelRouter() {
-        assertThat(new StubChatModelRouter(new ChatClientRegistry(Map.of()), new LoadTestProperties()))
+        assertThat(new CapacityStubChatModelRouter(new ChatClientRegistry(Map.of()), new CapacityTestProperties()))
                 .isInstanceOf(ChatModelRouter.class);
     }
 
     @Test
     void stubChatModelCallShouldReturnCannedContent() {
-        StubChatModel model = new StubChatModel(1L, 1L);
+        CapacityStubChatModel model = new CapacityStubChatModel(1L, 1L);
         var response = model.call(new Prompt("anything"));
 
         assertThat(response.getResult().getOutput().getText())
@@ -50,7 +50,7 @@ class StubChatModelRouterTest {
 
     @Test
     void stubChatModelCallShouldReturnStructuredSummaryJsonForSummarizerPrompt() throws Exception {
-        StubChatModel model = new StubChatModel(1L, 1L);
+        CapacityStubChatModel model = new CapacityStubChatModel(1L, 1L);
         var response = model.call(new Prompt("You are a structured memory summarizer for an enterprise AI assistant."));
 
         Map<String, Object> parsed = OBJECT_MAPPER.readValue(

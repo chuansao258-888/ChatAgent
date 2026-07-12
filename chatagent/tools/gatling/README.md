@@ -4,6 +4,36 @@ This directory contains system-level load tests that run outside the main
 Spring Boot build. They exercise real HTTP/SSE endpoints against a running
 ChatAgent environment.
 
+## Evidence-specific harness
+
+The replacement harness has two mutually exclusive application profiles:
+
+- `capacity-test` installs only local capacity stubs and defaults both the
+  entry and Agent-run limiters to disabled.
+- `resilience-test` keeps `RoutingLLMService` active and points existing
+  provider clients at the repository-owned loopback fixture with placeholder
+  credentials.
+
+PHASE-03 runners support `-DryRun` only. They generate schema-v1 manifests and
+validate the authoritative limiter mode before any later-phase load process is
+allowed to start:
+
+```powershell
+& .\tools\gatling\scripts\run-capacity-matrix.ps1 -DryRun -Protocol formal-v1
+& .\tools\gatling\scripts\run-entry-rate-limit.ps1 -DryRun
+& .\tools\gatling\scripts\run-agent-capacity.ps1 -DryRun
+& .\tools\gatling\scripts\run-routing-resilience.ps1 -DryRun
+& .\tools\gatling\scripts\test-harness-contract.ps1
+```
+
+Dry-run artifacts are written beneath `tools/gatling/artifacts/` and contain no
+prompt, token, credential, or provider payload. The routing runner rejects any
+fixture URL that does not resolve exclusively to loopback addresses. The
+entry, Agent-capacity, and routing classes are intentionally non-executable
+shells until their owning PHASE-04/05 implementation is accepted. The chat-turn
+workload and `TurnOutcomeRecorder` are present, but the formal matrix runner
+remains dry-run-only until PHASE-06 accepts its execution and reporting gates.
+
 ## Prerequisites
 
 - Start ChatAgent and its required infrastructure first.
@@ -85,10 +115,10 @@ variables:
 
 Gatling writes HTML reports under `tools/gatling/target/gatling/`.
 
-## Chat API End-to-End (requires `load-test` profile)
+## Legacy Chat API End-to-End (requires `capacity-test` profile)
 
 `ChatApiE2eSimulation` measures the **end-to-end chat turn** time (POST send →
-matching `AI_DONE` event on SSE) against a backend started with the `load-test`
+matching `AI_DONE` event on SSE) against a backend started with the `capacity-test`
 profile (in-process stub LLM providers, simulated latency).
 
 Each virtual user: register → loop { create fresh chat session → open SSE for
@@ -112,7 +142,7 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 $jar = Get-ChildItem -LiteralPath 'bootstrap\target' -Filter '*.jar' |
   Where-Object { $_.Name -notlike '*sources*' -and $_.Name -notlike '*javadoc*' } |
   Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$argString = '-jar "' + $jar.FullName + '" --spring.profiles.active=load-test'
+$argString = '-jar "' + $jar.FullName + '" --spring.profiles.active=capacity-test'
 Start-Process -FilePath "$env:JAVA_HOME\bin\java.exe" -ArgumentList $argString `
   -WorkingDirectory (Resolve-Path '.').Path -WindowStyle Hidden
 ```

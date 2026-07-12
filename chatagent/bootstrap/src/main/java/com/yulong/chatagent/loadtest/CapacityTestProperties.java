@@ -2,11 +2,12 @@ package com.yulong.chatagent.loadtest;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
  * Latency knobs for the in-process stub LLM providers active under the
- * {@code load-test} profile.
+ * {@code capacity-test} profile.
  *
  * <p>These simulate realistic model latency so the measured throughput reflects
  * application/infrastructure capacity under an assumed model cost, not a real
@@ -14,9 +15,10 @@ import org.springframework.stereotype.Component;
  * for the turn, which is exactly what a real model call does.</p>
  */
 @Component
-@ConfigurationProperties(prefix = "chatagent.loadtest")
+@Profile("capacity-test")
+@ConfigurationProperties(prefix = "chatagent.capacity-test")
 @Data
-public class LoadTestProperties {
+public class CapacityTestProperties {
 
     /**
      * Wait in milliseconds before the stub emits its first content chunk

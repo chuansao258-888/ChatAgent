@@ -17,14 +17,14 @@ import reactor.core.Disposable;
 import java.util.List;
 
 /**
- * In-process stub {@link LLMService} active only under the {@code load-test}
+ * In-process stub {@link LLMService} active only under the {@code capacity-test}
  * profile.
  *
  * <p>Because this bean is {@code @Primary} under the profile, the agent runtime
  * ({@code AgentMessageBridgeImpl}, {@code AgentThinkingEngine},
  * {@code ReactRuntimeEngine}, DeepThink engines) injects it instead of
  * {@code RoutingLLMService}. The provider-direct SSE path and the
- * {@code ChatClient.stream()} fallback therefore never execute under load-test,
+ * {@code ChatClient.stream()} fallback therefore never execute under capacity-test,
  * and no real provider HTTP call is made.</p>
  *
  * <p>Latency is simulated on the calling (MQ consumer) thread via
@@ -33,11 +33,11 @@ import java.util.List;
  * so the ReAct loop terminates in one iteration. It never throws on empty or
  * malformed prompts.</p>
  */
-@Profile("load-test")
+@Profile("capacity-test")
 @Primary
 @Service
 @Slf4j
-public class StubLLMService implements LLMService {
+public class CapacityStubLlmService implements LLMService {
 
     /**
      * Canned content split into chunks so the streaming path (SSE delivery) is
@@ -49,9 +49,9 @@ public class StubLLMService implements LLMService {
 
     private static final String CANNED_ANSWER = String.join("", CANNED_CHUNKS);
 
-    private final LoadTestProperties properties;
+    private final CapacityTestProperties properties;
 
-    public StubLLMService(LoadTestProperties properties) {
+    public CapacityStubLlmService(CapacityTestProperties properties) {
         this.properties = properties;
     }
 
@@ -128,7 +128,7 @@ public class StubLLMService implements LLMService {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("StubLLMService sleep interrupted", e);
+            throw new RuntimeException("CapacityStubLlmService sleep interrupted", e);
         }
     }
 }
