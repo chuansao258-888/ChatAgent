@@ -23,6 +23,11 @@ public class McpToolCatalogDTO {
     private String exposedModelName;
     private String schemaJson;
     private String schemaHash;
+    private String outputSchemaJson;
+    private String annotationsJson;
+    private String descriptorHash;
+    private String effectPolicy;
+    private Long policyVersion;
     private McpToolCatalogStatus status;
     private LocalDateTime deletedAt;
     private LocalDateTime createdAt;

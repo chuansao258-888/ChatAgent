@@ -22,6 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -62,32 +63,38 @@ public class WebClientMcpTransportClient implements McpTransportClient {
     private final ObjectMapper objectMapper;
     private final McpCredentialCipher credentialCipher;
     private final McpTransportProperties properties;
-    private final McpHandshakeCache handshakeCache;
 
+    @Autowired
+    public WebClientMcpTransportClient(ObjectMapper objectMapper,
+                                       McpCredentialCipher credentialCipher,
+                                       McpTransportProperties properties) {
+        this.objectMapper = objectMapper;
+        this.credentialCipher = credentialCipher;
+        this.properties = properties;
+    }
+
+    /** Compatibility constructor for tests written before operation-scoped sessions. */
     public WebClientMcpTransportClient(ObjectMapper objectMapper,
                                        McpCredentialCipher credentialCipher,
                                        McpTransportProperties properties,
                                        McpHandshakeCache handshakeCache) {
-        this.objectMapper = objectMapper;
-        this.credentialCipher = credentialCipher;
-        this.properties = properties;
-        this.handshakeCache = handshakeCache;
+        this(objectMapper, credentialCipher, properties);
     }
 
     @Override
     public McpDiscoveryResult discover(McpServerDTO server) {
-        return handshakeCache.runSingleFlight(server.getId(), () -> switch (server.getProtocol()) {
+        return switch (server.getProtocol()) {
             case HTTP -> discoverOverHttp(server);
             case SSE -> discoverOverLegacySse(server);
-        });
+        };
     }
 
     @Override
     public McpToolCallResult callTool(McpServerDTO server, String remoteToolName, String jsonArguments) {
-        return handshakeCache.runSingleFlight(server.getId(), () -> switch (server.getProtocol()) {
+        return switch (server.getProtocol()) {
             case HTTP -> callToolOverHttp(server, remoteToolName, jsonArguments);
             case SSE -> callToolOverLegacySse(server, remoteToolName, jsonArguments);
-        });
+        };
     }
 
     private McpDiscoveryResult discoverOverHttp(McpServerDTO server) {
@@ -112,17 +119,14 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                 initializeExchange.sessionId(),
                 buildRequest("notifications/initialized", Map.of(), true)
         );
-        HttpJsonRpcExchange<McpToolsListResult> toolsListExchange = invokeHttpRequest(
-                client,
-                server.getEndpointUrl(),
-                negotiatedVersion,
-                initializeExchange.sessionId(),
-                buildRequest("tools/list", Map.of(), false),
-                McpToolsListResult.class,
-                initializeExchange.sessionId()
-        );
-        McpToolsListResult toolsListResult = toolsListExchange.result();
-        return toDiscovery(initializeResult, negotiatedVersion, toolsListResult);
+        try {
+            McpToolsListResult toolsListResult = listAllToolsHttp(
+                    client, server.getEndpointUrl(), negotiatedVersion, initializeExchange.sessionId());
+            return toDiscovery(initializeResult, negotiatedVersion, toolsListResult);
+        } finally {
+            closeHttpSession(client, server.getEndpointUrl(), negotiatedVersion,
+                    initializeExchange.sessionId());
+        }
     }
 
     private McpDiscoveryResult discoverOverLegacySse(McpServerDTO server) {
@@ -163,14 +167,13 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                 initializeExchange.sessionId(),
                 buildRequest("notifications/initialized", Map.of(), true)
         );
-        return invokeToolCallHttp(
-                client,
-                server.getEndpointUrl(),
-                negotiatedVersion,
-                initializeExchange.sessionId(),
-                remoteToolName,
-                jsonArguments
-        );
+        try {
+            return invokeToolCallHttp(client, server.getEndpointUrl(), negotiatedVersion,
+                    initializeExchange.sessionId(), remoteToolName, jsonArguments);
+        } finally {
+            closeHttpSession(client, server.getEndpointUrl(), negotiatedVersion,
+                    initializeExchange.sessionId());
+        }
     }
 
     private McpToolCallResult callToolOverLegacySse(McpServerDTO server, String remoteToolName, String jsonArguments) {
@@ -301,7 +304,7 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                 })
                 .bodyValue(request)
                 .exchangeToMono(clientResponse -> extractResponse(clientResponse, requestId))
-                .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
+                .timeout(operationTimeout())
                 .onErrorMap(this::mapTransportError)
                 .block();
         T result = convertResponse(response == null ? null : response.payload(), resultType);
@@ -333,10 +336,55 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                 })
                 .bodyValue(request)
                 .exchangeToMono(clientResponse -> extractResponse(clientResponse, requestId))
-                .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
+                .timeout(operationTimeout())
                 .onErrorMap(this::mapTransportError)
                 .block();
         return convertToolCallResponse(response == null ? null : response.payload());
+    }
+
+    private McpToolsListResult listAllToolsHttp(WebClient client,
+                                                String endpointUrl,
+                                                String protocolVersion,
+                                                String sessionId) {
+        List<McpRemoteTool> tools = new ArrayList<>();
+        String cursor = null;
+        for (int page = 0; page < properties.getMaxToolsListPages(); page++) {
+            Map<String, Object> params = cursor == null ? Map.of() : Map.of("cursor", cursor);
+            McpToolsListResult result = invokeHttpRequest(
+                    client, endpointUrl, protocolVersion, sessionId,
+                    buildRequest("tools/list", params, false),
+                    McpToolsListResult.class, sessionId).result();
+            if (result != null && result.tools() != null) {
+                tools.addAll(result.tools());
+            }
+            cursor = result == null ? null : result.nextCursor();
+            if (!StringUtils.hasText(cursor)) {
+                return new McpToolsListResult(List.copyOf(tools), null);
+            }
+        }
+        throw new McpTransportException(
+                "MCP_TOOLS_PAGINATION_LIMIT", "MCP tools/list exceeded the configured page limit");
+    }
+
+    private void closeHttpSession(WebClient client,
+                                  String endpointUrl,
+                                  String protocolVersion,
+                                  String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return;
+        }
+        try {
+            client.delete().uri(endpointUrl)
+                    .headers(headers -> {
+                        headers.set(HEADER_PROTOCOL_VERSION, protocolVersion);
+                        headers.set(HEADER_SESSION_ID, sessionId);
+                    })
+                    .exchangeToMono(response -> response.releaseBody())
+                    .timeout(operationTimeout())
+                    .block();
+        } catch (RuntimeException ignored) {
+            // Session cleanup is best-effort and must not overwrite the operation outcome.
+        }
     }
 
     private void sendHttpNotification(WebClient client,
@@ -368,7 +416,7 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                     }
                     return response.bodyToMono(Void.class);
                 })
-                .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
+                .timeout(operationTimeout())
                 .onErrorMap(this::mapTransportError)
                 .block();
     }
@@ -446,7 +494,8 @@ public class WebClientMcpTransportClient implements McpTransportClient {
         if (response.result() == null || response.result().isNull()) {
             return new McpToolCallResult("");
         }
-        return new McpToolCallResult(serializeSchema(response.result()));
+        JsonNode result = response.result();
+        return new McpToolCallResult(serializeSchema(result), result.path("isError").asBoolean(false));
     }
 
     private String validateNegotiatedVersion(String protocolVersion, McpProtocol protocol) {
@@ -454,10 +503,10 @@ public class WebClientMcpTransportClient implements McpTransportClient {
             throw new McpTransportException("MCP_PROTOCOL_VERSION_MISSING", "MCP server did not return protocolVersion from initialize");
         }
         String normalized = protocolVersion.trim();
-        if (protocol == McpProtocol.SSE && !properties.getPreferredSseProtocolVersion().equals(normalized)) {
+        if (!properties.getSupportedProtocolVersions().contains(normalized)) {
             throw new McpTransportException(
                     "MCP_PROTOCOL_VERSION_UNSUPPORTED",
-                    "Legacy SSE transport only supports protocol version " + properties.getPreferredSseProtocolVersion()
+                    "MCP protocol version is not in the configured allowlist"
             );
         }
         return normalized;
@@ -563,6 +612,12 @@ public class WebClientMcpTransportClient implements McpTransportClient {
         return new McpTransportException("MCP_TRANSPORT_FAILED", error.getMessage(), error);
     }
 
+    private Duration operationTimeout() {
+        long remaining = com.yulong.chatagent.agent.runtime.CurrentToolDeadlineHolder
+                .remainingMillisOrDefault(properties.getRequestTimeoutMs());
+        return Duration.ofMillis(Math.max(1L, Math.min(remaining, properties.getRequestTimeoutMs())));
+    }
+
     private String stringifyId(JsonNode idNode) {
         if (idNode == null || idNode.isNull()) {
             return null;
@@ -630,7 +685,7 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                         }
                         return response.bodyToMono(Void.class);
                     })
-                    .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
+                    .timeout(operationTimeout())
                     .onErrorMap(WebClientMcpTransportClient.this::mapTransportError)
                     .block();
         }
@@ -670,14 +725,14 @@ public class WebClientMcpTransportClient implements McpTransportClient {
                                     .map(ignored -> response.bodyToMono(String.class).map(WebClientMcpTransportClient.this::parseJsonRpcResponse))
                                     .orElseGet(() -> response.bodyToMono(Void.class).then(Mono.empty()));
                         })
-                        .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
+                        .timeout(operationTimeout())
                         .onErrorMap(WebClientMcpTransportClient.this::mapTransportError)
                         .block();
                 if (immediateResponse != null) {
                     return immediateResponse;
                 }
                 return responseSink.asMono()
-                        .timeout(Duration.ofMillis(properties.getRequestTimeoutMs()))
+                        .timeout(operationTimeout())
                         .onErrorMap(error -> new McpTransportException("MCP_SSE_RESPONSE_TIMEOUT", "Timed out waiting for SSE response", error))
                         .block();
             } finally {

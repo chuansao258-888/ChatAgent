@@ -14,6 +14,11 @@ public interface McpToolCatalogRepository {
 
     boolean upsert(McpToolCatalogDTO toolCatalog);
 
+    default boolean updateEffectPolicy(String toolId, String effectPolicy, long expectedPolicyVersion,
+                                       LocalDateTime updatedAt) {
+        return false;
+    }
+
     int markMissingAsStale(String serverId,
                            List<String> activeRemoteOriginalNames,
                            LocalDateTime lastSyncedAt,

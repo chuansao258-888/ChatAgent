@@ -1,6 +1,7 @@
 package com.yulong.chatagent.mcp.transport;
 
 import lombok.Data;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +17,8 @@ public class McpTransportProperties {
     private String clientVersion = "phase-1b";
     private String preferredHttpProtocolVersion = "2025-06-18";
     private String preferredSseProtocolVersion = "2024-11-05";
+    private List<String> supportedProtocolVersions = List.of("2025-06-18", "2025-03-26", "2024-11-05");
+    private int maxToolsListPages = 20;
     private long connectTimeoutMs = 2000L;
     private long responseTimeoutMs = 10000L;
     private long readTimeoutMs = 10000L;

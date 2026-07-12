@@ -31,6 +31,12 @@ public class MyBatisMcpToolCatalogRepository implements McpToolCatalogRepository
     }
 
     @Override
+    public boolean updateEffectPolicy(String toolId, String effectPolicy,
+                                      long expectedPolicyVersion, LocalDateTime updatedAt) {
+        return mapper.updateEffectPolicy(toolId, effectPolicy, expectedPolicyVersion, updatedAt) == 1;
+    }
+
+    @Override
     public int markMissingAsStale(String serverId,
                                   List<String> activeRemoteOriginalNames,
                                   LocalDateTime lastSyncedAt,

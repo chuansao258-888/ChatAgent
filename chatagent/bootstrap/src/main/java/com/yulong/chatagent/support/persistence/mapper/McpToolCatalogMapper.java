@@ -17,6 +17,11 @@ public interface McpToolCatalogMapper {
 
     int upsert(McpToolCatalogDTO toolCatalog);
 
+    int updateEffectPolicy(@Param("toolId") String toolId,
+                           @Param("effectPolicy") String effectPolicy,
+                           @Param("expectedPolicyVersion") long expectedPolicyVersion,
+                           @Param("updatedAt") LocalDateTime updatedAt);
+
     int markMissingAsStale(@Param("serverId") String serverId,
                            @Param("activeRemoteOriginalNames") List<String> activeRemoteOriginalNames,
                            @Param("lastSyncedAt") LocalDateTime lastSyncedAt,

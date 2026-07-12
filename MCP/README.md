@@ -1,23 +1,16 @@
-# Local MCP Sandbox
+# MCP Test Strategy
 
-This folder contains local MCP server helpers used to smoke-test ChatAgent's MCP client integration without depending on a separately managed remote deployment.
+MCP protocol tests use the repository-owned deterministic fixture at
+`ui/e2e/fixtures/mcp-protocol-fixture.mjs`. It is pinned with the UI dependencies and
+does not install a separate Python environment or execute an unpinned third-party server.
 
-Current contents:
+Local smoke test:
 
-1. `weather-server/`
-   Local setup for [`mcp_weather_server`](https://github.com/isdaniel/mcp_weather_server), a weather MCP server that supports both SSE and streamable HTTP.
+1. Run `npm.cmd run e2e:mcp-fixture` from `ui/`.
+2. Require `http://127.0.0.1:8090/__mcp-fixture/health` to return healthy.
+3. Start the rebuilt backend in the local/test profile.
+4. Run `npm.cmd run e2e:headed -- --grep '@mcp'`.
+5. Stop only the fixture and backend processes started for the test.
 
-Recommended first smoke test:
-
-1. Open PowerShell in this repository root.
-2. Run `.\MCP\weather-server\install.ps1`
-3. Run `.\MCP\weather-server\start-http.ps1`
-4. In ChatAgent admin, open `/admin/mcp`
-5. Add a server with:
-   - `slug`: `weather`
-   - `name`: `Local Weather MCP`
-   - `protocol`: `HTTP`
-   - `authType`: `NONE`
-   - `endpointUrl`: `http://localhost:8090/mcp`
-6. Click `Test`
-7. Click `Sync`
+The former unpinned weather-server scripts and repository-local Python virtual environment
+are retired. Production MCP endpoints are configured through the authenticated admin API.

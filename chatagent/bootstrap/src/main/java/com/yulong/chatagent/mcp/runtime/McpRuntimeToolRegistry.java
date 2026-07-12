@@ -104,10 +104,21 @@ public class McpRuntimeToolRegistry {
                                 rateLimiter,
                                 circuitBreakerRegistry,
                                 metricsRecorder
-                        ))
+                        )), parseEffectPolicy(toolCatalog.getEffectPolicy())
                 ));
             }
         }
         return List.copyOf(runtimeTools);
+    }
+
+    private com.yulong.chatagent.agent.tools.ToolEffectClass parseEffectPolicy(String value) {
+        if (value == null) {
+            return com.yulong.chatagent.agent.tools.ToolEffectClass.UNKNOWN;
+        }
+        try {
+            return com.yulong.chatagent.agent.tools.ToolEffectClass.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
+            return com.yulong.chatagent.agent.tools.ToolEffectClass.UNKNOWN;
+        }
     }
 }

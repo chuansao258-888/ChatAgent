@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 /**
  * Phase 1a MCP admin CRUD plus delete-time reference checks.
@@ -161,6 +162,23 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
                 .build();
     }
 
+    @Override
+    @Transactional
+    public void updateToolEffectPolicy(String toolId, String effectPolicy, long expectedPolicyVersion) {
+        adminAccessService.requireAdmin();
+        com.yulong.chatagent.agent.tools.ToolEffectClass parsed;
+        try {
+            parsed = com.yulong.chatagent.agent.tools.ToolEffectClass.valueOf(effectPolicy);
+        } catch (RuntimeException invalid) {
+            throw new IllegalArgumentException("Invalid MCP effect policy");
+        }
+        if (!mcpToolCatalogRepository.updateEffectPolicy(
+                toolId, parsed.name(), expectedPolicyVersion, LocalDateTime.now())) {
+            throw new IllegalStateException("MCP effect policy update conflict");
+        }
+        mcpRuntimeToolRegistry.invalidate();
+    }
+
     private McpServerVO toServerVO(McpServerDTO dto) {
         return McpServerVO.builder()
                 .id(dto.getId())
@@ -202,6 +220,8 @@ public class McpServerAdminFacadeServiceImpl implements McpServerAdminFacadeServ
                 .toolDescription(dto.getToolDescription())
                 .exposedModelName(dto.getExposedModelName())
                 .status(dto.getStatus())
+                .effectPolicy(dto.getEffectPolicy())
+                .policyVersion(dto.getPolicyVersion())
                 .lastSyncedAt(dto.getLastSyncedAt())
                 .createdAt(dto.getCreatedAt())
                 .updatedAt(dto.getUpdatedAt())

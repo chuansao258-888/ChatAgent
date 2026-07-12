@@ -94,6 +94,12 @@ public class McpToolCallbackAdapter implements ToolCallback {
         try {
             McpToolCallResult callResult = transportClient.callTool(server, remoteOriginalName, toolInput);
             long latencyMs = (System.nanoTime() - startTime) / 1_000_000;
+            if (callResult.error()) {
+                circuitBreaker.recordFailure(latencyMs);
+                metricsRecorder.recordFailure(server, toolDefinition.name(), "MCP_TOOL_EXECUTION_ERROR", latencyMs);
+                return errorEnvelopeFactory.error(
+                        "MCP_TOOL_EXECUTION_ERROR", "Remote MCP tool reported an execution error");
+            }
             circuitBreaker.recordSuccess(latencyMs);
             McpToolResponseSanitizer.SanitizedToolResponse sanitized = responseSanitizer.sanitize(callResult.payload());
             metricsRecorder.recordSuccess(server, toolDefinition.name(), latencyMs);

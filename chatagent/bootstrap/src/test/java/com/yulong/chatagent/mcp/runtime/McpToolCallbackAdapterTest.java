@@ -119,6 +119,20 @@ class McpToolCallbackAdapterTest {
     }
 
     @Test
+    void shouldKeepProtocolSuccessSeparateFromToolExecutionError() throws Exception {
+        when(transportClient.callTool(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("search"), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new McpToolCallResult("{\"content\":[]}", true));
+
+        JsonNode result = objectMapper.readTree(adapter.call(
+                "{}", new ToolContext(Map.of(
+                        "userId", "user-1", "sessionId", "session-1", "turnId", "turn-1"))));
+
+        assertThat(result.path("status").asText()).isEqualTo("error");
+        assertThat(result.path("errorCode").asText()).isEqualTo("MCP_TOOL_EXECUTION_ERROR");
+    }
+
+    @Test
     void shouldRejectCallWhenRateLimiterDeniesRequest() throws Exception {
         McpRuntimeProtectionProperties protectionProperties = new McpRuntimeProtectionProperties();
         protectionProperties.setRateLimitRequestsPerSecond(1);

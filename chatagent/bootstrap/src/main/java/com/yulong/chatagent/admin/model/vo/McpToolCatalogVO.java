@@ -18,6 +18,8 @@ public class McpToolCatalogVO {
     private String toolDescription;
     private String exposedModelName;
     private McpToolCatalogStatus status;
+    private String effectPolicy;
+    private Long policyVersion;
     private LocalDateTime lastSyncedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

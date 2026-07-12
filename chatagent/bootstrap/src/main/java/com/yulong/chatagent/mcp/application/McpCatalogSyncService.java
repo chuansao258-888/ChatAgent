@@ -80,6 +80,10 @@ public class McpCatalogSyncService {
                         .exposedModelName(exposedModelName)
                         .schemaJson(tool.schemaJson())
                         .schemaHash(tool.schemaHash())
+                        .descriptorHash(tool.schemaHash())
+                        .effectPolicy(existing == null ? "UNKNOWN" : existing.getEffectPolicy())
+                        .policyVersion(existing == null || existing.getPolicyVersion() == null
+                                ? 0L : existing.getPolicyVersion())
                         .status(McpToolCatalogStatus.ENABLED)
                         .deletedAt(null)
                         .createdAt(existing == null ? now : existing.getCreatedAt())

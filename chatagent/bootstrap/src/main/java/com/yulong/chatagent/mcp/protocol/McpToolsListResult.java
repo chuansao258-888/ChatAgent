@@ -9,6 +9,10 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record McpToolsListResult(
-        List<McpRemoteTool> tools
+        List<McpRemoteTool> tools,
+        String nextCursor
 ) {
+    public McpToolsListResult(List<McpRemoteTool> tools) {
+        this(tools, null);
+    }
 }

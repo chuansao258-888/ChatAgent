@@ -4,6 +4,7 @@ import com.yulong.chatagent.access.RequireRole;
 import com.yulong.chatagent.access.UserRole;
 import com.yulong.chatagent.admin.application.McpServerAdminFacadeService;
 import com.yulong.chatagent.admin.model.request.UpsertMcpServerRequest;
+import com.yulong.chatagent.admin.model.request.UpdateMcpToolEffectPolicyRequest;
 import com.yulong.chatagent.admin.model.response.DeleteMcpServerResponse;
 import com.yulong.chatagent.admin.model.response.GetMcpServerResponse;
 import com.yulong.chatagent.admin.model.response.SyncMcpToolCatalogResponse;
@@ -64,6 +65,15 @@ public class McpServerAdminController {
     @PostMapping("/{serverId}/sync")
     public ApiResponse<SyncMcpToolCatalogResponse> syncServer(@PathVariable String serverId) {
         return ApiResponse.success(mcpServerAdminFacadeService.syncServer(serverId));
+    }
+
+    @PatchMapping("/tools/{toolId}/effect-policy")
+    public ApiResponse<Void> updateToolEffectPolicy(
+            @PathVariable String toolId,
+            @RequestBody UpdateMcpToolEffectPolicyRequest request) {
+        mcpServerAdminFacadeService.updateToolEffectPolicy(
+                toolId, request.effectPolicy(), request.expectedPolicyVersion());
+        return ApiResponse.success();
     }
 
     @DeleteMapping("/{serverId}")

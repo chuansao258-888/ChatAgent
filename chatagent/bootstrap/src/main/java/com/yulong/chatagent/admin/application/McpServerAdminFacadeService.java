@@ -27,4 +27,6 @@ public interface McpServerAdminFacadeService {
     TestMcpServerResponse testServer(String serverId);
 
     SyncMcpToolCatalogResponse syncServer(String serverId);
+
+    void updateToolEffectPolicy(String toolId, String effectPolicy, long expectedPolicyVersion);
 }

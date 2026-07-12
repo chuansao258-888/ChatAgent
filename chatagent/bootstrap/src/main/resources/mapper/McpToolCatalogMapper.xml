@@ -12,6 +12,11 @@
         <result property="exposedModelName" column="exposed_model_name" jdbcType="VARCHAR"/>
         <result property="schemaJson" column="schema_json" jdbcType="VARCHAR"/>
         <result property="schemaHash" column="schema_hash" jdbcType="VARCHAR"/>
+        <result property="outputSchemaJson" column="output_schema_json" jdbcType="VARCHAR"/>
+        <result property="annotationsJson" column="annotations_json" jdbcType="VARCHAR"/>
+        <result property="descriptorHash" column="descriptor_hash" jdbcType="VARCHAR"/>
+        <result property="effectPolicy" column="effect_policy" jdbcType="VARCHAR"/>
+        <result property="policyVersion" column="policy_version" jdbcType="BIGINT"/>
         <result property="status" column="status" jdbcType="VARCHAR"/>
         <result property="deletedAt" column="deleted_at" jdbcType="TIMESTAMP"/>
         <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
@@ -27,6 +32,11 @@
         exposed_model_name,
         schema_json,
         schema_hash,
+        output_schema_json,
+        annotations_json,
+        descriptor_hash,
+        effect_policy,
+        policy_version,
         status,
         deleted_at,
         created_at,
@@ -52,6 +62,11 @@
             exposed_model_name,
             schema_json,
             schema_hash,
+            output_schema_json,
+            annotations_json,
+            descriptor_hash,
+            effect_policy,
+            policy_version,
             status,
             deleted_at,
             created_at,
@@ -65,6 +80,11 @@
             #{exposedModelName},
             #{schemaJson},
             #{schemaHash},
+            #{outputSchemaJson},
+            #{annotationsJson},
+            #{descriptorHash},
+            COALESCE(#{effectPolicy}, 'UNKNOWN'),
+            COALESCE(#{policyVersion}, 0),
             #{status},
             #{deletedAt},
             #{createdAt},
@@ -76,6 +96,9 @@
             exposed_model_name = EXCLUDED.exposed_model_name,
             schema_json = EXCLUDED.schema_json,
             schema_hash = EXCLUDED.schema_hash,
+            output_schema_json = EXCLUDED.output_schema_json,
+            annotations_json = EXCLUDED.annotations_json,
+            descriptor_hash = EXCLUDED.descriptor_hash,
             status = EXCLUDED.status,
             deleted_at = NULL,
             updated_at = EXCLUDED.updated_at,
@@ -95,6 +118,16 @@
               #{name}
           </foreach>
         </if>
+    </update>
+
+    <update id="updateEffectPolicy">
+        UPDATE t_mcp_tool_catalog
+        SET effect_policy = #{effectPolicy},
+            policy_version = policy_version + 1,
+            updated_at = #{updatedAt}
+        WHERE id = CAST(#{toolId} AS uuid)
+          AND deleted_at IS NULL
+          AND policy_version = #{expectedPolicyVersion}
     </update>
 
     <update id="softDeleteByServerId">

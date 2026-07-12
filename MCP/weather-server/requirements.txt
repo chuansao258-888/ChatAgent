@@ -1,4 +1,0 @@
-mcp_weather_server
-starlette
-uvicorn
-
