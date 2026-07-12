@@ -17,6 +17,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ModelHealthStoreTest {
 
     @Test
+    void shouldIgnoreOrdinaryCallbacksWhileHalfOpenProbeOwnsState() throws Exception {
+        ChatRoutingProperties properties = new ChatRoutingProperties();
+        properties.getHealth().setFailureThreshold(1);
+        properties.getHealth().setOpenDurationMs(300_000L);
+        ModelHealthStore store = new ModelHealthStore(properties);
+
+        store.markFailure("glm-4");
+        setLongField(store, "glm-4", "openUntil", 0L);
+        ModelHealthStore.CallPermit probe = store.tryAcquire("glm-4");
+        ModelHealthStore.HealthSnapshot before = snapshotFor(store, "glm-4");
+
+        store.markSuccess("glm-4");
+        store.markFailure("glm-4");
+
+        ModelHealthStore.HealthSnapshot after = snapshotFor(store, "glm-4");
+        assertThat(probe.generation()).isPositive();
+        assertThat(after.state()).isEqualTo("HALF_OPEN");
+        assertThat(after.probeGeneration()).isEqualTo(before.probeGeneration());
+        assertThat(after.halfOpenStartMs()).isEqualTo(before.halfOpenStartMs());
+        assertThat(store.tryAcquire("glm-4").allowed()).isFalse();
+    }
+
+    @Test
+    void shouldIgnoreOrdinaryCallbacksWhileOpen() {
+        ChatRoutingProperties properties = new ChatRoutingProperties();
+        properties.getHealth().setFailureThreshold(1);
+        properties.getHealth().setOpenDurationMs(300_000L);
+        ModelHealthStore store = new ModelHealthStore(properties);
+
+        store.markFailure("glm-4");
+        ModelHealthStore.HealthSnapshot before = snapshotFor(store, "glm-4");
+
+        store.markSuccess("glm-4");
+        store.markFailure("glm-4");
+
+        ModelHealthStore.HealthSnapshot after = snapshotFor(store, "glm-4");
+        assertThat(after.state()).isEqualTo("OPEN");
+        assertThat(after.probeGeneration()).isEqualTo(before.probeGeneration());
+        assertThat(after.consecutiveFailures()).isZero();
+        assertThat(store.tryAcquire("glm-4").allowed()).isFalse();
+    }
+
+    @Test
     void shouldIgnoreStaleHalfOpenFailureAfterNewerProbeClosesCircuit() throws Exception {
         ChatRoutingProperties properties = new ChatRoutingProperties();
         properties.getHealth().setFailureThreshold(1);

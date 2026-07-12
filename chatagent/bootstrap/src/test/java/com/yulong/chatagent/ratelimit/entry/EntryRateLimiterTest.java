@@ -1,5 +1,6 @@
 package com.yulong.chatagent.ratelimit.entry;
 
+import com.github.benmanes.caffeine.cache.Ticker;
 import com.yulong.chatagent.context.LoginUser;
 import com.yulong.chatagent.context.UserContext;
 import com.yulong.chatagent.ratelimit.RateLimitFailurePolicy;
@@ -12,6 +13,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -231,5 +235,61 @@ class EntryRateLimiterTest {
         assertThat(entryCounter).isNotNull();
         assertThat(entryCounter.count()).isEqualTo(1.0);
         assertThat(capacityCounter).isNull();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldBoundLocalFallbackCacheAndRecordPrivacySafeEvictions() {
+        properties.getEntry().setLocalFallbackMaxIdentities(2);
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        ObjectProvider<MeterRegistry> regProvider = mock(ObjectProvider.class);
+        when(regProvider.getIfAvailable()).thenReturn(registry);
+        RateLimitMetricsRecorder recorder = new RateLimitMetricsRecorder(regProvider);
+        ObjectProvider<StringRedisTemplate> emptyProvider = mock(ObjectProvider.class);
+        when(emptyProvider.getIfAvailable()).thenReturn(null);
+        when(identityResolver.resolve(request)).thenReturn(
+                new EntryRateLimitIdentityResolver.ResolvedIdentity("user", "hashed-user-1"),
+                new EntryRateLimitIdentityResolver.ResolvedIdentity("user", "hashed-user-2"),
+                new EntryRateLimitIdentityResolver.ResolvedIdentity("user", "hashed-user-3"));
+        EntryRateLimiter limiter = new EntryRateLimiter(
+                properties, recorder, identityResolver, emptyProvider, Ticker.systemTicker());
+
+        limiter.checkAllowed(request);
+        limiter.checkAllowed(request);
+        limiter.checkAllowed(request);
+        limiter.cleanUpLocalFallbackBuckets();
+
+        assertThat(limiter.localFallbackBucketCount()).isLessThanOrEqualTo(2L);
+        io.micrometer.core.instrument.Counter evictionCounter = registry.find(
+                        "chatagent.rate_limit.entry.local_cache.evictions")
+                .counter();
+        assertThat(evictionCounter).isNotNull();
+        assertThat(evictionCounter.count()).isGreaterThanOrEqualTo(1.0D);
+        assertThat(registry.find("chatagent.rate_limit.entry.local_cache.size").gauge().value())
+                .isLessThanOrEqualTo(2.0D);
+        assertThat(registry.getMeters())
+                .flatExtracting(meter -> meter.getId().getTags())
+                .noneMatch(tag -> tag.getValue().contains("hashed-user"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldExpireIdleBucketAndDocumentFreshBurstOnRecreation() {
+        AtomicLong tickerNanos = new AtomicLong();
+        ObjectProvider<StringRedisTemplate> emptyProvider = mock(ObjectProvider.class);
+        when(emptyProvider.getIfAvailable()).thenReturn(null);
+        EntryRateLimiter limiter = new EntryRateLimiter(
+                properties, metricsRecorder, identityResolver, emptyProvider, tickerNanos::get);
+
+        assertThatCode(() -> limiter.checkAllowed(request)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> limiter.checkAllowed(request)).isInstanceOf(RateLimitedException.class);
+
+        tickerNanos.addAndGet(TimeUnit.SECONDS.toNanos(61));
+        limiter.cleanUpLocalFallbackBuckets();
+        assertThat(limiter.localFallbackBucketCount()).isZero();
+
+        assertThatCode(() -> limiter.checkAllowed(request)).doesNotThrowAnyException();
+        assertThat(limiter.localFallbackBucketCount()).isEqualTo(1L);
     }
 }

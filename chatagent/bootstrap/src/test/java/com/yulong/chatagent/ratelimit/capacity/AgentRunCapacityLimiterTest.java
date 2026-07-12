@@ -13,12 +13,20 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AgentRunCapacityLimiterTest {
@@ -53,7 +61,7 @@ class AgentRunCapacityLimiterTest {
     @Test
     void shouldAllowWhenRedisGrants() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        when(redis.execute(any(), anyList(), anyString(), anyString(), anyString(), anyString()))
+        when(redis.execute(any(), anyList(), anyString(), anyString(), anyString()))
                 .thenReturn(1L);
         AgentRunCapacityLimiter limiter = newLimiter(redis, new Semaphore(1));
 
@@ -65,7 +73,7 @@ class AgentRunCapacityLimiterTest {
     @Test
     void shouldWaitInQueueWhenRedisDenies() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        when(redis.execute(any(), anyList(), anyString(), anyString(), anyString(), anyString()))
+        when(redis.execute(any(), anyList(), anyString(), anyString(), anyString()))
                 .thenReturn(0L);
         AgentRunCapacityLimiter limiter = newLimiter(redis, new Semaphore(1));
 
@@ -113,7 +121,7 @@ class AgentRunCapacityLimiterTest {
     @Test
     void shouldFallBackToLocalCapWhenRedisThrows() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        when(redis.execute(any(), anyList(), anyString(), anyString(), anyString(), anyString()))
+        when(redis.execute(any(), anyList(), anyString(), anyString(), anyString()))
                 .thenThrow(new RuntimeException("redis down"));
         AgentRunCapacityLimiter limiter = newLimiter(redis, new Semaphore(1));
 
@@ -187,6 +195,146 @@ class AgentRunCapacityLimiterTest {
         io.micrometer.core.instrument.Counter waitCounter = registry.find("chatagent.agent_run.capacity.waits")
                 .tag("outcome", "requeued").counter();
         assertThat(waitCounter).isNull();
+    }
+
+    @Test
+    void scriptsShouldUseRedisTimeAndOwnershipSafeRenewal() {
+        assertThat(AgentRunCapacityLimiter.ACQUIRE_SCRIPT.getScriptAsString())
+                .contains("redis.call('TIME')")
+                .contains("local ttlMs = tonumber(ARGV[2])")
+                .contains("local permitId = ARGV[3]")
+                .doesNotContain("local now = tonumber(ARGV");
+        assertThat(AgentRunCapacityLimiter.RENEW_SCRIPT.getScriptAsString())
+                .contains("redis.call('TIME')")
+                .contains("redis.call('zscore', key, permitId)")
+                .contains("redis.call('zadd', key, 'XX'")
+                .doesNotContain("redis.call('zadd', key, now + ttlMs");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldCompensateRedisGrantWhenWatchdogCannotStart() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        when(redis.execute(eq(AgentRunCapacityLimiter.ACQUIRE_SCRIPT), anyList(),
+                anyString(), anyString(), anyString())).thenReturn(1L);
+        when(redis.execute(eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), anyString()))
+                .thenReturn(1L);
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+        when(scheduler.scheduleWithFixedDelay(any(Runnable.class), anyLong(), anyLong(), any()))
+                .thenThrow(new java.util.concurrent.RejectedExecutionException("stopped"));
+        Semaphore semaphore = new Semaphore(1);
+        ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redis);
+        AgentRunCapacityLimiter limiter = new AgentRunCapacityLimiter(
+                properties, metricsRecorder, provider, scheduler, semaphore);
+
+        CapacityGateResult result = limiter.tryAcquire(context);
+
+        assertThat(result).isInstanceOf(CapacityGateResult.Proceed.class);
+        verify(redis).execute(eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), eq(context.member()));
+        assertThat(semaphore.availablePermits()).isZero();
+        ((CapacityGateResult.Proceed) result).permit().close();
+        assertThat(semaphore.availablePermits()).isEqualTo(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void redisPermitCloseShouldBeFinalAndIdempotent() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        when(redis.execute(eq(AgentRunCapacityLimiter.ACQUIRE_SCRIPT), anyList(),
+                anyString(), anyString(), anyString())).thenReturn(1L);
+        when(redis.execute(eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), anyString()))
+                .thenReturn(1L);
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> renewalFuture = mock(ScheduledFuture.class);
+        org.mockito.ArgumentCaptor<Runnable> renewal = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        doReturn(renewalFuture).when(scheduler)
+                .scheduleWithFixedDelay(renewal.capture(), anyLong(), anyLong(), any());
+        ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redis);
+        AgentRunCapacityLimiter limiter = new AgentRunCapacityLimiter(
+                properties, metricsRecorder, provider, scheduler, new Semaphore(1));
+
+        CapacityGateResult result = limiter.tryAcquire(context);
+        Permit permit = ((CapacityGateResult.Proceed) result).permit();
+        permit.close();
+        permit.close();
+        renewal.getValue().run();
+
+        verify(renewalFuture, times(1)).cancel(false);
+        verify(redis, times(1)).execute(
+                eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), eq(context.member()));
+        verify(redis, never()).execute(eq(AgentRunCapacityLimiter.RENEW_SCRIPT),
+                anyList(), anyString(), anyString());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldStopWatchdogAfterLeaseIsReportedLost() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        when(redis.execute(eq(AgentRunCapacityLimiter.ACQUIRE_SCRIPT), anyList(),
+                anyString(), anyString(), anyString())).thenReturn(1L);
+        when(redis.execute(eq(AgentRunCapacityLimiter.RENEW_SCRIPT), anyList(),
+                anyString(), anyString())).thenReturn(0L);
+        when(redis.execute(eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), anyString()))
+                .thenReturn(0L);
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> renewalFuture = mock(ScheduledFuture.class);
+        org.mockito.ArgumentCaptor<Runnable> renewal = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        doReturn(renewalFuture).when(scheduler)
+                .scheduleWithFixedDelay(renewal.capture(), anyLong(), anyLong(), any());
+        ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redis);
+        AgentRunCapacityLimiter limiter = new AgentRunCapacityLimiter(
+                properties, metricsRecorder, provider, scheduler, new Semaphore(1));
+
+        CapacityGateResult result = limiter.tryAcquire(context);
+        renewal.getValue().run();
+        renewal.getValue().run();
+
+        verify(renewalFuture, times(1)).cancel(false);
+        verify(redis, times(1)).execute(eq(AgentRunCapacityLimiter.RENEW_SCRIPT),
+                anyList(), anyString(), eq(context.member()));
+        ((CapacityGateResult.Proceed) result).permit().close();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void releaseFailureShouldNotMaskResultOrAllowLaterRenewal() {
+        io.micrometer.core.instrument.simple.SimpleMeterRegistry registry =
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        ObjectProvider<MeterRegistry> regProvider = mock(ObjectProvider.class);
+        when(regProvider.getIfAvailable()).thenReturn(registry);
+        RateLimitMetricsRecorder recorder = new RateLimitMetricsRecorder(regProvider);
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        when(redis.execute(eq(AgentRunCapacityLimiter.ACQUIRE_SCRIPT), anyList(),
+                anyString(), anyString(), anyString())).thenReturn(1L);
+        when(redis.execute(eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), anyString()))
+                .thenThrow(new RuntimeException("release unavailable"));
+        ScheduledExecutorService scheduler = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> renewalFuture = mock(ScheduledFuture.class);
+        org.mockito.ArgumentCaptor<Runnable> renewal = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        doReturn(renewalFuture).when(scheduler)
+                .scheduleWithFixedDelay(renewal.capture(), anyLong(), anyLong(), any());
+        ObjectProvider<StringRedisTemplate> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redis);
+        AgentRunCapacityLimiter limiter = new AgentRunCapacityLimiter(
+                properties, recorder, provider, scheduler, new Semaphore(1));
+        Permit permit = ((CapacityGateResult.Proceed) limiter.tryAcquire(context)).permit();
+
+        assertThatCode(permit::close).doesNotThrowAnyException();
+        permit.close();
+        renewal.getValue().run();
+
+        verify(renewalFuture, times(1)).cancel(false);
+        verify(redis, times(1)).execute(
+                eq(AgentRunCapacityLimiter.RELEASE_SCRIPT), anyList(), eq(context.member()));
+        verify(redis, never()).execute(eq(AgentRunCapacityLimiter.RENEW_SCRIPT),
+                anyList(), anyString(), anyString());
+        assertThat(registry.find("chatagent.agent_run.capacity.permit.releases")
+                .tag("outcome", "failed").counter().count()).isEqualTo(1.0D);
+        assertThat(registry.find("chatagent.agent_run.capacity.redis.failures")
+                .counter().count()).isEqualTo(1.0D);
     }
 
     private AgentRunCapacityLimiter newLimiter(StringRedisTemplate redisTemplate, Semaphore semaphore) {

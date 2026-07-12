@@ -1,5 +1,8 @@
 package com.yulong.chatagent.ratelimit.entry;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Ticker;
 import com.yulong.chatagent.ratelimit.LocalTokenBucket;
 import com.yulong.chatagent.ratelimit.RateLimitFailurePolicy;
 import com.yulong.chatagent.ratelimit.RateLimitMetricsRecorder;
@@ -11,8 +14,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Locale;
 
 /**
  * Entry-layer token-bucket limiter for {@code POST /api/chat-messages}.
@@ -73,16 +77,41 @@ public class EntryRateLimiter {
     private final RateLimitMetricsRecorder metricsRecorder;
     private final EntryRateLimitIdentityResolver identityResolver;
     private final ObjectProvider<StringRedisTemplate> redisTemplateProvider;
-    private final ConcurrentHashMap<String, LocalTokenBucket> localFallbackBuckets = new ConcurrentHashMap<>();
+    private final Cache<String, LocalTokenBucket> localFallbackBuckets;
 
     public EntryRateLimiter(RateLimitProperties properties,
                             RateLimitMetricsRecorder metricsRecorder,
                             EntryRateLimitIdentityResolver identityResolver,
                             ObjectProvider<StringRedisTemplate> redisTemplateProvider) {
+        this(properties, metricsRecorder, identityResolver, redisTemplateProvider, Ticker.systemTicker());
+    }
+
+    EntryRateLimiter(RateLimitProperties properties,
+                     RateLimitMetricsRecorder metricsRecorder,
+                     EntryRateLimitIdentityResolver identityResolver,
+                     ObjectProvider<StringRedisTemplate> redisTemplateProvider,
+                     Ticker ticker) {
         this.properties = properties;
         this.metricsRecorder = metricsRecorder;
         this.identityResolver = identityResolver;
         this.redisTemplateProvider = redisTemplateProvider;
+        RateLimitProperties.Entry entry = properties.getEntry();
+        this.localFallbackBuckets = Caffeine.<String, LocalTokenBucket>newBuilder()
+                .maximumSize(entry.getLocalFallbackMaxIdentities())
+                .expireAfterAccess(localFallbackExpiry(entry))
+                .ticker(ticker)
+                .executor(Runnable::run)
+                .removalListener((String key, LocalTokenBucket bucket, com.github.benmanes.caffeine.cache.RemovalCause cause) ->
+                        metricsRecorder.recordEntryFallbackCacheEviction(
+                                cause.name().toLowerCase(Locale.ROOT)))
+                .build();
+        metricsRecorder.registerEntryFallbackCacheSize(localFallbackBuckets::estimatedSize);
+    }
+
+    private static Duration localFallbackExpiry(RateLimitProperties.Entry entry) {
+        long refillHorizonMs = (long) Math.ceil(
+                entry.getBurstCapacity() * 1000.0D / entry.getRequestsPerSecond());
+        return Duration.ofMillis(Math.max(Duration.ofMinutes(1).toMillis(), refillHorizonMs * 2L));
     }
 
     /**
@@ -151,7 +180,7 @@ public class EntryRateLimiter {
         }
         try {
             boolean allowed = localFallbackBuckets
-                    .computeIfAbsent(identity.scope() + ":" + identity.key(), ignored -> new LocalTokenBucket(
+                    .get(identity.scope() + ":" + identity.key(), ignored -> new LocalTokenBucket(
                             entry.getRequestsPerSecond(),
                             entry.getBurstCapacity(),
                             System::nanoTime
@@ -167,5 +196,13 @@ public class EntryRateLimiter {
             metricsRecorder.recordEntryRequest("allowed", identity.scope(), "fail_open");
             return true;
         }
+    }
+
+    long localFallbackBucketCount() {
+        return localFallbackBuckets.estimatedSize();
+    }
+
+    void cleanUpLocalFallbackBuckets() {
+        localFallbackBuckets.cleanUp();
     }
 }

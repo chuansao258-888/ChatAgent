@@ -19,6 +19,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -44,16 +45,19 @@ public class AgentRunCapacityLimiter {
 
     static final String ACTIVE_PERMITS_KEY = "chatagent:agent-run:active";
 
-    private static final DefaultRedisScript<Long> ACQUIRE_SCRIPT;
-    private static final DefaultRedisScript<Long> RELEASE_SCRIPT;
+    static final DefaultRedisScript<Long> ACQUIRE_SCRIPT;
+    static final DefaultRedisScript<Long> RENEW_SCRIPT;
+    static final DefaultRedisScript<Long> RELEASE_SCRIPT;
     static {
         ACQUIRE_SCRIPT = new DefaultRedisScript<>();
         ACQUIRE_SCRIPT.setScriptText("""
                 local key = KEYS[1]
                 local maxConcurrency = tonumber(ARGV[1])
-                local permitExpireAt = tonumber(ARGV[2])
-                local now = tonumber(ARGV[3])
-                local permitId = ARGV[4]
+                local ttlMs = tonumber(ARGV[2])
+                local permitId = ARGV[3]
+                local serverTime = redis.call('TIME')
+                local now = (tonumber(serverTime[1]) * 1000) + math.floor(tonumber(serverTime[2]) / 1000)
+                local permitExpireAt = now + ttlMs
 
                 redis.call('zremrangebyscore', key, '-inf', now)
                 local active = redis.call('zcard', key)
@@ -64,6 +68,27 @@ public class AgentRunCapacityLimiter {
                 return 1
                 """);
         ACQUIRE_SCRIPT.setResultType(Long.class);
+
+        RENEW_SCRIPT = new DefaultRedisScript<>();
+        RENEW_SCRIPT.setScriptText("""
+                local key = KEYS[1]
+                local ttlMs = tonumber(ARGV[1])
+                local permitId = ARGV[2]
+                local serverTime = redis.call('TIME')
+                local now = (tonumber(serverTime[1]) * 1000) + math.floor(tonumber(serverTime[2]) / 1000)
+                local currentExpireAt = redis.call('zscore', key, permitId)
+
+                if currentExpireAt == false then
+                    return 0
+                end
+                if tonumber(currentExpireAt) <= now then
+                    redis.call('zrem', key, permitId)
+                    return 0
+                end
+                redis.call('zadd', key, 'XX', now + ttlMs, permitId)
+                return 1
+                """);
+        RENEW_SCRIPT.setResultType(Long.class);
 
         RELEASE_SCRIPT = new DefaultRedisScript<>();
         RELEASE_SCRIPT.setScriptText("""
@@ -141,20 +166,26 @@ public class AgentRunCapacityLimiter {
             return handleRedisUnavailable();
         }
         try {
-            long now = System.currentTimeMillis();
-            long expireAt = now + properties.getAgentRun().getPermitTtlMs();
             String permitId = context.member();
             Long granted = redisTemplate.execute(
                     ACQUIRE_SCRIPT,
                     List.of(ACTIVE_PERMITS_KEY),
                     String.valueOf(properties.getAgentRun().getMaxConcurrency()),
-                    String.valueOf(expireAt),
-                    String.valueOf(now),
+                    String.valueOf(properties.getAgentRun().getPermitTtlMs()),
                     permitId
             );
             if (granted != null && granted == 1L) {
-                metricsRecorder.recordCapacityAcquire("allowed", "redis");
-                return CapacityGateResult.proceed(startRenewal(permitId, redisTemplate));
+                try {
+                    Permit permit = startRenewal(permitId, redisTemplate);
+                    metricsRecorder.recordCapacityAcquire("allowed", "redis");
+                    return CapacityGateResult.proceed(permit);
+                } catch (RuntimeException schedulerFailure) {
+                    log.error("Permit watchdog could not start; compensating Redis grant: member={}, error={}",
+                            permitId, schedulerFailure.getMessage());
+                    metricsRecorder.recordCapacityAcquire("failed", "watchdog");
+                    compensateGrantedPermit(permitId, redisTemplate);
+                    return handleRedisUnavailable();
+                }
             }
             if (granted != null) {
                 metricsRecorder.recordCapacityAcquire("denied", "redis");
@@ -188,14 +219,34 @@ public class AgentRunCapacityLimiter {
     private Permit startRenewal(String permitId, StringRedisTemplate redisTemplate) {
         long intervalMs = properties.getAgentRun().getPermitRenewIntervalMs();
         long ttlMs = properties.getAgentRun().getPermitTtlMs();
-        long acquiredAtNanos = System.nanoTime();
+        RedisPermit permit = new RedisPermit(
+                permitId, redisTemplate, ttlMs, metricsRecorder, System.nanoTime());
         ScheduledFuture<?> future = scheduler.scheduleWithFixedDelay(
-                () -> renewQuietly(permitId, redisTemplate),
+                permit::renew,
                 intervalMs,
                 intervalMs,
                 TimeUnit.MILLISECONDS
         );
-        return new RedisPermit(permitId, redisTemplate, future, ttlMs, metricsRecorder, acquiredAtNanos);
+        permit.attachRenewalFuture(future);
+        return permit;
+    }
+
+    private void compensateGrantedPermit(String permitId, StringRedisTemplate redisTemplate) {
+        try {
+            Long removed = redisTemplate.execute(
+                    RELEASE_SCRIPT, List.of(ACTIVE_PERMITS_KEY), permitId);
+            if (removed == null) {
+                metricsRecorder.recordCapacityRedisFailure();
+                metricsRecorder.recordPermitRelease("failed");
+            } else {
+                metricsRecorder.recordPermitRelease(removed == 1L ? "removed" : "absent");
+            }
+        } catch (Exception releaseFailure) {
+            log.warn("Compensating permit release failed; Redis TTL remains authoritative: member={}, error={}",
+                    permitId, releaseFailure.getMessage());
+            metricsRecorder.recordCapacityRedisFailure();
+            metricsRecorder.recordPermitRelease("failed");
+        }
     }
 
     /**
@@ -216,20 +267,6 @@ public class AgentRunCapacityLimiter {
      */
     public void recordWaitRequeued() {
         metricsRecorder.recordCapacityWait("requeued");
-    }
-
-    private void renewQuietly(String permitId, StringRedisTemplate redisTemplate) {
-        try {
-            long newExpireAt = System.currentTimeMillis() + properties.getAgentRun().getPermitTtlMs();
-            // Refresh the score so the permit does not expire mid-run.
-            redisTemplate.opsForZSet().add(ACTIVE_PERMITS_KEY, permitId, newExpireAt);
-        } catch (Exception e) {
-            // Renewal failure does not abort the run, but is recorded so potential
-            // over-admission is visible. Only LOCAL_CAP is renewal-free.
-            log.warn("Permit renewal failed, run continues but may be over-admitted: member={}, error={}",
-                    permitId, e.getMessage());
-            metricsRecorder.recordCapacityRedisFailure();
-        }
     }
 
     @PreDestroy
@@ -262,34 +299,92 @@ public class AgentRunCapacityLimiter {
 
         private final String permitId;
         private final StringRedisTemplate redisTemplate;
-        private final ScheduledFuture<?> renewalFuture;
         private final long ttlMs;
         private final RateLimitMetricsRecorder metricsRecorder;
         private final long acquiredAtNanos;
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicBoolean renewalActive = new AtomicBoolean(true);
+        private volatile ScheduledFuture<?> renewalFuture;
 
         private RedisPermit(String permitId,
                             StringRedisTemplate redisTemplate,
-                            ScheduledFuture<?> renewalFuture,
                             long ttlMs,
                             RateLimitMetricsRecorder metricsRecorder,
                             long acquiredAtNanos) {
             this.permitId = permitId;
             this.redisTemplate = redisTemplate;
-            this.renewalFuture = renewalFuture;
             this.ttlMs = ttlMs;
             this.metricsRecorder = metricsRecorder;
             this.acquiredAtNanos = acquiredAtNanos;
         }
 
+        private void attachRenewalFuture(ScheduledFuture<?> future) {
+            this.renewalFuture = future;
+        }
+
+        private void renew() {
+            if (closed.get() || !renewalActive.get()) {
+                return;
+            }
+            try {
+                Long renewed = redisTemplate.execute(
+                        RENEW_SCRIPT,
+                        List.of(ACTIVE_PERMITS_KEY),
+                        String.valueOf(ttlMs),
+                        permitId
+                );
+                if (renewed != null && renewed == 1L) {
+                    metricsRecorder.recordPermitRenewal("renewed");
+                    return;
+                }
+                if (renewed != null) {
+                    metricsRecorder.recordPermitRenewal("lost");
+                    stopRenewal();
+                    log.warn("Permit lease lost; Agent run continues without resurrecting membership: member={}",
+                            permitId);
+                    return;
+                }
+                metricsRecorder.recordPermitRenewal("failed");
+                metricsRecorder.recordCapacityRedisFailure();
+            } catch (Exception e) {
+                log.warn("Permit renewal failed, run continues but may be over-admitted: member={}, error={}",
+                        permitId, e.getMessage());
+                metricsRecorder.recordPermitRenewal("failed");
+                metricsRecorder.recordCapacityRedisFailure();
+            }
+        }
+
+        private void stopRenewal() {
+            if (!renewalActive.compareAndSet(true, false)) {
+                return;
+            }
+            ScheduledFuture<?> future = renewalFuture;
+            if (future != null) {
+                future.cancel(false);
+            }
+        }
+
         @Override
         public void close() {
-            renewalFuture.cancel(false);
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            stopRenewal();
             try {
-                redisTemplate.execute(RELEASE_SCRIPT, List.of(ACTIVE_PERMITS_KEY), permitId);
+                Long removed = redisTemplate.execute(
+                        RELEASE_SCRIPT, List.of(ACTIVE_PERMITS_KEY), permitId);
+                if (removed == null) {
+                    metricsRecorder.recordCapacityRedisFailure();
+                    metricsRecorder.recordPermitRelease("failed");
+                } else {
+                    metricsRecorder.recordPermitRelease(removed == 1L ? "removed" : "absent");
+                }
             } catch (Exception e) {
                 // Release failure must not mask the original Agent result.
                 log.warn("Permit release failed, leaving it to expire via TTL: member={}, ttlMs={}, error={}",
                         permitId, ttlMs, e.getMessage());
+                metricsRecorder.recordCapacityRedisFailure();
+                metricsRecorder.recordPermitRelease("failed");
             }
             long heldMs = Math.max(0L, (System.nanoTime() - acquiredAtNanos) / 1_000_000L);
             metricsRecorder.recordPermitHoldDuration(heldMs);

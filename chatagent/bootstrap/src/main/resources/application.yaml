@@ -422,6 +422,7 @@ chatagent:
       enabled: true
       requests-per-second: 2
       burst-capacity: 5
+      local-fallback-max-identities: 10000
       redis-failure-policy: LOCAL_BUCKET
     agent-run:
       enabled: true

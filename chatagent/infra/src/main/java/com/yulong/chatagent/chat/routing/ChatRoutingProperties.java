@@ -1,11 +1,13 @@
 package com.yulong.chatagent.chat.routing;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Data
 @Configuration
@@ -37,6 +39,27 @@ public class ChatRoutingProperties {
     private ObservabilityConfig observability = new ObservabilityConfig();
     /** 路由候选模型列表，按 priority 和首选模型提升规则参与选择。 */
     private List<CandidateConfig> candidates = new ArrayList<>();
+
+    @PostConstruct
+    public void validateTimings() {
+        requirePositive(firstPacketTimeoutSeconds, "chat.routing.first-packet-timeout-seconds");
+        requirePositive(health.failureThreshold, "chat.routing.health.failure-threshold");
+        requirePositive(health.openDurationMs, "chat.routing.health.open-duration-ms");
+        requirePositive(health.halfOpenFlightTimeoutMs,
+                "chat.routing.health.half-open-flight-timeout-ms");
+        long firstPacketTimeoutMs = TimeUnit.SECONDS.toMillis(firstPacketTimeoutSeconds);
+        if (health.halfOpenFlightTimeoutMs < firstPacketTimeoutMs) {
+            throw new IllegalStateException(
+                    "chat.routing.health.half-open-flight-timeout-ms must not be shorter than "
+                            + "chat.routing.first-packet-timeout-seconds");
+        }
+    }
+
+    private static void requirePositive(long value, String propertyName) {
+        if (value <= 0L) {
+            throw new IllegalStateException(propertyName + " must be positive");
+        }
+    }
 
     @Data
     public static class CandidateConfig {

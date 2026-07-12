@@ -4,7 +4,6 @@ import lombok.Getter;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -17,33 +16,34 @@ import java.util.concurrent.atomic.AtomicReference;
 public class FirstPacketAwaiter {
     // latch 只需要释放一次：首个内容、完成或错误任意一个事件到达，都说明探测有结果了。
     private final CountDownLatch latch = new CountDownLatch(1);
-    // hasContent 表示是否真的见到有效内容/信号；只完成但没有内容会被判定为 NO_CONTENT。
-    private final AtomicBoolean hasContent = new AtomicBoolean(false);
-    // 防止多个流式事件重复 countDown，保证首包结果只被第一次事件决定。
-    private final AtomicBoolean eventFired = new AtomicBoolean(false);
-    // 如果首包阶段先收到错误，await 返回 ERROR，并保留原始异常。
-    private final AtomicReference<Throwable> error = new AtomicReference<>();
+    // 一个不可变结果同时表达类型和异常；唯一 CAS 决定首事件，避免多个原子字段互相覆盖。
+    private final AtomicReference<Result> outcome = new AtomicReference<>();
 
     /** 收到有效 chunk/content/thinking/tool call 时调用，表示首包探测成功。 */
-    public void markContent() { hasContent.set(true); fireEventOnce(); }
+    public void markContent() { completeOnce(Result.success()); }
 
     /** 流在首包前正常结束时调用，后续 await 会返回 NO_CONTENT。 */
-    public void markComplete() { fireEventOnce(); }
+    public void markComplete() { completeOnce(Result.noContent()); }
 
     /** 流在首包阶段失败时调用，后续 await 会返回 ERROR。 */
-    public void markError(Throwable t) { error.set(t); fireEventOnce(); }
+    public void markError(Throwable t) { completeOnce(Result.error(t)); }
 
-    private void fireEventOnce() {
-        if (eventFired.compareAndSet(false, true)) latch.countDown();
+    private void completeOnce(Result result) {
+        if (outcome.compareAndSet(null, result)) {
+            latch.countDown();
+        }
     }
 
     public Result await(long timeout, TimeUnit unit) throws InterruptedException {
-        // 等待首个事件到达，或等待超时。completed=false 表示这段时间内完全没有事件。
-        boolean completed = latch.await(timeout, unit);
-        if (error.get() != null) return Result.error(error.get());
-        if (!completed) return Result.timeout();
-        if (!hasContent.get()) return Result.noContent();
-        return Result.success();
+        Result completed = outcome.get();
+        if (completed != null) {
+            return completed;
+        }
+        if (!latch.await(timeout, unit)) {
+            // TIMEOUT 也参与同一个 CAS；若回调恰好先赢，返回那个真实首事件。
+            completeOnce(Result.timeout());
+        }
+        return outcome.get();
     }
 
     @Getter

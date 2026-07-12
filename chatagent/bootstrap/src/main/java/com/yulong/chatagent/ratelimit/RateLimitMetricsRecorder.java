@@ -1,12 +1,14 @@
 package com.yulong.chatagent.ratelimit;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.util.function.LongSupplier;
 
 /**
  * Centralized Micrometer recorder for rate-limiter signals.
@@ -51,8 +53,8 @@ public class RateLimitMetricsRecorder {
     /**
      * Records an execution-layer capacity acquire outcome.
      *
-     * @param outcome {@code allowed}, {@code denied}, or {@code fallback}
-     * @param policy  {@code redis}, {@code local_cap}, or {@code fail_fast}
+     * @param outcome {@code allowed}, {@code denied}, {@code fallback}, or {@code failed}
+     * @param policy  {@code redis}, {@code local_cap}, {@code fail_fast}, or {@code watchdog}
      */
     public void recordCapacityAcquire(String outcome, String policy) {
         if (meterRegistry == null) {
@@ -116,6 +118,24 @@ public class RateLimitMetricsRecorder {
         meterRegistry.counter("chatagent.agent_run.capacity.redis.failures").increment();
     }
 
+    /** Records Redis permit renewal as {@code renewed}, {@code lost}, or {@code failed}. */
+    public void recordPermitRenewal(String outcome) {
+        if (meterRegistry == null) {
+            return;
+        }
+        meterRegistry.counter("chatagent.agent_run.capacity.permit.renewals",
+                "outcome", normalize(outcome)).increment();
+    }
+
+    /** Records Redis permit release as {@code removed}, {@code absent}, or {@code failed}. */
+    public void recordPermitRelease(String outcome) {
+        if (meterRegistry == null) {
+            return;
+        }
+        meterRegistry.counter("chatagent.agent_run.capacity.permit.releases",
+                "outcome", normalize(outcome)).increment();
+    }
+
     /**
      * Records a Redis failure encountered by the entry token-bucket limiter.
      * Separate from the capacity limiter counter so dashboards do not conflate
@@ -126,6 +146,28 @@ public class RateLimitMetricsRecorder {
             return;
         }
         meterRegistry.counter("chatagent.rate_limit.entry.redis.failures").increment();
+    }
+
+    /** Records a bounded local entry-cache eviction without exposing its identity key. */
+    public void recordEntryFallbackCacheEviction(String cause) {
+        if (meterRegistry == null) {
+            return;
+        }
+        meterRegistry.counter("chatagent.rate_limit.entry.local_cache.evictions",
+                "cause", normalize(cause)).increment();
+    }
+
+    /** Registers the aggregate local entry-cache size; the supplier must not expose keys. */
+    public void registerEntryFallbackCacheSize(LongSupplier sizeSupplier) {
+        if (meterRegistry == null) {
+            return;
+        }
+        Gauge.builder("chatagent.rate_limit.entry.local_cache.size",
+                        sizeSupplier, supplier -> supplier.getAsLong())
+                // Gauges use weak references by default. This supplier is otherwise
+                // temporary, so retain it for the lifetime of the registered meter.
+                .strongReference(true)
+                .register(meterRegistry);
     }
 
     private static String normalize(String value) {

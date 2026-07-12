@@ -1,5 +1,6 @@
 package com.yulong.chatagent.ratelimit;
 
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,48 @@ public class RateLimitProperties {
      */
     private AgentRun agentRun = new AgentRun();
 
+    @PostConstruct
+    public void validate() {
+        requirePositive(entry.requestsPerSecond, "chatagent.rate-limit.entry.requests-per-second");
+        requirePositive(entry.burstCapacity, "chatagent.rate-limit.entry.burst-capacity");
+        requirePositive(entry.localFallbackMaxIdentities,
+                "chatagent.rate-limit.entry.local-fallback-max-identities");
+        requireNonNull(entry.redisFailurePolicy, "chatagent.rate-limit.entry.redis-failure-policy");
+
+        requirePositive(agentRun.maxConcurrency, "chatagent.rate-limit.agent-run.max-concurrency");
+        requirePositive(agentRun.permitTtlMs, "chatagent.rate-limit.agent-run.permit-ttl-ms");
+        requirePositive(agentRun.permitRenewIntervalMs,
+                "chatagent.rate-limit.agent-run.permit-renew-interval-ms");
+        if (agentRun.permitRenewIntervalMs >= agentRun.permitTtlMs) {
+            throw new IllegalStateException(
+                    "chatagent.rate-limit.agent-run.permit-renew-interval-ms must be less than permit-ttl-ms");
+        }
+        requireNonNegative(agentRun.waitTimeoutMs, "chatagent.rate-limit.agent-run.wait-timeout-ms");
+        requireNonNegative(agentRun.waitStatusIntervalMs,
+                "chatagent.rate-limit.agent-run.wait-status-interval-ms");
+        requirePositive(agentRun.localCapacityOnRedisFailure,
+                "chatagent.rate-limit.agent-run.local-capacity-on-redis-failure");
+        requireNonNull(agentRun.redisFailurePolicy, "chatagent.rate-limit.agent-run.redis-failure-policy");
+    }
+
+    private static void requirePositive(long value, String propertyName) {
+        if (value <= 0L) {
+            throw new IllegalStateException(propertyName + " must be positive");
+        }
+    }
+
+    private static void requireNonNegative(long value, String propertyName) {
+        if (value < 0L) {
+            throw new IllegalStateException(propertyName + " must be non-negative");
+        }
+    }
+
+    private static void requireNonNull(Object value, String propertyName) {
+        if (value == null) {
+            throw new IllegalStateException(propertyName + " must not be null");
+        }
+    }
+
     @Data
     public static class Entry {
 
@@ -48,6 +91,9 @@ public class RateLimitProperties {
          * short bursts up to this size.
          */
         private int burstCapacity = 5;
+
+        /** Maximum number of Redis-down fallback identities retained per JVM. */
+        private int localFallbackMaxIdentities = 10_000;
 
         /**
          * Behavior when Redis is unavailable. Defaults to {@code LOCAL_BUCKET}

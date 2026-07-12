@@ -137,13 +137,13 @@ public class ModelHealthStore {
                     routingMetrics.recordCircuitEvent(id, "stale_success_ignored");
                     return v;
                 }
-            } else if (v.state == State.OPEN) {
-                // 普通请求的迟到成功不允许在 OPEN 状态下关闭断路器。
-                // OPEN 只能由冷却后的 HALF_OPEN 探针成功来恢复。
-                log.debug("Ignore model circuit success while OPEN: modelId={}, probeGeneration={}",
-                        id, probeGeneration);
-                routingMetrics.recordCircuitEvent(id, "success_ignored_open");
-                return v; // 拦截陈旧的探针，防止污染刚刚重开的断路器
+            } else if (v.state != State.CLOSED) {
+                // generation=0 的普通调用只属于 CLOSED。它可能在断路器迁移前发起、
+                // 迁移后才返回，因此不能关闭 OPEN 或篡改 HALF_OPEN 当前探针。
+                log.debug("Ignore ordinary model circuit success outside CLOSED: modelId={}, state={}",
+                        id, v.state);
+                routingMetrics.recordCircuitEvent(id, "ordinary_success_ignored_" + v.state.name().toLowerCase());
+                return v;
             }
             // 成功会把模型恢复到 CLOSED，并清空失败计数和 OPEN/HALF_OPEN 的临时状态。
             State previous = v.state;
@@ -175,6 +175,14 @@ public class ModelHealthStore {
                 log.debug("Ignore stale model circuit failure: modelId={}, probeGeneration={}, state={}, activeGeneration={}",
                         id, probeGeneration, v.state, v.probeGeneration);
                 routingMetrics.recordCircuitEvent(id, "stale_failure_ignored");
+                return v;
+            }
+            if (probeGeneration == 0L && v.state != State.CLOSED) {
+                // 普通调用的迟到失败同样只能在 CLOSED 计数。HALF_OPEN/OPEN 的
+                // 状态权威属于当前正 generation 探针。
+                log.debug("Ignore ordinary model circuit failure outside CLOSED: modelId={}, state={}",
+                        id, v.state);
+                routingMetrics.recordCircuitEvent(id, "ordinary_failure_ignored_" + v.state.name().toLowerCase());
                 return v;
             }
             if (v.state == State.HALF_OPEN) {
