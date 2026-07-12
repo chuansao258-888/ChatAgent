@@ -22,14 +22,12 @@ public record WebSearchRequest(
 ) {
 
     /**
-     * Time-range filter supported by SearXNG.
-     * <p>
-     * WEEK is intentionally excluded: SearXNG {@code time_range} supports only
-     * {@code day}, {@code month}, {@code year}. A future provider may extend this enum.
+     * Provider-neutral freshness values mapped to Brave freshness codes.
      */
     public enum Freshness {
         ANY,
         DAY,
+        WEEK,
         MONTH,
         YEAR
     }
@@ -67,9 +65,10 @@ public record WebSearchRequest(
 
         int effectiveHardMax = Math.max(hardMaxResults, 1);
         int effectiveDefault = Math.min(Math.max(defaultMaxResults, 1), effectiveHardMax);
-        int maxResults = rawMaxResults != null
-                ? Math.min(Math.max(rawMaxResults, 1), effectiveHardMax)
-                : effectiveDefault;
+        if (rawMaxResults != null && (rawMaxResults < 1 || rawMaxResults > effectiveHardMax)) {
+            throw new IllegalArgumentException("maxResults must be between 1 and " + effectiveHardMax);
+        }
+        int maxResults = rawMaxResults != null ? rawMaxResults : effectiveDefault;
 
         Freshness freshness = parseFreshness(rawFreshness);
 
@@ -79,11 +78,26 @@ public record WebSearchRequest(
     }
 
     /**
-     * Build the SearXNG {@code time_range} query parameter value.
-     * Returns {@code null} for ANY (no time restriction).
+     * Build the Brave freshness code. Returns {@code null} for ANY.
      */
-    public String searxngTimeRange() {
-        return freshness == Freshness.ANY ? null : freshness.name().toLowerCase();
+    public String braveFreshness() {
+        return switch (freshness) {
+            case ANY -> null;
+            case DAY -> "pd";
+            case WEEK -> "pw";
+            case MONTH -> "pm";
+            case YEAR -> "py";
+        };
+    }
+
+    public String providerQuery() {
+        String suffix = domains.stream().map(domain -> "site:" + domain)
+                .collect(Collectors.joining(" OR "));
+        String value = suffix.isEmpty() ? query : query + " (" + suffix + ")";
+        if (value.length() > 400 || value.trim().split("\\s+").length > 50) {
+            throw new IllegalArgumentException("final provider query exceeds Brave limits");
+        }
+        return value;
     }
 
     private static Freshness parseFreshness(String raw) {
@@ -92,9 +106,11 @@ public record WebSearchRequest(
         }
         return switch (raw.trim().toUpperCase()) {
             case "DAY" -> Freshness.DAY;
+            case "WEEK" -> Freshness.WEEK;
             case "MONTH" -> Freshness.MONTH;
             case "YEAR" -> Freshness.YEAR;
-            default -> Freshness.ANY;
+            case "ANY" -> Freshness.ANY;
+            default -> throw new IllegalArgumentException("unknown freshness value");
         };
     }
 
@@ -108,17 +124,22 @@ public record WebSearchRequest(
         if (rawDomains == null || rawDomains.isBlank()) {
             return Collections.emptyList();
         }
-        return Arrays.stream(rawDomains.split(","))
+        List<String> values = Arrays.stream(rawDomains.split(",", -1))
                 .map(String::trim)
-                .filter(s -> !s.isEmpty())
                 .map(String::toLowerCase)
-                .filter(WebSearchRequest::isValidHostname)
                 .distinct()
                 .collect(Collectors.toCollection(ArrayList::new));
+        if (values.size() > 5 || values.stream().anyMatch(v -> !isValidHostname(v))) {
+            throw new IllegalArgumentException("domains must contain at most five valid public hostnames");
+        }
+        return values;
     }
 
     static boolean isValidHostname(String host) {
         if (host.isEmpty() || host.length() > 253) {
+            return false;
+        }
+        if (host.matches("[0-9.]+") || host.contains(":") || !host.contains(".")) {
             return false;
         }
         // Reject trailing dot ("example.com.") — split would produce empty trailing label

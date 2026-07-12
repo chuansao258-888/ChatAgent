@@ -283,7 +283,7 @@ async function requireWebSearchTool(adminUser: E2eUser) {
     );
     if (!webSearchTool) {
       throw new Error(
-        "webSearchTool is not exposed; start the backend with CHATAGENT_WEB_SEARCH_ENABLED=true and the local SearXNG fixture.",
+        "webSearchTool is not exposed; enable Brave native search or start the deterministic Brave fixture.",
       );
     }
   } finally {

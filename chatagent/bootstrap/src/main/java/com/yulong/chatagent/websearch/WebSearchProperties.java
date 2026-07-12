@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Externalized configuration for the native web search tool.
  * <p>
  * Bound to {@code chatagent.web-search} in application.yaml.
- * Defaults to disabled so the application starts without a SearXNG instance.
+ * Defaults to disabled; Brave credentials remain backend-only.
  * <p>
  * Registered by {@link com.yulong.chatagent.websearch.config.WebSearchConfiguration}
  * via {@code @EnableConfigurationProperties}; do not add {@code @Component}.
@@ -21,10 +21,11 @@ public class WebSearchProperties {
      */
     private boolean enabled = false;
 
-    /**
-     * Base URL of the SearXNG instance (e.g. {@code http://localhost:8888}).
-     */
-    private String searxngBaseUrl = "http://localhost:8888";
+    /** Brave credential and optional test-only endpoint override. */
+    private String braveApiKey;
+    private String braveCountry;
+    private String braveSearchLang;
+    private String braveBaseUrl;
 
     /**
      * HTTP connect timeout in milliseconds.
@@ -34,7 +35,7 @@ public class WebSearchProperties {
     /**
      * HTTP response timeout in milliseconds.
      */
-    private int responseTimeoutMs = 8000;
+    private int responseTimeoutMs = 30000;
 
     /**
      * Default number of results when the caller does not specify.
@@ -56,17 +57,19 @@ public class WebSearchProperties {
      */
     private int maxQueryChars = 300;
 
-    /**
-     * SearXNG safesearch level: 0=None, 1=Moderate (default), 2=Strict.
-     * Values outside [0, 2] are clamped at access time.
-     */
-    private int safeSearch = 1;
+    /** Brave context and per-run limits. */
+    private int maxContextTokens = 4096;
+    private int maxCallsPerRun = 3;
+    private int maxResponseBytes = 1_048_576;
 
-    /**
-     * Return the safe-search level clamped to the valid SearXNG range [0, 2].
-     */
-    public int getEffectiveSafeSearch() {
-        return Math.max(0, Math.min(safeSearch, 2));
+    /** Whether native search may be exposed without a paid startup probe. */
+    public boolean hasConfiguredCredential() {
+        return braveApiKey != null && !braveApiKey.isBlank();
+    }
+
+    public String getEffectiveBraveEndpoint() {
+        return braveBaseUrl == null || braveBaseUrl.isBlank()
+                ? "https://api.search.brave.com/res/v1/llm/context" : braveBaseUrl;
     }
 
     /**

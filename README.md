@@ -637,7 +637,7 @@ Some tiers need local fixtures before running:
 .\MCP\weather-server\start-http.ps1              # needed by @tools and @admin MCP paths
 cd ui
 npm run e2e:routing-fixture                      # needed by @routing fixture mode
-node e2e/fixtures/searxng-fixture.mjs            # needed by native web-search headed checks
+# Native web search uses Brave LLM Context; configure the backend-only Brave key.
 ```
 
 Keep the browser/API origins on `localhost`, not `127.0.0.1`, so auth cookies

@@ -11,36 +11,23 @@ class WebSearchPropertiesTest {
         WebSearchProperties props = new WebSearchProperties();
 
         assertThat(props.isEnabled()).isFalse();
-        assertThat(props.getSearxngBaseUrl()).isEqualTo("http://localhost:8888");
+        assertThat(props.getBraveApiKey()).isNull();
         assertThat(props.getConnectTimeoutMs()).isEqualTo(2000);
-        assertThat(props.getResponseTimeoutMs()).isEqualTo(8000);
+        assertThat(props.getResponseTimeoutMs()).isEqualTo(30000);
         assertThat(props.getDefaultMaxResults()).isEqualTo(3);
         assertThat(props.getMaxResults()).isEqualTo(3);
         assertThat(props.getMaxResultSnippetChars()).isEqualTo(240);
         assertThat(props.getMaxQueryChars()).isEqualTo(300);
-        assertThat(props.getSafeSearch()).isEqualTo(1);
+        assertThat(props.getMaxContextTokens()).isEqualTo(4096);
     }
 
     @Test
-    void shouldClampSafeSearchToValidRange() {
+    void shouldExposeToolOnlyWithCredential() {
         WebSearchProperties props = new WebSearchProperties();
 
-        // Default is valid
-        assertThat(props.getEffectiveSafeSearch()).isEqualTo(1);
-
-        // Below range clamps to 0
-        props.setSafeSearch(-1);
-        assertThat(props.getEffectiveSafeSearch()).isEqualTo(0);
-
-        // Above range clamps to 2
-        props.setSafeSearch(5);
-        assertThat(props.getEffectiveSafeSearch()).isEqualTo(2);
-
-        // Boundary values pass through
-        props.setSafeSearch(0);
-        assertThat(props.getEffectiveSafeSearch()).isEqualTo(0);
-        props.setSafeSearch(2);
-        assertThat(props.getEffectiveSafeSearch()).isEqualTo(2);
+        assertThat(props.hasConfiguredCredential()).isFalse();
+        props.setBraveApiKey("test-key");
+        assertThat(props.hasConfiguredCredential()).isTrue();
     }
 
     @Test

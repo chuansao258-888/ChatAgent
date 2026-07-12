@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
  * Spring configuration for the web search subsystem.
  * <p>
  * Phase 1: registers the properties binding.
- * Phase 2 will add the SearXNG client bean and health-check wiring.
+ * Registers provider-neutral native-search configuration.
  */
 @Configuration
 @EnableConfigurationProperties(WebSearchProperties.class)

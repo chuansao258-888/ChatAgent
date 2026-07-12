@@ -4,9 +4,8 @@ import com.yulong.chatagent.websearch.WebSearchProperties;
 import com.yulong.chatagent.websearch.WebSearchRequest;
 import com.yulong.chatagent.websearch.WebSearchResponse;
 import com.yulong.chatagent.websearch.WebSearchResult;
+import com.yulong.chatagent.websearch.WebSearchClient;
 import com.yulong.chatagent.agent.runtime.CurrentToolDeadlineHolder;
-import com.yulong.chatagent.websearch.searxng.SearXNGHealthChecker;
-import com.yulong.chatagent.websearch.searxng.SearXNGWebSearchClient;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import org.slf4j.Logger;
@@ -14,7 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Native optional web search tool backed by SearXNG.
+ * Native optional web search tool backed solely by Brave LLM Context.
  */
 @Component
 public class WebSearchTools implements Tool {
@@ -22,14 +21,11 @@ public class WebSearchTools implements Tool {
     private static final Logger log = LoggerFactory.getLogger(WebSearchTools.class);
 
     private final WebSearchProperties properties;
-    private final SearXNGHealthChecker healthChecker;
-    private final SearXNGWebSearchClient searchClient;
+    private final WebSearchClient searchClient;
 
     public WebSearchTools(WebSearchProperties properties,
-                          SearXNGHealthChecker healthChecker,
-                          SearXNGWebSearchClient searchClient) {
+                          WebSearchClient searchClient) {
         this.properties = properties;
-        this.healthChecker = healthChecker;
         this.searchClient = searchClient;
     }
 
@@ -40,7 +36,7 @@ public class WebSearchTools implements Tool {
 
     @Override
     public String getDescription() {
-        return "Search the public web through the configured SearXNG provider.";
+        return "Search the public web through Brave LLM Context.";
     }
 
     @Override
@@ -64,7 +60,7 @@ public class WebSearchTools implements Tool {
      * Runtime availability used by the tool catalog and optional tool pool.
      */
     public boolean isAvailable() {
-        return properties.isEnabled() && healthChecker.isReachable();
+        return properties.isEnabled() && properties.hasConfiguredCredential();
     }
 
     @org.springframework.ai.tool.annotation.Tool(
@@ -76,8 +72,8 @@ public class WebSearchTools implements Tool {
         if (!properties.isEnabled()) {
             return "Error: web search is disabled.";
         }
-        if (!healthChecker.isReachable()) {
-            return "Error: web search provider is not reachable.";
+        if (!properties.hasConfiguredCredential()) {
+            return "Error: web search credentials are not configured.";
         }
 
         WebSearchRequest request;

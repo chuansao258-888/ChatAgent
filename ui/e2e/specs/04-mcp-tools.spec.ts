@@ -110,8 +110,8 @@ function requireWebSearchTool(tools: ToolVO[]) {
     throw new Error(
       [
         "Phase 6 web-search prerequisite failed: webSearchTool is not exposed by /api/tools.",
-        "Start the backend with CHATAGENT_WEB_SEARCH_ENABLED=true and a reachable SearXNG-compatible /search endpoint.",
-        "For the local headed gate, run ui/e2e/fixtures/searxng-fixture.mjs before starting the backend.",
+        "Start the backend with CHATAGENT_WEB_SEARCH_ENABLED=true and a configured Brave credential.",
+        "Use only the deterministic Brave fixture for local headed validation.",
       ].join(" "),
     );
   }

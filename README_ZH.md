@@ -401,7 +401,7 @@ npm run e2e:headed:full      # 按 tier 顺序执行，每个 tier 使用新的 
 .\MCP\weather-server\start-http.ps1              # @tools 和 @admin 的 MCP 路径需要
 cd ui
 npm run e2e:routing-fixture                      # @routing fixture 模式需要
-node e2e/fixtures/searxng-fixture.mjs            # native web-search headed 检查需要
+# 原生 Web Search 使用 Brave LLM Context；请配置仅后端可见的 Brave 密钥。
 ```
 
 浏览器和 API origin 请保持 `localhost`，不要混用 `127.0.0.1`，否则 auth cookie 可能无法稳定复用。

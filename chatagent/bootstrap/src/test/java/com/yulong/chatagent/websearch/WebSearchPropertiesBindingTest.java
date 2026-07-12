@@ -17,14 +17,14 @@ class WebSearchPropertiesBindingTest {
         WebSearchProperties properties = bindFromApplicationYaml();
 
         assertThat(properties.isEnabled()).isFalse();
-        assertThat(properties.getSearxngBaseUrl()).isEqualTo("http://localhost:8888");
+        assertThat(properties.getBraveApiKey()).isEmpty();
         assertThat(properties.getConnectTimeoutMs()).isEqualTo(2000);
-        assertThat(properties.getResponseTimeoutMs()).isEqualTo(8000);
+        assertThat(properties.getResponseTimeoutMs()).isEqualTo(30000);
         assertThat(properties.getDefaultMaxResults()).isEqualTo(3);
         assertThat(properties.getMaxResults()).isEqualTo(3);
         assertThat(properties.getMaxResultSnippetChars()).isEqualTo(240);
         assertThat(properties.getMaxQueryChars()).isEqualTo(300);
-        assertThat(properties.getSafeSearch()).isEqualTo(1);
+        assertThat(properties.getMaxContextTokens()).isEqualTo(4096);
     }
 
     private static WebSearchProperties bindFromApplicationYaml() throws Exception {

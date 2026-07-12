@@ -5,8 +5,7 @@ import com.yulong.chatagent.agent.tools.ToolType;
 import com.yulong.chatagent.agent.tools.WebSearchTools;
 import com.yulong.chatagent.mcp.runtime.McpRuntimeToolRegistry;
 import com.yulong.chatagent.websearch.WebSearchProperties;
-import com.yulong.chatagent.websearch.searxng.SearXNGHealthChecker;
-import com.yulong.chatagent.websearch.searxng.SearXNGWebSearchClient;
+import com.yulong.chatagent.websearch.WebSearchClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -82,12 +81,10 @@ class ToolFacadeServiceImplTest {
     private static WebSearchTools webSearchTool(boolean enabled, boolean reachable) {
         WebSearchProperties properties = new WebSearchProperties();
         properties.setEnabled(enabled);
-        SearXNGHealthChecker healthChecker = mock(SearXNGHealthChecker.class);
-        when(healthChecker.isReachable()).thenReturn(reachable);
+        properties.setBraveApiKey(reachable ? "test-key" : "");
         return new WebSearchTools(
                 properties,
-                healthChecker,
-                mock(SearXNGWebSearchClient.class)
+                mock(WebSearchClient.class)
         );
     }
 

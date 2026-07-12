@@ -16,8 +16,7 @@ import com.yulong.chatagent.mcp.runtime.McpRolloutProperties;
 import com.yulong.chatagent.support.dto.AgentDTO;
 import com.yulong.chatagent.websearch.WebSearchProperties;
 import com.yulong.chatagent.websearch.WebSearchResponse;
-import com.yulong.chatagent.websearch.searxng.SearXNGHealthChecker;
-import com.yulong.chatagent.websearch.searxng.SearXNGWebSearchClient;
+import com.yulong.chatagent.websearch.WebSearchClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
@@ -510,11 +509,10 @@ class AgentToolCallbackFactoryTest {
     private static WebSearchTools webSearchTool() {
         WebSearchProperties properties = new WebSearchProperties();
         properties.setEnabled(true);
-        SearXNGHealthChecker healthChecker = mock(SearXNGHealthChecker.class);
-        when(healthChecker.isReachable()).thenReturn(true);
-        SearXNGWebSearchClient searchClient = mock(SearXNGWebSearchClient.class);
+        properties.setBraveApiKey("test-key");
+        WebSearchClient searchClient = mock(WebSearchClient.class);
         when(searchClient.search(any())).thenReturn(WebSearchResponse.empty());
-        return new WebSearchTools(properties, healthChecker, searchClient);
+        return new WebSearchTools(properties, searchClient);
     }
 
     private static final class NamedTool implements Tool, DirectToolCallbackSource {

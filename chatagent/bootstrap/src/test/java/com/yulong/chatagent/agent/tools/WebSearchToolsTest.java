@@ -4,8 +4,7 @@ import com.yulong.chatagent.websearch.WebSearchProperties;
 import com.yulong.chatagent.websearch.WebSearchRequest;
 import com.yulong.chatagent.websearch.WebSearchResponse;
 import com.yulong.chatagent.websearch.WebSearchResult;
-import com.yulong.chatagent.websearch.searxng.SearXNGHealthChecker;
-import com.yulong.chatagent.websearch.searxng.SearXNGWebSearchClient;
+import com.yulong.chatagent.websearch.WebSearchClient;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,22 +25,20 @@ import static org.mockito.Mockito.when;
 class WebSearchToolsTest {
 
     private WebSearchProperties properties;
-    private SearXNGHealthChecker healthChecker;
-    private SearXNGWebSearchClient searchClient;
+    private WebSearchClient searchClient;
     private WebSearchTools tool;
 
     @BeforeEach
     void setUp() {
         properties = new WebSearchProperties();
         properties.setEnabled(true);
+        properties.setBraveApiKey("test-key");
         properties.setDefaultMaxResults(3);
         properties.setMaxResults(3);
         properties.setMaxResultSnippetChars(240);
         properties.setMaxQueryChars(300);
-        healthChecker = mock(SearXNGHealthChecker.class);
-        searchClient = mock(SearXNGWebSearchClient.class);
-        when(healthChecker.isReachable()).thenReturn(true);
-        tool = new WebSearchTools(properties, healthChecker, searchClient);
+        searchClient = mock(WebSearchClient.class);
+        tool = new WebSearchTools(properties, searchClient);
     }
 
     @Test
@@ -55,7 +52,7 @@ class WebSearchToolsTest {
     void shouldReportAvailabilityFromEnabledAndHealthState() {
         assertThat(tool.isAvailable()).isTrue();
 
-        when(healthChecker.isReachable()).thenReturn(false);
+        properties.setBraveApiKey("");
         assertThat(tool.isAvailable()).isFalse();
 
         properties.setEnabled(false);
@@ -69,17 +66,16 @@ class WebSearchToolsTest {
         String output = tool.webSearch("spring boot", null, null, null);
 
         assertThat(output).contains("disabled");
-        verifyNoInteractions(healthChecker, searchClient);
+        verifyNoInteractions(searchClient);
     }
 
     @Test
     void unreachableProviderShouldReturnSafeErrorWithoutCallingProvider() {
-        when(healthChecker.isReachable()).thenReturn(false);
+        properties.setBraveApiKey("");
 
         String output = tool.webSearch("spring boot", null, null, null);
 
-        assertThat(output).contains("not reachable");
-        verify(healthChecker).isReachable();
+        assertThat(output).contains("credentials are not configured");
         verifyNoInteractions(searchClient);
     }
 
@@ -96,7 +92,7 @@ class WebSearchToolsTest {
         when(searchClient.search(any(WebSearchRequest.class)))
                 .thenReturn(WebSearchResponse.empty());
 
-        tool.webSearch("  Spring Boot  ", 99, "day", " Spring.IO,SPRING.io ");
+        tool.webSearch("  Spring Boot  ", 3, "day", " Spring.IO,SPRING.io ");
 
         ArgumentCaptor<WebSearchRequest> captor = ArgumentCaptor.forClass(WebSearchRequest.class);
         verify(searchClient).search(captor.capture());

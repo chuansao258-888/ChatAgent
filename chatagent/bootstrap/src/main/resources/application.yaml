@@ -361,15 +361,18 @@ chatagent:
     ttl-ms: 120000
     fail-open: true
   web-search:
-    enabled: false
-    searxng-base-url: http://localhost:8888
-    connect-timeout-ms: 2000
-    response-timeout-ms: 8000
+    enabled: ${CHATAGENT_WEB_SEARCH_ENABLED:false}
+    brave-api-key: ${CHATAGENT_WEB_SEARCH_BRAVE_API_KEY:}
+    brave-country: ${CHATAGENT_WEB_SEARCH_BRAVE_COUNTRY:}
+    brave-search-lang: ${CHATAGENT_WEB_SEARCH_BRAVE_SEARCH_LANG:}
+    connect-timeout-ms: ${CHATAGENT_WEB_SEARCH_CONNECT_TIMEOUT_MS:2000}
+    response-timeout-ms: ${CHATAGENT_WEB_SEARCH_RESPONSE_TIMEOUT_MS:30000}
     default-max-results: 3
     max-results: 3
     max-result-snippet-chars: 240
     max-query-chars: 300
-    safe-search: 1
+    max-context-tokens: ${CHATAGENT_WEB_SEARCH_MAX_CONTEXT_TOKENS:4096}
+    max-calls-per-run: ${CHATAGENT_WEB_SEARCH_MAX_CALLS_PER_RUN:3}
   mcp:
     enabled: true
     crypto:
