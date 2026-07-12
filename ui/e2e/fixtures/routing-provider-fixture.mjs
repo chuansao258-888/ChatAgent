@@ -206,20 +206,11 @@ function writeAnthropicTextStream(res, code, model) {
   writeAnthropicTextEvents(res, code, model);
 }
 
-function writeAnthropicNoContentStream(res, model) {
+function writeAnthropicNoContentStream(res) {
   writeSseHeaders(res);
-  const message = {
-    id: `msg_${Date.now()}`,
-    type: "message",
-    role: "assistant",
-    model,
-    content: [],
-    stop_reason: "end_turn",
-    stop_sequence: null,
-    usage: { input_tokens: 1, output_tokens: 0 },
-  };
-  res.write(`event: message_start\ndata: ${JSON.stringify({ type: "message_start", message })}\n\n`);
-  res.write(`event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`);
+  // NO_CONTENT means completion before any valid parsed provider chunk.
+  // A message_start/usage-only event is metadata and therefore a valid
+  // transport-first signal; emitting it here would intentionally mean SUCCESS.
   res.end();
 }
 
@@ -247,7 +238,7 @@ function handleAnthropic(body, res, path) {
     return;
   }
   if (scenario === "no-content") {
-    writeAnthropicNoContentStream(res, model);
+    writeAnthropicNoContentStream(res);
     return;
   }
   if (scenario === "late") {

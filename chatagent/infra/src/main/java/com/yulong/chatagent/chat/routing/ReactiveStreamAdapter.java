@@ -16,8 +16,8 @@ import java.util.Optional;
  * 原始厂商 SSE 不可用时的兜底流式适配器。
  *
  * <p>ProviderDirectStreamSupport 失败或找不到 provider binding 时，会回退到这里。
- * 它使用 Spring AI 的 ChatClient.stream()，再把 ChatResponse 中的正文、thinking 和工具调用
- * 转换成路由层统一的 StreamCallback 事件。</p>
+ * 它使用 Spring AI 的 ChatClient.stream()，每个非空且已解析的 ChatResponse 先按传输事件
+ * 触发 {@link StreamCallback#onSignal()}，再把正文、thinking 和工具调用转换成路由层事件。</p>
  */
 public final class ReactiveStreamAdapter {
 
@@ -37,6 +37,11 @@ public final class ReactiveStreamAdapter {
 
     static void extractAndDispatch(ChatResponse response, StreamCallback callback) {
         if (response == null) return;
+
+        // 与原始 SSE 路径保持相同的 transport-first 语义：Spring AI 能交付一个
+        // ChatResponse 就说明 provider 已产生有效非终止 chunk。即使它只有 role、
+        // usage、metadata 或 empty choices，也必须先完成首包探测。
+        callback.onSignal();
 
         Optional.ofNullable(response.getResult())
                 .map(r -> r.getOutput())

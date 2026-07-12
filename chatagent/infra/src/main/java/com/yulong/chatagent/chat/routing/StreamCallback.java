@@ -12,7 +12,10 @@ import java.util.List;
  * toolCalls 表示完整工具调用，complete/error 表示流结束。</p>
  */
 public interface StreamCallback {
-    /** 首包探测用的宽泛信号：收到一个有效 chunk，但不一定已经有正文 content。 */
+    /**
+     * 收到一个有效、已解析且非终止的 provider 传输块时触发；该块可以只有
+     * role、usage、metadata 或 empty choices。空白/注释、解析失败和终止标记不触发。
+     */
     default void onSignal() {}
 
     /** 正文增量，调用方通常逐段追加显示或收集。 */

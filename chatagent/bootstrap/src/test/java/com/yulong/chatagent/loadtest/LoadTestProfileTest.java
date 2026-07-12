@@ -54,6 +54,19 @@ class LoadTestProfileTest {
     }
 
     @Test
+    void stubBeansShouldNotBeRegisteredUnderResilienceTestProfile() {
+        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+        ((ConfigurableEnvironment) ctx.getEnvironment()).addActiveProfile("resilience-test");
+        ((AnnotationConfigRegistry) ctx).register(
+                StubLLMService.class, StubChatModelRouter.class, LoadTestProperties.class);
+        ctx.refresh();
+
+        assertThat(ctx.containsBean("stubLLMService")).isFalse();
+        assertThat(ctx.containsBean("stubChatModelRouter")).isFalse();
+        ctx.close();
+    }
+
+    @Test
     void stubClassesShouldBeProfileAnnotated() {
         assertThat(StubLLMService.class.isAnnotationPresent(Profile.class)).isTrue();
         assertThat(StubLLMService.class.getAnnotation(Profile.class).value())

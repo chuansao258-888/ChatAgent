@@ -57,6 +57,49 @@ class ProviderDirectStreamSupportTest {
 
                 """))
                 .containsExactly("{\"id\":\"from-data\",\"choices\":[]}", "[DONE]");
+        assertThat(extractSsePayloads(support, """
+                : keep-alive
+
+                event: ping
+
+                """)).isEmpty();
+    }
+
+    @Test
+    void shouldSignalEveryValidNonterminalRawChunkIncludingEmptyChoices() throws Throwable {
+        ProviderDirectStreamSupport support = new ProviderDirectStreamSupport(mock(ChatModelProviderRegistry.class));
+        RecordingCallback callback = new RecordingCallback();
+
+        invokeDispatchDeepSeekRawSse(support, """
+                : keep-alive
+
+                data: {"id":"metadata-only","choices":[]}
+
+                data: [DONE]
+
+                """, callback);
+
+        assertThat(callback.signals).isEqualTo(1);
+        assertThat(callback.contents).isEmpty();
+        assertThat(callback.thinkings).isEmpty();
+        assertThat(callback.completed).isFalse();
+    }
+
+    @Test
+    void shouldNotSignalTerminalOrMalformedRawPayload() throws Throwable {
+        ProviderDirectStreamSupport support = new ProviderDirectStreamSupport(mock(ChatModelProviderRegistry.class));
+        RecordingCallback terminalCallback = new RecordingCallback();
+
+        invokeDispatchDeepSeekRawSse(support, "data: [DONE]\n\n", terminalCallback);
+        assertThat(terminalCallback.signals).isZero();
+
+        RecordingCallback malformedCallback = new RecordingCallback();
+        assertThatThrownBy(() -> invokeDispatchDeepSeekRawSse(
+                support, "data: not-json\n\n", malformedCallback))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Failed to parse raw SSE payload")
+                .hasMessageContaining("provider=DEEPSEEK");
+        assertThat(malformedCallback.signals).isZero();
     }
 
     @Test
@@ -223,6 +266,28 @@ class ProviderDirectStreamSupportTest {
                     DeepSeekApi.ChatCompletionChunk.class,
                     ChatModelProviderRegistry.ProviderType.DEEPSEEK,
                     "deepseek-v4-flash");
+        } catch (InvocationTargetException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static void invokeDispatchDeepSeekRawSse(ProviderDirectStreamSupport support,
+                                                      String raw,
+                                                      StreamCallback callback) throws Throwable {
+        Class<?> accumulatorType = Class.forName(
+                "com.yulong.chatagent.chat.routing.ProviderDirectStreamSupport$RawToolCallAccumulator");
+        Method method = ProviderDirectStreamSupport.class.getDeclaredMethod(
+                "dispatchDeepSeekRawSse",
+                String.class,
+                accumulatorType,
+                StreamCallback.class,
+                String.class);
+        method.setAccessible(true);
+        Constructor<?> constructor = accumulatorType.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        Object accumulator = constructor.newInstance();
+        try {
+            method.invoke(support, raw, accumulator, callback, "deepseek-v4-flash");
         } catch (InvocationTargetException e) {
             throw e.getCause();
         }

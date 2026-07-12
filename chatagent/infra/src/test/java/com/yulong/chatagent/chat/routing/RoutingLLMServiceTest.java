@@ -161,6 +161,39 @@ class RoutingLLMServiceTest {
     }
 
     @Test
+    void streamChatShouldKeepPrimaryWhenTransportSignalPrecedesEmptyCompletion() {
+        ChatRoutingProperties properties = new ChatRoutingProperties();
+        properties.setFirstPacketTimeoutSeconds(1);
+        ModelSelector modelSelector = mock(ModelSelector.class);
+        ProviderDirectStreamSupport providerDirectStreamSupport = mock(ProviderDirectStreamSupport.class);
+        RoutingLLMService service = service(properties, modelSelector, providerDirectStreamSupport);
+
+        ModelTarget primary = target("glm-5.2");
+        ModelTarget fallback = target("deepseek-v4-flash");
+        when(modelSelector.selectChatCandidates(false)).thenReturn(List.of(primary, fallback));
+
+        RecordingDisposable primaryDisposable = new RecordingDisposable();
+        when(providerDirectStreamSupport.submit(eq(primary), any(Prompt.class), any(StreamCallback.class), eq(false)))
+                .thenAnswer(invocation -> {
+                    StreamCallback stream = invocation.getArgument(2);
+                    stream.onSignal();
+                    stream.onComplete();
+                    return Optional.of(primaryDisposable);
+                });
+
+        RecordingStreamCallback callback = new RecordingStreamCallback();
+        Disposable returned = service.streamChat(
+                new Prompt(List.of(new UserMessage("hello"))), false, callback);
+
+        assertThat(returned).isSameAs(primaryDisposable);
+        assertThat(primaryDisposable.disposed).isFalse();
+        assertThat(callback.contents).isEmpty();
+        assertThat(callback.completeCount).isEqualTo(1);
+        verify(providerDirectStreamSupport, never())
+                .submit(eq(fallback), any(Prompt.class), any(StreamCallback.class), eq(false));
+    }
+
+    @Test
     void streamDecisionShouldUseDecisionTimeoutAndDisposeHungStreamAfterFirstPacket() {
         ChatRoutingProperties properties = new ChatRoutingProperties();
         properties.setFirstPacketTimeoutSeconds(1);

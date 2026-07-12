@@ -56,6 +56,36 @@ class ReactiveStreamAdapterTest {
         assertThat(callback.thinkings).containsExactly("metadata reasoning");
     }
 
+    @Test
+    void shouldSignalBeforeDispatchingSemanticContent() {
+        RecordingCallback callback = new RecordingCallback();
+
+        ReactiveStreamAdapter.extractAndDispatch(
+                chatResponse(new AssistantMessage("answer")), callback);
+
+        assertThat(callback.events).containsExactly("signal", "content:answer");
+    }
+
+    @Test
+    void shouldSignalForParsedResponseWithEmptyChoices() {
+        RecordingCallback callback = new RecordingCallback();
+
+        ReactiveStreamAdapter.extractAndDispatch(new ChatResponse(List.of()), callback);
+
+        assertThat(callback.events).containsExactly("signal");
+        assertThat(callback.contents).isEmpty();
+        assertThat(callback.thinkings).isEmpty();
+    }
+
+    @Test
+    void shouldNotSignalWhenNoParsedResponseExists() {
+        RecordingCallback callback = new RecordingCallback();
+
+        ReactiveStreamAdapter.extractAndDispatch(null, callback);
+
+        assertThat(callback.events).isEmpty();
+    }
+
     private static ChatResponse chatResponse(AssistantMessage message) {
         return new ChatResponse(List.of(new Generation(message)));
     }
@@ -63,10 +93,17 @@ class ReactiveStreamAdapterTest {
     private static final class RecordingCallback implements StreamCallback {
         private final List<String> contents = new ArrayList<>();
         private final List<String> thinkings = new ArrayList<>();
+        private final List<String> events = new ArrayList<>();
+
+        @Override
+        public void onSignal() {
+            events.add("signal");
+        }
 
         @Override
         public void onContent(String content) {
             contents.add(content);
+            events.add("content:" + content);
         }
 
         @Override
