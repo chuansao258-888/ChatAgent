@@ -12,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.concurrent.TimeUnit;
@@ -60,6 +61,21 @@ class EntryRateLimiterTest {
     @AfterEach
     void clearContext() {
         UserContext.clear();
+    }
+
+    @Test
+    void shouldSelectProductionConstructorInSpringContext() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(RateLimitProperties.class, () -> properties);
+            context.registerBean(RateLimitMetricsRecorder.class, () -> metricsRecorder);
+            context.registerBean(EntryRateLimitIdentityResolver.class, () -> identityResolver);
+            context.registerBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class));
+            context.register(EntryRateLimiter.class);
+
+            context.refresh();
+
+            assertThat(context.getBean(EntryRateLimiter.class)).isNotNull();
+        }
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.yulong.chatagent.ratelimit.RateLimitProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
@@ -79,6 +80,7 @@ public class EntryRateLimiter {
     private final ObjectProvider<StringRedisTemplate> redisTemplateProvider;
     private final Cache<String, LocalTokenBucket> localFallbackBuckets;
 
+    @Autowired
     public EntryRateLimiter(RateLimitProperties properties,
                             RateLimitMetricsRecorder metricsRecorder,
                             EntryRateLimitIdentityResolver identityResolver,
