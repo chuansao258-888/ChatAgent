@@ -308,7 +308,7 @@ async function continueConversation(
   return evidence;
 }
 
-test.describe("@priority RAG/web/model source order", () => {
+test.describe("@priority @web-search RAG/web/model source order", () => {
   test.use({ storageState: normalStorageStatePath });
 
   test("prefers local KB and uploaded files, then web search, then model knowledge", async ({

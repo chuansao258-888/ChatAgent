@@ -401,7 +401,7 @@ test.describe("@tools @mcp local weather tools", () => {
   });
 });
 
-test.describe("@tools native web search", () => {
+test.describe("@tools @web-search native Brave web search", () => {
   test.use({ storageState: normalStorageStatePath });
 
   test("uses configured web search from a natural current-information question", async ({
