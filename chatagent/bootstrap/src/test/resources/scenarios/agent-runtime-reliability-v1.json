@@ -1,0 +1,17 @@
+{
+  "version": "ARRB-SCENARIOS-1",
+  "cases": [
+    {"id":"ARRB-S01","area":"tool","oracle":"paired_response_per_retained_call"},
+    {"id":"ARRB-S02","area":"tool","oracle":"exact_approval_before_external_effect"},
+    {"id":"ARRB-S03","area":"tool","oracle":"ambiguous_effect_not_retried"},
+    {"id":"ARRB-S04","area":"deepthink","oracle":"partial_step_is_not_success"},
+    {"id":"ARRB-S05","area":"deepthink","oracle":"follow_up_requires_fresh_verification"},
+    {"id":"ARRB-S06","area":"mcp","oracle":"protocol_error_distinct_from_is_error"},
+    {"id":"ARRB-S07","area":"mcp","oracle":"unknown_effect_requires_approval"},
+    {"id":"ARRB-S08","area":"search","oracle":"brave_is_only_native_provider"},
+    {"id":"ARRB-S09","area":"search","oracle":"private_source_url_rejected"},
+    {"id":"ARRB-S10","area":"final","oracle":"provider_error_is_not_success"},
+    {"id":"ARRB-S11","area":"final","oracle":"timeout_is_not_success"},
+    {"id":"ARRB-S12","area":"privacy","oracle":"info_warn_excludes_raw_payloads"}
+  ]
+}
