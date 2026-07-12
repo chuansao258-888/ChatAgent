@@ -14,9 +14,14 @@ import java.util.List;
  */
 public record ToolPolicy(
         List<String> allowedTools,
-        boolean retrievalVisible
+        boolean retrievalVisible,
+        ApprovedToolProposal approvedProposal
 ) {
     public ToolPolicy {
         allowedTools = allowedTools == null ? List.of() : List.copyOf(allowedTools);
+    }
+
+    public ToolPolicy(List<String> allowedTools, boolean retrievalVisible) {
+        this(allowedTools, retrievalVisible, null);
     }
 }

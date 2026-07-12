@@ -6,6 +6,7 @@ import com.yulong.chatagent.agent.runtime.CurrentTurnExecutionContractHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnKnowledgeHitHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnCitationHolder;
 import com.yulong.chatagent.agent.runtime.CurrentTurnHolder;
+import com.yulong.chatagent.agent.runtime.CurrentToolDeadlineHolder;
 import com.yulong.chatagent.intent.application.IntentResolution;
 import com.yulong.chatagent.agent.runtime.contract.QuerySpec;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalPlan;
@@ -75,6 +76,17 @@ public class SessionFileTools implements Tool {
         return ToolType.FIXED;
     }
 
+    @Override
+    public ToolEffectClass effectClass() {
+        // 会话文件检索是只读语义检索，按 owned adapter contract 无副作用（ARRB-DEC-009）。
+        return ToolEffectClass.READ_ONLY;
+    }
+
+    @Override
+    public DeadlineMode deadlineMode() {
+        return DeadlineMode.ENFORCED;
+    }
+
     @org.springframework.ai.tool.annotation.Tool(
             name = "SessionFileSearchTool",
             description = "Run similarity search against the current turn's backend-authorized session files and knowledge bases. Arguments: query and optional opaque routeKey."
@@ -84,6 +96,7 @@ public class SessionFileTools implements Tool {
             @org.springframework.ai.tool.annotation.ToolParam(
                     description = "Opaque backend-issued route key",
                     required = false) String routeKey) {
+        CurrentToolDeadlineHolder.remainingMillisOrDefault(30_000L);
         // 工具参数只包含 query；session/turn/intent 都从后端运行上下文读取。
         // 这一步是安全边界：模型不能自己指定 sessionId 或 turnId，因此无法通过工具参数越权查询别的会话。
         String chatSessionId = CurrentChatSessionHolder.require();
@@ -131,6 +144,7 @@ public class SessionFileTools implements Tool {
         }
         // 返回给模型的是带 [1]/[2] 引用标记的证据文本；引用元数据另存，最终回答落库时消费。
         // promptText 和 citations 必须保持同一顺序，否则模型回答里的 [1] 与前端展示的来源会对不上。
+        CurrentToolDeadlineHolder.remainingMillisOrDefault(30_000L);
         FormattedRetrievalPrompt formatted = executionResult == null
                 ? retrievalHitFormatter.formatWithCitations(results)
                 : retrievalHitFormatter.formatExecutionResult(executionResult);

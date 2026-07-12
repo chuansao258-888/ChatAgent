@@ -2,6 +2,7 @@ package com.yulong.chatagent.agent;
 
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
+import com.yulong.chatagent.agent.tools.ToolCallPreflight;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.chat.routing.BufferedStreamingResponse;
@@ -32,7 +33,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 @Slf4j
 /**
@@ -100,6 +100,7 @@ public class AgentThinkingEngine {
     private final AgentMessageBridge messageBridge;
     private final int maxToolCallsPerStep;
     private final TurnExecutionContract executionContract;
+    private final ToolCallPreflight toolCallPreflight;
 
     public AgentThinkingEngine(PromptLoader promptLoader,
                         LLMService llmService,
@@ -134,6 +135,7 @@ public class AgentThinkingEngine {
         this.messageBridge = messageBridge;
         this.maxToolCallsPerStep = maxToolCallsPerStep;
         this.executionContract = executionContract;
+        this.toolCallPreflight = new ToolCallPreflight(maxToolCallsPerStep);
     }
 
     /**
@@ -216,19 +218,20 @@ public class AgentThinkingEngine {
         AssistantMessage output = chatResponse.getResult().getOutput();
         List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
 
-        // 在持久化之前截断超限的 tool calls，保证 DB 中 assistant tool_calls 与
-        // 后续 tool_response 数量严格配对，避免 memory loader 丢弃整组序列。
-        if (toolCalls != null && toolCalls.size() > this.maxToolCallsPerStep) {
-            log.warn("Model returned {} tool calls in one step, exceeding maxToolCallsPerStep={}. " +
-                            "Truncating to first {} calls before persistence.",
-                    toolCalls.size(), this.maxToolCallsPerStep, this.maxToolCallsPerStep);
-            List<AssistantMessage.ToolCall> truncated = List.copyOf(toolCalls.subList(0, this.maxToolCallsPerStep));
-            output = AssistantMessage.builder()
-                    .content(output.getText())
-                    .toolCalls(truncated)
-                    .build();
+        // 在持久化之前用共享 ToolCallPreflight 做 batch 截断、id 规范化和参数字节上限：
+        // 保证 DB 中 assistant tool_calls 与后续 tool_response 数量严格配对，并拦截 raw 溢出参数。
+        // 这替换了原本内联的、与 DeepThink 重复的 per-step 截断分支（ARRB-CLN-001）。
+        if (toolCalls != null && !toolCalls.isEmpty()) {
+            ToolCallPreflight.ToolCallPreflightResult preflight =
+                    toolCallPreflight.normalize(output);
+            if (preflight.batchTruncated()) {
+                log.warn("Model returned {} tool calls in one step, exceeding maxToolCallsPerStep={}. "
+                                + "Preflight truncated to first {} calls before persistence.",
+                        toolCalls.size(), this.maxToolCallsPerStep, this.maxToolCallsPerStep);
+            }
+            output = preflight.assistantMessage();
             chatResponse = new ChatResponse(List.of(new Generation(output)));
-            toolCalls = truncated;
+            toolCalls = output.getToolCalls();
         }
 
         List<AssistantMessage.ToolCall> filteredToolCalls = suppressUnsupportedSessionFileSearchCalls(
@@ -517,27 +520,21 @@ public class AgentThinkingEngine {
     }
 
     /**
-     * Logs tool calls in a readable block so a full agent decision step can be inspected.
+     * Logs tool call names so a full agent decision step can be inspected without leaking
+     * raw arguments. ARRB ARRB-AC-031: complete tool arguments/results must not appear in
+     * INFO/WARN logs; only tool name, count, and order remain.
      *
      * @param toolCalls tool calls emitted by the model
      */
     private void logToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
         if (toolCalls == null || toolCalls.isEmpty()) {
-            log.info("\n\n[ToolCalling] no tool calls");
+            log.info("[ToolCalling] no tool calls");
             return;
         }
-        String logMessage = IntStream.range(0, toolCalls.size())
-                .mapToObj(i -> {
-                    AssistantMessage.ToolCall call = toolCalls.get(i);
-                    return String.format(
-                            "[ToolCalling #%d]\n- name      : %s\n- arguments : %s",
-                            i + 1,
-                            call.name(),
-                            call.arguments()
-                    );
-                })
-                .collect(Collectors.joining("\n\n"));
-        log.info("\n\n========== Tool Calling ==========\n{}\n=================================\n", logMessage);
+        String names = toolCalls.stream()
+                .map(call -> call.name() == null ? "<missing>" : call.name())
+                .collect(Collectors.joining(", "));
+        log.info("[ToolCalling] count={}, names=[{}]", toolCalls.size(), names);
     }
 
     private record ToolSequenceResult(List<Message> messages, int lastConsumedIndex) {

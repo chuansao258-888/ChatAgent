@@ -33,6 +33,8 @@ public record AgentRunResult(
 
     public enum Status {
         SUCCESS,
+        PARTIAL,
+        BLOCKED,
         ERROR
     }
 
@@ -54,6 +56,31 @@ public record AgentRunResult(
      */
     public static AgentRunResult failure(long durationMs, boolean knowledgeHit, Throwable throwable) {
         return new AgentRunResult(Status.ERROR, durationMs, classifyError(throwable), knowledgeHit,
+                CurrentTurnKnowledgeHitHolder.metadataSnapshot());
+    }
+
+    /**
+     * 构造部分完成结果：run 在仍有有效进展时被预算/轮次耗尽或验证未通过中止，
+     * 例如可选工作在工具预算耗尽后带显式限制收尾，或 DeepThink 验证轮次耗尽。
+     * <p>
+     * 这类结果既不是 SUCCESS（没有完整达成目标），也不是 ERROR（没有抛错），
+     * 上层会在最终输出里附带显式的局限性说明。
+     *
+     * @param errorType 稳定的停止原因，例如 {@code TOOL_BUDGET_EXHAUSTED}；不应为 null
+     */
+    public static AgentRunResult partial(long durationMs, boolean knowledgeHit, String errorType) {
+        return new AgentRunResult(Status.PARTIAL, durationMs, errorType, knowledgeHit,
+                CurrentTurnKnowledgeHitHolder.metadataSnapshot());
+    }
+
+    /**
+     * 构造被阻塞结果：run 因必须等待外部输入而无法继续，最典型的是一次非只读/未知
+     * 副作用工具提案需要用户精确确认。这类结果不会自动重试，也不会被渲染成 SUCCESS。
+     *
+     * @param errorType 稳定的阻塞原因，例如 {@code CONFIRMATION_REQUIRED}；不应为 null
+     */
+    public static AgentRunResult blocked(long durationMs, boolean knowledgeHit, String errorType) {
+        return new AgentRunResult(Status.BLOCKED, durationMs, errorType, knowledgeHit,
                 CurrentTurnKnowledgeHitHolder.metadataSnapshot());
     }
 

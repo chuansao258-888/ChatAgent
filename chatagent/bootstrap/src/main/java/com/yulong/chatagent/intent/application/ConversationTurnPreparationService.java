@@ -9,6 +9,8 @@ import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractEnforcementException;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContractBuilder;
+import com.yulong.chatagent.agent.runtime.contract.ApprovedToolProposal;
+import com.yulong.chatagent.agent.runtime.contract.ToolPolicy;
 import com.yulong.chatagent.intent.model.IntentKind;
 import com.yulong.chatagent.support.dto.IntentNodeDTO;
 import org.slf4j.Logger;
@@ -79,13 +81,79 @@ public class ConversationTurnPreparationService {
             String input = context == null ? "" : context.userInput();
             return dispatchWithContract(null, input, input, context, null);
         }
+        PendingIntentResolution pending = pendingIntentResolutionStore.get(context.sessionId());
+        if (pending != null && pending.isToolApproval()) {
+            return resolvePendingToolApproval(context, pending);
+        }
         IntentTreeSnapshot snapshot = intentTreeCacheManager.loadActiveSnapshot(context.agentId());
         if (snapshot == null || snapshot.isEmpty()) {
             pendingIntentResolutionStore.delete(context.sessionId());
             return dispatchWithContract(null, context.userInput(), context.userInput(), context, null);
         }
-        PendingIntentResolution pending = pendingIntentResolutionStore.get(context.sessionId());
         return preparePolicy(context, snapshot, pending);
+    }
+
+    private TurnPreparationResult resolvePendingToolApproval(TurnPreparationContext context,
+                                                             PendingIntentResolution pending) {
+        ClarificationResolver.ClarificationReply reply =
+                clarificationResolver.resolveActionConfirmation(context.userInput());
+        return switch (reply.outcome()) {
+            case CANCEL, NONE_OF_THESE -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                yield TurnPreparationResult.direct(
+                        clarificationResponseBuilder.buildReleased(
+                                ClarificationResolver.ReplyOutcome.CANCEL, context.userInput()));
+            }
+            case NEW_TOPIC -> {
+                pendingIntentResolutionStore.delete(context.sessionId());
+                String topic = StringUtils.hasText(reply.newTopicText())
+                        ? reply.newTopicText() : context.userInput();
+                yield prepare(new TurnPreparationContext(
+                        context.agentId(), context.sessionId(), topic,
+                        context.recentVisibleTurns(), context.contextAvailable(),
+                        context.contextTruncated(), context.sessionAssetSummary(),
+                        context.executionMode()));
+            }
+            case SELECT_ONE -> approvePendingTool(context, pending);
+            case SELECT_MANY, UNRESOLVED -> {
+                pending.setAttemptCount(pending.attemptCountOrZero() + 1);
+                pendingIntentResolutionStore.save(pending);
+                yield TurnPreparationResult.direct(
+                        "Please reply 'confirm' to execute the exact pending tool action, or 'cancel'.");
+            }
+        };
+    }
+
+    private TurnPreparationResult approvePendingTool(TurnPreparationContext context,
+                                                     PendingIntentResolution pending) {
+        if (!TurnExecutionContract.VERSION.equals(pending.getToolContractVersion())
+                || !StringUtils.hasText(pending.getToolApprovalId())
+                || !StringUtils.hasText(pending.getToolName())
+                || !StringUtils.hasText(pending.getCanonicalToolArguments())
+                || !StringUtils.hasText(pending.getToolArgumentHash())
+                || !StringUtils.hasText(pending.getToolDescriptorHash())) {
+            pendingIntentResolutionStore.delete(context.sessionId());
+            return TurnPreparationResult.direct("The pending tool approval is stale. Please request the action again.");
+        }
+        TurnPreparationResult base = dispatchRoutesWithContract(
+                List.of(), context.userInput(), context.userInput(), context, null);
+        TurnExecutionContract contract = base.executionContract();
+        if (contract == null || contract.tools() == null) {
+            return TurnPreparationResult.direct("Tool confirmation is unavailable for this turn.");
+        }
+        ApprovedToolProposal approved = new ApprovedToolProposal(
+                pending.getToolApprovalId(), pending.getToolName(),
+                pending.getCanonicalToolArguments(), pending.getToolArgumentHash(),
+                pending.getToolDescriptorHash(), pending.getToolPolicyVersion(),
+                pending.getToolContractVersion());
+        ToolPolicy tools = new ToolPolicy(
+                contract.tools().allowedTools(), contract.tools().retrievalVisible(), approved);
+        TurnExecutionContract approvedContract = new TurnExecutionContract(
+                contract.version(), contract.analysis(), contract.queryPlan(), contract.intent(),
+                contract.clarification(), contract.retrieval(), tools, contract.memory(),
+                contract.answer(), contract.executionMode(), contract.ordering());
+        pendingIntentResolutionStore.delete(context.sessionId());
+        return TurnPreparationResult.dispatch(base.intentResolution(), base.rewrittenInput(), approvedContract);
     }
 
     private TurnPreparationResult preparePolicy(TurnPreparationContext context,

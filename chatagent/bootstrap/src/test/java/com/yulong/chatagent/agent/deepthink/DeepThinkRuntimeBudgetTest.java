@@ -146,11 +146,6 @@ class DeepThinkRuntimeBudgetTest {
                 eq("EXECUTE"), eq("S1")
         )).thenReturn(step1Buffered);
 
-        // Final synthesis
-        when(messageBridge.streamFinalResponse(
-                eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), anyBoolean()
-        )).thenReturn("Final answer with uncertainty");
-
         // Budget: maxTotalLlmCalls=2 (planner uses 1, step 1 uses 1) → step 2 should be skipped
         AgentRunPolicy policy = new AgentRunPolicy(20, 4, 5, 3, 20, 2);
         AgentRunContext context = buildContext(policy);
@@ -158,9 +153,9 @@ class DeepThinkRuntimeBudgetTest {
         DeepThinkRuntimeEngine engine = new DeepThinkRuntimeEngine(context);
         AgentRunResult result = engine.run(context);
 
-        assertThat(result.status()).isEqualTo(AgentRunResult.Status.SUCCESS);
-        // Final synthesis should be called
-        verify(messageBridge).streamFinalResponse(
+        assertThat(result.status()).isEqualTo(AgentRunResult.Status.PARTIAL);
+        assertThat(result.errorType()).isEqualTo("LLM_DECISION_BUDGET_EXHAUSTED");
+        verify(messageBridge, never()).streamFinalResponse(
                 eq("session-1"), eq("turn-1"), any(Prompt.class), eq(llmService), anyBoolean());
     }
 

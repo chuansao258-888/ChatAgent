@@ -5,9 +5,12 @@ import com.yulong.chatagent.agent.runtime.AgentExecutionMode;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractProperties;
 import com.yulong.chatagent.agent.runtime.contract.TurnContractEnforcementException;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
+import com.yulong.chatagent.agent.tools.ToolApprovalPort;
+import com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
 import com.yulong.chatagent.intent.application.IntentResolution;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
@@ -17,6 +20,10 @@ import java.util.Objects;
  * <p>
  * 工厂本身不保存会话状态；每次 create 都会重新加载 memory、prompt 和工具列表，
  * 生成一个只服务当前 chat turn 的 {@link ChatAgent}。
+ * <p>
+ * ARRB Phase 1（F-1/F-2）：注入 approval/ledger ports 并透传到每次 run 的
+ * {@link com.yulong.chatagent.agent.runtime.AgentRunContext}，使 coordinator 在生产路径上
+ * 启用确认门与 journal CAS。
  */
 @Component
 public class ChatAgentFactory {
@@ -27,19 +34,36 @@ public class ChatAgentFactory {
     private final AgentMessageBridge agentMessageBridge;
     private final AgentRunPolicyProperties policyProperties;
     private final TurnContractProperties contractProperties;
+    private final ToolApprovalPort approvalPort;
+    private final ToolExecutionLedgerPort ledgerPort;
 
+    @Autowired
     public ChatAgentFactory(PromptLoader promptLoader,
                             LLMService llmService,
                             AgentRuntimeContextLoader agentRuntimeContextLoader,
                             AgentMessageBridge agentMessageBridge,
                             AgentRunPolicyProperties policyProperties,
-                            TurnContractProperties contractProperties) {
+                            TurnContractProperties contractProperties,
+                            ToolApprovalPort approvalPort,
+                            ToolExecutionLedgerPort ledgerPort) {
         this.promptLoader = promptLoader;
         this.llmService = llmService;
         this.agentRuntimeContextLoader = agentRuntimeContextLoader;
         this.agentMessageBridge = agentMessageBridge;
         this.policyProperties = policyProperties;
         this.contractProperties = contractProperties;
+        this.approvalPort = approvalPort;
+        this.ledgerPort = ledgerPort;
+    }
+
+    ChatAgentFactory(PromptLoader promptLoader,
+                     LLMService llmService,
+                     AgentRuntimeContextLoader agentRuntimeContextLoader,
+                     AgentMessageBridge agentMessageBridge,
+                     AgentRunPolicyProperties policyProperties,
+                     TurnContractProperties contractProperties) {
+        this(promptLoader, llmService, agentRuntimeContextLoader, agentMessageBridge,
+                policyProperties, contractProperties, null, null);
     }
 
     /**
@@ -139,7 +163,9 @@ public class ChatAgentFactory {
                 agentMessageBridge,
                 policyProperties,
                 context.executionMode(),
-                context.executionContract()
+                context.executionContract(),
+                approvalPort,
+                ledgerPort
         );
     }
 }

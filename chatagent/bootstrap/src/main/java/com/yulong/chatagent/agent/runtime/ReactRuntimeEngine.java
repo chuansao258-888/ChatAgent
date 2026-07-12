@@ -8,6 +8,8 @@ import com.yulong.chatagent.agent.AgentThinkingEngine;
 import com.yulong.chatagent.agent.AgentToolExecutionEngine;
 import com.yulong.chatagent.agent.prompt.PromptConstants;
 import com.yulong.chatagent.agent.prompt.PromptLoader;
+import com.yulong.chatagent.agent.tools.ToolDispatchContext;
+import com.yulong.chatagent.agent.tools.ToolExecutionDescriptorResolver;
 import com.yulong.chatagent.chat.routing.LLMService;
 import com.yulong.chatagent.trace.TraceContext;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +17,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -51,9 +54,14 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
     private final String sessionFileSummary;
     private final String relevantLongTermMemories;
     private final String turnId;
+    // ARRB Phase 1（F-5）：run-wide 预算与 descriptor 解析器，在每次逻辑模型请求/派发处消耗。
+    private final AgentRunBudget budget;
+    private final com.yulong.chatagent.agent.tools.ToolExecutionDescriptorResolver descriptorResolver;
 
     private AgentState agentState;
     private ChatResponse lastChatResponse;
+    private AgentRunResult.Status stopStatus;
+    private String stopReason;
 
     public ReactRuntimeEngine(AgentRunContext context) {
         this.policy = context.policy();
@@ -86,8 +94,28 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
                 context.availableTools(),
                 context.chatOptions(),
                 context.turnId(),
-                context.messageBridge()
+                context.messageBridge(),
+                policy.getMaxToolCallsPerStep()
         );
+
+        // ARRB Phase 1（cross-review F-1/F-2/F-4/F-5）：构造 run-wide budget、descriptor 解析器、
+        // 派发上下文，并注入 tool engine。budget 在每次逻辑模型请求/工具派发处消耗（见 run/step）。
+        this.budget = new AgentRunBudget(policy, System.nanoTime());
+        this.descriptorResolver = new ToolExecutionDescriptorResolver(context.availableTools());
+        var approvedProposal = context.executionContract() != null && context.executionContract().tools() != null
+                ? context.executionContract().tools().approvedProposal() : null;
+        if (context.approvalPort() != null && context.ledgerPort() != null) {
+            this.toolExecutionEngine.configureDispatchContext(new ToolDispatchContext(
+                         context.chatSessionId(),
+                         context.turnId(),
+                         context.approvalPort(),
+                         context.ledgerPort(),
+                         this.budget,
+                         this.descriptorResolver,
+                         approvedProposal,
+                         "agent-runtime-v1",
+                         context.executionContract() == null ? null : context.executionContract().version()));
+        }
     }
 
     @Override
@@ -103,6 +131,13 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
                 TraceContext.getTraceId(), agentId, chatSessionId, maxSteps);
 
         try {
+            if (context.executionContract() != null && context.executionContract().tools() != null
+                    && context.executionContract().tools().approvedProposal() != null) {
+                replayApprovedProposal(context.executionContract().tools().approvedProposal());
+                if (stopStatus != null) {
+                    return stopResult(startTime);
+                }
+            }
             for (int i = 0; i < maxSteps && agentState != AgentState.FINISHED; i++) {
                 int currentStep = i + 1;
                 step();
@@ -118,6 +153,12 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
             long durationMs = (System.nanoTime() - startTime) / 1_000_000;
             log.info("Agent run finished: traceId={}, agentId={}, sessionId={}, steps={}, durationMs={}",
                     TraceContext.getTraceId(), agentId, chatSessionId, executedSteps, durationMs);
+            if (stopStatus == AgentRunResult.Status.BLOCKED) {
+                return AgentRunResult.blocked(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stopReason);
+            }
+            if (stopStatus == AgentRunResult.Status.PARTIAL) {
+                return AgentRunResult.partial(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stopReason);
+            }
             return AgentRunResult.success(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit());
         } catch (Exception e) {
             agentState = AgentState.ERROR;
@@ -142,6 +183,15 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
      * 保证 DB 中 assistant tool_calls 与后续 tool_response 严格配对。
      */
     private void step() {
+        // ARRB Phase 1（F-5/AC-007）：每次逻辑模型请求（决策 think）消耗一次 LLM 预算。
+        if (!budget.consumeLlmDecision()) {
+            String reason = budget.exhaustedCounter();
+            log.warn("Agent run stopped by budget: reason={}", reason == null ? "LLM_DECISION_BUDGET_EXHAUSTED" : reason);
+            agentState = AgentState.FINISHED;
+            stopStatus = AgentRunResult.Status.PARTIAL;
+            stopReason = reason == null ? "LLM_DECISION_BUDGET_EXHAUSTED" : reason;
+            return;
+        }
         this.lastChatResponse = this.thinkingEngine.think(this.chatMemory, this.chatSessionId);
         org.springframework.util.Assert.notNull(this.lastChatResponse, "Last chat client response cannot be null");
 
@@ -150,12 +200,20 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
             return;
         }
 
-        boolean terminated = this.toolExecutionEngine.execute(
+        AgentToolExecutionEngine.ExecutionOutcome outcome = this.toolExecutionEngine.executeWithOutcome(
                 this.chatMemory,
                 this.chatSessionId,
                 this.lastChatResponse
         );
-        if (terminated) {
+        if (outcome.blocked()) {
+            this.agentState = AgentState.FINISHED;
+            this.stopStatus = AgentRunResult.Status.BLOCKED;
+            this.stopReason = outcome.stopReason();
+        } else if (outcome.partial()) {
+            this.agentState = AgentState.FINISHED;
+            this.stopStatus = AgentRunResult.Status.PARTIAL;
+            this.stopReason = outcome.stopReason();
+        } else if (outcome.terminated()) {
             this.agentState = AgentState.FINISHED;
             log.info("Task finished via terminate tool");
         }
@@ -172,6 +230,13 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
      */
     private void forceFinalSynthesis() {
         log.info("Forcing final synthesis after max steps reached");
+        if (!budget.consumeLlmDecision()) {
+            stopStatus = AgentRunResult.Status.PARTIAL;
+            stopReason = budget.exhaustedCounter() == null
+                    ? "LLM_DECISION_BUDGET_EXHAUSTED" : budget.exhaustedCounter();
+            agentState = AgentState.FINISHED;
+            return;
+        }
         try {
             ChatOptions streamOptions = this.chatOptions.copy();
             if (streamOptions instanceof ToolCallingChatOptions toolOptions) {
@@ -206,6 +271,36 @@ public class ReactRuntimeEngine implements AgentRuntimeEngine {
             );
         }
         agentState = AgentState.FINISHED;
+    }
+
+    private void replayApprovedProposal(com.yulong.chatagent.agent.runtime.contract.ApprovedToolProposal approved) {
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        approved.approvalId(), "function", approved.toolName(),
+                        approved.canonicalArguments())))
+                .build();
+        chatMemory.add(chatSessionId, assistant);
+        messageBridge.persistAndPublish(chatSessionId, turnId, assistant);
+        ChatResponse response = new ChatResponse(List.of(new org.springframework.ai.chat.model.Generation(assistant)));
+        AgentToolExecutionEngine.ExecutionOutcome outcome =
+                toolExecutionEngine.executeWithOutcome(chatMemory, chatSessionId, response);
+        if (outcome.blocked()) {
+            stopStatus = AgentRunResult.Status.BLOCKED;
+            stopReason = outcome.stopReason();
+            agentState = AgentState.FINISHED;
+        } else if (outcome.partial()) {
+            stopStatus = AgentRunResult.Status.PARTIAL;
+            stopReason = outcome.stopReason();
+            agentState = AgentState.FINISHED;
+        }
+    }
+
+    private AgentRunResult stopResult(long startTime) {
+        long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+        return stopStatus == AgentRunResult.Status.BLOCKED
+                ? AgentRunResult.blocked(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stopReason)
+                : AgentRunResult.partial(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stopReason);
     }
 
     private String latestUserRequest(List<Message> promptMessages) {

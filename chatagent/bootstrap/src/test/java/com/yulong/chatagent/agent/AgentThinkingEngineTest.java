@@ -121,8 +121,17 @@ class AgentThinkingEngineTest {
 
         ChatResponse response = engineWithTools(List.of(tool)).think(chatMemory, SESSION_ID);
 
-        assertThat(response.getResult().getOutput()).isSameAs(output);
-        verify(messageBridge).persistAndPublish(SESSION_ID, TURN_ID, output);
+        // ARRB Phase 1: assistant 工具调用消息现在经过共享 ToolCallPreflight 规范化后再持久化，
+        // 因此落库的是规范化重建消息（稳定 id、参数上限），而不是原始 mock 对象本身。
+        // 这里验证规范化后保留了原始的 tool call 内容。
+        ArgumentCaptor<AssistantMessage> captured = ArgumentCaptor.forClass(AssistantMessage.class);
+        verify(messageBridge).persistAndPublish(eq(SESSION_ID), eq(TURN_ID), captured.capture());
+        AssistantMessage persisted = captured.getValue();
+        assertThat(persisted.getToolCalls()).hasSize(1);
+        assertThat(persisted.getToolCalls().get(0).id()).isEqualTo("tool-call-1");
+        assertThat(persisted.getToolCalls().get(0).name()).isEqualTo("localTool");
+        assertThat(persisted.getToolCalls().get(0).arguments()).isEqualTo("{\"query\":\"budget\"}");
+        assertThat(response.getResult().getOutput().getToolCalls()).hasSize(1);
         verify(messageBridge, never()).streamFinalResponse(any(), any(), any(Prompt.class), same(llmService), anyBoolean());
     }
 

@@ -40,13 +40,25 @@ public class DeepThinkStepExecutor {
     private final boolean deepThinking;
     private final PromptLoader promptLoader;
     private final com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine;
+    private final com.yulong.chatagent.agent.runtime.AgentRunBudget runBudget;
+
+    public DeepThinkStepExecutor(AgentMessageBridge messageBridge,
+                                  LLMService llmService,
+                                  List<ToolCallback> availableTools,
+                                  boolean deepThinking,
+                                   PromptLoader promptLoader,
+                                   com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine) {
+        this(messageBridge, llmService, availableTools, deepThinking, promptLoader,
+                toolExecutionEngine, null);
+    }
 
     public DeepThinkStepExecutor(AgentMessageBridge messageBridge,
                                   LLMService llmService,
                                   List<ToolCallback> availableTools,
                                   boolean deepThinking,
                                   PromptLoader promptLoader,
-                                  com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine) {
+                                  com.yulong.chatagent.agent.AgentToolExecutionEngine toolExecutionEngine,
+                                  com.yulong.chatagent.agent.runtime.AgentRunBudget runBudget) {
         this.messageBridge = messageBridge;
         this.llmService = llmService;
         this.availableTools = availableTools;
@@ -54,6 +66,7 @@ public class DeepThinkStepExecutor {
         this.promptLoader = promptLoader;
         this.toolExecutionEngine = java.util.Objects.requireNonNull(
                 toolExecutionEngine, "shared tool execution engine is required");
+        this.runBudget = runBudget;
     }
 
     /**
@@ -104,6 +117,12 @@ public class DeepThinkStepExecutor {
                 log.warn("Step {} iteration {} skipped: LLM call budget exhausted ({}>={})",
                         step.getId(), i, notebook.getTotalLlmCalls(), maxTotalLlmCalls);
                 break;
+            }
+            if (runBudget != null && !runBudget.consumeLlmDecision()) {
+                throw new com.yulong.chatagent.agent.ToolExecutionStopException(
+                        com.yulong.chatagent.agent.AgentRunResult.Status.PARTIAL,
+                        runBudget.exhaustedCounter() == null
+                                ? "LLM_DECISION_BUDGET_EXHAUSTED" : runBudget.exhaustedCounter());
             }
             if (maxTotalToolCalls > 0 && notebook.getTotalToolCalls() >= maxTotalToolCalls) {
                 log.warn("Step {} iteration {} skipped: tool call budget exhausted ({}>={})",
@@ -170,7 +189,7 @@ public class DeepThinkStepExecutor {
                 conversationHistory.add(output);
 
                 // 执行工具调用
-                ToolResponseMessage toolResponse = executeToolCalls(output);
+                ToolResponseMessage toolResponse = executeToolCalls(output, chatSessionId, step.getId());
                 if (toolResponse != null) {
                     // 只记录实际执行的截断后 tool calls
                     for (var tc : toolCalls) {
@@ -178,9 +197,6 @@ public class DeepThinkStepExecutor {
                     }
                     // 将工具响应追加到对话历史
                     conversationHistory.add(toolResponse);
-                    // 持久化内部工具响应
-                    messageBridge.persistInternalToolResponses(
-                            chatSessionId, turnId, toolResponse, "EXECUTE", step.getId());
                 }
 
                 // 工具调用后检查是否超出工具预算
@@ -207,8 +223,21 @@ public class DeepThinkStepExecutor {
      * Phase 5: uses the shared Spring-AI execution coordinator through
      * AgentToolExecutionEngine; no direct ToolCallback.call path remains.
      */
-    private ToolResponseMessage executeToolCalls(AssistantMessage assistantMessage) {
-        return toolExecutionEngine.executeToolCallsDirect(assistantMessage);
+    private ToolResponseMessage executeToolCalls(AssistantMessage assistantMessage,
+                                                 String chatSessionId,
+                                                 String stepId) {
+        com.yulong.chatagent.agent.AgentToolExecutionEngine.ExecutionOutcome outcome =
+                toolExecutionEngine.executeToolCallsDirectWithOutcome(
+                        assistantMessage, chatSessionId, "EXECUTE", stepId);
+        if (outcome.blocked()) {
+            throw new com.yulong.chatagent.agent.ToolExecutionStopException(
+                    com.yulong.chatagent.agent.AgentRunResult.Status.BLOCKED, outcome.stopReason());
+        }
+        if (outcome.partial()) {
+            throw new com.yulong.chatagent.agent.ToolExecutionStopException(
+                    com.yulong.chatagent.agent.AgentRunResult.Status.PARTIAL, outcome.stopReason());
+        }
+        return outcome.response();
     }
 
     /**

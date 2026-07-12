@@ -27,4 +27,24 @@ public interface Tool {
      * @return 工具类型
      */
     ToolType getType();
+
+    /**
+     * 返回该工具的执行级别副作用分类（ARRB-DEC-017）。
+     * <p>
+     * Built-in 工具应显式覆盖此方法以声明真实的副作用语义；默认 {@link ToolEffectClass#UNKNOWN}
+     * 保证 MCP 与未声明工具按最保守路径处理，不会在无证据时被当成只读自动派发。
+     *
+     * @return 工具副作用分类，默认 {@link ToolEffectClass#UNKNOWN}
+     */
+    default ToolEffectClass effectClass() {
+        return ToolEffectClass.UNKNOWN;
+    }
+
+    /**
+     * 声明 owned adapter 是否能在当前线程上执行 coordinator 提供的剩余截止时间。
+     * 未显式声明的工具（尤其 MCP）必须 fail closed。
+     */
+    default DeadlineMode deadlineMode() {
+        return DeadlineMode.UNSUPPORTED;
+    }
 }

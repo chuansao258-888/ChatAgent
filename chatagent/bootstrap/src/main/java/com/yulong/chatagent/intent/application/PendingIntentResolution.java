@@ -1,5 +1,6 @@
 package com.yulong.chatagent.intent.application;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yulong.chatagent.agent.runtime.contract.ClarificationKind;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,6 +41,20 @@ public class PendingIntentResolution {
     private String knownRouteNodeId;
     /** Stable server-derived identity binding an affirmative reply to one pending action. */
     private String actionIdentity;
+    /** Exact tool proposal fields used only by ACTION_CONFIRMATION. */
+    private String toolApprovalId;
+    private String toolName;
+    private String canonicalToolArguments;
+    private String toolArgumentHash;
+    private String toolDescriptorHash;
+    private String toolPolicyVersion;
+    private String toolContractVersion;
+    private String toolSafePreview;
+
+    @JsonIgnore
+    public boolean isToolApproval() {
+        return toolApprovalId != null && !toolApprovalId.isBlank();
+    }
 
     public int attemptCountOrZero() {
         return attemptCount == null ? 0 : Math.max(attemptCount, 0);

@@ -131,6 +131,28 @@
             <artifactId>mybatis-spring-boot-starter</artifactId>
             <version>3.0.3</version>
         </dependency>
+        <!--
+            ARRB Phase 1: shared, side-effect-free JSON Schema validator for callback input
+            preflight (Phase 1) and MCP output validation (Phase 3). NetworkNT 2.0.1 is the
+            Jackson 2-compatible line (this project is on Spring Boot 3.5 / Jackson 2.18).
+            Excludes optional YAML and ethlo time transitives: this boundary is JSON-only and
+            disables format assertions.
+        -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>2.0.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.ethlo.time</groupId>
+                    <artifactId>ethlo-time-test</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.yaml</groupId>
+                    <artifactId>snakeyaml</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>

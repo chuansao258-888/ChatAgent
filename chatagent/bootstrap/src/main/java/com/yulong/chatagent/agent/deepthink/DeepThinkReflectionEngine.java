@@ -27,15 +27,25 @@ public class DeepThinkReflectionEngine {
     private final LLMService llmService;
     private final PromptLoader promptLoader;
     private final boolean deepThinking;
+    private final com.yulong.chatagent.agent.runtime.AgentRunBudget runBudget;
 
     public DeepThinkReflectionEngine(AgentMessageBridge messageBridge,
                                      LLMService llmService,
                                      PromptLoader promptLoader,
                                      boolean deepThinking) {
+        this(messageBridge, llmService, promptLoader, deepThinking, null);
+    }
+
+    public DeepThinkReflectionEngine(AgentMessageBridge messageBridge,
+                                     LLMService llmService,
+                                     PromptLoader promptLoader,
+                                     boolean deepThinking,
+                                     com.yulong.chatagent.agent.runtime.AgentRunBudget runBudget) {
         this.messageBridge = messageBridge;
         this.llmService = llmService;
         this.promptLoader = promptLoader;
         this.deepThinking = deepThinking;
+        this.runBudget = runBudget;
     }
 
     public DeepThinkReflectionResult reflect(String chatSessionId,
@@ -57,6 +67,12 @@ public class DeepThinkReflectionEngine {
                 log.warn("Skipping reflection: LLM budget exhausted ({}>={})",
                         notebook.getTotalLlmCalls(), maxTotalLlmCalls);
                 return DeepThinkReflectionResult.skipped("LLM budget exhausted before reflection");
+            }
+            if (runBudget != null && !runBudget.consumeLlmDecision()) {
+                return DeepThinkReflectionResult.skipped(
+                        runBudget.exhaustedCounter() == null
+                                ? "LLM decision budget exhausted before reflection"
+                                : runBudget.exhaustedCounter());
             }
 
             messageBridge.publishStatusEvent(chatSessionId, turnId,

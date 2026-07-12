@@ -48,6 +48,9 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
     private final String sessionFileSummary;
     private final String relevantLongTermMemories;
     private final String turnId;
+    // ARRB Phase 1（F-5）：run-wide 预算与 descriptor 解析器。
+    private final com.yulong.chatagent.agent.runtime.AgentRunBudget budget;
+    private final com.yulong.chatagent.agent.tools.ToolExecutionDescriptorResolver descriptorResolver;
 
     private AgentState agentState;
 
@@ -65,6 +68,10 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         this.turnId = context.turnId();
         this.messageBridge = context.messageBridge();
         this.agentState = AgentState.IDLE;
+        // ARRB Phase 1（F-5）：构造 run-wide 预算与 descriptor 解析器，供 sharedToolEngine 使用。
+        this.budget = new com.yulong.chatagent.agent.runtime.AgentRunBudget(policy, System.nanoTime());
+        this.descriptorResolver =
+                new com.yulong.chatagent.agent.tools.ToolExecutionDescriptorResolver(context.availableTools());
     }
 
     @Override
@@ -80,6 +87,17 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         try {
             agentState = AgentState.PLANNING;
             DeepThinkNotebook notebook = new DeepThinkNotebook();
+
+            if (context.executionContract() != null && context.executionContract().tools() != null
+                    && context.executionContract().tools().approvedProposal() != null) {
+                replayApprovedProposal(context, notebook,
+                        context.executionContract().tools().approvedProposal());
+            }
+
+            if (!budget.consumeLlmDecision()) {
+                return AgentRunResult.partial(0, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(),
+                        budget.exhaustedCounter());
+            }
 
             DeepThinkPlanner planner = new DeepThinkPlanner(
                     messageBridge, llmService, availableTools,
@@ -105,13 +123,26 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
             agentState = AgentState.EXECUTING;
             // Phase 5: share the same AgentToolExecutionEngine that ReAct uses,
             // so tool/RAG semantics are identical across execution modes.
+            // ARRB Phase 1（cross-review F-8）：把配置的 per-step cap 传入，避免硬编码默认。
             com.yulong.chatagent.agent.AgentToolExecutionEngine sharedToolEngine =
                     new com.yulong.chatagent.agent.AgentToolExecutionEngine(
-                            availableTools, chatOptions, turnId, messageBridge);
+                            availableTools, chatOptions, turnId, messageBridge,
+                            policy.getMaxToolCallsPerStep());
+            // ARRB Phase 1（F-1/F-2/F-4/F-5）：注入派发上下文（确认门、ledger CAS、预算、descriptor）。
+            if (context.approvalPort() != null && context.ledgerPort() != null) {
+                sharedToolEngine.configureDispatchContext(
+                    new com.yulong.chatagent.agent.tools.ToolDispatchContext(
+                            chatSessionId, turnId, context.approvalPort(), context.ledgerPort(),
+                            budget, descriptorResolver,
+                            context.executionContract() != null && context.executionContract().tools() != null
+                                    ? context.executionContract().tools().approvedProposal() : null,
+                            "agent-runtime-v1",
+                            context.executionContract() == null ? null : context.executionContract().version()));
+            }
             executeMandatoryRetrieval(context, notebook, sharedToolEngine, userQuestion);
             DeepThinkStepExecutor stepExecutor = new DeepThinkStepExecutor(
                     messageBridge, llmService, availableTools,
-                    policy.isExecutionModelDeepThinking(), promptLoader, sharedToolEngine);
+                    policy.isExecutionModelDeepThinking(), promptLoader, sharedToolEngine, budget);
 
             executePlannedSteps(plan, notebook, stepExecutor);
 
@@ -136,6 +167,11 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                 }
             }
 
+            if (!budget.consumeLlmDecision()) {
+                return AgentRunResult.partial(
+                        (System.nanoTime() - startTime) / 1_000_000,
+                        CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), budget.exhaustedCounter());
+            }
             DeepThinkFinalSynthesizer finalSynthesizer = new DeepThinkFinalSynthesizer(
                     messageBridge, llmService, promptLoader, chatMemory, chatOptions,
                     chatSessionId, turnId, sessionFileSummary, relevantLongTermMemories);
@@ -151,6 +187,11 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
 
             return AgentRunResult.success(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit());
 
+        } catch (com.yulong.chatagent.agent.ToolExecutionStopException stop) {
+            long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+            return stop.status() == AgentRunResult.Status.BLOCKED
+                    ? AgentRunResult.blocked(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stop.reason())
+                    : AgentRunResult.partial(durationMs, CurrentTurnKnowledgeHitHolder.isKnowledgeHit(), stop.reason());
         } catch (AgentRunException e) {
             throw e;
         } catch (Exception e) {
@@ -194,9 +235,8 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                 .content("")
                 .toolCalls(calls)
                 .build();
-        ToolResponseMessage response = sharedToolEngine.executeToolCallsDirect(assistant);
-        messageBridge.persistInternalToolResponses(
-                chatSessionId, turnId, response, "EXECUTE", "R0");
+        ToolResponseMessage response = sharedToolEngine.executeToolCallsDirectWithOutcome(
+                assistant, chatSessionId, "EXECUTE", "R0").response();
         for (AssistantMessage.ToolCall call : calls) {
             notebook.recordToolUsage(call.name(), 1);
         }
@@ -238,10 +278,43 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
         }
     }
 
+    private void replayApprovedProposal(
+            AgentRunContext context,
+            DeepThinkNotebook notebook,
+            com.yulong.chatagent.agent.runtime.contract.ApprovedToolProposal approved) {
+        com.yulong.chatagent.agent.AgentToolExecutionEngine engine =
+                new com.yulong.chatagent.agent.AgentToolExecutionEngine(
+                        availableTools, chatOptions, turnId, messageBridge,
+                        policy.getMaxToolCallsPerStep());
+        engine.configureDispatchContext(new com.yulong.chatagent.agent.tools.ToolDispatchContext(
+                chatSessionId, turnId, context.approvalPort(), context.ledgerPort(),
+                budget, descriptorResolver, approved, "agent-runtime-v1",
+                context.executionContract().version()));
+        AssistantMessage assistant = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        approved.approvalId(), "function", approved.toolName(),
+                        approved.canonicalArguments())))
+                .build();
+        messageBridge.persistAndPublish(chatSessionId, turnId, assistant);
+        com.yulong.chatagent.agent.AgentToolExecutionEngine.ExecutionOutcome outcome =
+                engine.executeToolCallsDirectWithOutcome(
+                        assistant, chatSessionId, "EXECUTE", "APPROVED");
+        if (outcome.blocked()) {
+            throw new com.yulong.chatagent.agent.ToolExecutionStopException(
+                    AgentRunResult.Status.BLOCKED, outcome.stopReason());
+        }
+        if (outcome.partial()) {
+            throw new com.yulong.chatagent.agent.ToolExecutionStopException(
+                    AgentRunResult.Status.PARTIAL, outcome.stopReason());
+        }
+        notebook.recordToolUsage(approved.toolName(), 1);
+    }
+
     private DeepThinkReflectionResult reflect(DeepThinkPlan plan, DeepThinkNotebook notebook) {
         DeepThinkReflectionEngine reflectionEngine = new DeepThinkReflectionEngine(
                 messageBridge, llmService, promptLoader,
-                policy.isReflectionModelDeepThinking());
+                policy.isReflectionModelDeepThinking(), budget);
         return reflectionEngine.reflect(
                 chatSessionId, turnId, plan, notebook,
                 policy.getMaxReflectionRounds(), policy.getMaxTotalLlmCalls());
@@ -252,7 +325,7 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
                                                DeepThinkReflectionResult reflectionResult) {
         DeepThinkVerificationEngine verificationEngine = new DeepThinkVerificationEngine(
                 messageBridge, llmService, promptLoader,
-                policy.isVerificationModelDeepThinking());
+                policy.isVerificationModelDeepThinking(), budget);
         return verificationEngine.verify(
                 chatSessionId, turnId, plan, notebook, reflectionResult,
                 policy.getMaxVerificationRounds(), policy.getMaxTotalLlmCalls());
@@ -301,6 +374,8 @@ public class DeepThinkRuntimeEngine implements AgentRuntimeEngine {
             step.setStatus("COMPLETED");
             step.setConclusion(conclusion);
             return true;
+        } catch (com.yulong.chatagent.agent.ToolExecutionStopException stop) {
+            throw stop;
         } catch (Exception e) {
             log.warn("Step {} execution failed: {}", step.getId(), e.getMessage());
             notebook.recordStepFailure(step);

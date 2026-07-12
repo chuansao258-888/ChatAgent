@@ -129,6 +129,23 @@ public class ClarificationResolver {
         return ClarificationReply.selected(ReplyOutcome.SELECT_ONE, candidates);
     }
 
+    /** Deterministic yes/cancel/topic-switch parser for an exact pending tool proposal. */
+    public ClarificationReply resolveActionConfirmation(String reply) {
+        if (!StringUtils.hasText(reply)) {
+            return ClarificationReply.unresolved();
+        }
+        String normalized = normalize(reply);
+        if (CANCEL_PHRASES.contains(normalized) || NONE_PHRASES.contains(normalized)) {
+            return ClarificationReply.of(ReplyOutcome.CANCEL);
+        }
+        if (signalAnalyzer.isExplicitTopicSwitch(reply)) {
+            return ClarificationReply.newTopic(signalAnalyzer.stripTopicSwitchPrefix(reply));
+        }
+        return CONFIRM_PHRASES.contains(normalized)
+                ? ClarificationReply.of(ReplyOutcome.SELECT_ONE)
+                : ClarificationReply.unresolved();
+    }
+
     private List<IntentNodeDTO> ordinalMatches(String normalized, List<IntentNodeDTO> candidates) {
         LinkedHashSet<Integer> ordinals = new LinkedHashSet<>();
         Matcher digits = DIGIT_PATTERN.matcher(normalized);

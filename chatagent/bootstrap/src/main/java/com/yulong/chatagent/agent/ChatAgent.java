@@ -58,6 +58,10 @@ public class ChatAgent {
     private final AgentRuntimeEngine runtimeEngine;
     private final AgentRunContext runContext;
     private final AgentExecutionMode executionMode;
+    // ARRB Phase 1（F-1/F-2）：可选的 approval/ledger ports，由 ChatAgentFactory 注入。
+    // null 时退回基线行为（向后兼容既有构造路径）。
+    private final com.yulong.chatagent.agent.tools.ToolApprovalPort approvalPort;
+    private final com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort ledgerPort;
 
     public ChatAgent() {
         // Serialization-only constructor; production code should use ChatAgentFactory.
@@ -68,6 +72,8 @@ public class ChatAgent {
         this.runtimeEngine = null;
         this.runContext = null;
         this.executionMode = AgentExecutionMode.REACT;
+        this.approvalPort = null;
+        this.ledgerPort = null;
     }
 
     public ChatAgent(String agentId,
@@ -114,7 +120,7 @@ public class ChatAgent {
         this(agentId, name, description, systemPrompt, promptLoader, llmService,
                 maxMessages, memory, availableTools, sessionFileSummary, sessionSummary,
                 relevantLongTermMemories, userId, turnId, chatSessionId, messageBridge,
-                policyProperties, executionMode, null);
+                policyProperties, executionMode, null, null, null);
     }
 
     public ChatAgent(String agentId,
@@ -135,12 +141,16 @@ public class ChatAgent {
                      AgentMessageBridge messageBridge,
                      AgentRunPolicyProperties policyProperties,
                      AgentExecutionMode executionMode,
-                     com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract executionContract) {
+                     com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract executionContract,
+                     com.yulong.chatagent.agent.tools.ToolApprovalPort approvalPort,
+                     com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort ledgerPort) {
         this.agentId = agentId;
         this.name = name;
         this.chatSessionId = chatSessionId;
         this.turnId = turnId;
         this.executionMode = AgentExecutionModeResolver.resolve(executionMode, policyProperties);
+        this.approvalPort = approvalPort;
+        this.ledgerPort = ledgerPort;
 
         // Resolve summaries with fallbacks
         String resolvedSessionFileSummary = StringUtils.hasText(sessionFileSummary)
@@ -183,7 +193,7 @@ public class ChatAgent {
             policy = AgentRunPolicy.react(policyProperties);
         }
 
-        // Build immutable run context
+        // Build immutable run context（携带 ARRB Phase 1 的 approval/ledger ports）
         this.runContext = new AgentRunContext(
                 agentId,
                 name,
@@ -200,7 +210,9 @@ public class ChatAgent {
                 messageBridge,
                 policy,
                 this.executionMode,
-                executionContract
+                executionContract,
+                approvalPort,
+                ledgerPort
         );
 
         // Select runtime engine based on execution mode

@@ -27,6 +27,20 @@ public interface AgentMessageBridge {
      */
     void persistAndPublish(String chatSessionId, String turnId, Message message);
 
+    /** Publishes a TOOL message that was already committed atomically with its journal row. */
+    default void publishPersistedToolResponse(
+            com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort.PersistedToolResponse persisted) {
+        // Compatibility for test/minimal bridges; production bridge overrides this method.
+    }
+
+    default void persistInternalAssistantToolCalls(String chatSessionId,
+                                                   String turnId,
+                                                   org.springframework.ai.chat.messages.AssistantMessage assistant,
+                                                   String deepThinkPhase,
+                                                   String planStepId) {
+        // Compatibility for minimal bridges; production bridge overrides this method.
+    }
+
     /**
      * 执行最终回答的流式输出。
      *

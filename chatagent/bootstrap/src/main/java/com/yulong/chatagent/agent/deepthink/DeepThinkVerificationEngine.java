@@ -27,15 +27,25 @@ public class DeepThinkVerificationEngine {
     private final LLMService llmService;
     private final PromptLoader promptLoader;
     private final boolean deepThinking;
+    private final com.yulong.chatagent.agent.runtime.AgentRunBudget runBudget;
 
     public DeepThinkVerificationEngine(AgentMessageBridge messageBridge,
                                        LLMService llmService,
                                        PromptLoader promptLoader,
                                        boolean deepThinking) {
+        this(messageBridge, llmService, promptLoader, deepThinking, null);
+    }
+
+    public DeepThinkVerificationEngine(AgentMessageBridge messageBridge,
+                                       LLMService llmService,
+                                       PromptLoader promptLoader,
+                                       boolean deepThinking,
+                                       com.yulong.chatagent.agent.runtime.AgentRunBudget runBudget) {
         this.messageBridge = messageBridge;
         this.llmService = llmService;
         this.promptLoader = promptLoader;
         this.deepThinking = deepThinking;
+        this.runBudget = runBudget;
     }
 
     public DeepThinkVerificationResult verify(String chatSessionId,
@@ -54,6 +64,12 @@ public class DeepThinkVerificationEngine {
             log.warn("Skipping verification: LLM budget exhausted ({}>={})",
                     notebook.getTotalLlmCalls(), maxTotalLlmCalls);
             return DeepThinkVerificationResult.skipped("LLM budget exhausted before verification");
+        }
+        if (runBudget != null && !runBudget.consumeLlmDecision()) {
+            return DeepThinkVerificationResult.skipped(
+                    runBudget.exhaustedCounter() == null
+                            ? "LLM decision budget exhausted before verification"
+                            : runBudget.exhaustedCounter());
         }
 
         messageBridge.publishStatusEvent(chatSessionId, turnId,

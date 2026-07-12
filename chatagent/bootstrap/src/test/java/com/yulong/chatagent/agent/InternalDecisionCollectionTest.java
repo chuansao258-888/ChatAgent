@@ -62,7 +62,7 @@ class InternalDecisionCollectionTest {
     }
 
     @Test
-    @DisplayName("INTERNAL_TRACE_ONLY with tool calls: persists as internal=true, no SSE content")
+    @DisplayName("INTERNAL_TRACE_ONLY with tool calls: persists only after explicit preflight handoff")
     void internalTraceWithToolCalls_shouldPersistAsInternal() {
         // Arrange
         AssistantMessage.ToolCall toolCall = new AssistantMessage.ToolCall("tc1", "function", "tool1", "{}");
@@ -91,7 +91,14 @@ class InternalDecisionCollectionTest {
         // Assert: response returned
         assertThat(result).isSameAs(buffered);
 
-        // Assert: persisted as internal with correct phase/stepId
+        // Collection itself must not persist raw model calls before shared preflight.
+        verifyNoInteractions(chatMessageFacadeService);
+
+        // Simulate the runtime's explicit handoff after preflight succeeds.
+        bridge.persistInternalAssistantToolCalls(
+                "session-1", "turn-1", assistant, "EXECUTE", "S2");
+
+        // Assert: persisted as internal with correct phase/stepId after the handoff.
         verify(chatMessageFacadeService).createChatMessage(dtoCaptor.capture());
         ChatMessageDTO persisted = dtoCaptor.getValue();
         assertThat(persisted.getRole()).isEqualTo(ChatMessageDTO.RoleType.ASSISTANT);

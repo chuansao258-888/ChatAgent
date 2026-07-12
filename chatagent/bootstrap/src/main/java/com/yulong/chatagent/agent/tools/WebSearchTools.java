@@ -4,6 +4,7 @@ import com.yulong.chatagent.websearch.WebSearchProperties;
 import com.yulong.chatagent.websearch.WebSearchRequest;
 import com.yulong.chatagent.websearch.WebSearchResponse;
 import com.yulong.chatagent.websearch.WebSearchResult;
+import com.yulong.chatagent.agent.runtime.CurrentToolDeadlineHolder;
 import com.yulong.chatagent.websearch.searxng.SearXNGHealthChecker;
 import com.yulong.chatagent.websearch.searxng.SearXNGWebSearchClient;
 import java.time.format.DateTimeFormatter;
@@ -47,6 +48,18 @@ public class WebSearchTools implements Tool {
         return ToolType.OPTIONAL;
     }
 
+    @Override
+    public ToolEffectClass effectClass() {
+        // 原生 Web 搜索是只读检索，按 owned adapter contract 无副作用（ARRB-DEC-009）。
+        // Phase 4 将替换底层 provider，但只读语义不变。
+        return ToolEffectClass.READ_ONLY;
+    }
+
+    @Override
+    public DeadlineMode deadlineMode() {
+        return DeadlineMode.ENFORCED;
+    }
+
     /**
      * Runtime availability used by the tool catalog and optional tool pool.
      */
@@ -59,6 +72,7 @@ public class WebSearchTools implements Tool {
             description = "Search the public web for current or external information. Optional arguments: maxResults, freshness (ANY, DAY, MONTH, YEAR), and comma-separated domains."
     )
     public String webSearch(String query, Integer maxResults, String freshness, String domains) {
+        CurrentToolDeadlineHolder.remainingMillisOrDefault(30_000L);
         if (!properties.isEnabled()) {
             return "Error: web search is disabled.";
         }
@@ -83,6 +97,7 @@ public class WebSearchTools implements Tool {
 
         try {
             WebSearchResponse response = searchClient.search(request);
+            CurrentToolDeadlineHolder.remainingMillisOrDefault(30_000L);
             return formatResponse(response);
         } catch (Exception e) {
             log.warn("Web search tool execution failed unexpectedly: exception={}", e.getClass().getSimpleName());

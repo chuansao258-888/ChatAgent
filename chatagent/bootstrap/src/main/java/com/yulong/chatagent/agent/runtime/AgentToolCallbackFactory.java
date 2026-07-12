@@ -1,6 +1,8 @@
 package com.yulong.chatagent.agent.runtime;
 
 import com.yulong.chatagent.agent.tools.Tool;
+import com.yulong.chatagent.agent.tools.DescribedToolCallback;
+import com.yulong.chatagent.agent.tools.ToolExecutionDescriptor;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalMode;
 import com.yulong.chatagent.agent.runtime.contract.RetrievalSource;
 import com.yulong.chatagent.agent.runtime.contract.TurnExecutionContract;
@@ -89,7 +91,7 @@ public class AgentToolCallbackFactory {
             // 这类 Tool 通常是“外部 MCP 工具 -> 已经生成好的 callback”。
             if (tool instanceof DirectToolCallbackSource directToolCallbackSource) {
                 for (ToolCallback toolCallback : directToolCallbackSource.getToolCallbacks()) {
-                    registerCallback(callbacksByName, toolCallback);
+                    registerCallback(callbacksByName, describe(tool, toolCallback));
                 }
                 continue;
             }
@@ -101,10 +103,22 @@ public class AgentToolCallbackFactory {
                     .build()
                     .getToolCallbacks();
             for (ToolCallback toolCallback : toolCallbacks) {
-                registerCallback(callbacksByName, toolCallback);
+                registerCallback(callbacksByName, describe(tool, toolCallback));
             }
         }
         return new ArrayList<>(callbacksByName.values());
+    }
+
+    private ToolCallback describe(Tool tool, ToolCallback callback) {
+        String callbackName = callback.getToolDefinition().name();
+        boolean returnDirect = callback.getToolMetadata() != null
+                && callback.getToolMetadata().returnDirect();
+        return new DescribedToolCallback(callback, new ToolExecutionDescriptor(
+                callbackName,
+                tool == null ? com.yulong.chatagent.agent.tools.ToolEffectClass.UNKNOWN : tool.effectClass(),
+                tool == null ? com.yulong.chatagent.agent.tools.DeadlineMode.UNSUPPORTED : tool.deadlineMode(),
+                returnDirect,
+                0));
     }
 
     /**

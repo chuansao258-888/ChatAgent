@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yulong.chatagent.support.persistence.mapper.ToolExecutionJournalMapper">
+
+    <resultMap id="BaseResultMap"
+               type="com.yulong.chatagent.support.persistence.entity.ToolExecutionJournal">
+        <id property="id" column="id" jdbcType="VARCHAR"/>
+        <result property="executionKey" column="execution_key" jdbcType="VARCHAR"/>
+        <result property="sessionId" column="session_id" jdbcType="VARCHAR"/>
+        <result property="turnId" column="turn_id" jdbcType="VARCHAR"/>
+        <result property="approvalId" column="approval_id" jdbcType="VARCHAR"/>
+        <result property="assistantMessageId" column="assistant_message_id" jdbcType="VARCHAR"/>
+        <result property="toolCallId" column="tool_call_id" jdbcType="VARCHAR"/>
+        <result property="toolName" column="tool_name" jdbcType="VARCHAR"/>
+        <result property="argumentHash" column="argument_hash" jdbcType="VARCHAR"/>
+        <result property="effectClass" column="effect_class" jdbcType="VARCHAR"/>
+        <result property="attempt" column="attempt" jdbcType="INTEGER"/>
+        <result property="state" column="state" jdbcType="VARCHAR"/>
+        <result property="safeErrorCode" column="safe_error_code" jdbcType="VARCHAR"/>
+        <result property="responseMessageId" column="response_message_id" jdbcType="VARCHAR"/>
+        <result property="responseHash" column="response_hash" jdbcType="VARCHAR"/>
+        <result property="dispatchedAt" column="dispatched_at" jdbcType="TIMESTAMP"/>
+        <result property="callDeadlineMs" column="call_deadline_ms" jdbcType="BIGINT"/>
+        <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+        <result property="updatedAt" column="updated_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,execution_key,session_id,turn_id,approval_id,
+        assistant_message_id,tool_call_id,tool_name,argument_hash,effect_class,
+        attempt,state,safe_error_code,response_message_id,response_hash,
+        dispatched_at,call_deadline_ms,created_at,updated_at
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.yulong.chatagent.support.persistence.entity.ToolExecutionJournal"
+            keyColumn="id" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO t_tool_execution_journal
+        (
+            execution_key,
+            session_id,
+            turn_id,
+            approval_id,
+            assistant_message_id,
+            tool_call_id,
+            tool_name,
+            argument_hash,
+            effect_class,
+            attempt,
+            state,
+            safe_error_code,
+            response_message_id,
+            response_hash,
+            dispatched_at,
+            call_deadline_ms,
+            created_at,
+            updated_at
+        )
+        VALUES
+            (
+                #{executionKey},
+                #{sessionId},
+                #{turnId},
+                #{approvalId},
+                <choose>
+                    <when test="assistantMessageId != null">CAST(#{assistantMessageId} AS uuid)</when>
+                    <otherwise>NULL</otherwise>
+                </choose>,
+                #{toolCallId},
+                #{toolName},
+                #{argumentHash},
+                #{effectClass},
+                #{attempt},
+                #{state},
+                #{safeErrorCode},
+                <choose>
+                    <when test="responseMessageId != null">CAST(#{responseMessageId} AS uuid)</when>
+                    <otherwise>NULL</otherwise>
+                </choose>,
+                #{responseHash},
+                #{dispatchedAt},
+                #{callDeadlineMs},
+                COALESCE(#{createdAt}, CURRENT_TIMESTAMP),
+                COALESCE(#{updatedAt}, CURRENT_TIMESTAMP)
+            )
+    </insert>
+
+    <select id="selectByExecutionKey" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM t_tool_execution_journal
+        WHERE execution_key = #{executionKey}
+    </select>
+
+    <select id="selectBySessionId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM t_tool_execution_journal
+        WHERE session_id = #{sessionId}
+        ORDER BY created_at
+    </select>
+
+    <update id="casToDispatching">
+        UPDATE t_tool_execution_journal
+        SET state = 'DISPATCHING',
+            attempt = #{attempt},
+            dispatched_at = #{dispatchedAt},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE execution_key = #{executionKey}
+          AND state = #{expectedState}
+          AND attempt = #{attempt}
+    </update>
+
+    <update id="casToRetryPrepared">
+        UPDATE t_tool_execution_journal
+        SET state = 'PREPARED',
+            attempt = #{nextAttempt},
+            safe_error_code = #{safeErrorCode},
+            dispatched_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE execution_key = #{executionKey}
+          AND state = 'DISPATCHING'
+          AND attempt = #{expectedAttempt}
+    </update>
+
+    <update id="casToTerminal">
+        UPDATE t_tool_execution_journal
+        SET state = #{newState},
+            safe_error_code = #{safeErrorCode},
+            response_message_id =
+                <choose>
+                    <when test="responseMessageId != null">CAST(#{responseMessageId} AS uuid)</when>
+                    <otherwise>response_message_id</otherwise>
+                </choose>,
+            response_hash =
+                <choose>
+                    <when test="responseHash != null">#{responseHash}</when>
+                    <otherwise>response_hash</otherwise>
+                </choose>,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE execution_key = #{executionKey}
+          AND state = #{expectedState}
+          AND attempt = #{expectedAttempt}
+    </update>
+
+    <update id="sweepStalePrepared">
+        UPDATE t_tool_execution_journal
+        SET state = 'BLOCKED',
+            safe_error_code = 'DEADLINE_EXCEEDED_PREPARED',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (
+            SELECT id FROM t_tool_execution_journal
+            WHERE state = 'PREPARED'
+              AND updated_at &lt; #{cutoff}
+            LIMIT #{batchLimit}
+        )
+    </update>
+
+    <update id="sweepStaleDispatching">
+        UPDATE t_tool_execution_journal
+        SET state = 'OUTCOME_UNKNOWN',
+            safe_error_code = 'DEADLINE_EXCEEDED_DISPATCHING',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (
+            SELECT id FROM t_tool_execution_journal
+            WHERE state = 'DISPATCHING'
+              AND dispatched_at &lt; #{cutoff}
+            LIMIT #{batchLimit}
+        )
+    </update>
+
+    <delete id="deleteRetainedTerminal">
+        DELETE FROM t_tool_execution_journal
+        WHERE id IN (
+            SELECT id FROM t_tool_execution_journal
+            WHERE (
+                (state IN ('SUCCEEDED', 'FAILED_KNOWN', 'BLOCKED') AND updated_at &lt; #{retainedCutoff})
+                OR
+                (state = 'OUTCOME_UNKNOWN' AND updated_at &lt; #{unknownCutoff})
+            )
+            LIMIT #{batchLimit}
+        )
+    </delete>
+</mapper>

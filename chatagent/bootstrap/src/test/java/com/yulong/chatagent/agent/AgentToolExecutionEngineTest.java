@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -153,7 +152,11 @@ class AgentToolExecutionEngineTest {
     }
 
     @Test
-    void shouldMapDirectToolFailureToStableSharedException() {
+    void shouldIsolateDirectToolFailureToPairedSafeResponseNotWholeBatchException() {
+        // ARRB Phase 1 (ARRB-AC-005/006): a failing callback no longer aborts the whole batch.
+        // Instead the coordinator produces one paired safe error observation per retained call,
+        // so the run can continue and the model can self-correct. The provider detail/exception
+        // class name is NOT echoed raw beyond a bounded safe hint.
         ToolCallback failing = new CapturingToolCallback(new AtomicReference<>()) {
             @Override
             public String call(String toolInput, ToolContext toolContext) {
@@ -171,9 +174,12 @@ class AgentToolExecutionEngineTest {
                         "call-1", "function", "mcp_google_search", "{\"query\":\"status\"}")))
                 .build();
 
-        assertThatThrownBy(() -> executionEngine.executeToolCallsDirect(assistant))
-                .isInstanceOf(ToolExecutionException.class)
-                .hasMessage("Tool execution failed");
+        ToolResponseMessage result = executionEngine.executeToolCallsDirect(assistant);
+
+        assertThat(result.getResponses()).hasSize(1);
+        assertThat(result.getResponses().get(0).responseData())
+                .isEqualTo("TOOL_CALLBACK_FAILURE")
+                .doesNotContain("provider detail");
     }
 
     static final class TestDateTool {

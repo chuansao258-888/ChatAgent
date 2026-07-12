@@ -208,6 +208,35 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     }
 
     @Override
+    public void publishPersistedToolResponse(
+            com.yulong.chatagent.agent.tools.ToolExecutionLedgerPort.PersistedToolResponse persisted) {
+        var committed = persisted.committed();
+        if (committed.internal()) {
+            return;
+        }
+        ChatMessageDTO dto = ChatMessageDTO.builder()
+                .id(persisted.messageId())
+                .turnSeq(persisted.turnSeq())
+                .role(ChatMessageDTO.RoleType.TOOL)
+                .content(committed.response().responseData())
+                .sessionId(committed.sessionId())
+                .turnId(committed.turnId())
+                .metadata(ChatMessageDTO.MetaData.builder()
+                        .toolResponse(committed.response())
+                        .internal(committed.internal() ? Boolean.TRUE : null)
+                        .deepThinkPhase(committed.deepThinkPhase())
+                        .planStepId(committed.planStepId())
+                        .build())
+                .build();
+        ChatMessageVO vo = chatMessageConverter.toVO(dto);
+        sseService.publish(committed.sessionId(), SseMessage.builder()
+                .type(SseMessage.Type.AI_GENERATED_CONTENT)
+                .payload(SseMessage.Payload.builder().message(vo).build())
+                .metadata(SseMessage.Metadata.builder().chatMessageId(persisted.messageId()).build())
+                .build());
+    }
+
+    @Override
     public String streamFinalResponse(String chatSessionId, String turnId, Prompt prompt, LLMService llmService, boolean deepThinking) {
         return streamFinalResponse(chatSessionId, turnId, prompt, llmService, deepThinking, 0);
     }
@@ -964,14 +993,8 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
         AssistantMessage output = bufferedResponse.response().getResult().getOutput();
         Assert.notNull(output, "Buffered streamed response cannot carry a null AssistantMessage");
 
-        List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
-        if (toolCalls != null && !toolCalls.isEmpty() && shouldPersistInternalDecision(deepThinking, deepThinkPhase, planStepId)) {
-            // 持久化 internal assistant tool_call 消息
-            persistInternalAssistant(chatSessionId, turnId, output, deepThinkPhase, planStepId);
-            log.info("Persisted internal assistant with {} tool calls: sessionId={}, turnId={}, phase={}",
-                    toolCalls.size(), chatSessionId, turnId, deepThinkPhase);
-        }
-        // 非 tool_call 的响应不持久化——调用方从 BufferedStreamingResponse 获取文本。
+        // Tool-call assistant messages are persisted only after shared structural preflight
+        // by AgentToolExecutionEngine. Raw model arguments must never reach storage here.
 
         return bufferedResponse;
     }
@@ -997,9 +1020,10 @@ public class AgentMessageBridgeImpl implements AgentMessageBridge {
     /**
      * 持久化 internal assistant 消息（含 tool calls），不推送 SSE。
      */
-    private void persistInternalAssistant(String chatSessionId, String turnId,
-                                           AssistantMessage output,
-                                           String deepThinkPhase, String planStepId) {
+    @Override
+    public void persistInternalAssistantToolCalls(String chatSessionId, String turnId,
+                                                  AssistantMessage output,
+                                                  String deepThinkPhase, String planStepId) {
         ChatMessageDTO dto = ChatMessageDTO.builder()
                 .role(ChatMessageDTO.RoleType.ASSISTANT)
                 .content(output.getText())
