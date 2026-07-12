@@ -37,6 +37,8 @@ import java.util.List;
 @Component
 @Slf4j
 public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoader {
+    @org.springframework.beans.factory.annotation.Value("${chatagent.memory.context-token-budget:8192}")
+    private int memoryContextTokenBudget = 8192;
 
     private final PromptLoader promptLoader;
     private final AgentDefinitionLoader agentDefinitionLoader;
@@ -187,6 +189,10 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
                                      String relevantLongTermMemories,
                                      List<ToolCallback> toolCallbacks) {
         StringBuilder builder = new StringBuilder();
+        int memoryTokens = Math.max(0, memoryContextTokenBudget);
+        sessionSummary = truncateTokens(sessionSummary, memoryTokens);
+        memoryTokens = Math.max(0, memoryTokens - com.yulong.chatagent.conversation.summary.TokenEstimator.estimateTokens(sessionSummary));
+        relevantLongTermMemories = truncateTokens(relevantLongTermMemories, memoryTokens);
 
         // 1. 基础系统提示词：优先使用 Agent 配置，否则回退到默认模板。
         String effectivePrompt = StringUtils.hasText(baseSystemPrompt) ? baseSystemPrompt.trim() : promptLoader.load(PromptConstants.AGENT_DEFAULT_SYSTEM);
@@ -243,6 +249,16 @@ public class DefaultAgentRuntimeContextLoader implements AgentRuntimeContextLoad
         }
 
         return builder.toString().trim();
+    }
+
+    private String truncateTokens(String value, int maxTokens) {
+        if (!StringUtils.hasText(value) || maxTokens <= 0) return "";
+        if (com.yulong.chatagent.conversation.summary.TokenEstimator.estimateTokens(value) <= maxTokens) return value;
+        int end = Math.min(value.length(), maxTokens * 4);
+        while (end > 0 && com.yulong.chatagent.conversation.summary.TokenEstimator
+                .estimateTokens(value.substring(0, end)) > maxTokens) end--;
+        if (end > 0 && Character.isHighSurrogate(value.charAt(end - 1))) end--;
+        return value.substring(0, end);
     }
 
     private void appendToolStrategyGuidance(StringBuilder builder, List<ToolCallback> toolCallbacks) {

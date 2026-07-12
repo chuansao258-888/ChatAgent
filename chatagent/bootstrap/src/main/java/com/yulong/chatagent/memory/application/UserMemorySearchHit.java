@@ -12,5 +12,10 @@ public record UserMemorySearchHit(
         String memoryId,
         String type,
         String content,
-        double score
-) {}
+        double score,
+        java.time.LocalDateTime updatedAt
+) {
+    public UserMemorySearchHit(String memoryId, String type, String content, double score) {
+        this(memoryId, type, content, score, null);
+    }
+}

@@ -221,10 +221,12 @@ chatagent:
     l3:
       enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
       extractor-model: deepseek-v4-flash
-      recall-top-k: 3
+      recall-top-k: ${CHATAGENT_MEMORY_L3_RECALL_TOP_K:3}
+      recall-min-score: ${CHATAGENT_MEMORY_L3_RECALL_MIN_SCORE:0.55}
       job-poll-ms: ${CHATAGENT_MEMORY_L3_JOB_POLL_MS:5000}
       job-max-attempts: ${CHATAGENT_MEMORY_L3_JOB_MAX_ATTEMPTS:5}
       job-stale-seconds: ${CHATAGENT_MEMORY_L3_JOB_STALE_SECONDS:300}
+    context-token-budget: ${CHATAGENT_MEMORY_CONTEXT_TOKEN_BUDGET:8192}
     compaction:
       v2:
         enabled: true
