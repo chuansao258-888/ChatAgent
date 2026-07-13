@@ -1,149 +1,78 @@
-# ChatAgent Gatling Load Tests
+# ChatAgent Gatling Evidence Harness
 
-This directory contains system-level load tests that run outside the main
-Spring Boot build. They exercise real HTTP/SSE endpoints against a running
-ChatAgent environment.
+This standalone Maven module exercises real ChatAgent HTTP/SSE, RabbitMQ,
+PostgreSQL, and Redis paths. It never belongs to the main reactor test lifecycle.
 
-## Evidence-specific harness
+## Evidence profiles
 
-The replacement harness has two mutually exclusive application profiles:
+- `capacity-test`: deterministic in-process no-tool LLM stub; entry and Agent-run
+  limiters default off. Use only for application-capacity and limiter evidence.
+- `resilience-test`: real `RoutingLLMService` with repository-owned loopback
+  provider fixture and placeholder credentials. Use only for first-packet,
+  fallback, and circuit evidence.
 
-- `capacity-test` installs only local capacity stubs and defaults both the
-  entry and Agent-run limiters to disabled.
-- `resilience-test` keeps `RoutingLLMService` active and points existing
-  provider clients at the repository-owned loopback fixture with placeholder
-  credentials.
+The profiles are mutually exclusive. Capacity results are not routing evidence,
+real-provider throughput, provider pricing, or production capacity.
 
-PHASE-03 runners support `-DryRun` only. They generate schema-v1 manifests and
-validate the authoritative limiter mode before any later-phase load process is
-allowed to start:
+## Authoritative runners
 
-```powershell
-& .\tools\gatling\scripts\run-capacity-matrix.ps1 -DryRun -Protocol formal-v1
-& .\tools\gatling\scripts\run-entry-rate-limit.ps1 -DryRun
-& .\tools\gatling\scripts\run-agent-capacity.ps1 -DryRun
-& .\tools\gatling\scripts\run-agent-redis-failure.ps1 -DryRun
-& .\tools\gatling\scripts\run-routing-resilience.ps1 -DryRun
-& .\tools\gatling\scripts\test-harness-contract.ps1
-```
-
-Dry-run artifacts are written beneath `tools/gatling/artifacts/` and contain no
-prompt, token, credential, or provider payload. The routing runner rejects any
-fixture URL that does not resolve exclusively to loopback addresses. The entry
-and Agent-capacity runners execute local-stub limiter audits in PHASE-04.
-Routing remains owned by PHASE-05, while the formal chat-turn matrix remains
-owned by PHASE-06.
-
-## Prerequisites
-
-- Start ChatAgent and its required infrastructure first.
-- Use JDK 17+.
-- Run commands from the repository root: `chatagent/`.
-
-## SSE Capacity
-
-Targets:
-
-- `POST /api/auth/register`
-- `POST /api/chat-sessions`
-- `GET /api/sse/connect/{chatSessionId}?access_token=...`
-
-Default shape:
-
-- 500 concurrent SSE connections
-- 60 second ramp-up
-- 300 second hold
-- failed request target: < 1%
-
-Run:
+Run from the `chatagent/` Maven root with JDK 17 configured:
 
 ```powershell
-.\mvnw.cmd -f tools\gatling\pom.xml gatling:test `
-  -Dgatling.simulationClass=com.yulong.chatagent.load.SseCapacitySimulation `
-  -DbaseUrl=http://localhost:8080 `
-  -DsseConnections=500 `
-  -DrampSeconds=60 `
-  -DholdSeconds=300
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\run-entry-rate-limit.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\run-agent-capacity.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\run-agent-redis-failure.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\run-routing-resilience.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\run-capacity-matrix.ps1 -Mode All
 ```
 
-## Tunables
-
-All simulations accept either Java system properties or matching environment
-variables:
-
-| System Property | Environment Variable | Default |
-| --- | --- | --- |
-| `baseUrl` | `CHATAGENT_BASE_URL` | `http://localhost:8080` |
-| `userPrefix` | `CHATAGENT_LOAD_USER_PREFIX` | `load-user` |
-| `password` | `CHATAGENT_LOAD_PASSWORD` | `LoadTest@123456` |
-| `concurrentUsers` | `CHATAGENT_LOAD_CONCURRENT_USERS` | `200` |
-| `sseConnections` | `CHATAGENT_SSE_CONNECTIONS` | `500` |
-| `rampSeconds` | `CHATAGENT_LOAD_RAMP_SECONDS` | `60` |
-| `holdSeconds` | `CHATAGENT_LOAD_HOLD_SECONDS` | `300` |
-| `paceMillis` | `CHATAGENT_LOAD_PACE_MILLIS` | `400` |
-| `chatP95TargetMs` | `CHATAGENT_CHAT_P95_TARGET_MS` | `5000` |
-| `maxFailedPercent` | `CHATAGENT_LOAD_MAX_FAILED_PERCENT` | `1.0` |
-
-Gatling writes HTML reports under `tools/gatling/target/gatling/`.
-
-## Legacy Chat API End-to-End (requires `capacity-test` profile)
-
-`ChatApiE2eSimulation` measures the **end-to-end chat turn** time (POST send →
-matching `AI_DONE` event on SSE) against a backend started with the `capacity-test`
-profile (in-process stub LLM providers, simulated latency).
-
-Each virtual user: register → loop { create fresh chat session → open SSE for
-that session → record turn start → POST chat message with a client-generated
-`turnId` → wait on SSE for `AI_DONE` with matching `turnId` → record e2e →
-close SSE }. The per-turn session/SSE connection prevents stale buffered
-terminal events from satisfying later checks; the headline metric still starts
-at POST send and ends at matching `AI_DONE`.
-
-The e2e P50/P95/P99 are computed post-run from the collected samples (Gatling
-assertions cannot cover session-derived percentiles). The simulation writes
-`tools/gatling/target/gatling/e2e-report/e2e-gate.txt` and fails the run with a
-normal exception if e2e P95 exceeds `e2eP95TargetMs` or no samples arrive. It
-does not use `System.exit`, which can surface as a Gatling fork failure.
-
-Start the backend first:
+Validate shell/harness contracts without starting a backend or provider:
 
 ```powershell
-$env:JAVA_HOME='C:\Users\guany\.jdks\ms-17.0.18'
-$env:Path="$env:JAVA_HOME\bin;$env:Path"
-$jar = Get-ChildItem -LiteralPath 'bootstrap\target' -Filter '*.jar' |
-  Where-Object { $_.Name -notlike '*sources*' -and $_.Name -notlike '*javadoc*' } |
-  Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$argString = '-jar "' + $jar.FullName + '" --spring.profiles.active=capacity-test'
-Start-Process -FilePath "$env:JAVA_HOME\bin\java.exe" -ArgumentList $argString `
-  -WorkingDirectory (Resolve-Path '.').Path -WindowStyle Hidden
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\test-harness-contract.ps1
 ```
 
-Run the simulation:
+Regenerate the tracked capacity summary only when the complete accepted matrix
+exists:
 
 ```powershell
-.\mvnw.cmd -f tools\gatling\pom.xml gatling:test `
-  -Dgatling.simulationClass=com.yulong.chatagent.load.ChatApiE2eSimulation `
-  -DbaseUrl=http://localhost:8080 `
-  -DconcurrentUsers=20 -DholdSeconds=300 `
-  -DpaceMillis=0 -De2eP95TargetMs=3000 -DmaxFailedPercent=1.0
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\gatling\scripts\publish-capacity-results.ps1
 ```
 
-For a tuned local backend, set these before starting the application:
+The publisher rejects missing/duplicate repetitions, non-reportable formal
+runs, limiter-enabled capacity runs, incomplete outcome reconciliation, failed
+queue/permit drain, a 300 ms causal P95 above 3 seconds, and missing CPU/JVM/
+memory evidence.
 
-```powershell
-$env:CHATAGENT_MQ_CONSUMERS_AGENT_CONCURRENCY='20'
-$env:SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE='30'
-$env:CHATAGENT_MQ_OUTBOX_POLL_INTERVAL_MS='100'
-$env:CHATAGENT_MQ_OUTBOX_BATCH_SIZE='50'
-```
+## Fixed capacity protocol
 
-Additional e2e tunables:
+- Calibration: 300 ms stub, B3, closed 5/10/20/40/60 users, pace 0, 60 seconds.
+- Causal A/B: 300 ms stub, closed 20 users, pace 0, 300 seconds, three runs per
+  B0-B3 row.
+- Sensitivity: B3 with 1.2 s and 3 s stubs, same 20-user/300-second shape, three
+  runs per latency.
 
-| System Property | Environment Variable | Default |
-| --- | --- | --- |
-| `e2eP95TargetMs` | `CHATAGENT_E2E_P95_TARGET_MS` | `3000` |
-| `e2eAwaitSeconds` | `CHATAGENT_E2E_AWAIT_SECONDS` | `30` |
+`run-capacity-matrix.ps1` owns these values. Arbitrary overrides cannot enter
+the accepted summary. Each injected virtual user executes one isolated turn;
+the closed injection owns the held clock and allows only the current turn to
+finish after injection stops.
 
-E2E samples CSV is written to
-`tools/gatling/target/gatling/e2e-report/e2e-samples.csv`; samples are also
-incrementally appended to `e2e-samples-live.csv` while the simulation runs.
+See [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) for accepted results, limits,
+resume-safe wording, and hashes for the tracked
+`CAPACITY_RUN_INDEX.json` and `ARTIFACT_RETENTION_INDEX.json` evidence.
+
+## Artifacts and safety
+
+Each run writes a manifest, reconciled result, turn samples, RabbitMQ ready and
+unacknowledged samples, Redis observations, CPU/JVM/memory samples, process
+ownership, sanitized logs, and SHA-256 inventory beneath
+`tools/gatling/artifacts/`.
+
+The publisher writes the sanitized capacity attempt index beside this README.
+After publishing, the cleanup script writes the tracked historical retention
+index and removes obsolete raw directories; publish once more to bind both
+tracked index hashes into `BENCHMARK_RESULTS.md`.
+
+The environment importer reads only DB/JWT infrastructure names. Capacity runs
+do not read provider credentials or consume real LLM quota. The routing fixture
+must resolve exclusively to loopback addresses.

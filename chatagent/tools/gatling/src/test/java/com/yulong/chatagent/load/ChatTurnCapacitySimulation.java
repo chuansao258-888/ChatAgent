@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 
 import static com.yulong.chatagent.load.ChatAgentLoadDsl.BASE_URL;
 import static com.yulong.chatagent.load.ChatAgentLoadDsl.CONCURRENT_USERS;
@@ -80,7 +81,7 @@ public class ChatTurnCapacitySimulation extends Simulation {
 
     private final ScenarioBuilder workload = scenario("Chat turn capacity")
             .exec(registerUniqueUser())
-            .during(Duration.ofSeconds(HOLD_SECONDS)).on(oneTurn);
+            .exec(oneTurn);
 
     {
         TurnOutcomeRecorder.reset();
@@ -92,15 +93,17 @@ public class ChatTurnCapacitySimulation extends Simulation {
 
     @Override
     public void after() {
+        TurnOutcomeRecorder.interruptOutstanding();
         TurnOutcomeRecorder.Snapshot snapshot = TurnOutcomeRecorder.snapshot(0L);
         writeOutcome(snapshot);
+        writeSamples(TurnOutcomeRecorder.successfulDurationsNanos());
         if (!snapshot.reconciled() || snapshot.invalidSuccessAfterFailedCheck() != 0L) {
             throw new IllegalStateException("Turn outcomes failed reconciliation.");
         }
     }
 
     private static void writeOutcome(TurnOutcomeRecorder.Snapshot snapshot) {
-        Path path = Path.of("tools", "gatling", "target", "gatling", "turn-outcomes.json");
+        Path path = evidencePath("CHATAGENT_TURN_OUTCOME_PATH", "turn-outcomes.json");
         String json = """
                 {"schemaVersion":1,"submitted":%d,"successful":%d,"terminalFailed":%d,"timedOut":%d,"interrupted":%d,"finalInFlight":%d,"invalidSuccessAfterFailedCheck":%d,"reconciled":%s}
                 """.formatted(
@@ -113,5 +116,27 @@ public class ChatTurnCapacitySimulation extends Simulation {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to write turn outcome evidence", e);
         }
+    }
+
+    private static void writeSamples(List<Long> durationNanos) {
+        Path path = evidencePath("CHATAGENT_TURN_SAMPLES_PATH", "turn-samples.json");
+        String samples = durationNanos.stream()
+                .map(nanos -> Long.toString(Duration.ofNanos(nanos).toMillis()))
+                .reduce((left, right) -> left + "," + right)
+                .orElse("");
+        String json = "{\"schemaVersion\":1,\"unit\":\"ms\",\"samples\":[" + samples + "]}\n";
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, json);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to write turn sample evidence", e);
+        }
+    }
+
+    private static Path evidencePath(String environmentName, String defaultFileName) {
+        String configured = System.getenv(environmentName);
+        return configured == null || configured.isBlank()
+                ? Path.of("tools", "gatling", "target", "gatling", defaultFileName)
+                : Path.of(configured);
     }
 }

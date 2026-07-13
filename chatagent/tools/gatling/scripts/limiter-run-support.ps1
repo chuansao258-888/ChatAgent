@@ -121,8 +121,17 @@ function Remove-ChatAgentTestIdentity {
     Invoke-ChatAgentSqlCommand "DELETE FROM memory_promotion_job WHERE user_id IN (SELECT id FROM t_user WHERE username = '$username'); DELETE FROM memory_item WHERE user_id IN (SELECT id FROM t_user WHERE username = '$username'); DELETE FROM agent WHERE user_id IN (SELECT id FROM t_user WHERE username = '$username'); DELETE FROM t_user WHERE username = '$username';"
 }
 
+function Remove-ChatAgentTestUsersByPrefix([string]$Prefix) {
+    if ($Prefix -notmatch '^[a-z0-9-]{8,80}$') {
+        throw 'Refusing bulk cleanup for an unsafe test-user prefix.'
+    }
+    $userFilter = "username LIKE '$Prefix-%'"
+    $sessionFilter = "SELECT id FROM chat_session WHERE user_id IN (SELECT id FROM t_user WHERE $userFilter)"
+    Invoke-ChatAgentSqlCommand "DELETE FROM t_tool_execution_journal WHERE session_id IN ($sessionFilter); DELETE FROM t_chat_turn_metric WHERE session_id IN ($sessionFilter); DELETE FROM chat_session_summary_segment WHERE session_id IN ($sessionFilter); DELETE FROM chat_session_summary WHERE session_id IN ($sessionFilter); DELETE FROM chat_session_file WHERE session_id IN ($sessionFilter); DELETE FROM t_mq_outbox WHERE payload ->> 'sessionId' IN ($sessionFilter); DELETE FROM chat_message WHERE session_id IN ($sessionFilter); DELETE FROM chat_session WHERE id IN ($sessionFilter); DELETE FROM memory_promotion_job WHERE user_id IN (SELECT id FROM t_user WHERE $userFilter); DELETE FROM memory_item WHERE user_id IN (SELECT id FROM t_user WHERE $userFilter); DELETE FROM agent WHERE user_id IN (SELECT id FROM t_user WHERE $userFilter); DELETE FROM t_user WHERE $userFilter;"
+}
+
 function Get-ChatAgentQueueSnapshot {
-    $raw = & docker exec chatagent-rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged --formatter json
+    $raw = @(& docker exec chatagent-rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged --formatter json) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'RabbitMQ queue observation failed.' }
     @($raw | ConvertFrom-Json)
 }
@@ -145,6 +154,46 @@ function Get-ChatAgentMetricValue([int]$Port, [string]$MetricName, [string[]]$Ta
         throw
     }
     [double](($response.measurements | Measure-Object value -Sum).Sum)
+}
+
+function Get-GatlingGlobalKoPercent([string]$LogPath) {
+    $requestCount = $null
+    $koCount = $null
+    foreach ($line in Get-Content -LiteralPath $LogPath) {
+        if ($line -match '^> request count.*\|\s+([0-9,]+)\s+\|') {
+            $requestCount = [long]($Matches[1] -replace ',', '')
+        }
+        if ($line -match '^> KO\s+([0-9,]+)') {
+            $koCount = [long]($Matches[1] -replace ',', '')
+        }
+    }
+    if ($null -eq $requestCount -or $requestCount -le 0 -or $null -eq $koCount) {
+        throw 'Gatling final report does not contain parseable global request/KO counts.'
+    }
+    100.0 * [double]$koCount / [double]$requestCount
+}
+
+function Get-CapacityReportability {
+    param(
+        [string]$Purpose,
+        [long]$P95Ms,
+        [bool]$Drained,
+        [double]$CompletionRatio,
+        [double]$GatlingKoPercent,
+        [long]$FinalInFlight,
+        [long]$InvalidSuccessAfterFailedCheck
+    )
+
+    $operationalGatesPassed = $Drained -and $CompletionRatio -ge 0.99 -and
+        $GatlingKoPercent -lt 1.0 -and $FinalInFlight -eq 0 -and
+        $InvalidSuccessAfterFailedCheck -eq 0
+    if (-not $operationalGatesPassed) {
+        return [ordered]@{ reportable = $false; reason = 'operational-reportability-gate-failed' }
+    }
+    if ($Purpose -eq 'causal-ab' -and $P95Ms -gt 3000L) {
+        return [ordered]@{ reportable = $false; reason = 'causal-p95-gate-failed' }
+    }
+    [ordered]@{ reportable = $true; reason = 'all-reportability-gates-passed' }
 }
 
 function Stop-ChatAgentOwnedProcesses([System.Collections.IEnumerable]$Processes) {

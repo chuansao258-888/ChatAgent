@@ -35,6 +35,43 @@ if ($manifest.scenario -ne 'RoutingResilienceSimulation') {
         throw 'Effective limiter mode differs from the authoritative scenario matrix.'
     }
 }
+if ($manifest.scenario -eq 'ChatTurnCapacitySimulation' -and -not $manifest.dryRun -and
+    -not $manifest.invalidClassification) {
+    $actual = $manifest.effectiveConfiguration
+    if ($actual.workloadVersion -ne 'single-turn-closed-v3') {
+        throw 'Capacity run does not use the authoritative single-turn closed workload.'
+    }
+    $rows = @{
+        B0 = @{ agent = 5; pool = 10; poll = 500; batch = 10 }
+        B1 = @{ agent = 20; pool = 10; poll = 500; batch = 10 }
+        B2 = @{ agent = 20; pool = 30; poll = 500; batch = 10 }
+        B3 = @{ agent = 20; pool = 30; poll = 100; batch = 50 }
+    }
+    if ($actual.experimentPurpose -eq 'calibration') {
+        if ([int]$actual.stubLatencyMs -ne 300 -or [int]$actual.holdSeconds -ne 60 -or
+            [int]$actual.concurrentUsers -notin @(5, 10, 20, 40, 60) -or
+            [int]$actual.repetition -ne 1 -or $actual.matrixRow -ne 'B3') {
+            throw 'Calibration run differs from the authoritative ladder.'
+        }
+    } elseif ($actual.experimentPurpose -in @('causal-ab', 'sensitivity')) {
+        $row = $rows[[string]$actual.matrixRow]
+        if (-not $row -or [int]$actual.concurrentUsers -ne 20 -or
+            [int]$actual.holdSeconds -ne 300 -or [int]$actual.repetition -notin 1..3 -or
+            [int]$actual.agentConcurrency -ne $row.agent -or
+            [int]$actual.hikariMaximumPoolSize -ne $row.pool -or
+            [int]$actual.outboxPollIntervalMs -ne $row.poll -or
+            [int]$actual.outboxBatchSize -ne $row.batch) {
+            throw 'Formal capacity run differs from the authoritative protocol or B0-B3 matrix.'
+        }
+        if (($actual.experimentPurpose -eq 'causal-ab' -and [int]$actual.stubLatencyMs -ne 300) -or
+            ($actual.experimentPurpose -eq 'sensitivity' -and
+             ($actual.matrixRow -ne 'B3' -or [int]$actual.stubLatencyMs -notin @(1200, 3000)))) {
+            throw 'Formal capacity latency/purpose pairing is invalid.'
+        }
+    } else {
+        throw 'Capacity run is missing an authoritative experiment purpose.'
+    }
+}
 if ($manifest.scenario -eq 'RoutingResilienceSimulation' -and -not $manifest.dryRun) {
     $actual = $manifest.effectiveConfiguration
     if ([int]$actual.failureThreshold -ne 4 -or [int]$actual.openDurationMs -ne 5000 -or
@@ -61,6 +98,44 @@ if ($result.reportable) {
         [double]$result.completionRatio -lt 0.99 -or
         [double]$result.gatlingKoPercent -ge 1.0) {
         throw 'Reportable run violates completion, drain, or Gatling KO gates.'
+    }
+    $queue = Get-Content -Raw -LiteralPath (Join-Path $RunDirectory 'queue.json') | ConvertFrom-Json
+    $observations = Get-Content -Raw -LiteralPath (Join-Path $RunDirectory 'observations.json') | ConvertFrom-Json
+    if ([long]$queue.finalReady -ne 0L -or [long]$queue.finalUnacknowledged -ne 0L -or
+        ($manifest.scenario -eq 'ChatTurnCapacitySimulation' -and [long]$observations.redis.finalPermitCardinality -ne 0L)) {
+        throw 'Reportable run violates RabbitMQ or Redis drain gates.'
+    }
+    if ($manifest.scenario -eq 'ChatTurnCapacitySimulation') {
+        $resources = Get-Content -Raw -LiteralPath (Join-Path $RunDirectory 'resources.json') | ConvertFrom-Json
+        $resourceSamples = @($resources.samples)
+        if ([int]$resources.logicalProcessorCount -le 0 -or $resourceSamples.Count -eq 0 -or
+            @($resourceSamples | Where-Object {
+                    $null -eq $_.backendCpuTotalMs -or $null -eq $_.backendWorkingSetBytes -or
+                    $null -eq $_.availableMemoryBytes
+                }).Count -gt 0) {
+            throw 'Reportable capacity run lacks CPU, memory, or JVM resource evidence.'
+        }
+        if ($null -eq $observations.latency -or
+            $null -eq $observations.latency.p50Ms -or
+            $null -eq $observations.latency.p95Ms -or
+            $null -eq $observations.latency.p99Ms) {
+            throw 'Reportable capacity run lacks P50, P95, or P99 latency evidence.'
+        }
+        $p50 = [double]$observations.latency.p50Ms
+        $p95 = [double]$observations.latency.p95Ms
+        $p99 = [double]$observations.latency.p99Ms
+        if ([double]::IsNaN($p50) -or [double]::IsInfinity($p50) -or
+            [double]::IsNaN($p95) -or [double]::IsInfinity($p95) -or
+            [double]::IsNaN($p99) -or [double]::IsInfinity($p99) -or
+            $p50 -lt 0 -or $p95 -lt 0 -or $p99 -lt 0 -or
+            $p50 -ne [math]::Floor($p50) -or $p95 -ne [math]::Floor($p95) -or
+            $p99 -ne [math]::Floor($p99) -or $p50 -gt $p95 -or $p95 -gt $p99) {
+            throw 'Reportable capacity latency percentiles must be finite, non-negative, integral, and ordered P50 <= P95 <= P99.'
+        }
+        if ($manifest.effectiveConfiguration.experimentPurpose -eq 'causal-ab' -and
+            $p95 -gt 3000L) {
+            throw 'Reportable 300 ms causal run violates the E2E P95 headline gate.'
+        }
     }
 }
 

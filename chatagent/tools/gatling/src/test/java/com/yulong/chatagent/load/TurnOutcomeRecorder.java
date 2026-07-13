@@ -2,6 +2,7 @@ package com.yulong.chatagent.load;
 
 import io.gatling.javaapi.core.Session;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -63,6 +64,14 @@ final class TurnOutcomeRecorder {
         INTERRUPTED.incrementAndGet();
     }
 
+    static void interruptOutstanding() {
+        long terminal = SUCCESSFUL.get() + TERMINAL_FAILED.get() + TIMED_OUT.get() + INTERRUPTED.get();
+        long outstanding = SUBMITTED.get() - terminal;
+        if (outstanding > 0L) {
+            INTERRUPTED.addAndGet(outstanding);
+        }
+    }
+
     static Snapshot snapshot(long finalInFlight) {
         return new Snapshot(
                 SUBMITTED.get(),
@@ -72,6 +81,10 @@ final class TurnOutcomeRecorder {
                 INTERRUPTED.get(),
                 finalInFlight,
                 INVALID_SUCCESS_AFTER_FAILED_CHECK.get());
+    }
+
+    static List<Long> successfulDurationsNanos() {
+        return List.copyOf(SUCCESS_DURATIONS);
     }
 
     record Snapshot(long submitted,

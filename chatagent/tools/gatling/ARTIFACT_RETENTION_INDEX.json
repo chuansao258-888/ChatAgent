@@ -1,0 +1,1347 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "07/13/2026 10:56:06",
+  "capacityAttemptIndexSha256": "ac8c1b51eba07f3ede8ac58e6238873b73ca40e2d4c200fd03e395f2fa2f6f1b",
+  "runs": [
+    {
+      "runId": "agentcapacitysimulation-20260713-064122-f81f0dd6",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "agentcapacitysimulation-20260713-064122-f81f0dd6",
+      "hashesSha256": "164ff1ccedfc7ff2a0f3399d22fba234c449fad7f399fd7de038429ad8f5b77b"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-064901-182184a8",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "agentcapacitysimulation-20260713-064901-182184a8",
+      "hashesSha256": "a02f2280ff0abf888277c514809144ed30d97fa710b00a2e4523b26ea7cfd075"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-065332-4ca21d21",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "agentcapacitysimulation-20260713-065332-4ca21d21",
+      "hashesSha256": "0e1bb17bda311c7df18b7fcc1e830fdc611a867c8594ab3888212ec501e3d9d1"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-071430-7ad7861d",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "agentcapacitysimulation-20260713-071430-7ad7861d",
+      "hashesSha256": "7b111e3735bec9a366ccdbdb48ade821d677481e17fbbb262206db286a9b3b5c"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-071453-6fdcd161",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "agentcapacitysimulation-20260713-071453-6fdcd161",
+      "hashesSha256": "d3c3c22cc79a925b36aa613b6469f2b1d5ae6458c8b9b3b00c853b3d21d3c8ca"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-071715-88510591",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "agentcapacitysimulation-20260713-071715-88510591",
+      "hashesSha256": "487f1793b32a8961a2279b1698de9acaf65ece3dc4fb7024ca3c5e81a71167f5"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-072013-d7100c3b",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "agentcapacitysimulation-20260713-072013-d7100c3b",
+      "hashesSha256": "8bda1111a8e02f527035b1ef4896ec02b5907e48cbae2428e8cccba9ea4d5a2f"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-072158-a6e23a54",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "agentcapacitysimulation-20260713-072158-a6e23a54",
+      "hashesSha256": "21ef30a7222617da0856431bfa183046a351e946bb87180a51778a87e19cd816"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-072340-3302a506",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "agent-capacity-proved",
+      "artifactDirectory": "agentcapacitysimulation-20260713-072340-3302a506",
+      "hashesSha256": "358d3b0c562aa25cf10ea6b802f813efa49aa0f0233ad497abc97ac1218adef1"
+    },
+    {
+      "runId": "agentcapacitysimulation-20260713-072544-9d157193",
+      "scenario": "AgentCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "agent-capacity-proved",
+      "artifactDirectory": "agentcapacitysimulation-20260713-072544-9d157193",
+      "hashesSha256": "a175212a17e6c82e97c7d7a12e5452a36042f793466a5c33f6f3fcfb1ed3992e"
+    },
+    {
+      "runId": "agentredisfailureaudit-20260713-074933-8a349805",
+      "scenario": "AgentRedisFailureAudit",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "agent-redis-failure-policies-proved",
+      "artifactDirectory": "agentredisfailureaudit-20260713-074933-8a349805",
+      "hashesSha256": "e210db7d7776db2a09ec780be36c0183c38147e4bbc339ea201c38521140a4f9"
+    },
+    {
+      "runId": "agentredisfailureaudit-20260713-075702-ea5fbe11",
+      "scenario": "AgentRedisFailureAudit",
+      "reportable": false,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "agent-redis-failure-policy-audit",
+      "artifactDirectory": "agentredisfailureaudit-20260713-075702-ea5fbe11",
+      "hashesSha256": "1b3f228da241b7a4b6198e8fe57076015e790c16d44127852eca8bd3b4918eea"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-064122-463c0285",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-064122-463c0285",
+      "hashesSha256": "9dd566f03caabed7476cfd16156e2a120f94913a3710091212b7c9110864cc91"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-064901-cb9ca99e",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-064901-cb9ca99e",
+      "hashesSha256": "01903ccfa6c817ba11927f5501fe57c129f62f7efba77d3875ac9fd523eeca45"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-065332-6ffe8cdf",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-065332-6ffe8cdf",
+      "hashesSha256": "d29de47980be97234d2b22893c11e5ec3ea92ed78fc217d6a401b7d4dced6d3f"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091225-e677d39d",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091225-e677d39d",
+      "hashesSha256": "18fb47565d3135ad0a11b6d097ab33cdd8ffa521c281fd3d56ea70319065bcfd"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091240-a595cd67",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091240-a595cd67",
+      "hashesSha256": "33f977e578dfe0b40586e14de984880c122f170977b250476d5a83e9dac5b976"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091358-97e9aff4",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091358-97e9aff4",
+      "hashesSha256": "f15f13a0a5e90ee742753cef33f0dc7333cd34390b94028843ab9dc00c81e6b1"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091447-086a0a76",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091447-086a0a76",
+      "hashesSha256": "47f778d23937e33f2567c435e18c90c54769ce38a03abf02171f55d294fe51b2"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091558-2a261e4f",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091558-2a261e4f",
+      "hashesSha256": "992cd286c67e5af3f6658f5d0477955b1a4d14fd9d78e364f7ae76885d416b4a"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091633-dfa70690",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091633-dfa70690",
+      "hashesSha256": "4a6fcac57894230ac92074734a19f2efe8e7cc25b35690986bd1867a9ee30833"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-091713-7ccd99b6",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-091713-7ccd99b6",
+      "hashesSha256": "75cb4f89387d6c0d2e0d9efd1cb0c68535310d0c2b2036b0008de54cf6b9edcd"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-092020-674b9778",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-092020-674b9778",
+      "hashesSha256": "5ddcab496b608280223650c3b4d3b8ef73b006ef16ac1daad7621e058d45492e"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-092233-50375937",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-092233-50375937",
+      "hashesSha256": "dc987f108cd4b2f86581ef36edc9133e42c83db15099609e775f8191c0d30c99"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-092444-96a7526a",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-092444-96a7526a",
+      "hashesSha256": "d77920264debf2bb9ea67e2a6dec003163f38b9596fe211e212fc03b0e5d88df"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-092705-99258239",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-092705-99258239",
+      "hashesSha256": "6250691a6c1004678b0cd0ef43d0a4a9a804432400bdabc633e7efe49458fee3"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-092907-8cea7700",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-092907-8cea7700",
+      "hashesSha256": "8e2f11f519148d836a170816d3a0df55d6a33596644d521cdedf58ba4cde96ca"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-093103-d761c45d",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-093103-d761c45d",
+      "hashesSha256": "48410b3f92f00b7edb6c90afc1b45cf7f8c830fa24c917510a9c527cca15f9c7"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-093654-15d52fd7",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-093654-15d52fd7",
+      "hashesSha256": "2b152ac54e1cba646e0f14ff4c3b1d278220e99c8d8298e413adaba20c97bb9a"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-093931-cb8d365d",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-093931-cb8d365d",
+      "hashesSha256": "9be0ac340d7a6b666c3d6c8136783cb73872b99c5005adae0dcf111839b76cd4"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-142602-a5599a6b",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-142602-a5599a6b",
+      "hashesSha256": "0715a3758a96441628c6ec38344b4d65b88fdca2f7e0d1b4c5db84c121f2077e"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-142902-712d1950",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-142902-712d1950",
+      "hashesSha256": "50e507997a84807231834c86b11c34d251802fe535e108881aa36d40c4f60cfe"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-143723-8acd778a",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "harness-invalid",
+      "resultReason": "harness-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-143723-8acd778a",
+      "hashesSha256": "39ab49226dd8bb64766501441603e08c649ee343e7c129bbaf8522d7a9db37f1"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-144746-23c96770",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-144746-23c96770",
+      "hashesSha256": "90113512aa6c5078bc27bf90dfeb77ea77557490b3bdb11f629a08c80a593f6c"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-144756-8a862cd4",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-144756-8a862cd4",
+      "hashesSha256": "c3cdaf836ba255af90cf379507160343255127098d429dfa6b35bd739e27586b"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-144939-b72e0eb3",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-144939-b72e0eb3",
+      "hashesSha256": "c68b59c4758e5147afa65bd020ba86a839415cab8cb1b560326beefefbdef841"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-145124-c8d7be45",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-145124-c8d7be45",
+      "hashesSha256": "6184a01077df20cccc9ac736efd7e01b194dbd04a2c232213cc49b3ed3df38cf"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-145310-e386c618",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-145310-e386c618",
+      "hashesSha256": "0ce0fa1e1d9694e5151c81546069654ffb648add7dae271ce2b4255ab52cfda3"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-145500-5a9c9167",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-145500-5a9c9167",
+      "hashesSha256": "687b3d2d92edb2e64faced07968dec47b49295a996a9e5986194b4fb9f3fc753"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-145704-1abbe0e1",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-145704-1abbe0e1",
+      "hashesSha256": "3845a68d88735da60256e7ae16709068c2d76bdcf0b7052bb7dfdc1b5529f4ef"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-150253-a1a8f48d",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-150253-a1a8f48d",
+      "hashesSha256": "675321f2635ca52db2c4f3015259f34b76ca45e9dd5ffd5c002d4d23282aa941"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-150836-be3f406e",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-150836-be3f406e",
+      "hashesSha256": "466e8d8c033ac716f2ce3289d8afe1ba355795cbe26aefec4d58f67488cbd163"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-151423-dc2d97a0",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-151423-dc2d97a0",
+      "hashesSha256": "97d282af6dce39ad221d51f4e65979dac2251dcee18a1e65bcb828a16640c34e"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-152012-b4aea242",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-152012-b4aea242",
+      "hashesSha256": "5ab441151614187407ac5ae337bcbc07628c3c0ad4ef3a6205a7fb9441c28f6e"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-152607-973aedd7",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-152607-973aedd7",
+      "hashesSha256": "b1cbb54ec1b8dc3610dc116e54053d6127eca73044cd749cd0e5c1564e753803"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-153202-60a7ad62",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-153202-60a7ad62",
+      "hashesSha256": "52479727c6a55ae90755d2bf4c3b73e5089ba0f7c163c0534d217e7046d7dd31"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-153752-d65bd611",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-153752-d65bd611",
+      "hashesSha256": "a28c3accb14fc93833332de4138cf835820a768bd2e020c08ac6485463109c2b"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-154341-080e690e",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-154341-080e690e",
+      "hashesSha256": "8fc79faecc83635865e6af363300e7b80c96b6dc57be6435f8a8eebf1298fe10"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-154927-93955fe0",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-154927-93955fe0",
+      "hashesSha256": "361c4a127d78fc6f6fe3deb668d067bc7a4fd29c30f53eefc36528d6498b0bc0"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-155515-c4a0005f",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-155515-c4a0005f",
+      "hashesSha256": "c2f62f07623ce9197fe1a72e79415ea161341aa438734f9ed21ec60c5578c569"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-160153-b5e0c0a0",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-160153-b5e0c0a0",
+      "hashesSha256": "4515d495b07f1c31bdbfcb9679d6197950540d10359cbdddfa0dac0a7b00c439"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-160849-cca25140",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-160849-cca25140",
+      "hashesSha256": "45828165051181e09e0032319e7faaa35340880b22b5932fbdd451b1c25f1e21"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-161434-e9f084fe",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-161434-e9f084fe",
+      "hashesSha256": "0cf6d137377018db51b45f64f4a5fe409a2c1bb14c3b4ed38fd02a85df006f8d"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-162025-5196e027",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-162025-5196e027",
+      "hashesSha256": "73ff485869bd0b8c08de51833274792f0f903fc3b62d4b0da385f3f31f47c875"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-162612-d6051532",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-162612-d6051532",
+      "hashesSha256": "dc5d600e716cbe38ffe62881a723a52ade92c6487e7f562756f5e5a82eeefd56"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-163207-1d5d41a3",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-163207-1d5d41a3",
+      "hashesSha256": "12b540028085ea24ec3e6a40bb770ecb16da448fe6cbedaa4bc758d4d6ecefa9"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-163754-57a27a1e",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": "evidence-invalid",
+      "resultReason": "evidence-invalid-aborted",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-163754-57a27a1e",
+      "hashesSha256": "08508b017989b011c98fa1e0a647946541bd4276dbb7c120eef7236dbe34b2cb"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-164549-9881c492",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-164549-9881c492",
+      "hashesSha256": "7e67d037195581bd866fcaeda71e463beaa960b3330e3653c5a34c97c2742155"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-164559-b31bfa42",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-164559-b31bfa42",
+      "hashesSha256": "b7ca5c1ca493e28fe417925057b4c6155c15ba0bd0427ac1d006ac82ae369298"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-164757-9a34c171",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-164757-9a34c171",
+      "hashesSha256": "2fe5ef4e0e8a9f79fd831f284d3e210488987564e80758bcf14f29941f5daf27"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-164939-1bec7964",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-164939-1bec7964",
+      "hashesSha256": "8e06108ca411840c66d35c3d910e5c85cb3ceb0f6c4dfeb5e0f02f07518b28dc"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-165124-63711c19",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "reportability-gate-failed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-165124-63711c19",
+      "hashesSha256": "f8fbb5ff96566a232dc727880311e44b808db553cc0846d2bd1a768d7d70e13b"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-165315-534b584e",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": false,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "reportability-gate-failed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-165315-534b584e",
+      "hashesSha256": "38484d8f320ea42eb528ea96a788aa0f3f9aee3ea7fa24f5ada6afa704361d30"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-165517-79b29439",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-165517-79b29439",
+      "hashesSha256": "9e2d128ab242f2462964e70ce2005a3d185b29980ee61343eb21bae4f10f522f"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-170109-9e5245d6",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-170109-9e5245d6",
+      "hashesSha256": "44ab601622d2e1b0ec9622b262c323e0960367ff91a3225cbde51338f18a924c"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-170703-fc6172f4",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-170703-fc6172f4",
+      "hashesSha256": "6ee42a784cce3c94056aeff0fcb2ae0ce518ec8c6575ad1d2a0bd10d0bc67095"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-171250-846f582c",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-171250-846f582c",
+      "hashesSha256": "2f0e40a74179df588e013178e68ed1edcfaca8896a883eac9d0307f9bebfde61"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-171843-a4ea27da",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-171843-a4ea27da",
+      "hashesSha256": "50c228e4d52fdbb239345c2f1ab8ee045ff09244683d9f8a66318e1d8eea0a0f"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-172435-dd0cf85f",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-172435-dd0cf85f",
+      "hashesSha256": "471b3efe0c00c71379e9a7e3abbd9b7745349a2ecd4d4d33e8afa0d243b2cdb1"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-173023-4ca95a75",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-173023-4ca95a75",
+      "hashesSha256": "04b4a9c5c40b30ea8fc57fa50d9ee3e1c7d4d5e9dac57b8db113becc3603b1c2"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-173614-fb1685d1",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-173614-fb1685d1",
+      "hashesSha256": "4163d75d9ad2d607d7eaf8f7788cc18f544772b32d700762cc21d5a36fd8dffb"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-174205-229d7f25",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-174205-229d7f25",
+      "hashesSha256": "1a4a3d079657a7d9852dcddb52416ec5e3c7d2f9dd387984e2b2ba63bb414ac3"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-174800-0684a635",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-174800-0684a635",
+      "hashesSha256": "e7bb1126bf9eb4be870bb47a8c1539f589cfe84477eb85271c51304c8b8a8d69"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-175400-b097b137",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-175400-b097b137",
+      "hashesSha256": "cf92855f061cd16ef4d1bb443455187a631b77351b907355befda178729962e2"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-175948-cd0894dd",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-175948-cd0894dd",
+      "hashesSha256": "5dc34fb208fa73325c2d63ae74e045ebfba0f5f2863ade9d5dbe46f597dad74a"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-180538-fef056c2",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-180538-fef056c2",
+      "hashesSha256": "1a860d651b1dc1c1ea8f91cb4b8f0a28ec0ebc73956f177356cec6ecc7231bcd"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-181125-3b5507ea",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-181125-3b5507ea",
+      "hashesSha256": "0bd1243d86ee2905995ea797edbe7704479eea318161ecdcf31f576d0391f16d"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-181712-533841bb",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-181712-533841bb",
+      "hashesSha256": "4213ed95a6ad448e18fb325c51d9581b2daee81b89e6a48fcaa29d7fe728328c"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-182257-02a4dc86",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-182257-02a4dc86",
+      "hashesSha256": "301525d72608ccb348d984c5d9dd6265ced370734309b9f957a3f0938d72f3dc"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-182842-0dbd6ea6",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-182842-0dbd6ea6",
+      "hashesSha256": "664a8b790ee1cc451697526453378ddc0a4876771fcc2d04770b67c6cb7af572"
+    },
+    {
+      "runId": "chatturncapacitysimulation-20260713-183426-d937fe43",
+      "scenario": "ChatTurnCapacitySimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "all-reportability-gates-passed",
+      "artifactDirectory": "chatturncapacitysimulation-20260713-183426-d937fe43",
+      "hashesSha256": "1c078f654302d44dc3826eba32f4562493ef5bee9aa8c532395d0c0b9aa1dac0"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-064122-0959191a",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-064122-0959191a",
+      "hashesSha256": "7b6f6e55f0f676040f2c0ccc03be6a3b06e9dded1bf3566d413ae851476cd462"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-064827-48d62053",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-064827-48d62053",
+      "hashesSha256": "5ed4e05768aaf1b9c321ff502336f83e1271653224043b5bdbe9c3a4f019a5f8"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-064901-400a4182",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-064901-400a4182",
+      "hashesSha256": "ccc183446b19029fa1b8eaffbad423dc8e34a8a97df5088ef9efec9a49a648f0"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-064902-9a29ea32",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-064902-9a29ea32",
+      "hashesSha256": "524c6ec0ba02da0c3b569a35ef82c03708971cae5dba506da4bbc3857c63ef84"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-065332-18ba03e7",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-065332-18ba03e7",
+      "hashesSha256": "e10d9ec0f431e0af71b63c885ef8a32b5bc1ff3b6e30f50a340260536e76439b"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-065332-1d5f7cc3",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-065332-1d5f7cc3",
+      "hashesSha256": "91db79b94de6e3f5fbaaa6d2d9bf7cb187346ad0344c54306b681887424dc23d"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-065710-4f0cddc0",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-065710-4f0cddc0",
+      "hashesSha256": "a86551ada0f0bacc4531c5d1814f738bce08eb9eef086f45432f531e6bc20003"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-070615-8f3b4643",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-070615-8f3b4643",
+      "hashesSha256": "13a4fb57cbf01f8fbbbbc4adf4028880c3da122945b352fdca1e6398d14865c5"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-070630-7140e790",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "entryratelimitsimulation-20260713-070630-7140e790",
+      "hashesSha256": "c17bfb5feba45757ab9ec29b257318f6b3092d27ce74e2956ca1fe6a7a50adb6"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-070911-f9a34540",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "entryratelimitsimulation-20260713-070911-f9a34540",
+      "hashesSha256": "0ef5eecc697ba534aa121ae306bef661ff47439657fe40f88537eaddb17831e8"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-071037-85231f17",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "entry-envelope-proved",
+      "artifactDirectory": "entryratelimitsimulation-20260713-071037-85231f17",
+      "hashesSha256": "3ef2c44f65ecc1029ff9a2c11fc60e6001e753b5d750a15fc9c21ac3d3283ccd"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-072534-0e360e46",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-072534-0e360e46",
+      "hashesSha256": "ecfe6b813c7b32698ef657f79e884a7224122c05e76f442bb60bb018be177900"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-072908-7026212f",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "entryratelimitsimulation-20260713-072908-7026212f",
+      "hashesSha256": "14dc13aa51ec744f6d514ff2be51f2e9bc5d4bb69f052e3447c62946412cb29c"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-073053-bf91cb0f",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "entryratelimitsimulation-20260713-073053-bf91cb0f",
+      "hashesSha256": "2bb03418cac0ac97cdac058f27417f122b1f03d57bc09a88957d6a1394e5f2b5"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-073239-15e941a9",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "entryratelimitsimulation-20260713-073239-15e941a9",
+      "hashesSha256": "5748ce998fc2c3af2c64a8cb4f2d1698d2dc0a8f5daf02e21736d49186bf2c7f"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-073338-d31725d2",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "entryratelimitsimulation-20260713-073338-d31725d2",
+      "hashesSha256": "85f30fc648683d5cf387190d20685b0cf78b5a2dd8b589335897bbd7b973e981"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-073432-d0267d62",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "entry-envelope-proved",
+      "artifactDirectory": "entryratelimitsimulation-20260713-073432-d0267d62",
+      "hashesSha256": "a07021256024efea44de69af2a94ef251adac5edfb4fe35fd4fd3199ab5cc561"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-073650-bca22a9c",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-073650-bca22a9c",
+      "hashesSha256": "25cd06b1478da8349a3a9fc9516c6ad0f37d295d36a3d829a12006f3a1b094de"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-073709-2974d1a0",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-073709-2974d1a0",
+      "hashesSha256": "3c4180d5d9b99b5957adbb9c14f04f85c3ef8784a3bf19b9908f554f7d2a47ed"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-074408-86db3916",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-074408-86db3916",
+      "hashesSha256": "9fc204ec6a422788c836e0c24f95780d99310fd701097658d92cc3fb575e2776"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-075002-8a6f5663",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "entry-envelope-audit",
+      "artifactDirectory": "entryratelimitsimulation-20260713-075002-8a6f5663",
+      "hashesSha256": "a3487d90c6adf0886f2f84e6e93b38ca0bc0eb968a4dfd7185c21edaea4281bd"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-075037-c24d19a3",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "entry-redis-fallback-audit",
+      "artifactDirectory": "entryratelimitsimulation-20260713-075037-c24d19a3",
+      "hashesSha256": "391a4d1f6cca4550e0e0db06c16fe45f9d7d871cef03625e74e8c8b66e3c9e0a"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-075208-5a5fe8a3",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-075208-5a5fe8a3",
+      "hashesSha256": "bba188f51ba65a715cf9ffabda3bc189e9cf08b65df1d1fc78e3c78c9e427d4e"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-075853-2252ed03",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-075853-2252ed03",
+      "hashesSha256": "0c90f0d04005e48acc1a23bf6e74b70d7aaed0270a4b1e1b45f8457e50ca35ee"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-080300-db1e1c33",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-080300-db1e1c33",
+      "hashesSha256": "68b0606962ce30f01d48c104e8a8ad25fd8be2e174a76b8691859e5ed30f5415"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-081841-2c150c75",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-081841-2c150c75",
+      "hashesSha256": "4369d8bd3b319f21f4c71ea5809d32c5974fda57ad3d574a5a0e949c89a488da"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-084515-a833d824",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-084515-a833d824",
+      "hashesSha256": "c706e929bd9cce1c8056ce71335d9c07390299f2fefa7803e195bff32389e262"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-085206-c619f6e1",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-085206-c619f6e1",
+      "hashesSha256": "209240d58aee5e136c4360dfc22fd2325948d7a4ce0009babe69a35caf7f0b44"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-091224-9dea9a9a",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-091224-9dea9a9a",
+      "hashesSha256": "d11792fc99d052c2d710ddea2291e90e3f9cee4d71c4911882bf37c684e290ef"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-144745-accc8113",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-144745-accc8113",
+      "hashesSha256": "c03bf9a6decc6e055087e7e2f091a9764fc63de1a50fc4a8159941701aad28fe"
+    },
+    {
+      "runId": "entryratelimitsimulation-20260713-164548-c1c25d01",
+      "scenario": "EntryRateLimitSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "entryratelimitsimulation-20260713-164548-c1c25d01",
+      "hashesSha256": "82dc1b6e72a524bee3cb1062f54c71db9d0beecaf846bea7e09654ad2751a6ac"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-064122-30044df4",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "routingresiliencesimulation-20260713-064122-30044df4",
+      "hashesSha256": "24dc657fbe36646125d93702e731938174bef00e6b7c88e76b92e4114ad7878f"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-064901-48491213",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "routingresiliencesimulation-20260713-064901-48491213",
+      "hashesSha256": "a44c63cdd643809768c9b84ed720186512b8f0c0e30cb9324096159df98cd4a6"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-080300-92f58be4",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "routingresiliencesimulation-20260713-080300-92f58be4",
+      "hashesSha256": "cdc71f15cc174d5feb7ff8cdb10ac02ff0dacc8c3f5bbb239563ca38c380f380"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-080307-cc657b75",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-080307-cc657b75",
+      "hashesSha256": "b72e5f0bd2c61e3b9ff63f87af9a3d9fdf082de95a8a0b59d1135b9bcd312465"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-080431-b6329779",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-080431-b6329779",
+      "hashesSha256": "6c956ea414430de7ce1452ab3ca557c9a9e771cf94b29000d3444354ab2ada4b"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-080828-09a6a505",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-080828-09a6a505",
+      "hashesSha256": "cdd768e937798c0b9afe7bdf576fd60c467935505f44b7686b9443423b608f19"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-081114-d6af38ae",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-081114-d6af38ae",
+      "hashesSha256": "90f4d8600955a648e61c0673ba3bbac42bd10b030b6521140f09fa3bdfb4a719"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-081609-708e52cf",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-081609-708e52cf",
+      "hashesSha256": "2d4d8b98c9d7875a98beb3225f427b041c7635836d516de2a24e2084d46bc106"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-081851-2c17229a",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-081851-2c17229a",
+      "hashesSha256": "586357fc7c76bd480c1515a40d8e323a618298c9bdf769b743d8975bc732f513"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-082010-5228a676",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-082010-5228a676",
+      "hashesSha256": "fef6d7df59e8df6f450d9802ff2805bdd40344860245d7760363238249d48db0"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-082257-f02aaee4",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-082257-f02aaee4",
+      "hashesSha256": "a55bda8435b17605a0cf0420ad23a86b276690faedd6e3995ad9ff7e6eb75262"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-082522-7fd80ace",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-082522-7fd80ace",
+      "hashesSha256": "e2a379dfcbd5dd16c1ca18a6a8dd7729995941fad103e8af8707b6c416f16343"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-082730-511b0f81",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-082730-511b0f81",
+      "hashesSha256": "f2049e752da547f7e2c05f156f42988c6cf77304d19872a3a6d0961f4cb65481"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-082942-c0def697",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-082942-c0def697",
+      "hashesSha256": "0ecc24ee48012fa768ad74109bd00f950f481145abd577c4ba1160898bc5710f"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-083139-e25bacdd",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "routing-resilience-proved",
+      "artifactDirectory": "routingresiliencesimulation-20260713-083139-e25bacdd",
+      "hashesSha256": "77d493fc978bc81864ced0324a710b0bd613d4ac377364110a1c473f7ad56a3a"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-083528-33d42242",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "runner-failure",
+      "artifactDirectory": "routingresiliencesimulation-20260713-083528-33d42242",
+      "hashesSha256": "af89a879688146727d335db333e4dfcd1d3cb4d6885c610a241ba0982bf1a37a"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-083723-7fdd37dc",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "routing-resilience-proved",
+      "artifactDirectory": "routingresiliencesimulation-20260713-083723-7fdd37dc",
+      "hashesSha256": "973d08e2e7a413503cd09f2d1aaacedfd7b7c2b314b6c50358cda2a8e2f7263a"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-084013-a72d6361",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "routing-resilience-proved",
+      "artifactDirectory": "routingresiliencesimulation-20260713-084013-a72d6361",
+      "hashesSha256": "176e5151ee1b0f648520747d8cea0cc22e166316bb4ab7c380d56e8142adf79b"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-084739-e41b18d7",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": true,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "routing-resilience-proved",
+      "artifactDirectory": "routingresiliencesimulation-20260713-084739-e41b18d7",
+      "hashesSha256": "cc1589eedf4e9b8158f268b8d537b8a775c4788bfae934bb8933424ec60307a6"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-085000-44e1b034",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "initialized",
+      "artifactDirectory": "routingresiliencesimulation-20260713-085000-44e1b034",
+      "hashesSha256": "57fc6c3ed80f0baec61e56dae3b9b968909a1857dab7e686319db82e2375ba09"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-085036-08943c70",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": false,
+      "retainedRaw": false,
+      "invalidClassification": null,
+      "resultReason": "dry-run",
+      "artifactDirectory": "routingresiliencesimulation-20260713-085036-08943c70",
+      "hashesSha256": "bf55e06938e54728de0307c436726818fdbbeefa06ecbc7cedbb931e411cd3b9"
+    },
+    {
+      "runId": "routingresiliencesimulation-20260713-085042-cdd39901",
+      "scenario": "RoutingResilienceSimulation",
+      "reportable": true,
+      "retainedRaw": true,
+      "invalidClassification": null,
+      "resultReason": "routing-resilience-proved",
+      "artifactDirectory": "routingresiliencesimulation-20260713-085042-cdd39901",
+      "hashesSha256": "fffbe03344adc3e15065fec92b68ab54aae43fba9fbdd9fb1a6f4af8d5aa8eaa"
+    }
+  ]
+}

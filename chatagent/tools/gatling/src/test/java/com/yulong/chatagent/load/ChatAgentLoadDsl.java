@@ -17,10 +17,7 @@ final class ChatAgentLoadDsl {
     static final String USER_PREFIX = prop("userPrefix", "CHATAGENT_LOAD_USER_PREFIX", "load-user");
     static final String PASSWORD = prop("password", "CHATAGENT_LOAD_PASSWORD", "LoadTest@123456");
     static final int CONCURRENT_USERS = intProp("concurrentUsers", "CHATAGENT_LOAD_CONCURRENT_USERS", 200);
-    static final int RAMP_SECONDS = intProp("rampSeconds", "CHATAGENT_LOAD_RAMP_SECONDS", 60);
     static final int HOLD_SECONDS = intProp("holdSeconds", "CHATAGENT_LOAD_HOLD_SECONDS", 300);
-    static final int CHAT_PACE_MILLIS = intProp("paceMillis", "CHATAGENT_LOAD_PACE_MILLIS", 400);
-    static final int SSE_CONNECTIONS = intProp("sseConnections", "CHATAGENT_SSE_CONNECTIONS", 500);
 
     private ChatAgentLoadDsl() {
     }
@@ -66,7 +63,7 @@ final class ChatAgentLoadDsl {
     }
 
     /**
-     * Opens an SSE connection for the current session. The e2e simulation uses
+     * Opens an SSE connection for the current session. Capacity and resilience simulations use
      * a fresh session and SSE connection per measured turn so stale buffered
      * terminal events cannot satisfy the next turn's check.
      */

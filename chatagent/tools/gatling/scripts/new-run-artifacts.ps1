@@ -12,6 +12,17 @@ param(
     [AllowNull()][Nullable[int]]$OpenDurationMs,
     [AllowNull()][Nullable[int]]$HalfOpenFlightTimeoutMs,
     [AllowNull()][Nullable[bool]]$AgentMqDispatcherEnabled,
+    [string]$ExperimentPurpose,
+    [string]$MatrixRow,
+    [AllowNull()][Nullable[int]]$Repetition,
+    [AllowNull()][Nullable[int]]$ConcurrentUsers,
+    [AllowNull()][Nullable[int]]$HoldSeconds,
+    [AllowNull()][Nullable[int]]$StubLatencyMs,
+    [AllowNull()][Nullable[int]]$AgentConcurrency,
+    [AllowNull()][Nullable[int]]$HikariMaximumPoolSize,
+    [AllowNull()][Nullable[int]]$OutboxPollIntervalMs,
+    [AllowNull()][Nullable[int]]$OutboxBatchSize,
+    [string]$WorkloadVersion,
     [string]$ArtifactRoot = (Join-Path $PSScriptRoot '..\artifacts')
 )
 
@@ -51,6 +62,17 @@ $manifest = [ordered]@{
         openDurationMs = $OpenDurationMs
         halfOpenFlightTimeoutMs = $HalfOpenFlightTimeoutMs
         agentMqDispatcherEnabled = $AgentMqDispatcherEnabled
+        experimentPurpose = if ($ExperimentPurpose) { $ExperimentPurpose } else { $null }
+        matrixRow = if ($MatrixRow) { $MatrixRow } else { $null }
+        repetition = $Repetition
+        concurrentUsers = $ConcurrentUsers
+        holdSeconds = $HoldSeconds
+        stubLatencyMs = $StubLatencyMs
+        agentConcurrency = $AgentConcurrency
+        hikariMaximumPoolSize = $HikariMaximumPoolSize
+        outboxPollIntervalMs = $OutboxPollIntervalMs
+        outboxBatchSize = $OutboxBatchSize
+        workloadVersion = if ($WorkloadVersion) { $WorkloadVersion } else { $null }
     }
     safety = [ordered]@{
         realProviderCredentialRead = $false
