@@ -35,6 +35,14 @@ if ($manifest.scenario -ne 'RoutingResilienceSimulation') {
         throw 'Effective limiter mode differs from the authoritative scenario matrix.'
     }
 }
+if ($manifest.scenario -eq 'RoutingResilienceSimulation' -and -not $manifest.dryRun) {
+    $actual = $manifest.effectiveConfiguration
+    if ([int]$actual.failureThreshold -ne 4 -or [int]$actual.openDurationMs -ne 5000 -or
+        [int]$actual.halfOpenFlightTimeoutMs -ne 5000 -or
+        [bool]$actual.agentMqDispatcherEnabled) {
+        throw 'Routing resilience campaign configuration differs from the authoritative matrix.'
+    }
+}
 
 $total = [long]$result.successful + [long]$result.terminalFailed + [long]$result.timedOut + [long]$result.interrupted + [long]$result.finalInFlight
 if ($total -ne [long]$result.submitted) { throw 'Turn outcomes do not reconcile to submitted.' }

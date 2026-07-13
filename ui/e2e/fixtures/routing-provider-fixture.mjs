@@ -31,7 +31,7 @@ function requestText(body) {
 }
 
 function codeFromText(text) {
-  return text.match(/\b(?:ASTER|BIRCH|CEDAR|DUNE|EMBER)-[A-Z0-9-]+\b/)?.[0] ?? null;
+  return text.match(/\b(?:ASTER|BIRCH|CEDAR|DUNE|EMBER|FIR)-[A-Z0-9-]+\b/)?.[0] ?? null;
 }
 
 function scenarioFromCode(code) {
@@ -52,6 +52,9 @@ function scenarioFromCode(code) {
   }
   if (code.startsWith("EMBER-")) {
     return "late";
+  }
+  if (code.startsWith("FIR-")) {
+    return "slow-success";
   }
   return "success";
 }
@@ -248,6 +251,15 @@ function handleAnthropic(body, res, path) {
         writeAnthropicTextEvents(res, `PRIMARY-LATE-LEAK-${code}`, model);
       }
     }, lateDelayMs);
+    return;
+  }
+  if (scenario === "slow-success") {
+    writeSseHeaders(res);
+    setTimeout(() => {
+      if (!res.writableEnded) {
+        writeAnthropicTextEvents(res, code, model);
+      }
+    }, 800);
     return;
   }
 

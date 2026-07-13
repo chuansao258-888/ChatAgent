@@ -8,6 +8,10 @@ param(
     [string]$Protocol = 'dry-run-v1',
     [switch]$DryRun,
     [string]$FixtureBaseUrl,
+    [AllowNull()][Nullable[int]]$FailureThreshold,
+    [AllowNull()][Nullable[int]]$OpenDurationMs,
+    [AllowNull()][Nullable[int]]$HalfOpenFlightTimeoutMs,
+    [AllowNull()][Nullable[bool]]$AgentMqDispatcherEnabled,
     [string]$ArtifactRoot = (Join-Path $PSScriptRoot '..\artifacts')
 )
 
@@ -43,6 +47,10 @@ $manifest = [ordered]@{
         agentRunMax = $AgentRunMax
         overrideSource = $OverrideSource
         fixtureBaseUrl = if ($FixtureBaseUrl) { $FixtureBaseUrl } else { $null }
+        failureThreshold = $FailureThreshold
+        openDurationMs = $OpenDurationMs
+        halfOpenFlightTimeoutMs = $HalfOpenFlightTimeoutMs
+        agentMqDispatcherEnabled = $AgentMqDispatcherEnabled
     }
     safety = [ordered]@{
         realProviderCredentialRead = $false

@@ -9,11 +9,19 @@ function Get-ChatAgentPaths {
 }
 
 function Import-ChatAgentLocalEnvironment([string]$Path) {
+    $allowed = @(
+        'CHATAGENT_DB_URL', 'CHATAGENT_DB_USERNAME', 'CHATAGENT_DB_PASSWORD',
+        'CHATAGENT_JWT_SECRET'
+    )
     Get-Content -LiteralPath $Path |
         Where-Object { $_ -match '^\s*[^#][^=]+=' } |
         ForEach-Object {
-            $name, $value = $_ -split '=', 2
-            [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), 'Process')
+            $separator = $_.IndexOf('=')
+            $normalizedName = $_.Substring(0, $separator).Trim()
+            if ($allowed -contains $normalizedName) {
+                $value = $_.Substring($separator + 1)
+                [Environment]::SetEnvironmentVariable($normalizedName, $value.Trim(), 'Process')
+            }
         }
 }
 
@@ -107,10 +115,10 @@ function Remove-ChatAgentTestIdentity {
     }
     $sessionLiterals = @($Identity.SessionIds | ForEach-Object { "'$_'" }) -join ','
     if ($sessionLiterals) {
-        Invoke-ChatAgentSqlCommand "DELETE FROM t_mq_outbox WHERE payload ->> 'sessionId' IN ($sessionLiterals); DELETE FROM chat_message WHERE session_id IN ($sessionLiterals); DELETE FROM chat_session WHERE id IN ($sessionLiterals);"
+        Invoke-ChatAgentSqlCommand "DELETE FROM t_tool_execution_journal WHERE session_id IN ($sessionLiterals); DELETE FROM t_chat_turn_metric WHERE session_id IN ($sessionLiterals); DELETE FROM chat_session_summary_segment WHERE session_id IN ($sessionLiterals); DELETE FROM chat_session_summary WHERE session_id IN ($sessionLiterals); DELETE FROM chat_session_file WHERE session_id IN ($sessionLiterals); DELETE FROM t_mq_outbox WHERE payload ->> 'sessionId' IN ($sessionLiterals); DELETE FROM chat_message WHERE session_id IN ($sessionLiterals); DELETE FROM chat_session WHERE id IN ($sessionLiterals);"
     }
     $username = $Identity.Username
-    Invoke-ChatAgentSqlCommand "DELETE FROM t_user WHERE username = '$username';"
+    Invoke-ChatAgentSqlCommand "DELETE FROM memory_promotion_job WHERE user_id IN (SELECT id FROM t_user WHERE username = '$username'); DELETE FROM memory_item WHERE user_id IN (SELECT id FROM t_user WHERE username = '$username'); DELETE FROM agent WHERE user_id IN (SELECT id FROM t_user WHERE username = '$username'); DELETE FROM t_user WHERE username = '$username';"
 }
 
 function Get-ChatAgentQueueSnapshot {

@@ -6,6 +6,9 @@ spring:
     deepseek:
       api-key: REDACTED_API_KEY
       base-url: ${CHATAGENT_RESILIENCE_FIXTURE_BASE_URL:http://127.0.0.1:8890}
+    zhipuai:
+      api-key: REDACTED_API_KEY
+      base-url: ${CHATAGENT_RESILIENCE_FIXTURE_BASE_URL:http://127.0.0.1:8890}
 
 chat:
   routing:

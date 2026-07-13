@@ -8,6 +8,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
 import com.yulong.chatagent.chat.routing.LLMService;
+import com.yulong.chatagent.memory.application.UserMemoryIndexService;
 
 import java.io.IOException;
 import java.util.List;
@@ -36,6 +37,18 @@ class ResilienceTestProfileTest {
     }
 
     @Test
+    void shouldProvideNoOpMemoryIndexWhenL3IsDisabled() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            ((ConfigurableEnvironment) context.getEnvironment()).addActiveProfile("resilience-test");
+            context.register(ResilienceTestMemoryConfiguration.class);
+            context.refresh();
+
+            assertThat(context.getBean(UserMemoryIndexService.class))
+                    .isInstanceOf(CapacityNoOpUserMemoryIndexService.class);
+        }
+    }
+
+    @Test
     void shouldUseOnlyLoopbackFixtureAndPlaceholderCredentials() throws IOException {
         List<PropertySource<?>> sources = new YamlPropertySourceLoader().load(
                 "resilience-test",
@@ -45,9 +58,13 @@ class ResilienceTestProfileTest {
                 .contains("127.0.0.1:8890");
         assertThat(value(sources, "spring.ai.deepseek.base-url").toString())
                 .contains("127.0.0.1:8890");
+        assertThat(value(sources, "spring.ai.zhipuai.base-url").toString())
+                .contains("127.0.0.1:8890");
         assertThat(value(sources, "spring.ai.anthropic.api-key"))
                 .isEqualTo("REDACTED_API_KEY");
         assertThat(value(sources, "spring.ai.deepseek.api-key"))
+                .isEqualTo("REDACTED_API_KEY");
+        assertThat(value(sources, "spring.ai.zhipuai.api-key"))
                 .isEqualTo("REDACTED_API_KEY");
     }
 
