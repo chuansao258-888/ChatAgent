@@ -1,6 +1,8 @@
 spring: # Groups spring configuration.
   application: # Groups application configuration.
     name: chatagent # Sets the Spring Boot application name.
+  config: # Groups external configuration imports.
+    import: optional:file:${chatagent.secrets.file:__chatagent_secrets_not_configured__}[.properties] # Loads local secrets only from an explicitly selected file.
   servlet: # Groups servlet configuration.
     multipart: # Groups multipart configuration.
       max-file-size: 64MB # Sets the upper bound for max file size under servlet multipart.
@@ -15,7 +17,7 @@ spring: # Groups spring configuration.
     host: localhost # Sets the network host for spring rabbitmq.
     port: 5672 # Sets the network port for spring rabbitmq.
     username: guest # Sets the non-secret account name for spring rabbitmq.
-    password: ${CHATAGENT_RABBITMQ_PASSWORD:guest} # Loads the secret password for spring rabbitmq from the process environment.
+    password: ${CHATAGENT_RABBITMQ_PASSWORD:} # Loads the secret password for spring rabbitmq from the process environment.
     virtual-host: / # Selects the RabbitMQ virtual host.
     publisher-confirm-type: correlated # Sets the publisher confirm type identifier for spring rabbitmq.
     publisher-returns: true # Controls publisher-return callbacks for unroutable messages.

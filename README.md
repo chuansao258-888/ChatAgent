@@ -303,10 +303,27 @@ that are actually configured, with no blank assignments. Non-sensitive
 endpoints, usernames, feature switches, limits, and tuning values are
 documented beside their defaults in application YAML.
 
+The same ignored file is the only local source for backend and Docker
+credentials. Spring and Compose YAML files reference its variable names but do
+not store password values; Docker commands pass it through `--env-file`.
+
 Do not commit real API keys, JWT secrets, database passwords, or local provider
 tokens. Omit an unconfigured secret from the local `docs/env_variables.txt`
 file so the application YAML fallback applies; the file is intentionally
 ignored.
+
+Before starting the backend from PowerShell, point Spring at the canonical file.
+Only this non-secret path enters the process environment; Spring reads the
+values directly from the ignored file:
+
+```powershell
+Set-Location .\chatagent
+$env:CHATAGENT_SECRETS_FILE='../docs/env_variables.txt'
+```
+
+The local IntelliJ `ChatAgentApplication` run configuration already sets this
+path and stores no secret values. Deployments may omit it and inject ordinary
+environment variables through their platform.
 
 ### Private Environment Variables
 
@@ -322,6 +339,8 @@ ignored.
 | `CHATAGENT_RAG_RERANKER_API_KEY` | If the reranker requires auth | Reranker credential. |
 | `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | If MinerU requires auth | MinerU bearer token. |
 | `CHATAGENT_MILVUS_PASSWORD` | If Milvus auth is enabled | Milvus password. |
+| `CHATAGENT_MINIO_ACCESS_KEY` | Required by the local vector stack | MinIO access credential. |
+| `CHATAGENT_MINIO_SECRET_KEY` | Required by the local vector stack | MinIO secret credential. |
 | `CHATAGENT_WEB_SEARCH_BRAVE_API_KEY` | If native web search is enabled | Brave Search credential. |
 | `CHATAGENT_MCP_CIPHER_KEY` | Required for encrypted MCP credentials | Secret key for MCP credential encryption. |
 | `CHATAGENT_JWT_SECRET` | Yes outside throwaway local runs | Long random JWT signing secret. |
@@ -339,20 +358,20 @@ Desktop groups all of its containers together regardless of the repository
 directory. Start PostgreSQL, Redis, and RabbitMQ from the repository root:
 
 ```bash
-docker compose -f docker/compose.yaml up -d
+docker compose --env-file docs/env_variables.txt -f docker/compose.yaml up -d
 ```
 
 Start selected dependencies when the full core stack is not needed:
 
 ```bash
-docker compose -f docker/compose.yaml up -d postgres redis
+docker compose --env-file docs/env_variables.txt -f docker/compose.yaml up -d postgres redis
 ```
 
 Milvus, etcd, and MinIO are optional services in the same `chatagent` project.
 Enable the `vector` Profile to start them alongside the core stack:
 
 ```bash
-docker compose -f docker/compose.yaml --profile vector up -d
+docker compose --env-file docs/env_variables.txt -f docker/compose.yaml --profile vector up -d
 ```
 
 Named volumes preserve local data when the stack is stopped. See

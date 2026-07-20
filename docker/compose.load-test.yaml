@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: chatagent
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: app123
+      POSTGRES_PASSWORD: "${CHATAGENT_DB_PASSWORD:?CHATAGENT_DB_PASSWORD is required}"
     ports:
       - "5432:5432"
     healthcheck:
@@ -22,11 +22,13 @@ services:
   redis:
     image: redis:7-alpine
     container_name: chatagent-loadtest-redis
-    command: ["redis-server", "--requirepass", "123456"]
+    environment:
+      REDIS_PASSWORD: "${CHATAGENT_REDIS_PASSWORD:?CHATAGENT_REDIS_PASSWORD is required}"
+    command: ["sh", "-c", "exec redis-server --requirepass \"$${REDIS_PASSWORD}\""]
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "123456", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping"]
       interval: 3s
       timeout: 3s
       retries: 30
@@ -36,7 +38,7 @@ services:
     container_name: chatagent-loadtest-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_PASS: "${CHATAGENT_RABBITMQ_PASSWORD:?CHATAGENT_RABBITMQ_PASSWORD is required}"
     ports:
       - "5672:5672"
       - "15672:15672"

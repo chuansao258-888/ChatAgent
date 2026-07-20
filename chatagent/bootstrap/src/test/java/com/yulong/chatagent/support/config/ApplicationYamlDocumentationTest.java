@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -51,12 +52,22 @@ class ApplicationYamlDocumentationTest {
             "CHATAGENT_RAG_RERANKER_API_KEY",
             "CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN",
             "CHATAGENT_MILVUS_PASSWORD",
+            "CHATAGENT_MINIO_ACCESS_KEY",
+            "CHATAGENT_MINIO_SECRET_KEY",
             "CHATAGENT_WEB_SEARCH_BRAVE_API_KEY",
             "CHATAGENT_MCP_CIPHER_KEY",
             "CHATAGENT_JWT_SECRET");
 
     private static final Pattern ENV_PLACEHOLDER = Pattern.compile("\\$\\{([A-Z0-9_]+)(?::[^}]*)?}");
+    private static final Pattern SECRET_PLACEHOLDER_WITH_FALLBACK =
+            Pattern.compile("\\$\\{([A-Z0-9_]+):([^}]*)}");
     private static final Pattern ENV_ASSIGNMENT = Pattern.compile("^([A-Z0-9_]+)=(.*)$");
+    private static final Set<String> REQUIRED_LOCAL_INFRA_SECRET_NAMES = Set.of(
+            "CHATAGENT_DB_PASSWORD",
+            "CHATAGENT_REDIS_PASSWORD",
+            "CHATAGENT_RABBITMQ_PASSWORD",
+            "CHATAGENT_MINIO_ACCESS_KEY",
+            "CHATAGENT_MINIO_SECRET_KEY");
 
     @Test
     void shouldLoadAndDocumentEveryApplicationYamlDataLine() throws IOException {
@@ -107,6 +118,24 @@ class ApplicationYamlDocumentationTest {
     }
 
     @Test
+    void shouldKeepNormalRuntimeSecretFallbacksEmpty() throws IOException {
+        String content = new ClassPathResource("application.yaml")
+                .getContentAsString(StandardCharsets.UTF_8);
+        Matcher matcher = SECRET_PLACEHOLDER_WITH_FALLBACK.matcher(content);
+        Set<String> actualNames = new LinkedHashSet<>();
+
+        while (matcher.find()) {
+            String name = matcher.group(1);
+            actualNames.add(name);
+            assertThat(matcher.group(2).isEmpty())
+                    .as("empty normal-runtime secret fallback for %s", name)
+                    .isTrue();
+        }
+
+        assertThat(actualNames).containsExactlyInAnyOrderElementsOf(RUNTIME_SECRET_NAMES);
+    }
+
+    @Test
     void shouldKeepEnvExampleLimitedToEmptySecretAssignments() throws IOException {
         Path moduleRoot = Path.of(System.getProperty("basedir")).toAbsolutePath().normalize();
         Path envExample = moduleRoot.getParent().resolve(".env.example");
@@ -120,7 +149,9 @@ class ApplicationYamlDocumentationTest {
             Matcher matcher = ENV_ASSIGNMENT.matcher(trimmed);
             assertThat(matcher.matches()).as("environment assignment: %s", line).isTrue();
             actualNames.add(matcher.group(1));
-            assertThat(matcher.group(2)).as("empty example value for %s", matcher.group(1)).isEmpty();
+            assertThat(matcher.group(2).isEmpty())
+                    .as("empty example value for %s", matcher.group(1))
+                    .isTrue();
         }
 
         assertThat(actualNames).containsExactlyInAnyOrderElementsOf(ENV_EXAMPLE_SECRET_NAMES);
@@ -153,6 +184,71 @@ class ApplicationYamlDocumentationTest {
         }
 
         assertThat(actualNames).isSubsetOf(ENV_EXAMPLE_SECRET_NAMES);
+        assertThat(actualNames).containsAll(REQUIRED_LOCAL_INFRA_SECRET_NAMES);
+    }
+
+    @Test
+    void shouldReferenceOneSecretSourceFromBothComposeModes() throws IOException {
+        Path moduleRoot = Path.of(System.getProperty("basedir")).toAbsolutePath().normalize();
+        Path repositoryRoot = moduleRoot.getParent().getParent();
+        Path normalCompose = repositoryRoot.resolve("docker/compose.yaml");
+        Path loadTestCompose = repositoryRoot.resolve("docker/compose.load-test.yaml");
+        YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
+        List<PropertySource<?>> normalSources = loader.load(
+                "normal-compose", new FileSystemResource(normalCompose));
+        List<PropertySource<?>> loadTestSources = loader.load(
+                "load-test-compose", new FileSystemResource(loadTestCompose));
+
+        assertSecretReference(
+                normalSources,
+                "services.postgres.environment.POSTGRES_PASSWORD",
+                "CHATAGENT_DB_PASSWORD");
+        assertSecretReference(
+                normalSources,
+                "services.redis.environment.REDIS_PASSWORD",
+                "CHATAGENT_REDIS_PASSWORD");
+        assertSecretReference(
+                normalSources,
+                "services.rabbitmq.environment.RABBITMQ_DEFAULT_PASS",
+                "CHATAGENT_RABBITMQ_PASSWORD");
+        assertSecretReference(
+                normalSources,
+                "services.minio.environment.MINIO_ACCESS_KEY",
+                "CHATAGENT_MINIO_ACCESS_KEY");
+        assertSecretReference(
+                normalSources,
+                "services.minio.environment.MINIO_SECRET_KEY",
+                "CHATAGENT_MINIO_SECRET_KEY");
+
+        assertSecretReference(
+                loadTestSources,
+                "services.postgres.environment.POSTGRES_PASSWORD",
+                "CHATAGENT_DB_PASSWORD");
+        assertSecretReference(
+                loadTestSources,
+                "services.redis.environment.REDIS_PASSWORD",
+                "CHATAGENT_REDIS_PASSWORD");
+        assertSecretReference(
+                loadTestSources,
+                "services.rabbitmq.environment.RABBITMQ_DEFAULT_PASS",
+                "CHATAGENT_RABBITMQ_PASSWORD");
+
+        assertConfigurationValue(
+                normalSources,
+                "services.redis.command[2]",
+                "exec redis-server --requirepass \"$${REDIS_PASSWORD}\"");
+        assertConfigurationValue(
+                normalSources,
+                "services.redis.healthcheck.test[1]",
+                "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping");
+        assertConfigurationValue(
+                loadTestSources,
+                "services.redis.command[2]",
+                "exec redis-server --requirepass \"$${REDIS_PASSWORD}\"");
+        assertConfigurationValue(
+                loadTestSources,
+                "services.redis.healthcheck.test[1]",
+                "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping");
     }
 
     @Test
@@ -170,6 +266,8 @@ class ApplicationYamlDocumentationTest {
         var sources = new YamlPropertySourceLoader().load(
                 "application", new ClassPathResource("application.yaml"));
         assertThat(property(sources, "rag.embedding.base-url")).isEqualTo("http://127.0.0.1:11434");
+        assertThat(property(sources, "spring.config.import"))
+                .isEqualTo("optional:file:${chatagent.secrets.file:__chatagent_secrets_not_configured__}[.properties]");
         assertThat(property(sources, "rag.embedding.model")).isEqualTo("bge-m3");
         assertThat(property(sources, "rag.retrieval.reranker.provider")).isEqualTo("bge-http");
         assertThat(property(sources, "rag.retrieval.reranker.model-id")).isEqualTo("BAAI/bge-reranker-v2-m3");
@@ -177,7 +275,7 @@ class ApplicationYamlDocumentationTest {
         assertThat(property(sources, "rag.retrieval.reranker.path")).isEqualTo("/rerank");
         assertThat(property(sources, "rag.retrieval.reranker.ready-path")).isEqualTo("/ready");
         assertThat(property(sources, "spring.rabbitmq.password"))
-                .isEqualTo("${CHATAGENT_RABBITMQ_PASSWORD:guest}");
+                .isEqualTo("${CHATAGENT_RABBITMQ_PASSWORD:}");
         assertThat(property(sources, "rag.retrieval.reranker.api-key"))
                 .isEqualTo("${CHATAGENT_RAG_RERANKER_API_KEY:}");
         assertThat(property(sources, "milvus.password")).isEqualTo("${CHATAGENT_MILVUS_PASSWORD:}");
@@ -197,5 +295,27 @@ class ApplicationYamlDocumentationTest {
                 .filter(java.util.Objects::nonNull)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing application property: " + name));
+    }
+
+    private static String requiredSecret(String name) {
+        return "${" + name + ":?" + name + " is required}";
+    }
+
+    private static void assertSecretReference(
+            List<PropertySource<?>> sources,
+            String propertyName,
+            String environmentName) {
+        assertThat(requiredSecret(environmentName).equals(property(sources, propertyName)))
+                .as("%s references %s without exposing a value", propertyName, environmentName)
+                .isTrue();
+    }
+
+    private static void assertConfigurationValue(
+            List<PropertySource<?>> sources,
+            String propertyName,
+            String expectedValue) {
+        assertThat(expectedValue.equals(property(sources, propertyName)))
+                .as("expected non-secret wiring for %s", propertyName)
+                .isTrue();
     }
 }
