@@ -294,13 +294,16 @@ reranker thresholds, and MCP runtime limits are committed as ordinary
 configuration.
 
 Backend environment variables are reserved for secrets and credentials.
-`chatagent/.env.example` therefore documents only the private values to supply
-locally. Non-sensitive endpoints, usernames, feature switches, limits, and
-tuning values are documented beside their defaults in application YAML.
+`chatagent/.env.example` is the empty catalog of private values that may be
+supplied locally. The ignored `docs/env_variables.txt` contains only secrets
+that are actually configured, with no blank assignments. Non-sensitive
+endpoints, usernames, feature switches, limits, and tuning values are
+documented beside their defaults in application YAML.
 
 Do not commit real API keys, JWT secrets, database passwords, or local provider
-tokens. The local `docs/env_variables.txt` file may contain private values and
-is intentionally ignored.
+tokens. Omit an unconfigured secret from the local `docs/env_variables.txt`
+file so the application YAML fallback applies; the file is intentionally
+ignored.
 
 ### Private Environment Variables
 
@@ -308,7 +311,7 @@ is intentionally ignored.
 | --- | --- | --- |
 | `CHATAGENT_DB_PASSWORD` | Yes in most setups | PostgreSQL password. |
 | `CHATAGENT_REDIS_PASSWORD` | Depends on Redis | Redis password. |
-| `CHATAGENT_RABBITMQ_PASSWORD` | Yes for MQ flows | RabbitMQ password. |
+| `CHATAGENT_RABBITMQ_PASSWORD` | If credentials differ from the local YAML default | RabbitMQ password. |
 | `CHATAGENT_DEEPSEEK_API_KEY` | If using DeepSeek | Chat provider credential. |
 | `CHATAGENT_ZAI_CODING_API_KEY` | If using Z.AI Coding | Z.AI Coding Plan provider credential. |
 | `CHATAGENT_ZHIPUAI_API_KEY` | If using ZhipuAI | Chat/VLM provider credential. |

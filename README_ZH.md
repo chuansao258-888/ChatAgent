@@ -246,9 +246,9 @@ chatagent/bootstrap/src/main/resources/application.yaml
 
 正常运行配置只写在唯一的 `application.yaml` 中；具名 Profile YAML 仅用于隔离容量、韧性和评测场景。模型名、本地服务 URL、超时、MQ 名称、功能开关、RAG top-k/candidate-k/RRF、reranker 阈值、MCP 运行限制等非敏感默认值都直接放在 `application.yaml` 里。
 
-后端环境变量只用于密钥和凭据。`chatagent/.env.example` 因此只保留本地运行需要填写的私密项；非敏感的端点、用户名、功能开关、限制和调优参数都在 application YAML 的默认值旁直接说明。
+后端环境变量只用于密钥和凭据。`chatagent/.env.example` 是可能需要配置的私密项空白目录；被忽略的 `docs/env_variables.txt` 只保存本机已经配置且非空的秘密。非敏感的端点、用户名、功能开关、限制和调优参数都在 application YAML 的默认值旁直接说明。
 
-不要把真实 API key、JWT secret、数据库密码或本地 provider token 写入源码、文档、测试、artifact 或日志。`docs/env_variables.txt` 可能包含本机敏感值，已被 Git 忽略。
+不要把真实 API key、JWT secret、数据库密码或本地 provider token 写入源码、文档、测试、artifact 或日志。未配置的秘密应从 `docs/env_variables.txt` 删除，让 application YAML fallback 生效；该文件已被 Git 忽略。
 
 ### 私有环境变量
 
@@ -256,7 +256,7 @@ chatagent/bootstrap/src/main/resources/application.yaml
 | --- | --- | --- |
 | `CHATAGENT_DB_PASSWORD` | 大多数环境需要 | PostgreSQL 密码。 |
 | `CHATAGENT_REDIS_PASSWORD` | 取决于 Redis 配置 | Redis 密码。 |
-| `CHATAGENT_RABBITMQ_PASSWORD` | MQ 流程需要 | RabbitMQ 密码。 |
+| `CHATAGENT_RABBITMQ_PASSWORD` | 凭据不同于本地 YAML 默认值时需要 | RabbitMQ 密码。 |
 | `CHATAGENT_DEEPSEEK_API_KEY` | 使用 DeepSeek 时需要 | Chat provider 凭据。 |
 | `CHATAGENT_ZAI_CODING_API_KEY` | 使用 Z.AI Coding 时需要 | Z.AI Coding Plan provider 凭据。 |
 | `CHATAGENT_ZHIPUAI_API_KEY` | 使用 ZhipuAI 时需要 | Chat/VLM provider 凭据。 |

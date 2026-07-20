@@ -16,6 +16,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ApplicationYamlDocumentationTest {
 
@@ -126,6 +127,35 @@ class ApplicationYamlDocumentationTest {
     }
 
     @Test
+    void shouldKeepPresentLocalSecretFileLimitedToConfiguredValues() throws IOException {
+        Path moduleRoot = Path.of(System.getProperty("basedir")).toAbsolutePath().normalize();
+        Path localSecrets = moduleRoot.getParent().getParent().resolve("docs/env_variables.txt");
+        assumeTrue(Files.isRegularFile(localSecrets), "ignored local secret file is not present");
+
+        Set<String> actualNames = new LinkedHashSet<>();
+        List<String> lines = Files.readAllLines(localSecrets, StandardCharsets.UTF_8);
+        for (int index = 0; index < lines.size(); index++) {
+            String trimmed = lines.get(index).trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            Matcher matcher = ENV_ASSIGNMENT.matcher(trimmed);
+            assertThat(matcher.matches())
+                    .as("local secret assignment at line %s", index + 1)
+                    .isTrue();
+            if (!matcher.matches()) {
+                continue;
+            }
+            String name = matcher.group(1);
+            actualNames.add(name);
+            assertThat(name).isIn(ENV_EXAMPLE_SECRET_NAMES);
+            assertThat(matcher.group(2)).as("configured local value for %s", name).isNotBlank();
+        }
+
+        assertThat(actualNames).isSubsetOf(ENV_EXAMPLE_SECRET_NAMES);
+    }
+
+    @Test
     void shouldUseOneNormalRuntimeYamlWithLocalServiceDefaults() throws IOException {
         Path moduleRoot = Path.of(System.getProperty("basedir")).toAbsolutePath().normalize();
         Path mainResources = moduleRoot.resolve("src/main/resources");
@@ -146,12 +176,19 @@ class ApplicationYamlDocumentationTest {
         assertThat(property(sources, "rag.retrieval.reranker.base-url")).isEqualTo("http://127.0.0.1:7997");
         assertThat(property(sources, "rag.retrieval.reranker.path")).isEqualTo("/rerank");
         assertThat(property(sources, "rag.retrieval.reranker.ready-path")).isEqualTo("/ready");
+        assertThat(property(sources, "spring.rabbitmq.password"))
+                .isEqualTo("${CHATAGENT_RABBITMQ_PASSWORD:guest}");
+        assertThat(property(sources, "rag.retrieval.reranker.api-key"))
+                .isEqualTo("${CHATAGENT_RAG_RERANKER_API_KEY:}");
+        assertThat(property(sources, "milvus.password")).isEqualTo("${CHATAGENT_MILVUS_PASSWORD:}");
         assertThat(property(sources, "chatagent.rag.vdp.routing.knowledge-batch-preferred")).isEqualTo(true);
         assertThat(property(sources, "chatagent.rag.vdp.routing.preferred-batch-engine")).isEqualTo("mineru");
         assertThat(property(sources, "chatagent.rag.vdp.mineru.enabled")).isEqualTo(true);
         assertThat(property(sources, "chatagent.rag.vdp.mineru.base-url")).isEqualTo("http://127.0.0.1:8000");
         assertThat(property(sources, "chatagent.rag.vdp.mineru.bearer-token"))
                 .isEqualTo("${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:}");
+        assertThat(property(sources, "chatagent.mcp.crypto.key"))
+                .isEqualTo("${CHATAGENT_MCP_CIPHER_KEY:}");
     }
 
     private static Object property(List<PropertySource<?>> sources, String name) {
