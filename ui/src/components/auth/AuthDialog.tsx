@@ -30,13 +30,17 @@ export default function AuthDialog() {
   return createPortal(
     <div
       className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-[2px]"
-      onClick={closeAuthDialog}
+      onPointerDown={(event) => {
+        if (event.button === 0 && event.target === event.currentTarget) {
+          closeAuthDialog();
+        }
+      }}
     >
       <div
         className="w-full max-w-[540px]"
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
+        role="dialog"
+        aria-label="Authentication"
+        aria-modal="true"
       >
         <AuthCard
           initialMode={authDialogMode}
