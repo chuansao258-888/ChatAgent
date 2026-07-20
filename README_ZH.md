@@ -154,7 +154,10 @@ ChatAgent/
 |  |- bge-reranker-server/            # 本地 HTTP reranker 服务
 |  `- mineru/                         # 本地 MinerU 服务脚本
 |- MCP/weather-server/                # 示例 MCP HTTP/SSE 服务
-|- docker-compose.yml                # 本地中间件（PostgreSQL、Redis、RabbitMQ）
+|- docker/                            # 本地基础设施 Compose 项目
+|  |- compose.yaml                    # 普通环境，统一归入 `chatagent`
+|  |- compose.load-test.yaml          # 隔离的压测环境
+|  `- README.md                       # Docker 命令与数据安全说明
 |- README.md
 |- README_ZH.md
 `- LICENSE
@@ -274,36 +277,28 @@ chatagent/bootstrap/src/main/resources/application.yaml
 
 ### 启动本地基础设施
 
-仓库根目录提供了 `docker-compose.yml`，可一键启动 PostgreSQL、Redis 和 RabbitMQ：
+普通 Compose 栈显式使用项目名 `chatagent`，因此无论仓库目录如何变化，
+Docker Desktop 都会把所属容器归入同一个分组。在仓库根目录启动 PostgreSQL、
+Redis 和 RabbitMQ：
 
 ```bash
-docker compose up -d
+docker compose -f docker/compose.yaml up -d
 ```
 
-也可以单独启动各个依赖：
+不需要完整核心栈时，可以只启动指定依赖：
 
 ```bash
-docker run -d --name chatagent-postgres -p 5432:5432 \
-  -e POSTGRES_DB=chatagent \
-  -e POSTGRES_USER=app \
-  -e POSTGRES_PASSWORD=app \
-  postgres:16
-
-docker run -d --name chatagent-redis -p 6379:6379 redis:7
-
-docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 \
-  -e RABBITMQ_DEFAULT_USER=guest \
-  -e RABBITMQ_DEFAULT_PASS=guest \
-  rabbitmq:3.13-management
+docker compose -f docker/compose.yaml up -d postgres redis
 ```
 
-Milvus 和 Ollama 需要按本机环境单独安装。本地 Milvus 可使用仓库自带的
-`docker-compose-milvus.yml`（Milvus standalone + etcd + minio，使用命名卷持久化）：
+Milvus、etcd 和 MinIO 是同一个 `chatagent` 项目里的可选服务。启用 `vector`
+Profile，即可让它们与核心依赖一起启动并显示在同一个 Docker Desktop 分组：
 
 ```bash
-docker compose -f docker-compose-milvus.yml up -d
+docker compose -f docker/compose.yaml --profile vector up -d
 ```
 
+停止容器不会删除命名卷中的数据；完整重置前请先查看 `docker/README.md`。
 在后端通过 `CHATAGENT_MILVUS_ENABLED=true` 启用。Ollama embedding 示例：
 
 ```bash

@@ -199,7 +199,10 @@ ChatAgent/
 |  |- bge-reranker-server/            # Local HTTP reranker service
 |  `- mineru/                         # Local MinerU service scripts
 |- MCP/weather-server/                # Example MCP HTTP/SSE server
-|- docker-compose.yml                # Local middleware (PostgreSQL, Redis, RabbitMQ)
+|- docker/                            # Compose projects for local infrastructure
+|  |- compose.yaml                    # Normal stack, grouped as `chatagent`
+|  |- compose.load-test.yaml          # Isolated load-test stack
+|  `- README.md                       # Docker commands and data-safety notes
 |- README.md
 |- README_ZH.md
 `- LICENSE
@@ -331,39 +334,30 @@ Python evaluation CLI where noted by `tools/eval`.
 
 ### Start Local Infrastructure
 
-The repository includes a `docker-compose.yml` that starts PostgreSQL, Redis,
-and RabbitMQ together:
+The normal Compose stack has the explicit project name `chatagent`, so Docker
+Desktop groups all of its containers together regardless of the repository
+directory. Start PostgreSQL, Redis, and RabbitMQ from the repository root:
 
 ```bash
-docker compose up -d
+docker compose -f docker/compose.yaml up -d
 ```
 
-Or start each dependency individually:
+Start selected dependencies when the full core stack is not needed:
 
 ```bash
-docker run -d --name chatagent-postgres -p 5432:5432 \
-  -e POSTGRES_DB=chatagent \
-  -e POSTGRES_USER=app \
-  -e POSTGRES_PASSWORD=app \
-  postgres:16
-
-docker run -d --name chatagent-redis -p 6379:6379 redis:7
-
-docker run -d --name chatagent-rabbitmq -p 5672:5672 -p 15672:15672 \
-  -e RABBITMQ_DEFAULT_USER=guest \
-  -e RABBITMQ_DEFAULT_PASS=guest \
-  rabbitmq:3.13-management
+docker compose -f docker/compose.yaml up -d postgres redis
 ```
 
-Milvus and Ollama are installed separately. For local Milvus, the repository also
-includes a `docker-compose-milvus.yml` (Milvus standalone + etcd + minio, persisted
-via named volumes):
+Milvus, etcd, and MinIO are optional services in the same `chatagent` project.
+Enable the `vector` Profile to start them alongside the core stack:
 
 ```bash
-docker compose -f docker-compose-milvus.yml up -d
+docker compose -f docker/compose.yaml --profile vector up -d
 ```
 
-Enable it in the backend with `CHATAGENT_MILVUS_ENABLED=true`. For an Ollama embedding setup:
+Named volumes preserve local data when the stack is stopped. See
+`docker/README.md` before performing a full data reset. Enable Milvus in the
+backend with `CHATAGENT_MILVUS_ENABLED=true`. For an Ollama embedding setup:
 
 ```bash
 ollama pull bge-m3

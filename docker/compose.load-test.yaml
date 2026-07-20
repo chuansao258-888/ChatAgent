@@ -1,3 +1,8 @@
+# Ephemeral infrastructure for load-test runs.
+# It is intentionally a separate Compose project because it uses the same host
+# ports as the normal local stack and must never be started alongside it.
+name: chatagent-loadtest
+
 services:
   postgres:
     image: postgres:16-alpine

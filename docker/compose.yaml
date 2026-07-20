@@ -1,0 +1,102 @@
+# Normal local infrastructure for ChatAgent.
+# The explicit project name keeps every service in one Docker Desktop group,
+# even when this file is invoked from a different working directory.
+name: chatagent
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: chatagent-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: chatagent
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - chatagent-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d chatagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: chatagent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - chatagent-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: chatagent-rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - chatagent-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  etcd:
+    profiles: ["vector"]
+    image: quay.io/coreos/etcd:v3.5.25
+    container_name: chatagent-milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - chatagent-milvus-etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+
+  minio:
+    profiles: ["vector"]
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: chatagent-milvus-minio
+    environment:
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    volumes:
+      - chatagent-milvus-minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+
+  milvus:
+    profiles: ["vector"]
+    image: milvusdb/milvus:v2.6.11
+    container_name: chatagent-milvus
+    command: milvus run standalone
+    environment:
+      - MQ_TYPE=woodpecker
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+    volumes:
+      - chatagent-milvus-data:/var/lib/milvus
+    ports:
+      - "19530:19530"   # gRPC
+      - "9091:9091"     # Metrics
+    depends_on:
+      - etcd
+      - minio
+
+volumes:
+  chatagent-postgres-data:
+  chatagent-redis-data:
+  chatagent-rabbitmq-data:
+  chatagent-milvus-etcd-data:
+  chatagent-milvus-minio-data:
+  chatagent-milvus-data:
