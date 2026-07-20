@@ -244,7 +244,7 @@ python -m pip install -e ".[ragas]"   # 仅在需要官方 Ragas 指标时安装
 chatagent/bootstrap/src/main/resources/application.yaml
 ```
 
-默认运行配置写在 `application.yaml` 和 `application-local-gpu.yaml` 等 profile YAML 中。模型名、本地服务 URL、超时、MQ 名称、功能开关、RAG top-k/candidate-k/RRF、reranker 阈值、MCP 运行限制等非敏感默认值都直接放在 YAML 里。
+正常运行配置只写在唯一的 `application.yaml` 中；具名 Profile YAML 仅用于隔离容量、韧性和评测场景。模型名、本地服务 URL、超时、MQ 名称、功能开关、RAG top-k/candidate-k/RRF、reranker 阈值、MCP 运行限制等非敏感默认值都直接放在 `application.yaml` 里。
 
 后端环境变量只用于密钥和凭据。`chatagent/.env.example` 因此只保留本地运行需要填写的私密项；非敏感的端点、用户名、功能开关、限制和调优参数都在 application YAML 的默认值旁直接说明。
 

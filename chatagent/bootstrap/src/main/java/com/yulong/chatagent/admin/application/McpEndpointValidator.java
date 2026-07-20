@@ -88,7 +88,7 @@ public class McpEndpointValidator {
     }
 
     private boolean isDevelopmentProfile() {
-        return environment.acceptsProfiles(Profiles.of("dev", "local", "local-gpu", "test"));
+        return environment.acceptsProfiles(Profiles.of("default", "dev", "local", "test"));
     }
 
     private boolean isAllowedLocalHost(String host) {

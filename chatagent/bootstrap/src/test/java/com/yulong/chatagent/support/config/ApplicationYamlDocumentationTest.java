@@ -2,6 +2,7 @@ package com.yulong.chatagent.support.config;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
@@ -22,7 +23,6 @@ class ApplicationYamlDocumentationTest {
             "application.yaml",
             "application-capacity-test.yaml",
             "application-resilience-test.yaml",
-            "application-local-gpu.yaml",
             "application-eval-real-doc-ingestion.yaml",
             "application-eval-real-memory.yaml");
 
@@ -123,5 +123,42 @@ class ApplicationYamlDocumentationTest {
         }
 
         assertThat(actualNames).containsExactlyInAnyOrderElementsOf(ENV_EXAMPLE_SECRET_NAMES);
+    }
+
+    @Test
+    void shouldUseOneNormalRuntimeYamlWithLocalServiceDefaults() throws IOException {
+        Path moduleRoot = Path.of(System.getProperty("basedir")).toAbsolutePath().normalize();
+        Path mainResources = moduleRoot.resolve("src/main/resources");
+        Path applicationYaml = mainResources.resolve("application.yaml");
+
+        assertThat(applicationYaml).isRegularFile();
+        assertThat(mainResources.resolve("application-local-gpu.yaml")).doesNotExist();
+
+        String content = Files.readString(applicationYaml, StandardCharsets.UTF_8);
+        assertThat(content).doesNotContain("default: local-gpu", "on-profile: local-gpu");
+
+        var sources = new YamlPropertySourceLoader().load(
+                "application", new ClassPathResource("application.yaml"));
+        assertThat(property(sources, "rag.embedding.base-url")).isEqualTo("http://127.0.0.1:11434");
+        assertThat(property(sources, "rag.embedding.model")).isEqualTo("bge-m3");
+        assertThat(property(sources, "rag.retrieval.reranker.provider")).isEqualTo("bge-http");
+        assertThat(property(sources, "rag.retrieval.reranker.model-id")).isEqualTo("BAAI/bge-reranker-v2-m3");
+        assertThat(property(sources, "rag.retrieval.reranker.base-url")).isEqualTo("http://127.0.0.1:7997");
+        assertThat(property(sources, "rag.retrieval.reranker.path")).isEqualTo("/rerank");
+        assertThat(property(sources, "rag.retrieval.reranker.ready-path")).isEqualTo("/ready");
+        assertThat(property(sources, "chatagent.rag.vdp.routing.knowledge-batch-preferred")).isEqualTo(true);
+        assertThat(property(sources, "chatagent.rag.vdp.routing.preferred-batch-engine")).isEqualTo("mineru");
+        assertThat(property(sources, "chatagent.rag.vdp.mineru.enabled")).isEqualTo(true);
+        assertThat(property(sources, "chatagent.rag.vdp.mineru.base-url")).isEqualTo("http://127.0.0.1:8000");
+        assertThat(property(sources, "chatagent.rag.vdp.mineru.bearer-token"))
+                .isEqualTo("${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:}");
+    }
+
+    private static Object property(List<PropertySource<?>> sources, String name) {
+        return sources.stream()
+                .map(source -> source.getProperty(name))
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing application property: " + name));
     }
 }

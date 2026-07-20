@@ -1,8 +1,6 @@
 spring: # Groups spring configuration.
   application: # Groups application configuration.
     name: chatagent # Sets the Spring Boot application name.
-  profiles: # Groups profiles configuration.
-    default: local-gpu # Selects the default Spring profile.
   servlet: # Groups servlet configuration.
     multipart: # Groups multipart configuration.
       max-file-size: 64MB # Sets the upper bound for max file size under servlet multipart.

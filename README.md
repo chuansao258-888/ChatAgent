@@ -285,12 +285,13 @@ python -m pip install -e ".[ragas]"   # only when official Ragas metrics are nee
 
 ## Configuration
 
-Runtime configuration is defined in
-`chatagent/bootstrap/src/main/resources/application.yaml` and profile-specific
-YAML files such as `application-local-gpu.yaml`. Non-sensitive defaults live in
-those YAML files: model names, local service URLs, timeouts, MQ names, feature
-switches, RAG top-k/candidate-k/RRF values, reranker thresholds, and MCP
-runtime limits are committed as ordinary configuration.
+Normal runtime configuration is defined in the single
+`chatagent/bootstrap/src/main/resources/application.yaml` file. Named Profile
+YAML files are reserved for isolated capacity, resilience, and evaluation runs.
+Non-sensitive defaults live in `application.yaml`: model names, local service
+URLs, timeouts, MQ names, feature switches, RAG top-k/candidate-k/RRF values,
+reranker thresholds, and MCP runtime limits are committed as ordinary
+configuration.
 
 Backend environment variables are reserved for secrets and credentials.
 `chatagent/.env.example` therefore documents only the private values to supply

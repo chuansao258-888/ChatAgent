@@ -21,7 +21,9 @@ class McpEndpointValidatorTest {
 
     @Test
     void shouldRejectLoopbackOutsideDevelopment() {
-        McpEndpointValidator validator = new McpEndpointValidator(new MockEnvironment());
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("production");
+        McpEndpointValidator validator = new McpEndpointValidator(environment);
 
         assertThatThrownBy(() -> validator.validateAndNormalize(McpProtocol.HTTP, "http://127.0.0.1:8080"))
                 .isInstanceOf(BizException.class)
@@ -29,9 +31,8 @@ class McpEndpointValidatorTest {
     }
 
     @Test
-    void shouldAllowLocalhostInLocalProfile() {
+    void shouldAllowLocalhostInDefaultProfile() {
         MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("local-gpu");
         McpEndpointValidator validator = new McpEndpointValidator(environment);
 
         String normalized = validator.validateAndNormalize(McpProtocol.SSE, "http://127.0.0.1:8080/sse");
