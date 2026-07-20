@@ -246,7 +246,7 @@ chatagent/bootstrap/src/main/resources/application.yaml
 
 默认运行配置写在 `application.yaml` 和 `application-local-gpu.yaml` 等 profile YAML 中。模型名、本地服务 URL、超时、MQ 名称、功能开关、RAG top-k/candidate-k/RRF、reranker 阈值、MCP 运行限制等非敏感默认值都直接放在 YAML 里。
 
-环境变量只用于密钥、凭据、私有部署坐标，以及前端构建时的 API 地址。`chatagent/.env.example` 因此只保留本地运行需要填写的最小私有项；Spring Boot 仍然从 shell、IDE Run Configuration 或部署系统读取进程环境变量。
+后端环境变量只用于密钥和凭据。`chatagent/.env.example` 因此只保留本地运行需要填写的私密项；非敏感的端点、用户名、功能开关、限制和调优参数都在 application YAML 的默认值旁直接说明。
 
 不要把真实 API key、JWT secret、数据库密码或本地 provider token 写入源码、文档、测试、artifact 或日志。`docs/env_variables.txt` 可能包含本机敏感值，已被 Git 忽略。
 
@@ -254,32 +254,19 @@ chatagent/bootstrap/src/main/resources/application.yaml
 
 | 变量 | 是否必需 | 作用 |
 | --- | --- | --- |
-| `CHATAGENT_DB_URL` | 通常需要 | 当 YAML 中的本地默认值不适用时覆盖 PostgreSQL JDBC 地址。 |
-| `CHATAGENT_DB_USERNAME` | 通常需要 | PostgreSQL 用户名。 |
 | `CHATAGENT_DB_PASSWORD` | 大多数环境需要 | PostgreSQL 密码。 |
 | `CHATAGENT_REDIS_PASSWORD` | 取决于 Redis 配置 | Redis 密码。 |
-| `CHATAGENT_RABBITMQ_USERNAME` | MQ 流程需要 | RabbitMQ 用户名。 |
 | `CHATAGENT_RABBITMQ_PASSWORD` | MQ 流程需要 | RabbitMQ 密码。 |
-| `CHATAGENT_JWT_SECRET` | 非临时本地运行必须 | JWT 签名密钥，需要足够长且随机。 |
 | `CHATAGENT_DEEPSEEK_API_KEY` | 使用 DeepSeek 时需要 | Chat provider 凭据。 |
+| `CHATAGENT_ZAI_CODING_API_KEY` | 使用 Z.AI Coding 时需要 | Z.AI Coding Plan provider 凭据。 |
 | `CHATAGENT_ZHIPUAI_API_KEY` | 使用 ZhipuAI 时需要 | Chat/VLM provider 凭据。 |
 | `CHATAGENT_ZHIPUAI_API_KEY_2` | 评测可选 | 第二个 ZhipuAI provider 凭据。 |
-| `CHATAGENT_ZAI_CODING_API_KEY` | 评测可选 | Z.AI Coding Plan provider 凭据。 |
-| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | 可选 | L2 watermark 之后仍作为 L1 prompt 原始上下文保留的最近对话尾部轮数。 |
-| `CHATAGENT_MEMORY_L1_TOKEN_BUDGET` | 可选 | L1 记忆 token 预算；默认值按 GLM-5.2 1M 上下文主模型放大。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_TRIGGER_UNSUMMARIZED_TURNS` | 可选 | 可触发滚动 L2 压缩的未摘要原始 turn 数。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_COMPACTION_BATCH_TURNS` | 可选 | 单次 L2 压缩最多汇总的最早未摘要 turn 数。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | 可选 | 可触发 L2 压缩的待压缩批次 token 水位。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO` | 可选 | L1 压力触发压缩时使用的预算比例。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS` | 可选 | L2 segment 摘要最大长度。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS` | 可选 | L2 滚动 synopsis 最大长度。 |
-| `CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS` | 可选 | prompt 组装前工具结果压缩阈值。 |
 | `CHATAGENT_RAG_RERANKER_API_KEY` | reranker 需要鉴权时 | Reranker 凭据。 |
 | `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | MinerU 需要鉴权时 | MinerU bearer token。 |
-| `CHATAGENT_MILVUS_USERNAME` | 启用 Milvus 鉴权时 | Milvus 用户名。 |
 | `CHATAGENT_MILVUS_PASSWORD` | 启用 Milvus 鉴权时 | Milvus 密码。 |
+| `CHATAGENT_WEB_SEARCH_BRAVE_API_KEY` | 启用原生网页搜索时 | Brave Search 凭据。 |
 | `CHATAGENT_MCP_CIPHER_KEY` | 加密 MCP 凭据时需要 | MCP 凭据加密密钥。 |
-| `VITE_API_BASE_URL` | 前端可选 | 非默认部署下的浏览器 API 地址。 |
+| `CHATAGENT_JWT_SECRET` | 非临时本地运行必须 | JWT 签名密钥，需要足够长且随机。 |
 
 修改非敏感默认值时，优先改对应 YAML profile，而不是新增环境变量。评测专用 provider override 仍由 `tools/eval` 中的 Python CLI 读取。
 
@@ -630,7 +617,7 @@ npm run build
 
 ### 后端无法连接 PostgreSQL。
 
-检查 `CHATAGENT_DB_URL`、`CHATAGENT_DB_USERNAME`、`CHATAGENT_DB_PASSWORD`，并确认数据库已创建且 Flyway 有权限执行迁移。
+检查 `application.yaml` 中的 `spring.datasource.url` 和 `spring.datasource.username`，再检查 `CHATAGENT_DB_PASSWORD`，并确认数据库已创建且 Flyway 有权限执行迁移。
 
 ### 登录成功但后续接口 401。
 

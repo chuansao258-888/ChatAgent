@@ -1,22 +1,22 @@
-spring:
-  ai:
-    anthropic:
-      api-key: REDACTED_API_KEY
-      base-url: ${CHATAGENT_RESILIENCE_FIXTURE_BASE_URL:http://127.0.0.1:8890}
-    deepseek:
-      api-key: REDACTED_API_KEY
-      base-url: ${CHATAGENT_RESILIENCE_FIXTURE_BASE_URL:http://127.0.0.1:8890}
-    zhipuai:
-      api-key: REDACTED_API_KEY
-      base-url: ${CHATAGENT_RESILIENCE_FIXTURE_BASE_URL:http://127.0.0.1:8890}
+spring: # Groups spring configuration.
+  ai: # Groups ai configuration.
+    anthropic: # Groups anthropic configuration.
+      api-key: REDACTED_API_KEY # Sets api key for ai anthropic.
+      base-url: http://127.0.0.1:8890 # Sets the service endpoint for ai anthropic.
+    deepseek: # Groups deepseek configuration.
+      api-key: REDACTED_API_KEY # Sets api key for ai deepseek.
+      base-url: http://127.0.0.1:8890 # Sets the service endpoint for ai deepseek.
+    zhipuai: # Groups zhipuai configuration.
+      api-key: REDACTED_API_KEY # Sets api key for ai zhipuai.
+      base-url: http://127.0.0.1:8890 # Sets the service endpoint for ai zhipuai.
 
-chat:
-  routing:
-    first-packet-timeout-seconds: 2
-    health:
-      half-open-flight-timeout-ms: 5000
+chat: # Groups chat configuration.
+  routing: # Groups routing configuration.
+    first-packet-timeout-seconds: 2 # Sets the first packet timeout in seconds for chat routing.
+    health: # Groups health configuration.
+      half-open-flight-timeout-ms: 5000 # Sets the half open flight timeout in milliseconds for routing health.
 
-chatagent:
-  memory:
-    l3:
-      enabled: false
+chatagent: # Groups chatagent configuration.
+  memory: # Groups memory configuration.
+    l3: # Groups l3 configuration.
+      enabled: false # Controls whether memory l3 is enabled.

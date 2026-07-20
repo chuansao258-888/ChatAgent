@@ -292,11 +292,10 @@ those YAML files: model names, local service URLs, timeouts, MQ names, feature
 switches, RAG top-k/candidate-k/RRF values, reranker thresholds, and MCP
 runtime limits are committed as ordinary configuration.
 
-Environment variables are reserved for secrets, credentials, private deployment
-coordinates, and frontend build-time API routing. `chatagent/.env.example`
-therefore documents only the minimal private values to supply locally; Spring
-Boot still reads process environment variables from your shell, IDE run
-configuration, or deployment system.
+Backend environment variables are reserved for secrets and credentials.
+`chatagent/.env.example` therefore documents only the private values to supply
+locally. Non-sensitive endpoints, usernames, feature switches, limits, and
+tuning values are documented beside their defaults in application YAML.
 
 Do not commit real API keys, JWT secrets, database passwords, or local provider
 tokens. The local `docs/env_variables.txt` file may contain private values and
@@ -306,32 +305,19 @@ is intentionally ignored.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `CHATAGENT_DB_URL` | Usually | PostgreSQL JDBC URL when the checked-in local default is not suitable. |
-| `CHATAGENT_DB_USERNAME` | Usually | PostgreSQL username. |
 | `CHATAGENT_DB_PASSWORD` | Yes in most setups | PostgreSQL password. |
 | `CHATAGENT_REDIS_PASSWORD` | Depends on Redis | Redis password. |
-| `CHATAGENT_RABBITMQ_USERNAME` | Yes for MQ flows | RabbitMQ username. |
 | `CHATAGENT_RABBITMQ_PASSWORD` | Yes for MQ flows | RabbitMQ password. |
-| `CHATAGENT_JWT_SECRET` | Yes outside throwaway local runs | Long random JWT signing secret. |
 | `CHATAGENT_DEEPSEEK_API_KEY` | If using DeepSeek | Chat provider credential. |
+| `CHATAGENT_ZAI_CODING_API_KEY` | If using Z.AI Coding | Z.AI Coding Plan provider credential. |
 | `CHATAGENT_ZHIPUAI_API_KEY` | If using ZhipuAI | Chat/VLM provider credential. |
 | `CHATAGENT_ZHIPUAI_API_KEY_2` | Optional for evaluation | Secondary ZhipuAI provider credential. |
-| `CHATAGENT_ZAI_CODING_API_KEY` | Optional for evaluation | Z.AI Coding Plan provider credential. |
-| `CHATAGENT_MEMORY_L1_WINDOW_TURNS` | Optional | Recent raw conversation tail preserved in the L1 prompt after the L2 watermark. |
-| `CHATAGENT_MEMORY_L1_TOKEN_BUDGET` | Optional | L1 memory token budget; defaults are sized for the GLM-5.2 1M context primary. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_TRIGGER_UNSUMMARIZED_TURNS` | Optional | Unsummarized raw-turn count that can trigger rolling L2 compaction. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_COMPACTION_BATCH_TURNS` | Optional | Maximum oldest unsummarized turns summarized in one L2 compaction batch. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS` | Optional | Token watermark for the selected pending L2 compaction batch. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO` | Optional | L1 pressure ratio used as a compaction watermark. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS` | Optional | Maximum stored L2 segment summary length. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS` | Optional | Maximum rolling L2 synopsis length. |
-| `CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS` | Optional | Tool-result compaction threshold before prompt assembly. |
 | `CHATAGENT_RAG_RERANKER_API_KEY` | If the reranker requires auth | Reranker credential. |
 | `CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN` | If MinerU requires auth | MinerU bearer token. |
-| `CHATAGENT_MILVUS_USERNAME` | If Milvus auth is enabled | Milvus username. |
 | `CHATAGENT_MILVUS_PASSWORD` | If Milvus auth is enabled | Milvus password. |
+| `CHATAGENT_WEB_SEARCH_BRAVE_API_KEY` | If native web search is enabled | Brave Search credential. |
 | `CHATAGENT_MCP_CIPHER_KEY` | Required for encrypted MCP credentials | Secret key for MCP credential encryption. |
-| `VITE_API_BASE_URL` | Frontend optional | Browser API base URL for non-default deployments. |
+| `CHATAGENT_JWT_SECRET` | Yes outside throwaway local runs | Long random JWT signing secret. |
 
 To change non-sensitive defaults, edit the YAML profile rather than adding new
 environment variables. Evaluation-only provider overrides still live in the
@@ -728,9 +714,9 @@ npm run build
 
 ### The backend cannot connect to PostgreSQL.
 
-Check `CHATAGENT_DB_URL`, `CHATAGENT_DB_USERNAME`, and
-`CHATAGENT_DB_PASSWORD`. Also confirm the database exists and Flyway can create
-or update the schema.
+Check `spring.datasource.url` and `spring.datasource.username` in
+`application.yaml`, then check `CHATAGENT_DB_PASSWORD`. Also confirm the
+database exists and Flyway can create or update the schema.
 
 ### Login works but authenticated API calls fail.
 

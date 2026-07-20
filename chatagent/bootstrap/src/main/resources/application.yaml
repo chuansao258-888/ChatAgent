@@ -1,446 +1,446 @@
-spring:
-  application:
-    name: chatagent
-  profiles:
-    default: local-gpu
-  servlet:
-    multipart:
-      max-file-size: 64MB
-      max-request-size: 64MB
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      password: ${CHATAGENT_REDIS_PASSWORD:}
-      database: 0
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: ${CHATAGENT_RABBITMQ_USERNAME:guest}
-    password: ${CHATAGENT_RABBITMQ_PASSWORD:guest}
-    virtual-host: /
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    template:
+spring: # Groups spring configuration.
+  application: # Groups application configuration.
+    name: chatagent # Sets the Spring Boot application name.
+  profiles: # Groups profiles configuration.
+    default: local-gpu # Selects the default Spring profile.
+  servlet: # Groups servlet configuration.
+    multipart: # Groups multipart configuration.
+      max-file-size: 64MB # Sets the upper bound for max file size under servlet multipart.
+      max-request-size: 64MB # Sets the upper bound for max request size under servlet multipart.
+  data: # Groups data configuration.
+    redis: # Groups redis configuration.
+      host: localhost # Sets the network host for data redis.
+      port: 6379 # Sets the network port for data redis.
+      password: ${CHATAGENT_REDIS_PASSWORD:} # Loads the secret password for data redis from the process environment.
+      database: 0 # Names the database resource for data redis.
+  rabbitmq: # Groups rabbitmq configuration.
+    host: localhost # Sets the network host for spring rabbitmq.
+    port: 5672 # Sets the network port for spring rabbitmq.
+    username: guest # Sets the non-secret account name for spring rabbitmq.
+    password: ${CHATAGENT_RABBITMQ_PASSWORD:guest} # Loads the secret password for spring rabbitmq from the process environment.
+    virtual-host: / # Selects the RabbitMQ virtual host.
+    publisher-confirm-type: correlated # Sets the publisher confirm type identifier for spring rabbitmq.
+    publisher-returns: true # Controls publisher-return callbacks for unroutable messages.
+    template: # Groups template configuration.
       # Keep unroutable messages observable for the future outbox/confirm flow.
-      mandatory: true
-    listener:
-      simple:
-        default-requeue-rejected: false
+      mandatory: true # Controls mandatory behavior for rabbitmq template.
+    listener: # Groups listener configuration.
+      simple: # Groups simple configuration.
+        default-requeue-rejected: false # Controls default requeue rejected behavior for listener simple.
 
-  datasource:
-    url: ${CHATAGENT_DB_URL:jdbc:postgresql://localhost:5432/chatagent}
-    username: ${CHATAGENT_DB_USERNAME:app}
-    password: ${CHATAGENT_DB_PASSWORD:}
-    driver-class-name: org.postgresql.Driver
-  flyway:
-    enabled: true
-    baseline-on-migrate: true
-    baseline-version: 1
-    postgresql:
-      transactional-lock: false
-  ai:
-    deepseek:
-      api-key: ${CHATAGENT_DEEPSEEK_API_KEY:}
-      base-url: ${CHATAGENT_DEEPSEEK_BASE_URL:https://api.deepseek.com}
-      chat:
-        options:
-          model: deepseek-v4-flash
-          temperature: 0.2
-          top-p: 0.8
-          max-tokens: 2048
-    anthropic:
-      api-key: ${CHATAGENT_ZAI_CODING_API_KEY:}
-      base-url: ${CHATAGENT_ZAI_CODING_ANTHROPIC_BASE_URL:https://api.z.ai/api/anthropic}
-      chat:
-        options:
-          model: "glm-5.2"
-          temperature: 0.35
-          top-p: 0.85
-          max-tokens: 8192
-    zhipuai:
-      api-key: ${CHATAGENT_ZAI_CODING_API_KEY:}
-      base-url: ${CHATAGENT_ZAI_CODING_ZHIPU_BASE_URL:https://api.z.ai/api/coding/paas}
-      chat:
-        options:
-          model: glm-4.6v-flash
-          temperature: 0.35
-          top-p: 0.85
-          max-tokens: 4096
+  datasource: # Groups datasource configuration.
+    url: jdbc:postgresql://localhost:5432/chatagent # Sets the service endpoint for spring datasource.
+    username: app # Sets the non-secret account name for spring datasource.
+    password: ${CHATAGENT_DB_PASSWORD:} # Loads the secret password for spring datasource from the process environment.
+    driver-class-name: org.postgresql.Driver # Sets the driver class name identifier for spring datasource.
+  flyway: # Groups flyway configuration.
+    enabled: true # Controls whether spring flyway is enabled.
+    baseline-on-migrate: true # Controls Flyway baselining for an existing non-empty schema.
+    baseline-version: 1 # Sets the baseline version identifier for spring flyway.
+    postgresql: # Groups postgresql configuration.
+      transactional-lock: false # Controls Flyway transactional locking for PostgreSQL migrations.
+  ai: # Groups ai configuration.
+    deepseek: # Groups deepseek configuration.
+      api-key: ${CHATAGENT_DEEPSEEK_API_KEY:} # Loads the secret api key for ai deepseek from the process environment.
+      base-url: https://api.deepseek.com # Sets the service endpoint for ai deepseek.
+      chat: # Groups chat configuration.
+        options: # Groups options configuration.
+          model: deepseek-v4-flash # Selects model for chat options.
+          temperature: 0.2 # Sets temperature for chat options.
+          top-p: 0.8 # Sets top p for chat options.
+          max-tokens: 2048 # Sets the upper bound for max tokens under chat options.
+    anthropic: # Groups anthropic configuration.
+      api-key: ${CHATAGENT_ZAI_CODING_API_KEY:} # Loads the secret api key for ai anthropic from the process environment.
+      base-url: https://api.z.ai/api/anthropic # Sets the service endpoint for ai anthropic.
+      chat: # Groups chat configuration.
+        options: # Groups options configuration.
+          model: "glm-5.2" # Selects model for chat options.
+          temperature: 0.35 # Sets temperature for chat options.
+          top-p: 0.85 # Sets top p for chat options.
+          max-tokens: 8192 # Sets the upper bound for max tokens under chat options.
+    zhipuai: # Groups zhipuai configuration.
+      api-key: ${CHATAGENT_ZAI_CODING_API_KEY:} # Loads the secret api key for ai zhipuai from the process environment.
+      base-url: https://api.z.ai/api/coding/paas # Sets the service endpoint for ai zhipuai.
+      chat: # Groups chat configuration.
+        options: # Groups options configuration.
+          model: glm-4.6v-flash # Selects model for chat options.
+          temperature: 0.35 # Sets temperature for chat options.
+          top-p: 0.85 # Sets top p for chat options.
+          max-tokens: 4096 # Sets the upper bound for max tokens under chat options.
 
-mybatis:
-  type-aliases-package: com.yulong.chatagent.support.persistence.entity
-  mapper-locations: classpath:mapper/*.xml
-  type-handlers-package: com.yulong.chatagent.support.persistence.typehandler
+mybatis: # Groups mybatis configuration.
+  type-aliases-package: com.yulong.chatagent.support.persistence.entity # Sets the type aliases package location for mybatis.
+  mapper-locations: classpath:mapper/*.xml # Sets the mapper locations location for mybatis.
+  type-handlers-package: com.yulong.chatagent.support.persistence.typehandler # Sets the type handlers package location for mybatis.
 
-document:
-  storage:
-    base-path: ./data/documents
+document: # Groups document configuration.
+  storage: # Groups storage configuration.
+    base-path: ./data/documents # Sets the base path location for document storage.
 
-rag:
-  embedding:
-    base-url: http://127.0.0.1:11434
-    model: bge-m3
-  retrieval:
-    top-k: 3
-    candidate-k: 12
-    rrf-k: 60
-    reranker:
-      provider: bge-http
-      model-id: BAAI/bge-reranker-v2-m3
-      max-candidates: 8
-      max-chunk-chars: 900
-      max-connections: 10
-      base-url: http://127.0.0.1:7997
-      path: /rerank
-      ready-path: /ready
-      api-key: ${CHATAGENT_RAG_RERANKER_API_KEY:}
-      connect-timeout-ms: 300
-      response-timeout-ms: 1800
-      read-timeout-ms: 1800
-      write-timeout-ms: 1000
-      pending-acquire-timeout-ms: 200
-      ready-probe-timeout-ms: 200
-      retry-connect-errors: 1
-      enable-confidence-filter: true
-      score-threshold: 0.08
-      failure-threshold: 5
-      failure-rate-threshold-percent: 50
-      minimum-request-volume: 10
-      open-state-ms: 30000
-      half-open-probe-count: 1
-  vector-store:
-    provider: milvus
+rag: # Groups rag configuration.
+  embedding: # Groups embedding configuration.
+    base-url: http://127.0.0.1:11434 # Sets the service endpoint for rag embedding.
+    model: bge-m3 # Selects model for rag embedding.
+  retrieval: # Groups retrieval configuration.
+    top-k: 3 # Sets top k for rag retrieval.
+    candidate-k: 12 # Sets candidate k for rag retrieval.
+    rrf-k: 60 # Sets rrf k for rag retrieval.
+    reranker: # Groups reranker configuration.
+      provider: bge-http # Selects provider behavior for retrieval reranker.
+      model-id: BAAI/bge-reranker-v2-m3 # Selects model id for retrieval reranker.
+      max-candidates: 8 # Sets the upper bound for max candidates under retrieval reranker.
+      max-chunk-chars: 900 # Sets the upper bound for max chunk chars under retrieval reranker.
+      max-connections: 10 # Sets the upper bound for max connections under retrieval reranker.
+      base-url: http://127.0.0.1:7997 # Sets the service endpoint for retrieval reranker.
+      path: /rerank # Sets the path location for retrieval reranker.
+      ready-path: /ready # Sets the ready path location for retrieval reranker.
+      api-key: ${CHATAGENT_RAG_RERANKER_API_KEY:} # Loads the secret api key for retrieval reranker from the process environment.
+      connect-timeout-ms: 300 # Sets the connect timeout in milliseconds for retrieval reranker.
+      response-timeout-ms: 1800 # Sets the response timeout in milliseconds for retrieval reranker.
+      read-timeout-ms: 1800 # Sets the read timeout in milliseconds for retrieval reranker.
+      write-timeout-ms: 1000 # Sets the write timeout in milliseconds for retrieval reranker.
+      pending-acquire-timeout-ms: 200 # Sets the pending acquire timeout in milliseconds for retrieval reranker.
+      ready-probe-timeout-ms: 200 # Sets the ready probe timeout in milliseconds for retrieval reranker.
+      retry-connect-errors: 1 # Sets retry connect errors for retrieval reranker.
+      enable-confidence-filter: true # Controls enable confidence filter behavior for retrieval reranker.
+      score-threshold: 0.08 # Sets score threshold for retrieval reranker.
+      failure-threshold: 5 # Sets failure threshold for retrieval reranker.
+      failure-rate-threshold-percent: 50 # Sets failure rate threshold percent for retrieval reranker.
+      minimum-request-volume: 10 # Sets minimum request volume for retrieval reranker.
+      open-state-ms: 30000 # Sets open state in milliseconds for retrieval reranker.
+      half-open-probe-count: 1 # Sets half open probe count for retrieval reranker.
+  vector-store: # Groups vector store configuration.
+    provider: milvus # Selects provider behavior for rag vector store.
 
-milvus:
-  enabled: true
-  bm25-enabled: false
-  host: localhost
-  port: 19530
-  database: default
-  collection: chat_file_chunk
-  username: ${CHATAGENT_MILVUS_USERNAME:}
-  password: ${CHATAGENT_MILVUS_PASSWORD:}
-  metric-type: COSINE
-  index-type: AUTOINDEX
-  consistency-level: BOUNDED
-  dimension: 1024
-  knowledge-base:
-    collection: chat_knowledge_chunk
-  user-memory:
-    collection: chat_user_memory
+milvus: # Groups milvus configuration.
+  enabled: true # Controls whether milvus is enabled.
+  bm25-enabled: false # Controls whether bm25 is enabled for milvus.
+  host: localhost # Sets the network host for milvus.
+  port: 19530 # Sets the network port for milvus.
+  database: default # Names the database resource for milvus.
+  collection: chat_file_chunk # Names the collection resource for milvus.
+  username: "" # Sets the non-secret account name for milvus.
+  password: ${CHATAGENT_MILVUS_PASSWORD:} # Loads the secret password for milvus from the process environment.
+  metric-type: COSINE # Sets the metric type identifier for milvus.
+  index-type: AUTOINDEX # Sets the index type identifier for milvus.
+  consistency-level: BOUNDED # Sets consistency level for milvus.
+  dimension: 1024 # Sets dimension for milvus.
+  knowledge-base: # Groups knowledge base configuration.
+    collection: chat_knowledge_chunk # Names the collection resource for milvus knowledge base.
+  user-memory: # Groups user memory configuration.
+    collection: chat_user_memory # Names the collection resource for milvus user memory.
 
-chat:
-  routing:
-    default-model: "glm-5.2"
-    deep-thinking-model: "glm-5.2"
-    agent-primary-model: "glm-5.2"
-    agent-fallback-model: deepseek-v4-flash
-    first-packet-timeout-seconds: 60
-    decision-total-timeout-seconds: 180
-    stream-total-timeout-seconds: 300
-    http-connect-timeout-seconds: 10
-    http-read-timeout-seconds: 65
-    health:
-      failure-threshold: 3
-      open-duration-ms: 300000
-      half-open-flight-timeout-ms: 120000
-    observability:
-      open-circuit-warning-ratio: 0.5
-      down-when-no-routable-candidates: true
-      out-of-service-when-all-routable-candidates-open: true
-      warn-on-orphan-overrides: true
-    candidates:
-      - id: "glm-5.2"
-        spring-client-key: "glm-5.2"
-        priority: 5
-        enabled: true
-        supports-thinking: true
-        thinking-strategy: ANTHROPIC_THINKING
-      - id: deepseek-v4-flash
-        spring-client-key: deepseek-v4-flash
-        priority: 10
-        enabled: true
-        supports-thinking: true
-        thinking-strategy: MODEL_OVERRIDE
-        thinking-model: deepseek-v4-pro
+chat: # Groups chat configuration.
+  routing: # Groups routing configuration.
+    default-model: "glm-5.2" # Selects default model for chat routing.
+    deep-thinking-model: "glm-5.2" # Selects deep thinking model for chat routing.
+    agent-primary-model: "glm-5.2" # Selects agent primary model for chat routing.
+    agent-fallback-model: deepseek-v4-flash # Selects agent fallback model for chat routing.
+    first-packet-timeout-seconds: 60 # Sets the first packet timeout in seconds for chat routing.
+    decision-total-timeout-seconds: 180 # Sets the decision total timeout in seconds for chat routing.
+    stream-total-timeout-seconds: 300 # Sets the stream total timeout in seconds for chat routing.
+    http-connect-timeout-seconds: 10 # Sets the http connect timeout in seconds for chat routing.
+    http-read-timeout-seconds: 65 # Sets the http read timeout in seconds for chat routing.
+    health: # Groups health configuration.
+      failure-threshold: 3 # Sets failure threshold for routing health.
+      open-duration-ms: 300000 # Sets open duration in milliseconds for routing health.
+      half-open-flight-timeout-ms: 120000 # Sets the half open flight timeout in milliseconds for routing health.
+    observability: # Groups observability configuration.
+      open-circuit-warning-ratio: 0.5 # Sets open circuit warning ratio for routing observability.
+      down-when-no-routable-candidates: true # Controls down when no routable candidates behavior for routing observability.
+      out-of-service-when-all-routable-candidates-open: true # Controls out of service when all routable candidates open behavior for routing observability.
+      warn-on-orphan-overrides: true # Controls warn on orphan overrides behavior for routing observability.
+    candidates: # Groups candidates configuration.
+      - id: "glm-5.2" # Sets the id identifier for routing candidates.
+        spring-client-key: "glm-5.2" # Sets spring client key for routing candidates.
+        priority: 5 # Sets the routing order; lower numbers are tried first.
+        enabled: true # Controls whether routing candidates is enabled.
+        supports-thinking: true # Controls supports thinking behavior for routing candidates.
+        thinking-strategy: ANTHROPIC_THINKING # Selects the provider thinking-control strategy.
+      - id: deepseek-v4-flash # Sets the id identifier for routing candidates.
+        spring-client-key: deepseek-v4-flash # Sets spring client key for routing candidates.
+        priority: 10 # Sets the routing order; lower numbers are tried first.
+        enabled: true # Controls whether routing candidates is enabled.
+        supports-thinking: true # Controls supports thinking behavior for routing candidates.
+        thinking-strategy: MODEL_OVERRIDE # Selects the provider thinking-control strategy.
+        thinking-model: deepseek-v4-pro # Selects thinking model for routing candidates.
 
-chatagent:
-  id:
-    snowflake:
-      worker-id: 1
-  intent:
-    tool-scope-mode: AGENT_DEFAULT_WITH_INTENT_NARROWING
-    classifier-model: deepseek-v4-flash
-    rewrite-model: deepseek-v4-flash
-    decision-policy:
-      mode: ${CHATAGENT_INTENT_DECISION_MODE:enforce}
-      profile-version: ${CHATAGENT_INTENT_POLICY_PROFILE_VERSION:v1}
-      recent-context-turns: ${CHATAGENT_INTENT_RECENT_CONTEXT_TURNS:4}
-      recent-context-max-chars: ${CHATAGENT_INTENT_RECENT_CONTEXT_MAX_CHARS:4000}
-      max-clarification-attempts: ${CHATAGENT_INTENT_MAX_CLARIFICATION_ATTEMPTS:2}
-  agent:
-    session-run:
-      local-serialization-enabled: ${CHATAGENT_AGENT_LOCAL_SESSION_SERIALIZATION_ENABLED:true}
-      local-acquire-timeout-ms: ${CHATAGENT_AGENT_LOCAL_SESSION_ACQUIRE_TIMEOUT_MS:120000}
-      redis-failure-policy: ${CHATAGENT_AGENT_SESSION_RUN_REDIS_FAILURE_POLICY:local-fallback}
-    turn-contract:
-      enabled: ${CHATAGENT_AGENT_TURN_CONTRACT_ENABLED:true}
-      retrieval-enforcement: ${CHATAGENT_AGENT_RETRIEVAL_ENFORCEMENT:enforce}
-      emit-debug-metadata: ${CHATAGENT_AGENT_TURN_CONTRACT_DEBUG_METADATA:false}
-      intent-kb-inheritance-enabled: ${CHATAGENT_AGENT_INTENT_KB_INHERITANCE_ENABLED:false}
-    runtime:
-      default-mode: ${CHATAGENT_AGENT_RUNTIME_DEFAULT_MODE:REACT}
-      mode-selection: ${CHATAGENT_AGENT_RUNTIME_MODE_SELECTION:USER_EXPLICIT}
-      react:
-        max-steps: ${CHATAGENT_AGENT_RUNTIME_REACT_MAX_STEPS:20}
-        max-tool-calls-per-step: ${CHATAGENT_AGENT_RUNTIME_REACT_MAX_TOOL_CALLS_PER_STEP:4}
-        max-total-tool-proposals: ${CHATAGENT_AGENT_RUNTIME_REACT_MAX_TOTAL_TOOL_PROPOSALS:40}
-        max-total-tool-calls: ${CHATAGENT_AGENT_RUNTIME_REACT_MAX_TOTAL_TOOL_CALLS:20}
-        max-total-llm-calls: ${CHATAGENT_AGENT_RUNTIME_REACT_MAX_TOTAL_LLM_CALLS:24}
-        max-elapsed-ms: ${CHATAGENT_AGENT_RUNTIME_REACT_MAX_ELAPSED_MS:300000}
-      deepthink:
-        enabled: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_ENABLED:true}
-        max-plan-items: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_PLAN_ITEMS:5}
-        max-react-steps-per-plan-item: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_REACT_STEPS_PER_PLAN_ITEM:3}
-        max-reflection-rounds: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_REFLECTION_ROUNDS:2}
-        max-verification-rounds: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_VERIFICATION_ROUNDS:2}
-        max-total-tool-calls: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_TOTAL_TOOL_CALLS:20}
-        max-total-llm-calls: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_TOTAL_LLM_CALLS:30}
-        max-total-tool-proposals: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_TOTAL_TOOL_PROPOSALS:30}
-        max-elapsed-ms: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_MAX_ELAPSED_MS:300000}
-        planning-model-deep-thinking: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_PLANNING_MODEL_DEEP_THINKING:true}
-        execution-model-deep-thinking: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_EXECUTION_MODEL_DEEP_THINKING:false}
-        reflection-model-deep-thinking: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_REFLECTION_MODEL_DEEP_THINKING:true}
-        verification-model-deep-thinking: ${CHATAGENT_AGENT_RUNTIME_DEEPTHINK_VERIFICATION_MODEL_DEEP_THINKING:true}
-  memory:
-    l1-window-turns: ${CHATAGENT_MEMORY_L1_WINDOW_TURNS:48}
-    l1-token-budget: ${CHATAGENT_MEMORY_L1_TOKEN_BUDGET:256000}
-    summary-model: deepseek-v4-flash
-    summary-max-chars: 500
-    l3:
-      enabled: ${CHATAGENT_MEMORY_L3_ENABLED:true}
-      extractor-model: deepseek-v4-flash
-      recall-top-k: ${CHATAGENT_MEMORY_L3_RECALL_TOP_K:3}
-      recall-min-score: ${CHATAGENT_MEMORY_L3_RECALL_MIN_SCORE:0.55}
-      job-poll-ms: ${CHATAGENT_MEMORY_L3_JOB_POLL_MS:5000}
-      job-max-attempts: ${CHATAGENT_MEMORY_L3_JOB_MAX_ATTEMPTS:5}
-      job-stale-seconds: ${CHATAGENT_MEMORY_L3_JOB_STALE_SECONDS:300}
-    context-token-budget: ${CHATAGENT_MEMORY_CONTEXT_TOKEN_BUDGET:8192}
-    compaction:
-      v2:
-        enabled: true
-        trigger-unsummarized-turns: ${CHATAGENT_MEMORY_COMPACTION_V2_TRIGGER_UNSUMMARIZED_TURNS:30}
-        compaction-batch-turns: ${CHATAGENT_MEMORY_COMPACTION_V2_COMPACTION_BATCH_TURNS:20}
-        min-pending-tokens: ${CHATAGENT_MEMORY_COMPACTION_V2_MIN_PENDING_TOKENS:24000}
-        l1-token-warning-ratio: ${CHATAGENT_MEMORY_COMPACTION_V2_L1_TOKEN_WARNING_RATIO:0.92}
-        segment-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SEGMENT_MAX_CHARS:6000}
-        synopsis-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_SYNOPSIS_MAX_CHARS:16000}
-        runtime-max-segments: 3
-        max-retries: 2
-        max-consecutive-failures: 3
-        failure-backoff-seconds: 300
-        tool-result-max-chars: ${CHATAGENT_MEMORY_COMPACTION_V2_TOOL_RESULT_MAX_CHARS:12000}
-        tool-result-head-chars: 800
-        tool-result-tail-chars: 800
-  rag:
-    vdp:
-      cache:
-        enabled: true
-        session-ttl-minutes: 30
-        session-max-size: 512
-        knowledge-ttl-minutes: 1440
-      routing:
-        disabled-engines: []
-        knowledge-batch-preferred: true
-        preferred-page-image-engine: ""
-        preferred-batch-engine: mineru
-      char-density-threshold: 150
-      short-text-fast-track-threshold: 80
-      whitespace-alignment-line-threshold: 2
-      pdf-page-max-in-flight: 2
-      pdf-page-timeout-ms: 5000
-      knowledge-document-timeout-ms: 300000
-      pdf-page-dispatch-core-pool-size: 2
-      pdf-page-dispatch-max-pool-size: 2
-      pdf-page-dispatch-queue-capacity: 0
-      pdf-batch-core-pool-size: 1
-      pdf-batch-max-pool-size: 2
-      pdf-batch-queue-capacity: 30
-      pdf-render-dpi: 120
-      mineru:
-        enabled: true
-        base-url: http://127.0.0.1:8000
-        bearer-token: ${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:}
-        version: v1
-        backend: pipeline
-        parse-method: auto
-        table-enable: true
-        max-pdf-size-mb: 50
-        poll-interval-ms: 2000
-        max-poll-attempts: 150
-        submit-timeout-ms: 30000
-        poll-timeout-ms: 5000
-      vlm:
-        enabled: true
-        client-id: glm-4.6v-flash
-        model-id: glm-4.6v-flash
-        prompt-version: v2
-        max-tokens: 1200
-        temperature: 0.1
-        timeout-ms: 30000
-        core-pool-size: 1
-        max-pool-size: 2
-        queue-capacity: 0
-        failure-placeholder: ""
-    retrieval:
-      document-signals:
-        cache-ttl-minutes: 30
-    ingestion:
-      document-enhancer:
-        enabled: true
-        model-id: ""
-        prompt-version: v2
-        short-doc-char-limit: 12000
-        map-window-max-chars: 6000
-        max-keywords: 10
-        max-questions: 5
-        max-keyword-chars: 80
-        max-question-chars: 180
-        min-enhanced-length-ratio: 0.5
-        max-enhanced-length-ratio: 2.0
-      contextual-enricher:
-        enabled: true
-        model-id: ""
-        max-chunks-per-file: 12
-        min-chunk-chars: 160
-        max-context-chars: 600
-  mq:
-    enabled: true
-    exchanges:
-      chat-direct: chat.direct
-      retry-direct: retry.direct
-      dlx-direct: dlx.direct
-    routing-keys:
-      agent-run: agent.run
-      ingest-task: ingest.task
-      retry-agent: retry.agent
-      retry-ingest: retry.ingest
-      dead-letter: dead.letter
-    queues:
-      chat-agent-dispatch: chat.agent.dispatch
-      knowledge-ingest-task: knowledge.ingest.task
-      retry-agent10s: retry.agent.10s
-      retry-ingest30s: retry.ingest.30s
-      chat-dlq: chat.dlq
-    retry:
-      agent-delay-ms: 10000
-      ingest-delay-ms: 30000
-    outbox:
-      poll-interval-ms: 500
-      batch-size: 10
-      max-publish-attempts: 5
-      publish-retry-delay-ms: 10000
-      claim-timeout-ms: 60000
-      confirm-timeout-ms: 5000
-      cleanup-interval-ms: 86400000
-      cleanup-retention-days: 7
-      id-namespace: a41c8a5f-f0d4-58f6-a4f5-bf4a8ef7ca55
-    consumers:
-      agent-prefetch: 5
-      agent-concurrency: 5
-      ingest-prefetch: 1
-      ingest-concurrency: 2
-    locks:
-      running-ttl-ms: 60000
-      session-exec-ttl-ms: 120000
-      watchdog-interval-ms: 20000
-      completed-ttl-ms: 86400000
-      failed-ttl-ms: 3600000
-      agent-run-policy: FAIL_OPEN
-      ingest-task-policy: FAIL_FAST
-    dispatchers:
-      agent-run-enabled: true
-  session-guard:
-    enabled: true
-    ttl-ms: 120000
-    fail-open: true
-  web-search:
-    enabled: ${CHATAGENT_WEB_SEARCH_ENABLED:false}
-    brave-api-key: ${CHATAGENT_WEB_SEARCH_BRAVE_API_KEY:}
-    brave-country: ${CHATAGENT_WEB_SEARCH_BRAVE_COUNTRY:}
-    brave-search-lang: ${CHATAGENT_WEB_SEARCH_BRAVE_SEARCH_LANG:}
-    connect-timeout-ms: ${CHATAGENT_WEB_SEARCH_CONNECT_TIMEOUT_MS:2000}
-    response-timeout-ms: ${CHATAGENT_WEB_SEARCH_RESPONSE_TIMEOUT_MS:30000}
-    default-max-results: 3
-    max-results: 3
-    max-result-snippet-chars: 240
-    max-query-chars: 300
-    max-context-tokens: ${CHATAGENT_WEB_SEARCH_MAX_CONTEXT_TOKENS:4096}
-    max-calls-per-run: ${CHATAGENT_WEB_SEARCH_MAX_CALLS_PER_RUN:3}
-  mcp:
-    enabled: true
-    crypto:
-      key: ${CHATAGENT_MCP_CIPHER_KEY:}
-      key-version: v1
-    transport:
-      client-name: ChatAgent
-      client-version: phase-1b
-      preferred-http-protocol-version: "2025-06-18"
-      preferred-sse-protocol-version: "2024-11-05"
-      connect-timeout-ms: 2000
-      response-timeout-ms: 10000
-      read-timeout-ms: 10000
-      write-timeout-ms: 10000
-      request-timeout-ms: 15000
-      max-in-memory-size-bytes: 131072
-      sse-connect-timeout-ms: 5000
-      sse-max-reconnects: 5
-      sse-initial-backoff-ms: 1000
-      sse-max-backoff-ms: 30000
-    runtime:
-      rate-limit-enabled: true
-      rate-limit-requests-per-second: 10
-      rate-limit-burst-capacity: 10
-      circuit-breaker-enabled: true
-      circuit-breaker-sliding-window-size: 10
-      circuit-breaker-failure-threshold: 5
-      circuit-breaker-failure-rate-threshold-percent: 50
-      circuit-breaker-minimum-request-volume: 10
-      circuit-breaker-open-state-ms: 30000
-      circuit-breaker-half-open-probe-count: 3
-      circuit-breaker-slow-call-duration-ms: 10000
-      circuit-breaker-slow-call-rate-threshold-percent: 80
-    schema-drift:
-      enabled: true
-      fixed-delay-ms: 600000
-    rollout:
-      mode: ALL
-      allowed-agent-ids: []
-  rate-limit:
-    entry:
-      enabled: true
-      requests-per-second: 2
-      burst-capacity: 5
-      local-fallback-max-identities: 10000
-      redis-failure-policy: LOCAL_BUCKET
-    agent-run:
-      enabled: true
-      max-concurrency: 3
-      permit-ttl-ms: 180000
-      permit-renew-interval-ms: 20000
-      wait-timeout-ms: 120000
-      wait-status-interval-ms: 5000
-      redis-failure-policy: LOCAL_CAP
-      local-capacity-on-redis-failure: 1
+chatagent: # Groups chatagent configuration.
+  id: # Groups id configuration.
+    snowflake: # Groups snowflake configuration.
+      worker-id: 1 # Sets the worker id identifier for id snowflake.
+  intent: # Groups intent configuration.
+    tool-scope-mode: AGENT_DEFAULT_WITH_INTENT_NARROWING # Selects tool scope mode behavior for chatagent intent.
+    classifier-model: deepseek-v4-flash # Selects classifier model for chatagent intent.
+    rewrite-model: deepseek-v4-flash # Selects rewrite model for chatagent intent.
+    decision-policy: # Groups decision policy configuration.
+      mode: enforce # Selects mode behavior for intent decision policy.
+      profile-version: v1 # Sets the profile version identifier for intent decision policy.
+      recent-context-turns: 4 # Sets recent context turns for intent decision policy.
+      recent-context-max-chars: 4000 # Sets the upper bound for recent context max chars under intent decision policy.
+      max-clarification-attempts: 2 # Sets the upper bound for max clarification attempts under intent decision policy.
+  agent: # Groups agent configuration.
+    session-run: # Groups session run configuration.
+      local-serialization-enabled: true # Controls whether local serialization is enabled for agent session run.
+      local-acquire-timeout-ms: 120000 # Sets the local acquire timeout in milliseconds for agent session run.
+      redis-failure-policy: local-fallback # Selects redis failure policy behavior for agent session run.
+    turn-contract: # Groups turn contract configuration.
+      enabled: true # Controls whether agent turn contract is enabled.
+      retrieval-enforcement: enforce # Sets retrieval enforcement for agent turn contract.
+      emit-debug-metadata: false # Controls emit debug metadata behavior for agent turn contract.
+      intent-kb-inheritance-enabled: false # Controls whether intent kb inheritance is enabled for agent turn contract.
+    runtime: # Groups runtime configuration.
+      default-mode: REACT # Selects default mode behavior for agent runtime.
+      mode-selection: USER_EXPLICIT # Sets mode selection for agent runtime.
+      react: # Groups react configuration.
+        max-steps: 20 # Sets the upper bound for max steps under runtime react.
+        max-tool-calls-per-step: 4 # Sets the upper bound for max tool calls per step under runtime react.
+        max-total-tool-proposals: 40 # Sets the upper bound for max total tool proposals under runtime react.
+        max-total-tool-calls: 20 # Sets the upper bound for max total tool calls under runtime react.
+        max-total-llm-calls: 24 # Sets the upper bound for max total llm calls under runtime react.
+        max-elapsed-ms: 300000 # Sets max elapsed in milliseconds for runtime react.
+      deepthink: # Groups deepthink configuration.
+        enabled: true # Controls whether runtime deepthink is enabled.
+        max-plan-items: 5 # Sets the upper bound for max plan items under runtime deepthink.
+        max-react-steps-per-plan-item: 3 # Sets the upper bound for max react steps per plan item under runtime deepthink.
+        max-reflection-rounds: 2 # Sets the upper bound for max reflection rounds under runtime deepthink.
+        max-verification-rounds: 2 # Sets the upper bound for max verification rounds under runtime deepthink.
+        max-total-tool-calls: 20 # Sets the upper bound for max total tool calls under runtime deepthink.
+        max-total-llm-calls: 30 # Sets the upper bound for max total llm calls under runtime deepthink.
+        max-total-tool-proposals: 30 # Sets the upper bound for max total tool proposals under runtime deepthink.
+        max-elapsed-ms: 300000 # Sets max elapsed in milliseconds for runtime deepthink.
+        planning-model-deep-thinking: true # Controls planning model deep thinking behavior for runtime deepthink.
+        execution-model-deep-thinking: false # Controls execution model deep thinking behavior for runtime deepthink.
+        reflection-model-deep-thinking: true # Controls reflection model deep thinking behavior for runtime deepthink.
+        verification-model-deep-thinking: true # Controls verification model deep thinking behavior for runtime deepthink.
+  memory: # Groups memory configuration.
+    l1-window-turns: 48 # Sets l1 window turns for chatagent memory.
+    l1-token-budget: 256000 # Sets l1 token budget for chatagent memory.
+    summary-model: deepseek-v4-flash # Selects summary model for chatagent memory.
+    summary-max-chars: 500 # Sets the upper bound for summary max chars under chatagent memory.
+    l3: # Groups l3 configuration.
+      enabled: true # Controls whether memory l3 is enabled.
+      extractor-model: deepseek-v4-flash # Selects extractor model for memory l3.
+      recall-top-k: 3 # Sets recall top k for memory l3.
+      recall-min-score: 0.55 # Sets the lower bound for recall min score under memory l3.
+      job-poll-ms: 5000 # Sets job poll in milliseconds for memory l3.
+      job-max-attempts: 5 # Sets the upper bound for job max attempts under memory l3.
+      job-stale-seconds: 300 # Sets job stale in seconds for memory l3.
+    context-token-budget: 8192 # Sets context token budget for chatagent memory.
+    compaction: # Groups compaction configuration.
+      v2: # Groups v2 configuration.
+        enabled: true # Controls whether compaction v2 is enabled.
+        trigger-unsummarized-turns: 30 # Sets trigger unsummarized turns for compaction v2.
+        compaction-batch-turns: 20 # Sets compaction batch turns for compaction v2.
+        min-pending-tokens: 24000 # Sets the lower bound for min pending tokens under compaction v2.
+        l1-token-warning-ratio: 0.92 # Sets l1 token warning ratio for compaction v2.
+        segment-max-chars: 6000 # Sets the upper bound for segment max chars under compaction v2.
+        synopsis-max-chars: 16000 # Sets the upper bound for synopsis max chars under compaction v2.
+        runtime-max-segments: 3 # Sets the upper bound for runtime max segments under compaction v2.
+        max-retries: 2 # Sets the upper bound for max retries under compaction v2.
+        max-consecutive-failures: 3 # Sets the upper bound for max consecutive failures under compaction v2.
+        failure-backoff-seconds: 300 # Sets failure backoff in seconds for compaction v2.
+        tool-result-max-chars: 12000 # Sets the upper bound for tool result max chars under compaction v2.
+        tool-result-head-chars: 800 # Sets tool result head chars for compaction v2.
+        tool-result-tail-chars: 800 # Sets tool result tail chars for compaction v2.
+  rag: # Groups rag configuration.
+    vdp: # Groups vdp configuration.
+      cache: # Groups cache configuration.
+        enabled: true # Controls whether vdp cache is enabled.
+        session-ttl-minutes: 30 # Sets the session time-to-live in minutes for vdp cache.
+        session-max-size: 512 # Sets the upper bound for session max size under vdp cache.
+        knowledge-ttl-minutes: 1440 # Sets the knowledge time-to-live in minutes for vdp cache.
+      routing: # Groups routing configuration.
+        disabled-engines: [] # Sets disabled engines for vdp routing.
+        knowledge-batch-preferred: true # Controls knowledge batch preferred behavior for vdp routing.
+        preferred-page-image-engine: "" # Sets preferred page image engine for vdp routing.
+        preferred-batch-engine: mineru # Sets preferred batch engine for vdp routing.
+      char-density-threshold: 150 # Sets char density threshold for rag vdp.
+      short-text-fast-track-threshold: 80 # Sets short text fast track threshold for rag vdp.
+      whitespace-alignment-line-threshold: 2 # Sets whitespace alignment line threshold for rag vdp.
+      pdf-page-max-in-flight: 2 # Sets the upper bound for pdf page max in flight under rag vdp.
+      pdf-page-timeout-ms: 5000 # Sets the pdf page timeout in milliseconds for rag vdp.
+      knowledge-document-timeout-ms: 300000 # Sets the knowledge document timeout in milliseconds for rag vdp.
+      pdf-page-dispatch-core-pool-size: 2 # Sets pdf page dispatch core pool size for rag vdp.
+      pdf-page-dispatch-max-pool-size: 2 # Sets the upper bound for pdf page dispatch max pool size under rag vdp.
+      pdf-page-dispatch-queue-capacity: 0 # Sets pdf page dispatch queue capacity for rag vdp.
+      pdf-batch-core-pool-size: 1 # Sets pdf batch core pool size for rag vdp.
+      pdf-batch-max-pool-size: 2 # Sets the upper bound for pdf batch max pool size under rag vdp.
+      pdf-batch-queue-capacity: 30 # Sets pdf batch queue capacity for rag vdp.
+      pdf-render-dpi: 120 # Sets pdf render in dots per inch for rag vdp.
+      mineru: # Groups mineru configuration.
+        enabled: true # Controls whether vdp mineru is enabled.
+        base-url: http://127.0.0.1:8000 # Sets the service endpoint for vdp mineru.
+        bearer-token: ${CHATAGENT_RAG_VDP_MINERU_BEARER_TOKEN:} # Loads the secret bearer token for vdp mineru from the process environment.
+        version: v1 # Sets the version identifier for vdp mineru.
+        backend: pipeline # Sets the backend identifier for vdp mineru.
+        parse-method: auto # Selects parse method behavior for vdp mineru.
+        table-enable: true # Controls table enable behavior for vdp mineru.
+        max-pdf-size-mb: 50 # Sets max pdf size in megabytes for vdp mineru.
+        poll-interval-ms: 2000 # Sets poll interval in milliseconds for vdp mineru.
+        max-poll-attempts: 150 # Sets the upper bound for max poll attempts under vdp mineru.
+        submit-timeout-ms: 30000 # Sets the submit timeout in milliseconds for vdp mineru.
+        poll-timeout-ms: 5000 # Sets the poll timeout in milliseconds for vdp mineru.
+      vlm: # Groups vlm configuration.
+        enabled: true # Controls whether vdp vlm is enabled.
+        client-id: glm-4.6v-flash # Selects client id for vdp vlm.
+        model-id: glm-4.6v-flash # Selects model id for vdp vlm.
+        prompt-version: v2 # Sets the prompt version identifier for vdp vlm.
+        max-tokens: 1200 # Sets the upper bound for max tokens under vdp vlm.
+        temperature: 0.1 # Sets temperature for vdp vlm.
+        timeout-ms: 30000 # Sets timeout in milliseconds for vdp vlm.
+        core-pool-size: 1 # Sets core pool size for vdp vlm.
+        max-pool-size: 2 # Sets the upper bound for max pool size under vdp vlm.
+        queue-capacity: 0 # Sets queue capacity for vdp vlm.
+        failure-placeholder: "" # Sets failure placeholder for vdp vlm.
+    retrieval: # Groups retrieval configuration.
+      document-signals: # Groups document signals configuration.
+        cache-ttl-minutes: 30 # Sets the cache time-to-live in minutes for retrieval document signals.
+    ingestion: # Groups ingestion configuration.
+      document-enhancer: # Groups document enhancer configuration.
+        enabled: true # Controls whether ingestion document enhancer is enabled.
+        model-id: "" # Selects model id for ingestion document enhancer.
+        prompt-version: v2 # Sets the prompt version identifier for ingestion document enhancer.
+        short-doc-char-limit: 12000 # Sets short doc char limit for ingestion document enhancer.
+        map-window-max-chars: 6000 # Sets the upper bound for map window max chars under ingestion document enhancer.
+        max-keywords: 10 # Sets the upper bound for max keywords under ingestion document enhancer.
+        max-questions: 5 # Sets the upper bound for max questions under ingestion document enhancer.
+        max-keyword-chars: 80 # Sets the upper bound for max keyword chars under ingestion document enhancer.
+        max-question-chars: 180 # Sets the upper bound for max question chars under ingestion document enhancer.
+        min-enhanced-length-ratio: 0.5 # Sets the lower bound for min enhanced length ratio under ingestion document enhancer.
+        max-enhanced-length-ratio: 2.0 # Sets the upper bound for max enhanced length ratio under ingestion document enhancer.
+      contextual-enricher: # Groups contextual enricher configuration.
+        enabled: true # Controls whether ingestion contextual enricher is enabled.
+        model-id: "" # Selects model id for ingestion contextual enricher.
+        max-chunks-per-file: 12 # Sets the upper bound for max chunks per file under ingestion contextual enricher.
+        min-chunk-chars: 160 # Sets the lower bound for min chunk chars under ingestion contextual enricher.
+        max-context-chars: 600 # Sets the upper bound for max context chars under ingestion contextual enricher.
+  mq: # Groups mq configuration.
+    enabled: true # Controls whether chatagent mq is enabled.
+    exchanges: # Groups exchanges configuration.
+      chat-direct: chat.direct # Sets chat direct for mq exchanges.
+      retry-direct: retry.direct # Sets retry direct for mq exchanges.
+      dlx-direct: dlx.direct # Sets dlx direct for mq exchanges.
+    routing-keys: # Groups routing keys configuration.
+      agent-run: agent.run # Sets agent run for mq routing keys.
+      ingest-task: ingest.task # Sets ingest task for mq routing keys.
+      retry-agent: retry.agent # Sets retry agent for mq routing keys.
+      retry-ingest: retry.ingest # Sets retry ingest for mq routing keys.
+      dead-letter: dead.letter # Sets dead letter for mq routing keys.
+    queues: # Groups queues configuration.
+      chat-agent-dispatch: chat.agent.dispatch # Sets chat agent dispatch for mq queues.
+      knowledge-ingest-task: knowledge.ingest.task # Sets knowledge ingest task for mq queues.
+      retry-agent10s: retry.agent.10s # Sets retry agent10s for mq queues.
+      retry-ingest30s: retry.ingest.30s # Sets retry ingest30s for mq queues.
+      chat-dlq: chat.dlq # Sets chat dlq for mq queues.
+    retry: # Groups retry configuration.
+      agent-delay-ms: 10000 # Sets agent delay in milliseconds for mq retry.
+      ingest-delay-ms: 30000 # Sets ingest delay in milliseconds for mq retry.
+    outbox: # Groups outbox configuration.
+      poll-interval-ms: 500 # Sets poll interval in milliseconds for mq outbox.
+      batch-size: 10 # Sets batch size for mq outbox.
+      max-publish-attempts: 5 # Sets the upper bound for max publish attempts under mq outbox.
+      publish-retry-delay-ms: 10000 # Sets publish retry delay in milliseconds for mq outbox.
+      claim-timeout-ms: 60000 # Sets the claim timeout in milliseconds for mq outbox.
+      confirm-timeout-ms: 5000 # Sets the confirm timeout in milliseconds for mq outbox.
+      cleanup-interval-ms: 86400000 # Sets cleanup interval in milliseconds for mq outbox.
+      cleanup-retention-days: 7 # Sets cleanup retention in days for mq outbox.
+      id-namespace: a41c8a5f-f0d4-58f6-a4f5-bf4a8ef7ca55 # Names the id namespace resource for mq outbox.
+    consumers: # Groups consumers configuration.
+      agent-prefetch: 5 # Sets agent prefetch for mq consumers.
+      agent-concurrency: 5 # Sets agent concurrency for mq consumers.
+      ingest-prefetch: 1 # Sets ingest prefetch for mq consumers.
+      ingest-concurrency: 2 # Sets ingest concurrency for mq consumers.
+    locks: # Groups locks configuration.
+      running-ttl-ms: 60000 # Sets the running time-to-live in ms for mq locks.
+      session-exec-ttl-ms: 120000 # Sets the session exec time-to-live in ms for mq locks.
+      watchdog-interval-ms: 20000 # Sets watchdog interval in milliseconds for mq locks.
+      completed-ttl-ms: 86400000 # Sets the completed time-to-live in ms for mq locks.
+      failed-ttl-ms: 3600000 # Sets the failed time-to-live in ms for mq locks.
+      agent-run-policy: FAIL_OPEN # Selects agent run policy behavior for mq locks.
+      ingest-task-policy: FAIL_FAST # Selects ingest task policy behavior for mq locks.
+    dispatchers: # Groups dispatchers configuration.
+      agent-run-enabled: true # Controls whether agent run is enabled for mq dispatchers.
+  session-guard: # Groups session guard configuration.
+    enabled: true # Controls whether chatagent session guard is enabled.
+    ttl-ms: 120000 # Sets ttl in milliseconds for chatagent session guard.
+    fail-open: true # Controls fail open behavior for chatagent session guard.
+  web-search: # Groups web search configuration.
+    enabled: false # Controls whether chatagent web search is enabled.
+    brave-api-key: ${CHATAGENT_WEB_SEARCH_BRAVE_API_KEY:} # Loads the secret brave api key for chatagent web search from the process environment.
+    brave-country: "" # Sets the optional Brave search country code.
+    brave-search-lang: "" # Sets the optional Brave search language code.
+    connect-timeout-ms: 2000 # Sets the connect timeout in milliseconds for chatagent web search.
+    response-timeout-ms: 30000 # Sets the response timeout in milliseconds for chatagent web search.
+    default-max-results: 3 # Sets the upper bound for default max results under chatagent web search.
+    max-results: 3 # Sets the upper bound for max results under chatagent web search.
+    max-result-snippet-chars: 240 # Sets the upper bound for max result snippet chars under chatagent web search.
+    max-query-chars: 300 # Sets the upper bound for max query chars under chatagent web search.
+    max-context-tokens: 4096 # Sets the upper bound for max context tokens under chatagent web search.
+    max-calls-per-run: 3 # Sets the upper bound for max calls per run under chatagent web search.
+  mcp: # Groups mcp configuration.
+    enabled: true # Controls whether chatagent mcp is enabled.
+    crypto: # Groups crypto configuration.
+      key: ${CHATAGENT_MCP_CIPHER_KEY:} # Loads the secret key for mcp crypto from the process environment.
+      key-version: v1 # Sets the key version identifier for mcp crypto.
+    transport: # Groups transport configuration.
+      client-name: ChatAgent # Sets the client name identifier for mcp transport.
+      client-version: phase-1b # Sets the client version identifier for mcp transport.
+      preferred-http-protocol-version: "2025-06-18" # Selects preferred http protocol version behavior for mcp transport.
+      preferred-sse-protocol-version: "2024-11-05" # Selects preferred sse protocol version behavior for mcp transport.
+      connect-timeout-ms: 2000 # Sets the connect timeout in milliseconds for mcp transport.
+      response-timeout-ms: 10000 # Sets the response timeout in milliseconds for mcp transport.
+      read-timeout-ms: 10000 # Sets the read timeout in milliseconds for mcp transport.
+      write-timeout-ms: 10000 # Sets the write timeout in milliseconds for mcp transport.
+      request-timeout-ms: 15000 # Sets the request timeout in milliseconds for mcp transport.
+      max-in-memory-size-bytes: 131072 # Sets max in memory size in bytes for mcp transport.
+      sse-connect-timeout-ms: 5000 # Sets the sse connect timeout in milliseconds for mcp transport.
+      sse-max-reconnects: 5 # Sets the upper bound for sse max reconnects under mcp transport.
+      sse-initial-backoff-ms: 1000 # Sets sse initial backoff in milliseconds for mcp transport.
+      sse-max-backoff-ms: 30000 # Sets sse max backoff in milliseconds for mcp transport.
+    runtime: # Groups runtime configuration.
+      rate-limit-enabled: true # Controls whether rate limit is enabled for mcp runtime.
+      rate-limit-requests-per-second: 10 # Sets rate limit requests per second for mcp runtime.
+      rate-limit-burst-capacity: 10 # Sets rate limit burst capacity for mcp runtime.
+      circuit-breaker-enabled: true # Controls whether circuit breaker is enabled for mcp runtime.
+      circuit-breaker-sliding-window-size: 10 # Sets circuit breaker sliding window size for mcp runtime.
+      circuit-breaker-failure-threshold: 5 # Sets circuit breaker failure threshold for mcp runtime.
+      circuit-breaker-failure-rate-threshold-percent: 50 # Sets circuit breaker failure rate threshold percent for mcp runtime.
+      circuit-breaker-minimum-request-volume: 10 # Sets circuit breaker minimum request volume for mcp runtime.
+      circuit-breaker-open-state-ms: 30000 # Sets circuit breaker open state in milliseconds for mcp runtime.
+      circuit-breaker-half-open-probe-count: 3 # Sets circuit breaker half open probe count for mcp runtime.
+      circuit-breaker-slow-call-duration-ms: 10000 # Sets circuit breaker slow call duration in milliseconds for mcp runtime.
+      circuit-breaker-slow-call-rate-threshold-percent: 80 # Sets circuit breaker slow call rate threshold percent for mcp runtime.
+    schema-drift: # Groups schema drift configuration.
+      enabled: true # Controls whether mcp schema drift is enabled.
+      fixed-delay-ms: 600000 # Sets fixed delay in milliseconds for mcp schema drift.
+    rollout: # Groups rollout configuration.
+      mode: ALL # Selects mode behavior for mcp rollout.
+      allowed-agent-ids: [] # Sets allowed agent ids for mcp rollout.
+  rate-limit: # Groups rate limit configuration.
+    entry: # Groups entry configuration.
+      enabled: true # Controls whether rate limit entry is enabled.
+      requests-per-second: 2 # Sets requests per second for rate limit entry.
+      burst-capacity: 5 # Sets burst capacity for rate limit entry.
+      local-fallback-max-identities: 10000 # Sets the upper bound for local fallback max identities under rate limit entry.
+      redis-failure-policy: LOCAL_BUCKET # Selects redis failure policy behavior for rate limit entry.
+    agent-run: # Groups agent run configuration.
+      enabled: true # Controls whether rate limit agent run is enabled.
+      max-concurrency: 3 # Sets the upper bound for max concurrency under rate limit agent run.
+      permit-ttl-ms: 180000 # Sets the permit time-to-live in ms for rate limit agent run.
+      permit-renew-interval-ms: 20000 # Sets permit renew interval in milliseconds for rate limit agent run.
+      wait-timeout-ms: 120000 # Sets the wait timeout in milliseconds for rate limit agent run.
+      wait-status-interval-ms: 5000 # Sets wait status interval in milliseconds for rate limit agent run.
+      redis-failure-policy: LOCAL_CAP # Selects redis failure policy behavior for rate limit agent run.
+      local-capacity-on-redis-failure: 1 # Sets local capacity on redis failure for rate limit agent run.
 
-auth:
-  jwt:
-    issuer: chatagent
-    secret: ${CHATAGENT_JWT_SECRET:}
-    access-ttl-minutes: 30
-    refresh-ttl-days: 7
+auth: # Groups auth configuration.
+  jwt: # Groups jwt configuration.
+    issuer: chatagent # Sets the issuer identifier for auth jwt.
+    secret: ${CHATAGENT_JWT_SECRET:} # Loads the JWT signing secret from the process environment.
+    access-ttl-minutes: 30 # Sets the access time-to-live in minutes for auth jwt.
+    refresh-ttl-days: 7 # Sets the refresh time-to-live in days for auth jwt.
 
-logging:
-  level:
-    com.yulong.chatagent.user: INFO
+logging: # Groups logging configuration.
+  level: # Groups level configuration.
+    com.yulong.chatagent.user: INFO # Sets com yulong chatagent user for logging level.

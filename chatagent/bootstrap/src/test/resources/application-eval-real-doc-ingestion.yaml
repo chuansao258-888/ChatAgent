@@ -5,49 +5,49 @@
 # This profile intentionally uses the production facade/outbox/RabbitMQ ingestion
 # path; direct ingestSync is not acceptance evidence for Phase 10a.
 
-auth:
-  jwt:
-    secret: test-only-jwt-secret-for-eval-doc-ingestion-0000000000
+auth: # Groups auth configuration.
+  jwt: # Groups jwt configuration.
+    secret: test-only-jwt-secret-for-eval-doc-ingestion-0000000000 # Sets the test-only JWT signing secret for this evaluation profile.
 
-milvus:
-  enabled: true
-  bm25-enabled: true
-  knowledge-base:
-    collection: chat_knowledge_chunk_eval_bm25_v3
+milvus: # Groups milvus configuration.
+  enabled: true # Controls whether milvus is enabled.
+  bm25-enabled: true # Controls whether bm25 is enabled for milvus.
+  knowledge-base: # Groups knowledge base configuration.
+    collection: chat_knowledge_chunk_eval_bm25_v3 # Names the collection resource for milvus knowledge base.
 
-chatagent:
-  mq:
-    enabled: true
-    outbox:
-      poll-interval-ms: 250
-      batch-size: 4
-    consumers:
-      ingest-prefetch: 1
-      ingest-concurrency: 1
-      agent-prefetch: 1
-      agent-concurrency: 1
-    dispatchers:
-      agent-run-enabled: false
-  rag:
-    vdp:
-      char-density-threshold: 1000000
-      short-text-fast-track-threshold: 1
-      whitespace-alignment-line-threshold: 1
-      force-visual-track: true
-      pdf-page-max-in-flight: 1
-      pdf-page-timeout-ms: 30000
-      knowledge-document-timeout-ms: 300000
-      pdf-page-dispatch-core-pool-size: 1
-      pdf-page-dispatch-max-pool-size: 1
-      pdf-batch-core-pool-size: 1
-      pdf-batch-max-pool-size: 1
-      mineru:
-        enabled: true
-        base-url: http://127.0.0.1:8000
-        poll-interval-ms: 1000
-        max-poll-attempts: 300
-    ingestion:
-      contextual-enricher:
-        enabled: false
-      document-enhancer:
-        enabled: false
+chatagent: # Groups chatagent configuration.
+  mq: # Groups mq configuration.
+    enabled: true # Controls whether chatagent mq is enabled.
+    outbox: # Groups outbox configuration.
+      poll-interval-ms: 250 # Sets poll interval in milliseconds for mq outbox.
+      batch-size: 4 # Sets batch size for mq outbox.
+    consumers: # Groups consumers configuration.
+      ingest-prefetch: 1 # Sets ingest prefetch for mq consumers.
+      ingest-concurrency: 1 # Sets ingest concurrency for mq consumers.
+      agent-prefetch: 1 # Sets agent prefetch for mq consumers.
+      agent-concurrency: 1 # Sets agent concurrency for mq consumers.
+    dispatchers: # Groups dispatchers configuration.
+      agent-run-enabled: false # Controls whether agent run is enabled for mq dispatchers.
+  rag: # Groups rag configuration.
+    vdp: # Groups vdp configuration.
+      char-density-threshold: 1000000 # Sets char density threshold for rag vdp.
+      short-text-fast-track-threshold: 1 # Sets short text fast track threshold for rag vdp.
+      whitespace-alignment-line-threshold: 1 # Sets whitespace alignment line threshold for rag vdp.
+      force-visual-track: true # Controls force visual track behavior for rag vdp.
+      pdf-page-max-in-flight: 1 # Sets the upper bound for pdf page max in flight under rag vdp.
+      pdf-page-timeout-ms: 30000 # Sets the pdf page timeout in milliseconds for rag vdp.
+      knowledge-document-timeout-ms: 300000 # Sets the knowledge document timeout in milliseconds for rag vdp.
+      pdf-page-dispatch-core-pool-size: 1 # Sets pdf page dispatch core pool size for rag vdp.
+      pdf-page-dispatch-max-pool-size: 1 # Sets the upper bound for pdf page dispatch max pool size under rag vdp.
+      pdf-batch-core-pool-size: 1 # Sets pdf batch core pool size for rag vdp.
+      pdf-batch-max-pool-size: 1 # Sets the upper bound for pdf batch max pool size under rag vdp.
+      mineru: # Groups mineru configuration.
+        enabled: true # Controls whether vdp mineru is enabled.
+        base-url: http://127.0.0.1:8000 # Sets the service endpoint for vdp mineru.
+        poll-interval-ms: 1000 # Sets poll interval in milliseconds for vdp mineru.
+        max-poll-attempts: 300 # Sets the upper bound for max poll attempts under vdp mineru.
+    ingestion: # Groups ingestion configuration.
+      contextual-enricher: # Groups contextual enricher configuration.
+        enabled: false # Controls whether ingestion contextual enricher is enabled.
+      document-enhancer: # Groups document enhancer configuration.
+        enabled: false # Controls whether ingestion document enhancer is enabled.

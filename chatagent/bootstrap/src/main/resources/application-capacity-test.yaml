@@ -1,45 +1,45 @@
-spring:
-  ai:
-    anthropic:
-      api-key: REDACTED_API_KEY
-      base-url: http://127.0.0.1:1
-    deepseek:
-      api-key: REDACTED_API_KEY
-      base-url: http://127.0.0.1:1
-    zhipuai:
-      api-key: REDACTED_API_KEY
-      base-url: http://127.0.0.1:1/api/paas
-  rabbitmq:
-    listener:
-      simple:
-        auto-startup: true
+spring: # Groups spring configuration.
+  ai: # Groups ai configuration.
+    anthropic: # Groups anthropic configuration.
+      api-key: REDACTED_API_KEY # Sets api key for ai anthropic.
+      base-url: http://127.0.0.1:1 # Sets the service endpoint for ai anthropic.
+    deepseek: # Groups deepseek configuration.
+      api-key: REDACTED_API_KEY # Sets api key for ai deepseek.
+      base-url: http://127.0.0.1:1 # Sets the service endpoint for ai deepseek.
+    zhipuai: # Groups zhipuai configuration.
+      api-key: REDACTED_API_KEY # Sets api key for ai zhipuai.
+      base-url: http://127.0.0.1:1/api/paas # Sets the service endpoint for ai zhipuai.
+  rabbitmq: # Groups rabbitmq configuration.
+    listener: # Groups listener configuration.
+      simple: # Groups simple configuration.
+        auto-startup: true # Controls auto startup behavior for listener simple.
 
-chatagent:
-  mq:
-    dispatchers:
-      agent-run-enabled: true
-  capacity-test:
-    mock-ttft-ms: 100
-    mock-stream-total-ms: 200
-  rate-limit:
-    entry:
-      enabled: false
-    agent-run:
-      enabled: false
-  memory:
-    l3:
-      enabled: false
+chatagent: # Groups chatagent configuration.
+  mq: # Groups mq configuration.
+    dispatchers: # Groups dispatchers configuration.
+      agent-run-enabled: true # Controls whether agent run is enabled for mq dispatchers.
+  capacity-test: # Groups capacity test configuration.
+    mock-ttft-ms: 100 # Sets mock ttft in milliseconds for chatagent capacity test.
+    mock-stream-total-ms: 200 # Sets mock stream total in milliseconds for chatagent capacity test.
+  rate-limit: # Groups rate limit configuration.
+    entry: # Groups entry configuration.
+      enabled: false # Controls whether rate limit entry is enabled.
+    agent-run: # Groups agent run configuration.
+      enabled: false # Controls whether rate limit agent run is enabled.
+  memory: # Groups memory configuration.
+    l3: # Groups l3 configuration.
+      enabled: false # Controls whether memory l3 is enabled.
 
-milvus:
-  enabled: false
+milvus: # Groups milvus configuration.
+  enabled: false # Controls whether milvus is enabled.
 
-logging:
-  level:
-    root: WARN
-    com.yulong.chatagent: INFO
-    com.yulong.chatagent.conversation: WARN
-    com.yulong.chatagent.intent: WARN
-    com.yulong.chatagent.mq: WARN
-    com.yulong.chatagent.rag: WARN
-    org.springframework.amqp: WARN
-    org.springframework.web: WARN
+logging: # Groups logging configuration.
+  level: # Groups level configuration.
+    root: WARN # Sets root for logging level.
+    com.yulong.chatagent: INFO # Sets com yulong chatagent for logging level.
+    com.yulong.chatagent.conversation: WARN # Sets com yulong chatagent conversation for logging level.
+    com.yulong.chatagent.intent: WARN # Sets com yulong chatagent intent for logging level.
+    com.yulong.chatagent.mq: WARN # Sets com yulong chatagent mq for logging level.
+    com.yulong.chatagent.rag: WARN # Sets com yulong chatagent rag for logging level.
+    org.springframework.amqp: WARN # Sets org springframework amqp for logging level.
+    org.springframework.web: WARN # Sets org springframework web for logging level.

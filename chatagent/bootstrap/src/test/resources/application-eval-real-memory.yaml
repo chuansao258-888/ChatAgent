@@ -5,17 +5,17 @@
 # from application.yaml. Uses a dedicated eval-owned Milvus collection to
 # isolate eval vector data from production.
 
-auth:
-  jwt:
-    secret: test-only-jwt-secret-for-eval-memory-000000000000000000
+auth: # Groups auth configuration.
+  jwt: # Groups jwt configuration.
+    secret: test-only-jwt-secret-for-eval-memory-000000000000000000 # Sets the test-only JWT signing secret for this evaluation profile.
 
-milvus:
-  enabled: true
+milvus: # Groups milvus configuration.
+  enabled: true # Controls whether milvus is enabled.
 
-chatagent:
-  memory:
-    l3:
-      enabled: true
+chatagent: # Groups chatagent configuration.
+  memory: # Groups memory configuration.
+    l3: # Groups l3 configuration.
+      enabled: true # Controls whether memory l3 is enabled.
 
 # Override the user-memory Milvus collection to keep eval data isolated.
-milvus.user-memory.collection: chat_user_memory_eval
+milvus.user-memory.collection: chat_user_memory_eval # Names the milvus user memory collection resource for the root configuration.

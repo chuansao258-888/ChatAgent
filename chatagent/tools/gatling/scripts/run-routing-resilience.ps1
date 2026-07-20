@@ -20,7 +20,9 @@ Import-ChatAgentLocalEnvironment $paths.EnvironmentFile
 $env:JAVA_HOME = 'C:\Users\guany\.jdks\ms-17.0.18'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 $env:SPRING_PROFILES_ACTIVE = 'resilience-test'
-$env:CHATAGENT_RESILIENCE_FIXTURE_BASE_URL = $FixtureBaseUrl
+$env:SPRING_AI_ANTHROPIC_BASE_URL = $FixtureBaseUrl
+$env:SPRING_AI_DEEPSEEK_BASE_URL = $FixtureBaseUrl
+$env:SPRING_AI_ZHIPUAI_BASE_URL = $FixtureBaseUrl
 $env:CHAT_ROUTING_HEALTH_FAILURE_THRESHOLD = '4'
 $env:CHAT_ROUTING_HEALTH_OPEN_DURATION_MS = '5000'
 $env:CHAT_ROUTING_HEALTH_HALF_OPEN_FLIGHT_TIMEOUT_MS = '5000'

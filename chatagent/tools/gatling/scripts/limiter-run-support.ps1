@@ -10,8 +10,7 @@ function Get-ChatAgentPaths {
 
 function Import-ChatAgentLocalEnvironment([string]$Path) {
     $allowed = @(
-        'CHATAGENT_DB_URL', 'CHATAGENT_DB_USERNAME', 'CHATAGENT_DB_PASSWORD',
-        'CHATAGENT_JWT_SECRET'
+        'CHATAGENT_DB_PASSWORD', 'CHATAGENT_JWT_SECRET'
     )
     Get-Content -LiteralPath $Path |
         Where-Object { $_ -match '^\s*[^#][^=]+=' } |
